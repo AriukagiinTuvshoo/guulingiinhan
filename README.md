@@ -8,6 +8,7 @@ Frontend нь Next.js App Router, TypeScript, React дээр ажиллана. `
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
@@ -25,6 +26,8 @@ uv run uvicorn app.main:app --reload
 
 API баримт: `http://localhost:8000/docs`; ажиллагааны шалгалт: `/health`. Frontend `http://localhost:3000` дээр асна.
 
+Frontend-ийн `.env` дахь `NEXT_PUBLIC_API_BASE_URL` нь browser-оос хүрэх API URL байх ёстой. Auth, гэр бүл, хүн болон харилцааны API нь `/api/v1`-ээр эхэлнэ. Browser-оос API руу cookie явуулахад backend-ийн `CORS_ORIGINS` дотор frontend origin байх шаардлагатай.
+
 Эсвэл төслийн root дээр `docker compose up --build` ажиллуулж Postgres + API-г асаана.
 
 ## Шалгалт
@@ -36,4 +39,4 @@ uv run ruff check app tests migrations
 uv run alembic check
 ```
 
-Өгөгдөлд зориулсан CRUD болон authentication endpoint хараахан нээгдээгүй. Frontend demo өгөгдөл хөтчийн `localStorage`-д хадгалагдана. Бодит гэр бүлийн мэдээлэл оруулах систем гэж ашиглаж болохгүй.
+Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Owner урилгын нэг удаагийн код үүсгэж гараар дамжуулж болно. Үндсэн demo нүүр sample өгөгдөл харуулсаар байна. Email баталгаажуулалт, нууц үг сэргээх email, автоматаар урилга илгээх, зураг хадгалах үйлчилгээ тохируулаагүй; энэ хувилбарыг нээлттэй хэрэглэгчдэд production болгон гаргах боломжгүй.

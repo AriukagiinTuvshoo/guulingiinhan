@@ -7,20 +7,25 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.auth import router as auth_router
 from app.config import get_settings
 from app.db import engine
+from app.families import invitations_router
+from app.families import router as families_router
 
 settings = get_settings()
 app = FastAPI(
     title="Гуулингийнхан API",
     version="0.1.0",
     description="Гэр бүлийн мод, хүмүүс болон удам угсааны түүхийн API.",
+    docs_url=None if settings.app_env.lower() == "production" else "/docs",
+    redoc_url=None if settings.app_env.lower() == "production" else "/redoc",
 )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     expose_headers=["X-Request-ID"],
 )
@@ -30,6 +35,12 @@ app.add_middleware(
 async def request_context(request: Request, call_next):
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        origin = request.headers.get("origin")
+        if origin and origin not in settings.cors_origin_list:
+            response = JSONResponse(status_code=403, content={"detail": "Origin зөвшөөрөгдөөгүй."})
+            response.headers["X-Request-ID"] = request_id
+            return response
     try:
         response = await call_next(request)
     except Exception:
@@ -38,10 +49,18 @@ async def request_context(request: Request, call_next):
         )
         response = JSONResponse(
             status_code=500,
-            content={"detail": "Уучлаарай, хүсэлтийг боловсруулахад алдаа гарлаа.", "request_id": request_id},
+            content={
+                "detail": "Уучлаарай, хүсэлтийг боловсруулахад алдаа гарлаа.",
+                "request_id": request_id,
+            },
         )
     response.headers["X-Request-ID"] = request_id
     return response
+
+
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(families_router, prefix="/api/v1")
+app.include_router(invitations_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

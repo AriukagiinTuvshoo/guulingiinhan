@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./guulingiinhan.db"
     cors_origins: str = "http://localhost:3000"
+    session_cookie_name: str = "guulingiinhan_session"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

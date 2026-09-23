@@ -29,6 +29,61 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    __table_args__ = (
+        CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
+        Index("ix_invitation_family_email", "family_id", "invited_email"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    invited_email: Mapped[str] = mapped_column(String(320))
+    role: Mapped[str] = mapped_column(String(16))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class LoginThrottle(Base):
+    __tablename__ = "login_throttles"
+
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_started: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_family_created", "family_id", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("families.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    action: Mapped[str] = mapped_column(String(60))
+    target_type: Mapped[str] = mapped_column(String(40))
+    target_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
@@ -41,6 +96,7 @@ class Family(Base):
     profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class FamilyMember(Base):
@@ -163,6 +219,7 @@ class Marriage(Base):
     status: Mapped[str] = mapped_column(String(12), default="married")
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     location: Mapped[str | None] = mapped_column(String(240), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))

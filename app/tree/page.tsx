@@ -1,0 +1,105 @@
+'use client';
+
+import Link from 'next/link';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ApiError, api, Family, personName, Person, TreeData } from '../../lib/api';
+
+type RelationKind = 'parent' | 'child' | 'spouse';
+
+function generationRows(tree: TreeData) {
+  const levels = new Map(tree.persons.map((person) => [person.id, 0]));
+  for (let pass = 0; pass < tree.persons.length; pass++) {
+    let changed = false;
+    for (const edge of tree.parent_child_relationships) {
+      const next = (levels.get(edge.parent_id) ?? 0) + 1;
+      if (next > (levels.get(edge.child_id) ?? 0)) { levels.set(edge.child_id, next); changed = true; }
+    }
+    if (!changed) break;
+  }
+  const groups = new Map<number, Person[]>();
+  for (const person of tree.persons) {
+    const level = levels.get(person.id) ?? 0;
+    groups.set(level, [...(groups.get(level) ?? []), person]);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a - b);
+}
+
+export default function TreePage() {
+  const router = useRouter();
+  const [familyId, setFamilyId] = useState('');
+  const [family, setFamily] = useState<Family | null>(null);
+  const [tree, setTree] = useState<TreeData>({ persons: [], parent_child_relationships: [], marriages: [] });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [search, setSearch] = useState('');
+  const [zoom, setZoom] = useState(1);
+  const [selected, setSelected] = useState('');
+  const [relation, setRelation] = useState<RelationKind | null>(null);
+  const [relationError, setRelationError] = useState('');
+  const [notice, setNotice] = useState('');
+  const load = useCallback(async (id: string) => {
+    const [f, data] = await Promise.all([api<Family>(`/families/${id}`), api<TreeData>(`/families/${id}/tree`)]);
+    setFamily(f); setTree(data);
+  }, []);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('family') ?? '';
+    if (!id) { router.replace('/families'); return; }
+    setFamilyId(id);
+    load(id).catch((cause) => {
+      if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
+      else setError(cause instanceof Error ? cause.message : 'Ургийн модыг ачаалж чадсангүй.');
+    }).finally(() => setBusy(false));
+  }, [load, router]);
+  const rows = useMemo(() => generationRows(tree), [tree]);
+  const shown = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase();
+    if (!q) return tree.persons;
+    return tree.persons.filter((p) => personName(p).toLocaleLowerCase().includes(q));
+  }, [tree.persons, search]);
+  async function addRelation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!relation || !selected) return;
+    setRelationError('');
+    const form = new FormData(event.currentTarget);
+    const existingId = String(form.get('existing') ?? '');
+    try {
+      let relatedId = existingId;
+      if (!relatedId) {
+        const fullName = String(form.get('name') ?? '').trim().split(/\s+/).filter(Boolean);
+        const created = await api<Person>(`/families/${familyId}/persons`, { method: 'POST', body: JSON.stringify({ first_name: fullName.at(-1) ?? '', last_name: fullName.slice(0, -1).join(' '), gender: form.get('gender'), visibility: 'family' }) });
+        relatedId = created.id;
+      }
+      if (relation === 'spouse') {
+        await api(`/families/${familyId}/marriages`, { method: 'POST', body: JSON.stringify({ person_1_id: selected, person_2_id: relatedId, status: 'married' }) });
+      } else {
+        await api(`/families/${familyId}/relationships/parent-child`, { method: 'POST', body: JSON.stringify({ parent_id: relation === 'parent' ? relatedId : selected, child_id: relation === 'parent' ? selected : relatedId, relationship_type: form.get('relationship_type') }) });
+      }
+      await load(familyId); setRelation(null); setNotice('Гэр бүлийн холбоо хадгалагдлаа.');
+    } catch (cause) { setRelationError(cause instanceof Error ? cause.message : 'Холбоог хадгалж чадсангүй.'); }
+  }
+  async function divorce(id: string) {
+    const endDate = window.prompt('Салсан огноо (YYYY-MM-DD)');
+    if (!endDate) return;
+    try { await api(`/families/${familyId}/marriages/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'divorced', end_date: endDate }) }); await load(familyId); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Гэрлэлтийн мэдээллийг шинэчилж чадсангүй.'); }
+  }
+  if (busy) return <main className="mvp"><section className="mvpbox">Ургийн модыг ачаалж байна…</section></main>;
+  const peopleToShow = new Set(shown.map((person) => person.id));
+  return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 1250 }}>
+    <div className="row space toolbar"><div><Link href="/families">← Гэр бүлүүд</Link><h1 style={{ marginTop: 15 }}>{family?.name ?? 'Ургийн мод'}</h1></div><div className="row"><Link className="button" href={`/memories?family=${familyId}`}>Дурсамж</Link><button onClick={() => setZoom((v) => Math.max(.55, v - .1))} aria-label="Жижигрүүлэх">−</button><button onClick={() => setZoom(1)}>Тааруулах</button><button onClick={() => setZoom((v) => Math.min(1.6, v + .1))} aria-label="Томруулах">＋</button></div></div>
+    {error && <div className="error" role="alert">{error}</div>}{notice && <div className="success">{notice}</div>}
+    <div className="row space"><p>{tree.persons.length} хүн · {tree.marriages.length} гэрлэлт</p><label style={{ width: 'min(330px,100%)', margin: '8px 0' }}><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Хүн хайх…" /></label></div>
+    {tree.persons.length === 0 ? <div className="card"><p>Одоогоор хүн нэмээгүй байна.</p><Link className="button" href="/onboarding">Өөрийгөө нэмэх</Link></div> : <div className="tree-scroll"><div className="generations" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: `${100 / zoom}%` }}>
+      {rows.map(([generation, persons]) => <div className="generation" key={generation}><span className="tag">{generation + 1}-р үе</span>{persons.filter((person) => peopleToShow.has(person.id)).map((person) => {
+        const parents = tree.parent_child_relationships.filter((r) => r.child_id === person.id).length;
+        const children = tree.parent_child_relationships.filter((r) => r.parent_id === person.id).length;
+        const spouses = tree.marriages.filter((r) => r.person_1_id === person.id || r.person_2_id === person.id);
+        const parentNames = tree.parent_child_relationships.filter((r) => r.child_id === person.id).map((r) => tree.persons.find((p) => p.id === r.parent_id)).filter((p): p is Person => Boolean(p)).map(personName);
+        const childNames = tree.parent_child_relationships.filter((r) => r.parent_id === person.id).map((r) => tree.persons.find((p) => p.id === r.child_id)).filter((p): p is Person => Boolean(p)).map(personName);
+        const spouseNames = spouses.map((r) => tree.persons.find((p) => p.id === (r.person_1_id === person.id ? r.person_2_id : r.person_1_id))).filter((p): p is Person => Boolean(p)).map(personName);
+        return <article className="card person-card" key={person.id}><button style={{ width: '100%' }} onClick={() => router.push(`/profile?family=${familyId}&person=${person.id}`)}><strong>{personName(person)}</strong><span className="muted" style={{ display: 'block', marginTop: 6 }}>{person.birth_date?.slice(0, 4) ?? '—'} – {person.is_alive ? '' : person.death_date?.slice(0, 4) ?? '?'}</span><span className="muted" style={{ display: 'block', marginTop: 4 }}>{parents} эцэг/эх · {children} хүүхэд · {spouses.length} хань</span></button><div className="row" style={{ justifyContent: 'center', marginTop: 10 }}><button aria-label="Эцэг эх нэмэх" onClick={() => {setSelected(person.id);setRelation('parent')}}>+ Эцэг/эх</button><button aria-label="Хүүхэд нэмэх" onClick={() => {setSelected(person.id);setRelation('child')}}>+ Хүүхэд</button><button aria-label="Хань нэмэх" onClick={() => {setSelected(person.id);setRelation('spouse')}}>+ Хань</button></div>{spouses.filter((m) => m.status === 'married').map((m) => <button className="muted" key={m.id} style={{ marginTop: 6, fontSize: 11 }} onClick={() => divorce(m.id)}>Салалтыг бүртгэх</button>)}{(parentNames.length > 0 || spouseNames.length > 0 || childNames.length > 0) && <div className="muted" style={{ borderTop: '1px solid #285847', marginTop: 10, paddingTop: 8, textAlign: 'left', lineHeight: 1.5 }}>{parentNames.length > 0 && <div>Эцэг эх: {parentNames.join(', ')}</div>}{spouseNames.length > 0 && <div>Хань: {spouseNames.join(', ')}</div>}{childNames.length > 0 && <div>Хүүхэд: {childNames.join(', ')}</div>}</div>}</article>;
+      })}</div>)}
+    </div></div>}
+    <p className="muted">Эцэг эх-хүүхдийн холбоо болон гэрлэлт тусдаа хадгалагдана. Салалт хүүхдийн холбоонд нөлөөлөхгүй.</p>
+  </section>{relation && <div className="modal-backdrop" onClick={() => setRelation(null)}><section className="modal" onClick={(e) => e.stopPropagation()}><div className="row space"><h2>{relation === 'parent' ? 'Эцэг эх нэмэх' : relation === 'child' ? 'Хүүхэд нэмэх' : 'Хань нэмэх'}</h2><button onClick={() => setRelation(null)}>Хаах</button></div>{relationError && <div className="error" role="alert">{relationError}</div>}<form onSubmit={addRelation}><label>Одоо байгаа хүнээс сонгох<select name="existing" defaultValue=""><option value="">Шинэ хүн үүсгэх</option>{tree.persons.filter((p) => p.id !== selected).map((p) => <option value={p.id} key={p.id}>{personName(p)}</option>)}</select></label><label>Шинэ хүний нэр<input name="name" maxLength={360} /></label><label>Хүйс<select name="gender" defaultValue="unknown"><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>{relation !== 'spouse' && <label>Холбооны төрөл<select name="relationship_type"><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option></select></label>}<button className="primary" type="submit">Холбоог хадгалах</button></form></section></div>}</main>;
+}
