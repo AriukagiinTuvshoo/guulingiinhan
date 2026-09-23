@@ -1,35 +1,39 @@
-# Угийнхан — Ургийн мод
+# Гуулингийнхан
 
-Монгол гэр бүлүүдийн ургийн мод, хүний профайл, намтрыг цэгцтэй хадгалах responsive вебийн эхний хувилбар.
+Монгол гэр бүлийн ургийн мод, хүмүүсийн намтар, түүх, дурсамжийг холбон хадгалах веб апп.
 
-## Эхлүүлэх
+Одоогийн UI нь Vite + React дээр ажиллана. `backend/` нь FastAPI, SQLAlchemy, Alembic, PostgreSQL суурьтай API-г агуулна. Төслийн дараагийн ажлууд `ARCHITECTURE.md`, `DATABASE.md`, `SECURITY.md`, `DEPLOYMENT.md`-д тэмдэглэгдсэн.
+
+## Frontend
 
 ```bash
 npm install
 npm run dev
 ```
 
-Production build шалгах:
+## Backend ба PostgreSQL
+
+Python 3.11+, uv хэрэгтэй.
 
 ```bash
-npm run build
-npm run preview
+cd backend
+uv sync --dev
+cp .env.example .env
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload
 ```
 
-## Одоогийн боломж
+API баримт: `http://localhost:8000/docs`; ажиллагааны шалгалт: `/health`.
 
-- Ургийн модны жишээ өгөгдөл, модон холбоосын дүрслэл
-- Хүн хайх, сонгоход профайлыг харуулах
-- Үе солих, дэлгэц томруулах/багасгах
-- Хүүхэд, эцэг эх, хань нэмэх
-- Хүн нэмсэн мэдээллийг тухайн хөтөчийн localStorage-д хадгалах
-- Профайлын тойм, намтар, зураг, баримтын хэсэг
-- Утас, таблетад тохирох харагдац
+Эсвэл төслийн root дээр `docker compose up --build` ажиллуулж Postgres + API-г асаана.
 
-## Анхаарах зүйл
+## Шалгалт
 
-Энэ нь интерфейсийн эхний туршилтын хувилбар. Нэвтрэлт, API, PostgreSQL, сервер талын хадгалалт, гэр бүлийн урилга, эрхийн хяналт хараахан холбогдоогүй. Демо хүмүүс болон зураг нь жишээ зориулалттай. Хөтөчийн өгөгдөл сервертэй синхрончлогдохгүй.
+```bash
+cd backend
+uv run pytest
+uv run ruff check app tests migrations
+uv run alembic check
+```
 
-## Технологи
-
-React, TypeScript, Vite, Lucide.
+Өгөгдөлд зориулсан CRUD болон authentication endpoint хараахан нээгдээгүй. Frontend demo өгөгдөл хөтчийн `localStorage`-д хадгалагдана. Бодит гэр бүлийн мэдээлэл оруулах систем гэж ашиглаж болохгүй.
