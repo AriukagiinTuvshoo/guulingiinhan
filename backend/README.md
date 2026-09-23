@@ -10,6 +10,8 @@ FastAPI, SQLAlchemy 2, Alembic, PostgreSQL-д зориулсан API болон 
 4. `uv run uvicorn app.main:app --reload` ажиллуулна.
 5. `/docs` дээр API баримт, `/health` дээр ажиллагааг шалгана.
 
+Frontend-ийн local origin нь `http://localhost:3000`.
+
 Docker ашиглах бол төслийн root-д `docker compose up --build` ажиллуулна.
 
 ## Өгөгдлийн загвар

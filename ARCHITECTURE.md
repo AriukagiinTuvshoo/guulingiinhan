@@ -2,7 +2,7 @@
 
 ## Одоогийн бүтэц
 
-- `src/`, `index.html`: өмнөх ажлаас үлдсэн Vite + React интерфейс; одоохондоо ажиллаж буй кодыг хадгалсан. Хавсаргасан архитектурын зорилтот frontend нь Next.js; migration-ийг тусдаа шатанд хийж, одоогийн UI-ийн зан төлөвийг алдагдуулахгүй шилжүүлнэ.
+- `app/`: Next.js App Router layout болон одоогийн модны UI. Энэ үе шатанд UI-г Next client component-д шилжүүлэв; өгөгдөл нь одоогоор demo/localStorage.
 - `backend/app`: FastAPI API, SQLAlchemy model, relationship domain logic.
 - `backend/migrations`: Alembic schema migrations.
 - PostgreSQL нь орчны `DATABASE_URL`-аар тохируулагдана; development-д SQLite ашиглаж болно.

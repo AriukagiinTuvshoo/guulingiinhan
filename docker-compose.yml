@@ -19,7 +19,7 @@ services:
     environment:
       APP_ENV: development
       DATABASE_URL: postgresql+psycopg://guulingiinhan:${POSTGRES_PASSWORD:-local-development-only}@db:5432/guulingiinhan
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:3000
     ports:
       - "8000:8000"
     depends_on:

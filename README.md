@@ -2,7 +2,7 @@
 
 Монгол гэр бүлийн ургийн мод, хүмүүсийн намтар, түүх, дурсамжийг холбон хадгалах веб апп.
 
-Одоогийн UI нь Vite + React дээр ажиллана. `backend/` нь FastAPI, SQLAlchemy, Alembic, PostgreSQL суурьтай API-г агуулна. Төслийн дараагийн ажлууд `ARCHITECTURE.md`, `DATABASE.md`, `SECURITY.md`, `DEPLOYMENT.md`-д тэмдэглэгдсэн.
+Frontend нь Next.js App Router, TypeScript, React дээр ажиллана. `backend/` нь FastAPI, SQLAlchemy, Alembic, PostgreSQL суурьтай API-г агуулна. Төслийн үе шат, өгөгдлийн загвар, аюулгүй байдлын төлөвийг `ARCHITECTURE.md`, `DATABASE.md`, `SECURITY.md`, `DEPLOYMENT.md`-д тэмдэглэсэн.
 
 ## Frontend
 
@@ -23,7 +23,7 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
-API баримт: `http://localhost:8000/docs`; ажиллагааны шалгалт: `/health`.
+API баримт: `http://localhost:8000/docs`; ажиллагааны шалгалт: `/health`. Frontend `http://localhost:3000` дээр асна.
 
 Эсвэл төслийн root дээр `docker compose up --build` ажиллуулж Postgres + API-г асаана.
 
