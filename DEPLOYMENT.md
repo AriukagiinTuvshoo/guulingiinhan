@@ -13,4 +13,6 @@ Root `.env` дахь `POSTGRES_PASSWORD`-ийг өөрчилсний дараа 
 5. CI дээр tests, migrations, build ажиллуулна.
 6. Managed backup/restore шалгана.
 
-Одоогийн `docker-compose.yml` нь development-д зориулагдсан; production нууц үг, network, backup бодлого орлоход зориулагдаагүй.
+`docker-compose.yml` нь development-д зориулагдсан бөгөөд API/DB портууд зөвхөн localhost дээр нээгдэнэ; production нууц үг, network, backup бодлого орлоход зориулагдаагүй.
+
+Backend-ийн container root бус хэрэглэгчээр ажиллана. `/health` нь liveness, `/health/ready` нь PostgreSQL холболтын readiness шалгалт. Production deployment нь readiness probe-оо `/health/ready` рүү чиглүүлнэ.

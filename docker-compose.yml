@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: guulingiinhan
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,7 +21,7 @@ services:
       DATABASE_URL: postgresql+psycopg://guulingiinhan:${POSTGRES_PASSWORD:-local-development-only}@db:5432/guulingiinhan
       CORS_ORIGINS: http://localhost:3000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
