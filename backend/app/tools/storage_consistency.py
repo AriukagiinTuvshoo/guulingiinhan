@@ -64,7 +64,10 @@ def check_storage_consistency(
             report.invalid_metadata.append(photo_id)
             continue
 
-        if photo.object_key != expected_original or photo.thumbnail_object_key != expected_thumbnail:
+        if (
+            photo.object_key != expected_original
+            or photo.thumbnail_object_key != expected_thumbnail
+        ):
             report.invalid_metadata.append(photo_id)
 
         thumbnail_key = photo.thumbnail_object_key or expected_thumbnail
