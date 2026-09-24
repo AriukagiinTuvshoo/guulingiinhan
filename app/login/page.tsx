@@ -20,7 +20,7 @@ export default function LoginPage() {
 
   function moveToApp() {
     const invite = new URLSearchParams(window.location.hash.slice(1)).get('invite');
-    router.push(invite ? `/invite#token=${encodeURIComponent(invite)}` : '/families');
+    router.push(invite ? `/invite#token=${encodeURIComponent(invite)}` : '/dashboard');
   }
 
   useEffect(() => {
@@ -150,6 +150,6 @@ export default function LoginPage() {
       <p className="muted"><button type="button" className="text-button" onClick={() => { setChallenge(null); setNotice(''); }}>Дугаарыг солих</button></p>
     </form>}
     <p className="muted" style={{ marginTop: 20 }}>Бүртгэлгүй юу? <Link href="/register">Бүртгэл үүсгэх</Link></p>
-    <p className="muted"><Link href="/">Загвар дэлгэцийг үзэх</Link></p>
+    <p className="muted"><Link href="/">ГУУЛИНГИЙНХАН нүүр хуудас</Link></p>
   </section></main>;
 }
