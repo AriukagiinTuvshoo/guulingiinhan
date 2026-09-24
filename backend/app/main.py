@@ -153,6 +153,12 @@ app.include_router(families_router, prefix="/api/v1")
 app.include_router(invitations_router, prefix="/api/v1")
 
 
+@app.get("/", tags=["system"])
+def root() -> dict[str, str]:
+    """Basic API landing endpoint for direct backend deployments."""
+    return {"service": "guulingiinhan-api", "status": "ok"}
+
+
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     """Liveness probe: the API process is running."""
