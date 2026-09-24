@@ -166,6 +166,47 @@ class LoginThrottle(Base):
     attempts: Mapped[int] = mapped_column(default=0)
 
 
+class PhoneOtpChallenge(Base):
+    __tablename__ = "phone_otp_challenges"
+    __table_args__ = (
+        CheckConstraint(
+            "purpose IN ('phone_link', 'phone_login', 'password_recovery')",
+            name="ck_phone_otp_purpose",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'consumed', 'expired', 'locked', 'superseded')",
+            name="ck_phone_otp_status",
+        ),
+        CheckConstraint("attempt_count >= 0 AND max_attempts > 0", name="ck_phone_otp_attempts"),
+        Index("ix_phone_otp_phone_purpose_created", "phone_e164", "purpose", "created_at"),
+        Index("ix_phone_otp_expiry", "expires_at"),
+        Index("ix_phone_otp_user_created", "user_id", "created_at"),
+        Index(
+            "uq_phone_otp_pending",
+            "phone_e164",
+            "purpose",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    phone_e164: Mapped[str] = mapped_column(String(16), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(24), nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), default="pending", nullable=False)
+    attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(default=5, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    request_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     __table_args__ = (Index("ix_audit_family_created", "family_id", "created_at"),)

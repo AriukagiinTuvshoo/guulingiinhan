@@ -26,5 +26,22 @@ def test_production_accepts_postgresql_and_https_origin():
         app_env="production",
         database_url="postgresql+psycopg://user:pass@host/db",
         cors_origins="https://guulingiinhan.mn",
+        otp_hash_secret="x" * 40,
+        sms_provider="twilio",
+        twilio_account_sid="AC" + "x" * 32,
+        twilio_auth_token="x" * 32,
+        twilio_from_number="+12025550100",
     )
     assert settings.cors_origin_list == ["https://guulingiinhan.mn"]
+
+
+def test_production_rejects_missing_otp_secret_or_sms_provider():
+    values = {
+        "app_env": "production",
+        "database_url": "postgresql+psycopg://user:pass@host/db",
+        "cors_origins": "https://guulingiinhan.mn",
+    }
+    with pytest.raises(ValidationError):
+        Settings(**values)
+    with pytest.raises(ValidationError):
+        Settings(**values, otp_hash_secret="x" * 40, sms_provider="fake")

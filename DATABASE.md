@@ -1,6 +1,6 @@
 # Өгөгдлийн сан
 
-Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` (P4.3 head). `f10695a88229` нь account-person link ба memory tag, `74a31c87f462` нь auth/session, family archive болон audit schema, `b762e4a19d30` нь minor guardian authorization, `cc924bf31a12` нь login identity бүртгэл нэмдэг.
+Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` → `2e9d7f4c1a63` (P4.4 head). `f10695a88229` нь account-person link ба memory tag, `74a31c87f462` нь auth/session, family archive болон audit schema, `b762e4a19d30` нь minor guardian authorization, `cc924bf31a12` нь login identity бүртгэл, `2e9d7f4c1a63` нь phone OTP challenge storage нэмдэг.
 
 | Хүснэгт | Хэрэглээ |
 |---|---|
@@ -18,6 +18,7 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 | person_guardianships | Нэг Family/Person/guardian User-д олгосон нэг scope-ийн хугацаатай, цуцалж болох эрх |
 | login_identities | Email, phone, Google identity-г User account-д холбох registry |
 | identity_link_requests | Ирээдүйн verification-д зориулсан хугацаатай, эрх олгодоггүй хүсэлтийн бүртгэл |
+| phone_otp_challenges | HMAC OTP digest, зориулалт, төлөв, оролдлого ба хугацаа; raw OTP агуулахгүй |
 
 `person_guardianships` нь composite foreign key ашиглан Person family context болон guardian-ийн family membership-ийг батална. Scope нь `view_profile`, `edit_profile`, `manage_biography`, `manage_events`, `manage_memories`, `manage_media`; төлөв нь `active` эсвэл `revoked`. Active scope давхардахгүй partial unique index-тэй. Expiry-г authorization шалгалт бүрд мөрдөнө.
 
@@ -25,7 +26,9 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 
 `identity_link_requests` нь 24 цагийн pending хүсэлтийг account эзэмшигчид scoped хадгална. OTP/OIDC баталгаажуулалт байхгүй тул энэ хүсэлтийг identity болгон consume хийх боломжгүй; энд нууц code/token хадгалахгүй.
 
-P4.2 болон P4.3 migration нь хуучин хүснэгт/мөрүүдийг устгахгүй. `downgrade -1` нь зөвхөн туршилтын DB дээр зөвшөөрөгдөнө; P4.3-ийн дараа үүссэн identity ба pending link request буцаахад арилна. Production rollback-д forward-fix хэрэглэнэ.
+`phone_otp_challenges` нь E.164 дугаар + purpose + challenge ID-д холбосон 6 оронтой кодын HMAC digest хадгална. Challenge 5 минут хүчинтэй, 5 удаагийн буруу оролдлогын дараа түгжигдэнэ; 60 секунд resend cooldown-той. Pending challenge-д зориулсан partial unique index давхардлыг хаана. Хуучирсан challenge 90 хоногоос хойш шинэ OTP хүсэлтийн үеэр цэвэрлэгдэнэ. HMAC pepper нь production environment-ийн `OTP_HASH_SECRET`; development-д restart бүрт солигдох process-local key.
+
+P4.2–P4.4 migration нь өмнөх хүснэгт/мөрүүдийг устгахгүй. `downgrade -1` нь зөвхөн туршилтын DB дээр зөвшөөрөгдөнө; P4.4-ийн дараа үүссэн OTP challenge мөрүүд буцаахад арилна. Production rollback-д forward-fix хэрэглэнэ.
 
 Огноо тодорхойгүй хүнийг `birth_date = NULL`, нэмэлт тайлбарыг `birth_date_note`-д хадгална. Нас барсан эсэх нь `is_alive`-аар ялгагдана. Гэрлэлт хүний хоёр ID-г тогтмол дараалалд хадгалдаг.
 

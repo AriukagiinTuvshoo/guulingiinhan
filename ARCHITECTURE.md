@@ -38,6 +38,15 @@
 - Backfill normalized имэйл нь ганцхан legacy account-д харгалзах үед identity үүсгэнэ. Case-fold хийсний дараа хэд хэдэн account давхцвал аль нэгийг сонгохгүй; хуучин account хэвээр үлдэх ба хоёрдмол login fail-closed, шинэ бүртгэл тухайн хаягийг нөөцлөгдсөн гэж үзнэ.
 - Одоогоор guardian grant-ийг Family owner удирдана. Parent relationship дангаараа grant үүсгэхгүй.
 
+## Утасны OTP, нэвтрэлт ба recovery (P4.4)
+
+- `PhoneOtpChallenge` нь утас + зориулалт + хугацаатай, 6 оронтой OTP-ийн HMAC-SHA256 digest хадгална. Түүхий код DB, API response, application log-д орохгүй. HMAC pepper development-д process эхлэхэд түр үүсэж restart-аар солигдоно; production `OTP_HASH_SECRET`-ийг нууцын сангаас өгнө.
+- Нэг хэрэглэгч phone OTP-оор login хийхийн өмнө `/auth/me/phone/request` ба `/auth/me/phone/verify`-ээр утсаа баталгаажуулж account-даа холбоно. Энэ нь бүртгэлтэй User-ийг Person-той холбох өөрчлөлт биш.
+- `/auth/phone/login/request` нь account байгаа эсэхийг response-оор ялгахгүй; зөвхөн идэвхтэй, баталгаажсан утас login үүсгэж чадна. Challenge 5 минут, 60 секундийн resend cooldown, утас/IP-н нэг минутын rate limit, нэг кодод 5 буруу оролдлоготой.
+- Нууц үг сэргээх одоогоор verified phone-р хийгдэнэ: `POST /auth/password-reset/phone/request`, дараа нь OTP + шинэ нууц үгийг `POST /auth/password-reset/phone/confirm` руу илгээнэ. Амжилттай үед өмнөх бүх session цуцлагдаж, автоматаар шинэ session нээхгүй. Email delivery provider холбогдоогүй тул email recovery хийгдээгүй.
+- `SMS_PROVIDER=twilio` нь Twilio Messages API руу TLS холболтоор OTP илгээнэ. Production startup-д PostgreSQL, HTTPS CORS-ийн дээр `SMS_PROVIDER=twilio`, `OTP_HASH_SECRET` (32+ тэмдэгт), Twilio account SID/token/from number бүгд шаардлагатай. Development-ийн `fake` provider бодит SMS илгээхгүй.
+- Account-ийн нэвтрэх identity-г `/account/security` хуудсаас шалгаж, SMS баталгаажуулах замаар утас холбож болно. Phone identity салгах UI/API одоогоор байхгүй.
+
 ## Хөгжүүлэлтийн үе шат
 
 - Phase 1: орчны тохиргоо, FastAPI/PostgreSQL/Docker/Alembic суурь.

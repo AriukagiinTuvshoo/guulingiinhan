@@ -16,6 +16,12 @@ Root `.env` дахь `POSTGRES_PASSWORD`-ийг өөрчилсний дараа 
 8. Email verification, password reset provider, урилга, private object storage, upload шалгалтыг нэмж баталгаажуулна.
 9. Migration-ийг эхлээд CI/staging PostgreSQL дээр upgrade, downgrade, дахин upgrade-аар шалгана. Одоогийн downgrade нь auth/session/invitation/throttle/audit өгөгдлийг устгадаг тул production rollback-д ашиглахгүй; forward-fix migration ба backup/restore төлөвлөгөө хэрэглэнэ.
 
+### Утасны OTP тохиргоо (P4.4)
+
+Backend орчинд `OTP_HASH_SECRET`-ийг `openssl rand -hex 32`-оор үүсгээд secret manager-д хадгал. Production-д `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` тохируулах шаардлагатай; нэг утгыг frontend env рүү бүү дамжуул. OTP secret болон Twilio credential дутуу үед production тохиргоо API-г эхлүүлэхгүй. Development-ийн `SMS_PROVIDER=fake` мессеж илгээхгүй.
+
+Одоогийн account recovery зөвхөн verified phone ашиглана. Имэйл recovery хэрэгтэй бол email delivery/verification provider-ийг тусад нь холбож шалгасны дараа хэрэглэгчдэд санал болго.
+
 `docker-compose.yml` нь development-д зориулагдсан бөгөөд API/DB портууд зөвхөн localhost дээр нээгдэнэ; production нууц үг, network, backup бодлого орлоход зориулагдаагүй.
 
 Backend-ийн container root бус хэрэглэгчээр ажиллана. `/health` нь liveness, `/health/ready` нь PostgreSQL холболтын readiness шалгалт. Production deployment нь readiness probe-оо `/health/ready` рүү чиглүүлнэ.
