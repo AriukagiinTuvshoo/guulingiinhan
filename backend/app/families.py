@@ -35,6 +35,7 @@ from app.models import (
     User,
     UserPersonLink,
 )
+from app.observability import request_id_context
 from app.person_search import normalize_search_name
 from app.privacy import (
     GUARDIAN_SCOPES,
@@ -460,6 +461,7 @@ def _audit(
             action=action,
             target_type=target_type,
             target_id=target_id,
+            request_id=request_id_context.get(),
         )
     )
 

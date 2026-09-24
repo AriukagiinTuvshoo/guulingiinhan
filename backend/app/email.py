@@ -135,6 +135,7 @@ def send_email_safely(
             "Transactional email delivery failed",
             extra={
                 "provider": get_settings().email_provider,
+                "event": "email_delivery_failed",
                 "error_type": type(exc).__name__,
                 "request_id": request_id,
             },

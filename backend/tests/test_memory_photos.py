@@ -16,6 +16,7 @@ class MemoryStorage:
         self.fail_put_at = None
         self.fail_delete = False
         self.fail_get = False
+        self.delete_count = 0
 
     def put(self, key, data, content_type):
         self.put_count += 1
@@ -32,8 +33,12 @@ class MemoryStorage:
         return key in self.objects
 
     def delete(self, key):
+        self.delete_count += 1
         if self.fail_delete:
-            raise RuntimeError("private storage details")
+            error = RuntimeError("private storage details")
+            if self.fail_delete == "permanent":
+                error.response = {"ResponseMetadata": {"HTTPStatusCode": 403}}
+            raise error
         self.objects.pop(key, None)
 
 
@@ -153,6 +158,7 @@ def test_failed_upload_is_hidden_and_cleanup_retries(client, database):
     with database() as db:
         row = db.scalar(select(Photo).where(Photo.family_id == UUID(family_id)))
         assert row is not None and row.storage_status == "deletion_pending"
+        assert row.cleanup_attempts == 1
 
     storage.fail_delete = False
     listed = client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10")
@@ -188,13 +194,74 @@ def test_delete_storage_failure_leaves_hidden_retryable_photo(client, database):
     assert "private storage details" not in response.text
     with database() as db:
         row = db.scalar(select(Photo).where(Photo.id == UUID(photo["id"])))
-        assert row is not None and row.storage_status == "deletion_pending"
+    assert row is not None and row.storage_status == "deletion_pending"
+    with database() as db:
+        row = db.get(Photo, UUID(photo["id"]))
+        assert row is not None and row.cleanup_attempts == 1
     assert client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}/photos").json() == []
     storage.fail_delete = False
     assert client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10").status_code == 200
     assert storage.objects == {}
     with database() as db:
         assert db.scalar(select(Photo.id).where(Photo.id == UUID(photo["id"]))) is None
+
+
+def test_photo_cleanup_retries_stop_at_configured_attempt_limit(client, database):
+    storage = MemoryStorage()
+    from app.main import app
+
+    app.dependency_overrides[get_storage] = lambda: storage
+    register_verified(client, "exhausted-cleanup@example.com")
+    family = client.post("/api/v1/families", json={"name": "Retry дууссан"}).json()
+    family_id = family["id"]
+    memory = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "Дурсамж", "visibility": "family", "person_ids": []},
+    ).json()
+    photo = client.post(
+        f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
+        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+    ).json()
+    storage.fail_delete = True
+    assert client.delete(f"/api/v1/families/{family_id}/photos/{photo['id']}").status_code == 503
+    with database() as db:
+        row = db.get(Photo, UUID(photo["id"]))
+        assert row is not None
+        row.cleanup_attempts = 8
+        db.commit()
+    storage.fail_delete = False
+    client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10")
+    with database() as db:
+        row = db.get(Photo, UUID(photo["id"]))
+        assert row is not None and row.cleanup_attempts == 8
+    assert storage.objects
+
+
+def test_permanent_storage_denial_stops_photo_cleanup_retries(client, database):
+    storage = MemoryStorage()
+    from app.main import app
+
+    app.dependency_overrides[get_storage] = lambda: storage
+    register_verified(client, "permanent-cleanup@example.com")
+    family = client.post("/api/v1/families", json={"name": "Permanent error"}).json()
+    family_id = family["id"]
+    memory = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "Дурсамж", "visibility": "family", "person_ids": []},
+    ).json()
+    photo = client.post(
+        f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
+        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+    ).json()
+    storage.fail_delete = "permanent"
+    assert client.delete(f"/api/v1/families/{family_id}/photos/{photo['id']}").status_code == 503
+    attempts_after_denial = storage.delete_count
+    with database() as db:
+        row = db.get(Photo, UUID(photo["id"]))
+        assert row is not None and row.cleanup_attempts == 8
+    storage.fail_delete = False
+    client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10")
+    assert storage.delete_count == attempts_after_denial
 
 
 def test_upload_attempts_are_rate_limited_and_denials_are_audited(client, database):

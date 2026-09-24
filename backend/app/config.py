@@ -7,6 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./guulingiinhan.db"
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout_seconds: int = 30
+    db_pool_recycle_seconds: int = -1
+    db_connect_timeout_seconds: int = 10
+    log_level: str = "INFO"
+    slow_request_threshold_ms: int = 1000
+    photo_cleanup_max_attempts: int = 8
     cors_origins: str = "http://localhost:3000"
     session_cookie_name: str = "guulingiinhan_session"
     storage_provider: str = "local"
@@ -46,6 +54,22 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self):
+        if not 1 <= self.db_pool_size <= 50:
+            raise ValueError("DB_POOL_SIZE must be between 1 and 50.")
+        if not 0 <= self.db_max_overflow <= 100:
+            raise ValueError("DB_MAX_OVERFLOW must be between 0 and 100.")
+        if not 1 <= self.db_pool_timeout_seconds <= 300:
+            raise ValueError("DB_POOL_TIMEOUT_SECONDS must be between 1 and 300.")
+        if not -1 <= self.db_pool_recycle_seconds <= 86400:
+            raise ValueError("DB_POOL_RECYCLE_SECONDS must be between -1 and 86400.")
+        if not 1 <= self.db_connect_timeout_seconds <= 120:
+            raise ValueError("DB_CONNECT_TIMEOUT_SECONDS must be between 1 and 120.")
+        if self.log_level.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError("LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL.")
+        if not 1 <= self.slow_request_threshold_ms <= 120000:
+            raise ValueError("SLOW_REQUEST_THRESHOLD_MS must be between 1 and 120000.")
+        if not 1 <= self.photo_cleanup_max_attempts <= 20:
+            raise ValueError("PHOTO_CLEANUP_MAX_ATTEMPTS must be between 1 and 20.")
         if self.email_provider.lower() not in {"fake", "smtp"}:
             raise ValueError("EMAIL_PROVIDER must be fake or smtp.")
         if self.email_verification_ttl_seconds < 300 or self.email_verification_ttl_seconds > 86400:
