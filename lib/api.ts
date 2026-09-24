@@ -9,12 +9,13 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
+  const isRawBody = init.body instanceof FormData || init.body instanceof Blob;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
       credentials: 'include',
       headers: {
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.body && !isRawBody ? { 'Content-Type': 'application/json' } : {}),
         ...init.headers,
       },
     });

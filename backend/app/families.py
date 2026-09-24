@@ -31,6 +31,7 @@ from app.models import (
     ParentChildRelationship,
     Person,
     PersonGuardianship,
+    Photo,
     User,
     UserPersonLink,
 )
@@ -50,6 +51,7 @@ from app.relationships import (
     assert_parent_child_is_acyclic,
     canonical_pair,
 )
+from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/families", tags=["families"])
 invitations_router = APIRouter(prefix="/invitations", tags=["invitations"])
@@ -1507,6 +1509,12 @@ def get_memory(
         if error.status_code == 403:
             raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.") from error
         raise
+    from app.memory_photos import _photo_payload
+
+    photos = db.scalars(
+        select(Photo).where(Photo.family_id == family_id, Photo.memory_id == memory_id)
+        .order_by(Photo.created_at.desc()).limit(50)
+    ).all()
     return {
         "id": memory.id,
         "title": memory.title,
@@ -1515,6 +1523,7 @@ def get_memory(
         "visibility": memory.visibility,
         "person_ids": tag_ids,
         "created_at": memory.created_at,
+        "photos": [_photo_payload(photo) for photo in photos],
     }
 
 
@@ -1562,7 +1571,9 @@ def delete_memory(
     memory_id: UUID,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
 ):
+    from app.memory_photos import _delete_objects
     member, _ = _member(db, family_id, user)
     memory = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.family_id == family_id))
     if memory is None:
@@ -1577,6 +1588,12 @@ def delete_memory(
         ).all()
     )
     _assert_memory_minor_scopes(db, family_id, user, tag_ids)
+    photos = db.scalars(select(Photo).where(Photo.memory_id == memory_id)).all()
+    _delete_objects(storage, [key for photo in photos for key in (
+        photo.thumbnail_object_key or "", photo.object_key
+    )])
+    for photo in photos:
+        db.delete(photo)
     _audit(db, user, family_id, "memory.deleted", "memory", memory_id)
     db.delete(memory)
     db.commit()

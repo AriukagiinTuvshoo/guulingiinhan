@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.db import engine
 from app.families import invitations_router
 from app.families import router as families_router
+from app.memory_photos import router as memory_photos_router
 
 settings = get_settings()
 app = FastAPI(
@@ -26,7 +27,7 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-File-Name"],
     expose_headers=["X-Request-ID"],
 )
 
@@ -59,6 +60,7 @@ async def request_context(request: Request, call_next):
 
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(invitations_router, prefix="/api/v1")
 

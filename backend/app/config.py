@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./guulingiinhan.db"
     cors_origins: str = "http://localhost:3000"
     session_cookie_name: str = "guulingiinhan_session"
+    storage_provider: str = "local"
+    storage_local_path: str = "./uploads"
+    storage_endpoint: str | None = None
+    storage_bucket: str | None = None
+    storage_region: str = "auto"
+    storage_access_key: str | None = None
+    storage_secret_key: str | None = None
+    photo_max_upload_bytes: int = 10 * 1024 * 1024
     otp_hash_secret: str | None = None
     sms_provider: str = "fake"
     twilio_account_sid: str | None = None
@@ -88,6 +96,18 @@ class Settings(BaseSettings):
                     )
         elif self.sms_provider.lower() not in {"fake", "twilio"}:
             raise ValueError("SMS_PROVIDER must be fake or twilio.")
+        if self.storage_provider.lower() not in {"local", "s3"}:
+            raise ValueError("STORAGE_PROVIDER must be local or s3.")
+        if not 1 <= self.photo_max_upload_bytes <= 50 * 1024 * 1024:
+            raise ValueError("PHOTO_MAX_UPLOAD_BYTES must be between 1 and 50 MiB.")
+        if self.app_env.lower() == "production":
+            if self.storage_provider.lower() != "s3" or not all((
+                self.storage_endpoint, self.storage_bucket, self.storage_access_key,
+                self.storage_secret_key,
+            )):
+                raise ValueError("Production requires complete S3-compatible storage settings.")
+            if not self.storage_endpoint.startswith("https://"):
+                raise ValueError("Production STORAGE_ENDPOINT must use HTTPS.")
         return self
 
     @property

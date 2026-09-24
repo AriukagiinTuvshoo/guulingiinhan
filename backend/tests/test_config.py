@@ -37,6 +37,11 @@ def test_production_accepts_postgresql_and_https_origin():
         email_smtp_host="smtp.example.net",
         email_smtp_username="smtp-user",
         email_smtp_password="smtp-password",
+        storage_provider="s3",
+        storage_endpoint="https://objects.example.net",
+        storage_bucket="family-photos",
+        storage_access_key="access-key",
+        storage_secret_key="secret-key",
     )
     assert settings.cors_origin_list == ["https://guulingiinhan.mn"]
 

@@ -535,6 +535,9 @@ class Memory(Base):
     visibility: Mapped[str] = mapped_column(String(12), default="family")
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
 
 
 class MemoryPersonTag(Base):
@@ -548,6 +551,7 @@ class MemoryPersonTag(Base):
 
 class Photo(Base):
     __tablename__ = "photos"
+    __table_args__ = (Index("ix_photo_memory_created", "memory_id", "created_at"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     family_id: Mapped[UUID] = mapped_column(
@@ -557,6 +561,12 @@ class Photo(Base):
         ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
     )
     object_key: Mapped[str] = mapped_column(String(500))
+    thumbnail_object_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    original_filename: Mapped[str] = mapped_column(String(255), default="photo")
+    mime_type: Mapped[str] = mapped_column(String(80), default="image/jpeg")
+    file_size: Mapped[int] = mapped_column(default=0)
+    width: Mapped[int | None] = mapped_column(nullable=True)
+    height: Mapped[int | None] = mapped_column(nullable=True)
     title: Mapped[str | None] = mapped_column(String(180), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -566,7 +576,10 @@ class Photo(Base):
 
 class PhotoPersonTag(Base):
     __tablename__ = "photo_person_tags"
-    __table_args__ = (UniqueConstraint("photo_id", "person_id", name="uq_photo_person_tag"),)
+    __table_args__ = (
+        UniqueConstraint("photo_id", "person_id", name="uq_photo_person_tag"),
+        Index("ix_photo_person_tag_person", "person_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     photo_id: Mapped[UUID] = mapped_column(ForeignKey("photos.id", ondelete="CASCADE"))

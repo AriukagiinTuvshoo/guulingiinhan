@@ -27,7 +27,9 @@ API нь санамсаргүй, DB-д hash хэлбэрээр хадгалса�
 
 `Person` устгах endpoint нь тухайн family-н холбоосыг салгаж, Person болон харилцааны түүхийг хадгална. Family устгах нь бодит устгал биш archive. Private Person-г зөвхөн үүсгэсэн эсвэл өөрийн account-тай холбосон хүн харна.
 
-Email verification, email password reset, invitation delivery нь provider abstraction-тай. Хөгжүүлэлт/тестэд `EMAIL_PROVIDER=fake` хэрэглэж, production-д TLS-тэй SMTP тохируулна. Урилга 7 хоног хүчинтэй бөгөөд API нь raw token буцаахгүй; owner илгээсэн урилгыг хүчингүй болгож болно. Email token hash хэлбэрээр хадгалагдаж нэг удаа хэрэглэгдэнэ. Photo upload/storage signed URL одоогоор байхгүй.
+Email verification, email password reset, invitation delivery нь provider abstraction-тай. Хөгжүүлэлт/тестэд `EMAIL_PROVIDER=fake` хэрэглэж, production-д TLS-тэй SMTP тохируулна. Урилга 7 хоног хүчинтэй бөгөөд API нь raw token буцаахгүй; owner илгээсэн урилгыг хүчингүй болгож болно. Email token hash хэлбэрээр хадгалагдаж нэг удаа хэрэглэгдэнэ.
+
+Зураг local-д `STORAGE_PROVIDER=local` болон `STORAGE_LOCAL_PATH`-д хадгалагдана (Compose `family_uploads` volume). Production-д `STORAGE_PROVIDER=s3`, HTTPS `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` тохируулна. Bucket public болгохгүй. API upload JPEG/PNG/WebP шалгаж, `PHOTO_MAX_UPLOAD_BYTES`-аар хэмжээ хязгаарлан, JPEG thumbnail үүсгэнэ. Зургийн агуулгыг зөвшөөрөл шалгасан API endpoint дамжуулна; production URL эсвэл signed URL client-д тогтмол өгөхгүй.
 
 Production тохиргоонд `APP_ENV=production`, PostgreSQL URL, зөвхөн `https://` CORS origin шаардана. Контейнер root бус `app` хэрэглэгчээр ажиллана.
 
