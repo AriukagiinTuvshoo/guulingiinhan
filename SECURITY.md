@@ -28,6 +28,16 @@
 - Нийтийн profile/search endpoint одоогоор байхгүй. Ирээдүйн public endpoint нь minor-ийн нэр болон бусад sensitive талбарыг сервер талд шүүх ёстой; UI дээр талбар нуух нь access control биш.
 - `manage_media` scope schema-д бэлэн боловч файл upload, signed URL, malware/image processing хараахан холбогдоогүй.
 
+## Нэвтрэх identity-ийн хамгаалалт (P4.3)
+
+- Имэйл identity нь `User`-ийг заана. `Person` руу шууд холбогдохгүй; зөвхөн тусдаа `UserPersonLink` account–Person холбоог илэрхийлнэ.
+- Нэвтрэлт normalized email-г index-тэй registry-гээс хайж, legacy compatibility fallback дээр таарах хэрэглэгч яг нэг биш бол нэвтрүүлэхгүй. Давхардсан case variant-ийг migration аль нэг эзэмшигчид оноохгүй, шинээр бүртгүүлэхэд ч тухайн normalized имэйлийг эзэлсэнд тооцно.
+- Email normalization: trim + casefold. Gmail цэг, `+tag` арилгахгүй. Phone бэлтгэл нь зөвхөн E.164 (`+` улсын код); улс орныг таамаглахгүй.
+- Google identity-г ирээдүйд issuer + subject-аар ялгана; имэйлээр account автоматаар нэгтгэхгүй. OAuth/OIDC одоо байхгүй.
+`GET /api/v1/auth/me/identities` нь зөвхөн баталгаажсан session-ийн эзний identity-ийн аюулгүй талбаруудыг үзүүлнэ. Link request API нь account ID-г client-ээс авахгүй, зөвхөн хүсэлтийг үүсгэсэн account-д харуулж/цуцлуулна.
+- Link хүсэлт нь 24 цагийн дотор `pending` байна, эзэмшил болон нэвтрэх эрх олгохгүй. OTP/OIDC баталгаажуулалт хийгдээгүй тул consume/unlink API байхгүй. Өөр хэрэглэгчийн хүсэлтэд ID мэдсэнээр хүрэхгүй.
+- API response-д normalized identifier, Google issuer/subject, password hash, session hash/token орохгүй. Identity linking хүсэлтийн audit зөвхөн action ба request ID-г хадгална; имэйл, утасны утгыг логлохгүй.
+
 ## Нэвтрэх ба зөвшөөрлийн ажлууд
 
 Email verification ба password reset хэрэгжээгүй. Одоогоор бүртгэл нэвтрэлтийг автоматаар зөвшөөрдөг тул `email_verified_at` утгагүй байна; хэрэглэгчид нээлттэй production-д гаргахын өмнө email token/provider-оор баталгаажуулах шаардлагатай. Нууц үг сэргээх endpoint, автоматаар хүргэх урилгын email, storage signed URL хараахан байхгүй.

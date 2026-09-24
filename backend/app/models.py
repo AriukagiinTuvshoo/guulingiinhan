@@ -48,6 +48,98 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class LoginIdentity(Base):
+    """An authentication identifier owned by an account, never by a Person."""
+
+    __tablename__ = "login_identities"
+    __table_args__ = (
+        CheckConstraint("provider IN ('email', 'phone', 'google')", name="ck_identity_provider"),
+        CheckConstraint(
+            "(provider IN ('email', 'phone') AND normalized_identifier IS NOT NULL "
+            "AND normalized_identifier <> '' "
+            "AND issuer IS NULL AND subject IS NULL) OR "
+            "(provider = 'google' AND normalized_identifier IS NULL "
+            "AND issuer IS NOT NULL AND issuer <> '' "
+            "AND subject IS NOT NULL AND subject <> '')",
+            name="ck_identity_provider_fields",
+        ),
+        Index(
+            "uq_identity_provider_identifier",
+            "provider",
+            "normalized_identifier",
+            unique=True,
+            sqlite_where=text("provider IN ('email', 'phone')"),
+            postgresql_where=text("provider IN ('email', 'phone')"),
+        ),
+        Index(
+            "uq_identity_google_subject",
+            "provider",
+            "issuer",
+            "subject",
+            unique=True,
+            sqlite_where=text("provider = 'google'"),
+            postgresql_where=text("provider = 'google'"),
+        ),
+        Index("ix_login_identity_user", "user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    normalized_identifier: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    display_identifier: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    issuer: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class IdentityLinkRequest(Base):
+    """Unverified intent only; it grants no login or identity ownership."""
+
+    __tablename__ = "identity_link_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "provider IN ('email', 'phone', 'google')", name="ck_identity_link_provider"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'consumed', 'expired', 'cancelled')",
+            name="ck_identity_link_status",
+        ),
+        CheckConstraint(
+            "(provider IN ('email', 'phone') AND normalized_identifier IS NOT NULL "
+            "AND normalized_identifier <> '' AND issuer IS NULL AND subject IS NULL) OR "
+            "(provider = 'google' AND normalized_identifier IS NULL "
+            "AND issuer IS NOT NULL AND issuer <> '' "
+            "AND subject IS NOT NULL AND subject <> '')",
+            name="ck_identity_link_provider_fields",
+        ),
+        CheckConstraint(
+            "(status = 'consumed' AND consumed_at IS NOT NULL) OR "
+            "(status <> 'consumed' AND consumed_at IS NULL)",
+            name="ck_identity_link_consumed_state",
+        ),
+        Index("ix_identity_link_user_created", "user_id", "created_at"),
+        Index("ix_identity_link_expiry", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    normalized_identifier: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    display_identifier: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    issuer: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default="pending", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Invitation(Base):
     __tablename__ = "invitations"
     __table_args__ = (

@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError, model_validator
 from sqlalchemy import case, delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -16,7 +16,16 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.models import AuditLog, LoginThrottle, User, UserPersonLink, UserSession
+from app.identity import email_is_registered, find_email_user, normalize_email, normalize_phone
+from app.models import (
+    AuditLog,
+    IdentityLinkRequest,
+    LoginIdentity,
+    LoginThrottle,
+    User,
+    UserPersonLink,
+    UserSession,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 SESSION_SECONDS = 60 * 60 * 24 * 7
@@ -45,6 +54,51 @@ class UserOutput(BaseModel):
     email: str
     display_name: str
     person_id: UUID | None = None
+
+
+class LoginIdentityOutput(BaseModel):
+    id: UUID
+    provider: str
+    display_identifier: str | None
+    verified: bool
+    created_at: datetime
+
+
+class IdentityLinkInput(BaseModel):
+    provider: str = Field(pattern="^(email|phone|google)$")
+    identifier: str | None = Field(default=None, max_length=320)
+    issuer: str | None = Field(default=None, max_length=500)
+    subject: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def normalize_claim(self):
+        if self.provider == "email":
+            if not self.identifier or self.issuer or self.subject:
+                raise ValueError("Имэйлийн холбоосын мэдээлэл буруу байна.")
+            try:
+                parsed_email = TypeAdapter(EmailStr).validate_python(self.identifier)
+                self.identifier = normalize_email(str(parsed_email))
+            except ValidationError as error:
+                raise ValueError("Имэйл хаяг буруу байна.") from error
+        elif self.provider == "phone":
+            if not self.identifier or self.issuer or self.subject:
+                raise ValueError("Утасны холбоосын мэдээлэл буруу байна.")
+            try:
+                self.identifier = normalize_phone(self.identifier)
+            except ValueError as error:
+                raise ValueError(str(error)) from error
+        elif not self.issuer or not self.subject or self.identifier:
+            raise ValueError("Google холбоосын issuer болон subject шаардлагатай.")
+        return self
+
+
+class IdentityLinkRequestOutput(BaseModel):
+    id: UUID
+    provider: str
+    display_identifier: str | None
+    status: str
+    expires_at: datetime
+    created_at: datetime
 
 
 def _password_hash(password: str) -> str:
@@ -157,8 +211,8 @@ def _user_output(db: Session, user: User) -> UserOutput:
 
 @router.post("/register", response_model=UserOutput, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterInput, response: Response, db: Session = Depends(get_db)):
-    email = str(body.email).strip().lower()
-    if db.scalar(select(User.id).where(User.email == email)):
+    email = normalize_email(str(body.email))
+    if email_is_registered(db, email):
         raise HTTPException(status_code=409, detail="Энэ имэйлээр бүртгэл үүссэн байна.")
     user = User(
         email=email,
@@ -168,6 +222,15 @@ def register(body: RegisterInput, response: Response, db: Session = Depends(get_
     )
     db.add(user)
     db.flush()
+    db.add(
+        LoginIdentity(
+            user_id=user.id,
+            provider="email",
+            normalized_identifier=email,
+            display_identifier=str(body.email).strip(),
+            verified_at=None,
+        )
+    )
     db.add(
         AuditLog(actor_id=user.id, action="user.registered", target_type="user", target_id=user.id)
     )
@@ -190,7 +253,7 @@ def register(body: RegisterInput, response: Response, db: Session = Depends(get_
 
 @router.post("/login", response_model=UserOutput)
 def login(body: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
-    email = str(body.email).strip().lower()
+    email = normalize_email(str(body.email))
     attempts = _record_login_attempt(
         db, email, request.client.host if request.client else "unknown"
     )
@@ -198,7 +261,7 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         raise HTTPException(
             status_code=429, detail="Хэт олон оролдлого. Нэг минутын дараа дахин оролдоно уу."
         )
-    user = db.scalar(select(User).where(User.email == email))
+    user = find_email_user(db, email)
     valid = (
         user is not None
         and user.password_hash is not None
@@ -235,3 +298,121 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOutput)
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return _user_output(db, user)
+
+
+@router.get("/me/identities", response_model=list[LoginIdentityOutput])
+def list_login_identities(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    identities = db.scalars(
+        select(LoginIdentity)
+        .where(LoginIdentity.user_id == user.id, LoginIdentity.disabled_at.is_(None))
+        .order_by(LoginIdentity.created_at)
+    ).all()
+    return [
+        LoginIdentityOutput(
+            id=item.id,
+            provider=item.provider,
+            display_identifier=item.display_identifier,
+            verified=item.verified_at is not None,
+            created_at=item.created_at,
+        )
+        for item in identities
+    ]
+
+
+@router.post("/me/identity-link-requests", response_model=IdentityLinkRequestOutput, status_code=201)
+def request_identity_link(
+    body: IdentityLinkInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record unverified intent only; it cannot claim or authenticate an identity."""
+    now = datetime.now(UTC)
+    request = IdentityLinkRequest(
+        user_id=user.id,
+        provider=body.provider,
+        normalized_identifier=body.identifier,
+        display_identifier=body.identifier,
+        issuer=body.issuer,
+        subject=body.subject,
+        expires_at=now + timedelta(hours=24),
+    )
+    db.add(request)
+    db.flush()
+    db.add(
+        AuditLog(
+            actor_id=user.id,
+            action="identity.link_requested",
+            target_type="identity_link_request",
+            target_id=request.id,
+        )
+    )
+    db.commit()
+    return IdentityLinkRequestOutput(
+        id=request.id,
+        provider=request.provider,
+        display_identifier=request.display_identifier,
+        status=request.status,
+        expires_at=request.expires_at,
+        created_at=request.created_at,
+    )
+
+
+@router.get("/me/identity-link-requests", response_model=list[IdentityLinkRequestOutput])
+def list_identity_link_requests(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    now = datetime.now(UTC)
+    requests = db.scalars(
+        select(IdentityLinkRequest)
+        .where(IdentityLinkRequest.user_id == user.id)
+        .order_by(IdentityLinkRequest.created_at.desc())
+    ).all()
+    result = []
+    changed = False
+    for item in requests:
+        if item.status == "pending" and item.expires_at <= now:
+            item.status = "expired"
+            changed = True
+        result.append(
+            IdentityLinkRequestOutput(
+                id=item.id,
+                provider=item.provider,
+                display_identifier=item.display_identifier,
+                status=item.status,
+                expires_at=item.expires_at,
+                created_at=item.created_at,
+            )
+        )
+    if changed:
+        db.commit()
+    return result
+
+
+@router.delete("/me/identity-link-requests/{request_id}", status_code=204)
+def cancel_identity_link_request(
+    request_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    item = db.scalar(
+        select(IdentityLinkRequest).where(
+            IdentityLinkRequest.id == request_id,
+            IdentityLinkRequest.user_id == user.id,
+        )
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Хүсэлт олдсонгүй.")
+    if item.status == "pending":
+        item.status = "cancelled"
+        db.add(
+            AuditLog(
+                actor_id=user.id,
+                action="identity.link_request_cancelled",
+                target_type="identity_link_request",
+                target_id=item.id,
+            )
+        )
+        db.commit()
+    return Response(status_code=204)
