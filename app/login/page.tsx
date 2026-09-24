@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api, User } from '../../lib/api';
+import { API_BASE, api, User } from '../../lib/api';
 
 type Mode = 'email' | 'phone' | 'recovery';
 type Challenge = { challenge_id: string; expires_in: number; resend_after: number };
@@ -16,11 +16,18 @@ export default function LoginPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
 
   function moveToApp() {
     const invite = new URLSearchParams(window.location.hash.slice(1)).get('invite');
     router.push(invite ? `/invite#token=${encodeURIComponent(invite)}` : '/families');
   }
+
+  useEffect(() => {
+    api<{ enabled: boolean }>('/auth/google/config').then((value) => setGoogleEnabled(value.enabled)).catch(() => {});
+    const result = new URLSearchParams(window.location.search).get('google');
+    if (result === 'failed') setError('Google-ээр нэвтрэх боломжгүй боллоо. Бүртгэлтэй бол өмнөх нэвтрэх аргаа ашиглан орж, Google-ийг аюулгүй байдлын хэсгээс холбоно уу.');
+  }, []);
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -118,6 +125,7 @@ export default function LoginPage() {
     </div>
     {notice && <div className="success" role="status">{notice}</div>}
     {error && <div className="error" role="alert">{error}</div>}
+    {mode === 'email' && googleEnabled && <button type="button" className="primary" style={{ marginBottom: 16 }} onClick={() => { window.location.assign(`${API_BASE}/auth/google/start`); }}>Google-ээр нэвтрэх</button>}
     {mode === 'email' && <form onSubmit={submitEmail}>
       <label>Имэйл<input name="email" type="email" autoComplete="email" required maxLength={320} /></label>
       <label>Нууц үг<input name="password" type="password" autoComplete="current-password" required maxLength={128} /></label>

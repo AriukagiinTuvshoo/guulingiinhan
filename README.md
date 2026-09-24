@@ -28,6 +28,8 @@ API баримт: `http://localhost:8000/docs`; ажиллагааны шалг�
 
 Frontend-ийн `.env` дахь `NEXT_PUBLIC_API_BASE_URL` нь browser-оос хүрэх API URL байх ёстой. Auth, гэр бүл, хүн болон харилцааны API нь `/api/v1`-ээр эхэлнэ. Browser-оос API руу cookie явуулахад backend-ийн `CORS_ORIGINS` дотор frontend origin байх шаардлагатай.
 
+Google OIDC нэвтрэлтийг асаахдаа backend-д `GOOGLE_OIDC_ENABLED=true`, Google OAuth client ID/secret болон API callback URI-г тохируулна. Callback URI нь `/api/v1/auth/google/callback`. Тохиргоо байхгүй үед Google товч нуугдана; email/password болон утасны OTP нэвтрэлт хэвээр ажиллана.
+
 Эсвэл төслийн root дээр `docker compose up --build` ажиллуулж Postgres + API-г асаана.
 
 ## Шалгалт

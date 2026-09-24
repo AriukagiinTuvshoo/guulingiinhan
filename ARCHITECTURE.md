@@ -1,5 +1,9 @@
 # Архитектур — Гуулингийнхан MVP
 
+## Google identity (P4.5)
+
+Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issuer + subject` нь `LoginIdentity`-ийн тогтвортой түлхүүр бөгөөд access/ID token хадгалахгүй. Богино хугацааны signed state cookie-д state, nonce, flow болон account link үед user ID байна; callback state marker-ийг `login_throttles`-оос нэг удаа хэрэглэнэ. Google email нь account холбох түлхүүр биш: ижил email-тай account байвал хэрэглэгч эхлээд тухайн account-аар нэвтэрч Security хуудаснаас identity-г холбоно. Шинэ Google account-д Person автоматаар үүсэхгүй.
+
 ## Одоогийн бүтэц
 
 - `app/`: Next.js App Router layout болон одоогийн модны UI. Энэ үе шатанд UI-г Next client component-д шилжүүлэв; өгөгдөл нь одоогоор demo/localStorage.

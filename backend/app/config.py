@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
+    google_oidc_enabled: bool = False
+    google_oidc_client_id: str | None = None
+    google_oidc_client_secret: str | None = None
+    google_oidc_redirect_uri: str | None = None
+    google_oidc_issuer: str = "https://accounts.google.com"
+    google_oidc_state_secret: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -36,6 +42,24 @@ class Settings(BaseSettings):
                 or not self.twilio_from_number
             ):
                 raise ValueError("Production requires a configured SMS provider.")
+        if self.google_oidc_enabled:
+            if not all(
+                (
+                    self.google_oidc_client_id,
+                    self.google_oidc_client_secret,
+                    self.google_oidc_redirect_uri,
+                )
+            ):
+                raise ValueError("Google OIDC requires client ID, client secret, and redirect URI.")
+            if not self.google_oidc_issuer.rstrip("/") == "https://accounts.google.com":
+                raise ValueError("Google OIDC issuer must be https://accounts.google.com.")
+            if self.app_env.lower() == "production":
+                if not self.google_oidc_redirect_uri.startswith("https://"):
+                    raise ValueError("Production Google OIDC redirect URI must use HTTPS.")
+                if not self.google_oidc_state_secret or len(self.google_oidc_state_secret) < 32:
+                    raise ValueError(
+                        "Production Google OIDC requires GOOGLE_OIDC_STATE_SECRET with at least 32 characters."
+                    )
         elif self.sms_provider.lower() not in {"fake", "twilio"}:
             raise ValueError("SMS_PROVIDER must be fake or twilio.")
         return self

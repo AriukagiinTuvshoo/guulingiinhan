@@ -1,5 +1,12 @@
 # Аюулгүй байдлын төлөв
 
+## Google OpenID Connect
+
+- `google-auth`-аар ID token-ийн signature, audience, хугацаа, issuer шалгаж, апп nonce болон `email_verified`-ийг давхар батална. Callback нь зөвхөн Google authorization/token endpoint болон тохируулсан redirect URI ашиглана.
+- OAuth state санамсаргүй, 10 минутын хугацаатай, HMAC гарын үсэгтэй HttpOnly cookie-д байна. Database throttle marker callback дээр атомоор нэг удаа хэрэглэгдэнэ; cookie-г callback бүрт устгана.
+- Google identity нь `issuer + subject` unique түлхүүртэй. Verified email таарсан ч existing account-т автоматаар link хийхгүй. Link нь authenticated session-оос эхэлж, callback дээр ижил account session шаарддаг; өөр account-д холбогдсон subject-ийг шилжүүлэхгүй.
+- Token, authorization code болон provider error body-г log/DB-д хадгалахгүй. Google OIDC default-оор унтраалттай. Production-д client credentials, HTTPS callback болон 32+ тэмдэгтийн `GOOGLE_OIDC_STATE_SECRET` secret manager-аас тохируулна.
+
 ## Хэрэгжсэн суурь хамгаалалт
 
 - DB талд foreign key, unique, check constraint тавьсан.

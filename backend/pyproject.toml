@@ -11,6 +11,7 @@ dependencies = [
   "psycopg[binary]>=3.2,<4.0",
   "pydantic-settings>=2.5,<3.0",
   "email-validator>=2.2,<3.0",
+  "google-auth[requests]>=2.35,<3.0",
 ]
 
 [dependency-groups]

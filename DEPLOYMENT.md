@@ -1,5 +1,7 @@
 # Байршуулалтын суурь
 
+Google login асаахдаа backend-д `GOOGLE_OIDC_ENABLED=true`, `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET`, `GOOGLE_OIDC_REDIRECT_URI`, `GOOGLE_OIDC_STATE_SECRET` тохируул. Google Cloud OAuth client-ийн authorized redirect URI нь яг `https://<api-host>/api/v1/auth/google/callback` байна. State secret-ийг `openssl rand -hex 32`-оор үүсгэж secret manager-д хадгал; frontend-д client secret/state secret дамжуулахгүй. Google credentials байхгүй CI болон development-д OIDC унтраалттай байж болно.
+
 ## Орон нутаг
 
 Root `.env` дахь `POSTGRES_PASSWORD`-ийг өөрчилсний дараа `docker compose up --build` ажиллуулна. API: `http://localhost:8000`; OpenAPI: `/docs`; health: `/health`.

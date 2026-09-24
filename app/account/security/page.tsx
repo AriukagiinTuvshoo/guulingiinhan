@@ -16,12 +16,14 @@ export default function AccountSecurityPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
 
   async function refresh() {
     setIdentities(await api<Identity[]>('/auth/me/identities'));
   }
 
   useEffect(() => {
+    api<{ enabled: boolean }>('/auth/google/config').then((value) => setGoogleEnabled(value.enabled)).catch(() => {});
     refresh().catch((cause) => {
       if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
       else setError(cause instanceof Error ? cause.message : 'Мэдээлэл ачаалж чадсангүй.');
@@ -82,6 +84,9 @@ export default function AccountSecurityPage() {
       {!linkedPhone && !challenge && <form onSubmit={requestPhone}>
         <label>Утасны дугаар (E.164)<input name="phone" type="tel" placeholder="+97699112233" required maxLength={16} /></label>
         <button className="primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Утас холбох'}</button>
+      </form>}
+      {googleEnabled && !identities.some((item) => item.provider === 'google' && item.verified) && <form method="post" action={`${process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1'}/auth/me/google/start`} style={{ marginTop: 16 }}>
+        <button className="primary" type="submit">Google account холбох</button>
       </form>}
       {!linkedPhone && challenge && <form onSubmit={verifyPhone}>
         <p className="muted">{phone} дугаарт ирсэн 6 оронтой кодыг оруулна уу.</p>
