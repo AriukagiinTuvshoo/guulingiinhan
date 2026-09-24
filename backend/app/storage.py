@@ -33,6 +33,8 @@ class ObjectStorage(Protocol):
 
     def delete(self, key: str) -> None: ...
 
+    def list_keys(self, prefix: str = "") -> list[str]: ...
+
 
 class LocalObjectStorage:
     """Filesystem adapter for local development and tests."""
@@ -60,6 +62,18 @@ class LocalObjectStorage:
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        if prefix:
+            _validate_key(prefix.rstrip("/"))
+        root = self._path(prefix.rstrip("/")) if prefix else self.root
+        if not root.exists():
+            return []
+        return sorted(
+            path.relative_to(self.root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file()
+        )
 
 
 class S3ObjectStorage:
@@ -107,6 +121,15 @@ class S3ObjectStorage:
     def delete(self, key: str) -> None:
         key = _validate_key(key)
         self.client.delete_object(Bucket=self.bucket, Key=key)
+
+    def list_keys(self, prefix: str = "") -> list[str]:
+        if prefix:
+            _validate_key(prefix.rstrip("/"))
+        keys: list[str] = []
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            keys.extend(item["Key"] for item in page.get("Contents", []) if "Key" in item)
+        return sorted(keys)
 
 
 @lru_cache(maxsize=1)
