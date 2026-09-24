@@ -33,6 +33,8 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 
 P4.9-ийн `photos.object_key`, `thumbnail_object_key` нь private bucket/filesystem доторх opaque key. `file_size`, `mime_type`, dimensions, original filename нь metadata; binary-г DB-д хийхгүй. `d4a9f73b8210` хуучин мөрүүдэд metadata default backfill хийнэ. Downgrade нь шинэ metadata ашиглаж байгаа зураг байвал мэдээллийг чимээгүй алдахгүйн тулд цуцлагдана.
 
+P4.10-ийн `photos.storage_status` нь `uploading`, `ready`, `deletion_pending` төлөвтэй бөгөөд migration хуучин мөрүүдийг `ready` болгоно. Зөвхөн `ready` зураг уншигдана. Storage upload/delete нь DB transaction-тэй атом биш тул бүтэлгүй upload ба устгал `deletion_pending` tombstone болж үлдэж болно; дараагийн эрхтэй photo/memory жагсаалт эсвэл upload хүсэлт хязгаартай retry хийнэ. 15 минутаас хуучин `uploading` мөр мөн retry-д орно. Downgrade pending lifecycle мөр байхад зогсоно. `ix_photo_family_storage_status` нь family-ийн retry/list төлөв шалгалтад зориулагдсан.
+
 P4.2–P4.4 migration нь өмнөх хүснэгт/мөрүүдийг устгахгүй. `downgrade -1` нь зөвхөн туршилтын DB дээр зөвшөөрөгдөнө; P4.4-ийн дараа үүссэн OTP challenge мөрүүд буцаахад арилна. Production rollback-д forward-fix хэрэглэнэ.
 
 Огноо тодорхойгүй хүнийг `birth_date = NULL`, нэмэлт тайлбарыг `birth_date_note`-д хадгална. Нас барсан эсэх нь `is_alive`-аар ялгагдана. Гэрлэлт хүний хоёр ID-г тогтмол дараалалд хадгалдаг.

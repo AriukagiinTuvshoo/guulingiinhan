@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     storage_access_key: str | None = None
     storage_secret_key: str | None = None
     photo_max_upload_bytes: int = 10 * 1024 * 1024
+    photo_upload_user_per_minute: int = 20
+    photo_upload_ip_per_minute: int = 60
+    photo_upload_family_per_minute: int = 100
     otp_hash_secret: str | None = None
     sms_provider: str = "fake"
     twilio_account_sid: str | None = None
@@ -100,6 +103,12 @@ class Settings(BaseSettings):
             raise ValueError("STORAGE_PROVIDER must be local or s3.")
         if not 1 <= self.photo_max_upload_bytes <= 50 * 1024 * 1024:
             raise ValueError("PHOTO_MAX_UPLOAD_BYTES must be between 1 and 50 MiB.")
+        if not 1 <= self.photo_upload_user_per_minute <= 100:
+            raise ValueError("PHOTO_UPLOAD_USER_PER_MINUTE must be between 1 and 100.")
+        if not 1 <= self.photo_upload_ip_per_minute <= 300:
+            raise ValueError("PHOTO_UPLOAD_IP_PER_MINUTE must be between 1 and 300.")
+        if not 1 <= self.photo_upload_family_per_minute <= 1000:
+            raise ValueError("PHOTO_UPLOAD_FAMILY_PER_MINUTE must be between 1 and 1000.")
         if self.app_env.lower() == "production":
             if self.storage_provider.lower() != "s3" or not all((
                 self.storage_endpoint, self.storage_bucket, self.storage_access_key,

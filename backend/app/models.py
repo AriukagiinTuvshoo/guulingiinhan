@@ -551,7 +551,14 @@ class MemoryPersonTag(Base):
 
 class Photo(Base):
     __tablename__ = "photos"
-    __table_args__ = (Index("ix_photo_memory_created", "memory_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_photo_memory_created", "memory_id", "created_at"),
+        Index("ix_photo_family_storage_status", "family_id", "storage_status", "created_at"),
+        CheckConstraint(
+            "storage_status IN ('uploading', 'ready', 'deletion_pending')",
+            name="ck_photo_storage_status",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     family_id: Mapped[UUID] = mapped_column(
@@ -565,6 +572,9 @@ class Photo(Base):
     original_filename: Mapped[str] = mapped_column(String(255), default="photo")
     mime_type: Mapped[str] = mapped_column(String(80), default="image/jpeg")
     file_size: Mapped[int] = mapped_column(default=0)
+    storage_status: Mapped[str] = mapped_column(
+        String(20), default="ready", server_default=text("'ready'")
+    )
     width: Mapped[int | None] = mapped_column(nullable=True)
     height: Mapped[int | None] = mapped_column(nullable=True)
     title: Mapped[str | None] = mapped_column(String(180), nullable=True)

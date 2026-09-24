@@ -1,1964 +1,21 @@
-"""Authenticated family, person and relationship APIs."""
-
-import hashlib
-import secrets
-from datetime import UTC, date, datetime, timedelta
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
-from sqlalchemy import delete, func, or_, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
-from app.auth import _consume_otp_rate, _normalized_ip, get_current_user
-from app.config import get_settings
-from app.db import get_db
-from app.email import EmailDeliveryError, EmailProvider, get_email_provider
-from app.identity import normalize_email
-from app.models import (
-    AuditLog,
-    Biography,
-    Family,
-    FamilyMember,
-    FamilyPerson,
-    Invitation,
-    LifeEvent,
-    LoginIdentity,
-    Marriage,
-    Memory,
-    MemoryPersonTag,
-    ParentChildRelationship,
-    Person,
-    PersonGuardianship,
-    Photo,
-    User,
-    UserPersonLink,
-)
-from app.person_search import normalize_search_name
-from app.privacy import (
-    GUARDIAN_SCOPES,
-    active_guardian_scopes,
-    has_guardian_scope,
-    is_minor,
-    person_is_minor,
-    redact_minor_profile_fields,
-    require_minor_scope,
-)
-from app.relationships import (
-    RelationshipError,
-    assert_date_order,
-    assert_parent_child_is_acyclic,
-    canonical_pair,
-)
-from app.storage import ObjectStorage, get_storage
-
-router = APIRouter(prefix="/families", tags=["families"])
-invitations_router = APIRouter(prefix="/invitations", tags=["invitations"])
-
-
-class FamilyCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=180)
-    description: str | None = Field(default=None, max_length=10000)
-
-    @model_validator(mode="after")
-    def check_name(self):
-        if not self.name.strip():
-            raise ValueError("Ð“ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð½ÑÑ€ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        return self
-
-
-class FamilyPatch(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=180)
-    description: str | None = Field(default=None, max_length=10000)
-
-    @model_validator(mode="after")
-    def check_name(self):
-        if "name" in self.model_fields_set and self.name is None:
-            raise ValueError("Ð“ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð½ÑÑ€ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        if self.name is not None and not self.name.strip():
-            raise ValueError("Ð“ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð½ÑÑ€ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        return self
-
-
-class FamilyOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    name: str
-    description: str | None
-    created_at: datetime
-    role: str
-
-
-class PersonCreate(BaseModel):
-    first_name: str = Field(min_length=1, max_length=120)
-    last_name: str = Field(default="", max_length=120)
-    middle_name: str | None = Field(default=None, max_length=120)
-    nickname: str | None = Field(default=None, max_length=120)
-    gender: str = Field(default="unknown", pattern="^(female|male|other|unknown)$")
-    birth_date: date | None = None
-    birth_place: str | None = Field(default=None, max_length=240)
-    is_alive: bool = True
-    death_date: date | None = None
-    death_place: str | None = Field(default=None, max_length=240)
-    short_description: str | None = Field(default=None, max_length=1000)
-    visibility: str = Field(default="family", pattern="^(private|family|public)$")
-
-    @model_validator(mode="after")
-    def check_dates(self):
-        if self.first_name is not None and not self.first_name.strip():
-            raise ValueError("ÐÑÑ€ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        if self.birth_date and self.birth_date > datetime.now(UTC).date():
-            raise ValueError("Ð¢Ó©Ñ€ÑÓ©Ð½ Ð¾Ð³Ð½Ð¾Ð¾ Ð¸Ñ€ÑÑÐ´Ò¯Ð¹Ð´ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        if self.death_date and self.birth_date and self.death_date < self.birth_date:
-            raise ValueError("ÐÐ°Ñ Ð±Ð°Ñ€ÑÐ°Ð½ Ð¾Ð³Ð½Ð¾Ð¾ Ñ‚Ó©Ñ€ÑÓ©Ð½ Ð¾Ð³Ð½Ð¾Ð¾Ð½Ð¾Ð¾Ñ Ó©Ð¼Ð½Ó© Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        if self.is_alive and self.death_date:
-            raise ValueError("ÐÐ¼ÑŒÐ´ Ñ…Ò¯Ð½Ð¸Ð¹ Ð½Ð°Ñ Ð±Ð°Ñ€ÑÐ°Ð½ Ð¾Ð³Ð½Ð¾Ð¾Ð³ Ð±Ó©Ð³Ð»Ó©Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        return self
-
-
-class PersonPatch(PersonCreate):
-    first_name: str | None = Field(default=None, min_length=1, max_length=120)
-    last_name: str | None = Field(default=None, max_length=120)
-    gender: str | None = Field(default=None, pattern="^(female|male|other|unknown)$")
-    is_alive: bool | None = None
-    visibility: str | None = Field(default=None, pattern="^(private|family|public)$")
-
-    @model_validator(mode="after")
-    def reject_null_required_fields(self):
-        for field in ("first_name", "gender", "is_alive", "visibility"):
-            if field in self.model_fields_set and getattr(self, field) is None:
-                raise ValueError(f"{field} Ñ‚Ð°Ð»Ð±Ð°Ñ€Ñ‹Ð³ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð¾Ð»Ð³Ð¾Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹.")
-        return self
-
-
-class PersonOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    first_name: str
-    last_name: str
-    middle_name: str | None
-    nickname: str | None
-    gender: str
-    birth_date: date | None
-    birth_place: str | None
-    is_alive: bool
-    death_date: date | None
-    death_place: str | None
-    short_description: str | None
-    visibility: str
-    created_at: datetime
-    updated_at: datetime
-
-
-class PersonSearchItem(BaseModel):
-    id: UUID
-    name: str
-    birth_year: int | None
-
-
-class PersonSearchPage(BaseModel):
-    items: list[PersonSearchItem]
-    page: int
-    page_size: int
-    total: int
-    has_next: bool
-
-
-class TreePersonOut(BaseModel):
-    id: UUID
-    first_name: str
-    last_name: str
-    middle_name: str | None
-    birth_date: date | None
-    is_alive: bool
-    death_date: date | None
-
-
-class TreeParentChildOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    parent_id: UUID
-    child_id: UUID
-    relationship_type: str
-
-
-class TreeOut(BaseModel):
-    root_person_id: UUID | None
-    persons: list[TreePersonOut]
-    parent_child_relationships: list[TreeParentChildOut]
-    marriages: list["MarriageOut"]
-    meta: dict[str, int | bool]
-
-
-class GuardianshipCreate(BaseModel):
-    guardian_user_id: UUID
-    scopes: list[str] = Field(min_length=1, max_length=6)
-    expires_at: datetime | None = None
-
-    @model_validator(mode="after")
-    def validate_grant(self):
-        if len(set(self.scopes)) != len(self.scopes):
-            raise ValueError("Ð˜Ð¶Ð¸Ð» ÑÑ€Ñ…Ð¸Ð¹Ð³ Ð´Ð°Ð²Ñ…Ð°Ñ€ Ð¾Ñ€ÑƒÑƒÐ»Ð°Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹.")
-        if not set(self.scopes).issubset(GUARDIAN_SCOPES):
-            raise ValueError("Guardian ÑÑ€Ñ…Ð¸Ð¹Ð½ Ñ‚Ó©Ñ€Ó©Ð» Ð±ÑƒÑ€ÑƒÑƒ Ð±Ð°Ð¹Ð½Ð°.")
-        if self.expires_at is not None:
-            if self.expires_at.tzinfo is None:
-                raise ValueError("Ð”ÑƒÑƒÑÐ°Ñ… Ñ…ÑƒÐ³Ð°Ñ†Ð°Ð°Ð½Ð´ Ñ†Ð°Ð³Ð¸Ð¹Ð½ Ð±Ò¯Ñ ÑˆÐ°Ð°Ñ€Ð´Ð»Ð°Ð³Ð°Ñ‚Ð°Ð¹.")
-            if self.expires_at <= datetime.now(UTC):
-                raise ValueError("Ð”ÑƒÑƒÑÐ°Ñ… Ñ…ÑƒÐ³Ð°Ñ†Ð°Ð° Ð¸Ñ€ÑÑÐ´Ò¯Ð¹Ð´ Ð±Ð°Ð¹Ñ… Ñ‘ÑÑ‚Ð¾Ð¹.")
-        return self
-
-
-class GuardianshipOut(BaseModel):
-    id: UUID
-    guardian_user_id: UUID
-    guardian_display_name: str
-    scope: str
-    status: str
-    active: bool
-    expires_at: datetime | None
-
-
-class ParentChildCreate(BaseModel):
-    parent_id: UUID
-    child_id: UUID
-    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive)$")
-
-
-class MarriageCreate(BaseModel):
-    person_1_id: UUID
-    person_2_id: UUID
-    status: str = Field(default="married", pattern="^(married|divorced|widowed)$")
-    start_date: date | None = None
-    end_date: date | None = None
-    location: str | None = Field(default=None, max_length=240)
-    description: str | None = Field(default=None, max_length=10000)
-
-    @model_validator(mode="after")
-    def valid_dates(self):
-        assert_date_order(self.start_date, self.end_date)
-        if self.status == "married" and self.end_date is not None:
-            raise ValueError("Ð˜Ð´ÑÐ²Ñ…Ñ‚ÑÐ¹ Ð³ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ð´ÑƒÑƒÑÑÐ°Ð½ Ð¾Ð³Ð½Ð¾Ð¾ Ð±Ð°Ð¹Ñ… Ñ‘ÑÐ³Ò¯Ð¹.")
-        return self
-
-
-class MarriagePatch(BaseModel):
-    status: str | None = Field(default=None, pattern="^(married|divorced|widowed)$")
-    start_date: date | None = None
-    end_date: date | None = None
-    location: str | None = Field(default=None, max_length=240)
-    description: str | None = Field(default=None, max_length=10000)
-
-    @model_validator(mode="after")
-    def validate_update(self):
-        if not self.model_fields_set:
-            raise ValueError("Ó¨Ó©Ñ€Ñ‡Ð»Ó©Ñ… Ð¼ÑÐ´ÑÑÐ»Ð»ÑÑ Ð¾Ñ€ÑƒÑƒÐ»Ð½Ð° ÑƒÑƒ.")
-        assert_date_order(self.start_date, self.end_date)
-        return self
-
-
-class MarriageOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    person_1_id: UUID
-    person_2_id: UUID
-    status: str
-    start_date: date | None
-    end_date: date | None
-    location: str | None
-    description: str | None
-    created_at: datetime
-
-
-def _marriage_person_access(db: Session, family_id: UUID, marriage: Marriage, user: User):
-    people = [
-        _person_in_family(db, family_id, marriage.person_1_id),
-        _person_in_family(db, family_id, marriage.person_2_id),
-    ]
-    for person in people:
-        _assert_person_visible(db, person, user)
-    minor_ids = [person.id for person in people if person_is_minor(person)]
-    if minor_ids:
-        scopes = active_guardian_scopes(db, user.id, family_id, minor_ids)
-        if any("view_profile" not in scopes.get(person_id, set()) for person_id in minor_ids):
-            raise HTTPException(status_code=404, detail="Ð“ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»ÑÐ» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    return people
-
-
-def _marriage_order():
-    # NULL dates sort last, followed by stable insertion order for ties.
-    return (
-        Marriage.start_date.is_(None),
-        Marriage.start_date,
-        Marriage.created_at,
-        Marriage.id,
-    )
-
-
-def _escape_like_prefix(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-class MemberOut(BaseModel):
-    user_id: UUID
-    display_name: str
-    role: str
-
-
-class InvitationCreate(BaseModel):
-    email: EmailStr
-    role: str = Field(pattern="^(editor|member)$")
-
-
-class InvitationAccept(BaseModel):
-    token: str = Field(min_length=32, max_length=128)
-
-
-class BiographyInput(BaseModel):
-    content: str = Field(max_length=50000)
-
-
-class LifeEventInput(BaseModel):
-    event_type: str = Field(
-        pattern="^(birth|school|work|marriage|divorce|move|child_birth|death|other)$"
-    )
-    title: str = Field(min_length=1, max_length=180)
-    event_date: date | None = None
-    date_note: str | None = Field(default=None, max_length=80)
-    location: str | None = Field(default=None, max_length=240)
-    description: str | None = Field(default=None, max_length=10000)
-
-    @model_validator(mode="after")
-    def check_title(self):
-        if not self.title.strip():
-            raise ValueError("Ò®Ð¹Ð» ÑÐ²Ð´Ð»Ñ‹Ð½ Ð³Ð°Ñ€Ñ‡Ð¸Ð³ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        return self
-
-
-class MemoryInput(BaseModel):
-    title: str = Field(min_length=1, max_length=180)
-    description: str | None = Field(default=None, max_length=20000)
-    memory_date: date | None = None
-    visibility: str = Field(default="family", pattern="^(private|family|public)$")
-    person_ids: list[UUID] = Field(default_factory=list, max_length=100)
-
-    @model_validator(mode="after")
-    def check_title(self):
-        if not self.title.strip():
-            raise ValueError("Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶Ð¸Ð¹Ð½ Ð³Ð°Ñ€Ñ‡Ð¸Ð³ Ñ…Ð¾Ð¾ÑÐ¾Ð½ Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-        return self
-
-
-def _member(db: Session, family_id: UUID, user: User, roles: set[str] | None = None):
-    member = db.scalar(
-        select(FamilyMember).where(
-            FamilyMember.family_id == family_id,
-            FamilyMember.user_id == user.id,
-        )
-    )
-    if member is None:
-        raise HTTPException(status_code=403, detail="Ð­Ð½Ñ Ð³ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»Ð»Ð¸Ð¹Ð³ Ñ…Ð°Ñ€Ð°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    if roles and member.role not in roles:
-        raise HTTPException(status_code=403, detail="Ð­Ð½Ñ Ò¯Ð¹Ð»Ð´Ð»Ð¸Ð¹Ð³ Ñ…Ð¸Ð¹Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    family = db.get(Family, family_id)
-    if family is None or family.archived_at is not None:
-        raise HTTPException(status_code=404, detail="Ð“ÑÑ€ Ð±Ò¯Ð» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    return member, family
-
-
-def _person_in_family(db: Session, family_id: UUID, person_id: UUID) -> Person:
-    person = db.scalar(
-        select(Person)
-        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-        .where(FamilyPerson.family_id == family_id, Person.id == person_id)
-    )
-    if person is None:
-        raise HTTPException(status_code=404, detail="Ð¥Ò¯Ð½ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    return person
-
-
-def _assert_person_visible(db: Session, person: Person, user: User) -> None:
-    if person.visibility == "private":
-        linked_to_user = db.scalar(
-            select(UserPersonLink.id).where(
-                UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
-            )
-        )
-        if person.created_by != user.id and linked_to_user is None:
-            raise HTTPException(status_code=404, detail="Ð¥Ò¯Ð½ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-
-
-def _person_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonOut:
-    scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
-    result = PersonOut.model_validate(person)
-    redactions = redact_minor_profile_fields(person, scopes)
-    return result.model_copy(update=redactions) if redactions else result
-
-
-def _require_minor_scope(
-    db: Session, family_id: UUID, person: Person, user: User, scope: str
-) -> bool:
-    return require_minor_scope(db, user.id, family_id, person, scope)
-
-
-def _assert_memory_minor_scopes(
-    db: Session, family_id: UUID, user: User, person_ids: list[UUID]
-) -> None:
-    for person_id in set(person_ids):
-        person = _person_in_family(db, family_id, person_id)
-        _assert_person_visible(db, person, user)
-        _require_minor_scope(db, family_id, person, user, "manage_memories")
-
-
-def _memory_visible_to_member(
-    db: Session, family_id: UUID, user: User, memory_ids: list[UUID]
-) -> set[UUID]:
-    if not memory_ids:
-        return set()
-    tagged = db.execute(
-        select(MemoryPersonTag.memory_id, Person.id, Person.birth_date)
-        .join(Person, Person.id == MemoryPersonTag.person_id)
-        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-        .where(
-            MemoryPersonTag.memory_id.in_(memory_ids),
-            FamilyPerson.family_id == family_id,
-        )
-    ).all()
-    person_ids = [person_id for _, person_id, _ in tagged]
-    scopes = active_guardian_scopes(db, user.id, family_id, person_ids)
-    visible = set(memory_ids)
-    for memory_id, person_id, birth_date in tagged:
-        if is_minor(birth_date) is True and "manage_memories" not in scopes.get(person_id, set()):
-            visible.discard(memory_id)
-    return visible
-
-
-def _commit(db: Session, message: str):
-    try:
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=message) from error
-
-
-def _audit(
-    db: Session,
-    user: User,
-    family_id: UUID | None,
-    action: str,
-    target_type: str,
-    target_id: UUID | None,
-) -> None:
-    db.add(
-        AuditLog(
-            actor_id=user.id,
-            family_id=family_id,
-            action=action,
-            target_type=target_type,
-            target_id=target_id,
-        )
-    )
-
-
-def _can_edit_person(db: Session, family_id: UUID, person: Person, user: User) -> bool:
-    member, _ = _member(db, family_id, user)
-    if member.role in {"owner", "editor"}:
-        return True
-    return (
-        db.scalar(
-            select(UserPersonLink.id).where(
-                UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
-            )
-        )
-        is not None
-    )
-
-
-@router.post("", response_model=FamilyOut, status_code=201)
-def create_family(
-    body: FamilyCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    family = Family(name=body.name.strip(), description=body.description, created_by=user.id)
-    db.add(family)
-    db.flush()
-    member = FamilyMember(family_id=family.id, user_id=user.id, role="owner")
-    db.add(member)
-    db.flush()
-    _audit(db, user, family.id, "family.created", "family", family.id)
-    db.commit()
-    db.refresh(family)
-    return FamilyOut(
-        id=family.id,
-        name=family.name,
-        description=family.description,
-        created_at=family.created_at,
-        role=member.role,
-    )
-
-
-@router.get("", response_model=list[FamilyOut])
-def list_families(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    rows = db.execute(
-        select(Family, FamilyMember.role)
-        .join(FamilyMember, FamilyMember.family_id == Family.id)
-        .where(FamilyMember.user_id == user.id, Family.archived_at.is_(None))
-        .order_by(Family.created_at)
-    ).all()
-    return [
-        FamilyOut(
-            id=f.id, name=f.name, description=f.description, created_at=f.created_at, role=role
-        )
-        for f, role in rows
-    ]
-
-
-@router.get("/{family_id}", response_model=FamilyOut)
-def get_family(
-    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    member, family = _member(db, family_id, user)
-    return FamilyOut(
-        id=family.id,
-        name=family.name,
-        description=family.description,
-        created_at=family.created_at,
-        role=member.role,
-    )
-
-
-@router.patch("/{family_id}", response_model=FamilyOut)
-def update_family(
-    family_id: UUID,
-    body: FamilyPatch,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    member, family = _member(db, family_id, user, {"owner", "editor"})
-    for key, value in body.model_dump(exclude_unset=True).items():
-        setattr(family, key, value.strip() if key == "name" and value else value)
-    _audit(db, user, family_id, "family.updated", "family", family.id)
-    db.commit()
-    db.refresh(family)
-    return FamilyOut(
-        id=family.id,
-        name=family.name,
-        description=family.description,
-        created_at=family.created_at,
-        role=member.role,
-    )
-
-
-@router.delete("/{family_id}", status_code=204)
-def archive_family(
-    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    _, family = _member(db, family_id, user, {"owner"})
-    family.archived_at = datetime.now(UTC)
-    _audit(db, user, family_id, "family.archived", "family", family.id)
-    db.commit()
-    return Response(status_code=204)
-
-
-@router.get("/{family_id}/members", response_model=list[MemberOut])
-def list_members(
-    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    _member(db, family_id, user)
-    rows = db.execute(
-        select(User.id, User.display_name, FamilyMember.role)
-        .join(FamilyMember, FamilyMember.user_id == User.id)
-        .where(FamilyMember.family_id == family_id)
-    ).all()
-    return [MemberOut(user_id=r.id, display_name=r.display_name, role=r.role) for r in rows]
-
-
-@router.post("/{family_id}/persons", response_model=PersonOut, status_code=201)
-def create_person(
-    family_id: UUID,
-    body: PersonCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner", "editor"})
-    data = body.model_dump()
-    data["first_name"] = body.first_name.strip()
-    data["last_name"] = body.last_name.strip()
-    data["search_first_name"] = normalize_search_name(body.first_name)
-    data["search_last_name"] = normalize_search_name(body.last_name)
-    data["search_middle_name"] = normalize_search_name(body.middle_name)
-    person = Person(**data, created_by=user.id)
-    db.add(person)
-    db.flush()
-    db.add(FamilyPerson(family_id=family_id, person_id=person.id, added_by=user.id))
-    db.flush()
-    _audit(db, user, family_id, "person.created", "person", person.id)
-    db.commit()
-    db.refresh(person)
-    return _person_output(db, family_id, person, user)
-
-
-@router.get("/{family_id}/persons", response_model=list[PersonOut])
-def list_persons(
-    family_id: UUID,
-    q: str | None = None,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    query = (
-        select(Person)
-        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-        .where(FamilyPerson.family_id == family_id)
-    )
-    if q and q.strip():
-        pattern = f"%{q.strip()}%"
-        query = query.where(
-            or_(
-                Person.first_name.ilike(pattern),
-                Person.last_name.ilike(pattern),
-                Person.middle_name.ilike(pattern),
-            )
-        )
-    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    query = query.where(
-        or_(Person.visibility != "private", Person.created_by == user.id, Person.id == own_link)
-    )
-    persons = list(db.scalars(query.order_by(Person.last_name, Person.first_name)).all())
-    scopes = active_guardian_scopes(db, user.id, family_id, [person.id for person in persons])
-    return [
-        PersonOut.model_validate(person).model_copy(
-            update=redact_minor_profile_fields(person, scopes.get(person.id, set()))
-        )
-        for person in persons
-    ]
-
-
-@router.get("/{family_id}/persons/search", response_model=PersonSearchPage)
-def search_persons(
-    family_id: UUID,
-    q: str = Query(min_length=1, max_length=100, description="ÐÑÑ€Ð¸Ð¹Ð½ ÑÑ…Ð»ÑÐ»ÑÑÑ€ Ñ…Ð°Ð¹Ñ… Ò¯Ð³."),
-    page: int = Query(default=1, ge=1, description="1-ÑÑÑ ÑÑ…Ð»ÑÑ… Ò¯Ñ€ Ð´Ò¯Ð½Ð³Ð¸Ð¹Ð½ Ñ…ÑƒÑƒÐ´Ð°Ñ."),
-    page_size: int = Query(default=25, ge=1, le=100, description="ÐÑÐ³ Ñ…ÑƒÑƒÐ´ÑÐ°Ð½Ð´ 1â€“100 Ò¯Ñ€ Ð´Ò¯Ð½."),
-    birth_year: int | None = Query(default=None, ge=1, le=9998, description="Ð¢Ó©Ñ€ÑÓ©Ð½ Ð¾Ð½."),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Return a privacy-filtered page of lightweight family member search results."""
-    _member(db, family_id, user)
-    tokens = normalize_search_name(q).split()
-    if not tokens:
-        raise HTTPException(status_code=422, detail="Ð¥Ð°Ð¹Ð»Ñ‚Ñ‹Ð½ Ò¯Ð³ÑÑ Ð¾Ñ€ÑƒÑƒÐ»Ð½Ð° ÑƒÑƒ.")
-    if birth_year is not None and birth_year >= datetime.now(UTC).date().year - 18:
-        # A year filter must not reveal a protected minor through result counts.
-        return PersonSearchPage(items=[], page=page, page_size=page_size, total=0, has_next=False)
-    predicates = [
-        or_(
-            Person.search_first_name.like(f"{_escape_like_prefix(token)}%", escape="\\"),
-            Person.search_last_name.like(f"{_escape_like_prefix(token)}%", escape="\\"),
-            Person.search_middle_name.like(f"{_escape_like_prefix(token)}%", escape="\\"),
-        )
-        for token in tokens
-    ]
-    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    privacy_filter = or_(
-        Person.visibility != "private", Person.created_by == user.id, Person.id == own_link
-    )
-    family_filter = FamilyPerson.family_id == family_id
-    conditions = [family_filter, privacy_filter, *predicates]
-    if birth_year is not None:
-        conditions.extend(
-            [
-                Person.birth_date >= date(birth_year, 1, 1),
-                Person.birth_date < date(birth_year + 1, 1, 1),
-            ]
-        )
-    total = db.scalar(
-        select(func.count(Person.id))
-        .select_from(Person)
-        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-        .where(*conditions)
-    ) or 0
-    persons = list(
-        db.scalars(
-            select(Person)
-            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-            .where(*conditions)
-            .order_by(Person.search_last_name, Person.search_first_name, Person.id)
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        ).all()
-    )
-    scopes = active_guardian_scopes(db, user.id, family_id, [person.id for person in persons])
-    items = [
-        PersonSearchItem(
-            id=person.id,
-            name=" ".join(
-                part for part in (person.last_name, person.first_name, person.middle_name) if part
-            ),
-            birth_year=(
-                person.birth_date.year
-                if person.birth_date is not None
-                and (not person_is_minor(person) or "view_profile" in scopes.get(person.id, set()))
-                else None
-            ),
-        )
-        for person in persons
-    ]
-    return PersonSearchPage(
-        items=items,
-        page=page,
-        page_size=page_size,
-        total=total,
-        has_next=page * page_size < total,
-    )
-
-
-@router.get("/{family_id}/persons/{person_id}", response_model=PersonOut)
-def get_person(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    return _person_output(db, family_id, person, user)
-
-
-@router.patch("/{family_id}/persons/{person_id}", response_model=PersonOut)
-def update_person(
-    family_id: UUID,
-    person_id: UUID,
-    body: PersonPatch,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    member, _ = _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    data = body.model_dump(exclude_unset=True)
-    candidate_birth = data.get("birth_date", person.birth_date)
-    candidate_death = data.get("death_date", person.death_date)
-    candidate_alive = data.get("is_alive", person.is_alive)
-    is_minor_record = person_is_minor(person) or is_minor(candidate_birth) is True
-    linked_to_user = db.scalar(
-        select(UserPersonLink.id).where(
-            UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
-        )
-    )
-    baseline_edit = member.role in {"owner", "editor"} or linked_to_user is not None
-    has_scoped_edit = (
-        has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
-        if is_minor_record
-        else False
-    )
-    if is_minor_record:
-        if data and not has_scoped_edit:
-            raise HTTPException(status_code=403, detail="Ð­Ð½Ñ Ñ…Ò¯Ð½Ð¸Ð¹ profile Ð·Ð°ÑÐ°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-        if not baseline_edit and not has_scoped_edit:
-            raise HTTPException(status_code=403, detail="Profile Ð·Ð°ÑÐ°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    elif not baseline_edit:
-        raise HTTPException(status_code=403, detail="Ð—Ó©Ð²Ñ…Ó©Ð½ Ó©Ó©Ñ€Ð¸Ð¹Ð½ profile-Ð³ Ð·Ð°ÑÐ°Ñ… ÑÑ€Ñ…Ñ‚ÑÐ¹.")
-    if candidate_birth and candidate_death and candidate_death < candidate_birth:
-        raise HTTPException(
-            status_code=422, detail="ÐÐ°Ñ Ð±Ð°Ñ€ÑÐ°Ð½ Ð¾Ð³Ð½Ð¾Ð¾ Ñ‚Ó©Ñ€ÑÓ©Ð½ Ð¾Ð³Ð½Ð¾Ð¾Ð½Ð¾Ð¾Ñ Ó©Ð¼Ð½Ó© Ð±Ð°Ð¹Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹."
-        )
-    if candidate_alive and candidate_death:
-        raise HTTPException(status_code=422, detail="ÐÐ¼ÑŒÐ´ Ñ…Ò¯Ð½Ð¸Ð¹ Ð½Ð°Ñ Ð±Ð°Ñ€ÑÐ°Ð½ Ð¾Ð³Ð½Ð¾Ð¾Ð³ Ð±Ó©Ð³Ð»Ó©Ð¶ Ð±Ð¾Ð»Ð¾Ñ…Ð³Ò¯Ð¹.")
-    for key, value in data.items():
-        setattr(
-            person, key, value.strip() if key in {"first_name", "last_name"} and value else value
-        )
-    person.search_first_name = normalize_search_name(person.first_name)
-    person.search_last_name = normalize_search_name(person.last_name)
-    person.search_middle_name = normalize_search_name(person.middle_name)
-    _audit(db, user, family_id, "person.updated", "person", person.id)
-    db.commit()
-    db.refresh(person)
-    return _person_output(db, family_id, person, user)
-
-
-@router.post(
-    "/{family_id}/persons/{person_id}/guardianships",
-    response_model=list[GuardianshipOut],
-    status_code=201,
-)
-def create_guardian_grants(
-    family_id: UUID,
-    person_id: UUID,
-    body: GuardianshipCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner"})
-    _person_in_family(db, family_id, person_id)
-    guardian_member = db.scalar(
-        select(FamilyMember.id).where(
-            FamilyMember.family_id == family_id,
-            FamilyMember.user_id == body.guardian_user_id,
-        )
-    )
-    if guardian_member is None:
-        raise HTTPException(status_code=404, detail="Ð“ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð³Ð¸ÑˆÒ¯Ò¯Ð½ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-
-    # An owner may grant themselves access only when a parent edge exists for
-    # their linked Person. The edge is eligibility context; the explicit grant
-    # below remains mandatory for every protected operation.
-    if body.guardian_user_id == user.id:
-        linked_parent = db.scalar(
-            select(UserPersonLink.id)
-            .join(
-                FamilyPerson,
-                FamilyPerson.person_id == UserPersonLink.person_id,
-            )
-            .join(
-                ParentChildRelationship,
-                ParentChildRelationship.parent_id == UserPersonLink.person_id,
-            )
-            .where(
-                UserPersonLink.user_id == user.id,
-                FamilyPerson.family_id == family_id,
-                ParentChildRelationship.child_id == person_id,
-            )
-        )
-        if linked_parent is None:
-            raise HTTPException(status_code=403, detail="Ó¨Ó©Ñ€Ñ‚Ó©Ó© guardian ÑÑ€Ñ… Ð¾Ð»Ð³Ð¾Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹.")
-
-    guardian = db.get(User, body.guardian_user_id)
-    if guardian is None or not guardian.is_active:
-        raise HTTPException(status_code=404, detail="Ð“ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð³Ð¸ÑˆÒ¯Ò¯Ð½ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-
-    now = datetime.now(UTC)
-    grants: list[PersonGuardianship] = []
-    for scope in body.scopes:
-        previous = db.scalar(
-            select(PersonGuardianship).where(
-                PersonGuardianship.family_id == family_id,
-                PersonGuardianship.person_id == person_id,
-                PersonGuardianship.guardian_user_id == body.guardian_user_id,
-                PersonGuardianship.scope == scope,
-                PersonGuardianship.status == "active",
-                PersonGuardianship.revoked_at.is_(None),
-            )
-        )
-        if previous is not None:
-            expiry = previous.expires_at
-            if expiry is not None and expiry.tzinfo is None:
-                expiry = expiry.replace(tzinfo=UTC)
-            if expiry is None or expiry > now:
-                raise HTTPException(status_code=409, detail="Ð­Ð½Ñ guardian ÑÑ€Ñ… Ð¸Ð´ÑÐ²Ñ…Ñ‚ÑÐ¹ Ð±Ð°Ð¹Ð½Ð°.")
-            previous.status = "revoked"
-            previous.revoked_at = now
-            previous.revoked_by_user_id = user.id
-            previous.updated_at = now
-            _audit(db, user, family_id, "person.guardianship.expired", "person", person_id)
-
-        grant = PersonGuardianship(
-            family_id=family_id,
-            person_id=person_id,
-            guardian_user_id=body.guardian_user_id,
-            scope=scope,
-            status="active",
-            granted_by_user_id=user.id,
-            expires_at=body.expires_at,
-        )
-        db.add(grant)
-        grants.append(grant)
-
-    try:
-        db.flush()
-        for _ in grants:
-            _audit(db, user, family_id, "person.guardianship.granted", "person", person_id)
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="Guardian ÑÑ€Ñ… Ð´Ð°Ð²Ñ…Ð°Ñ€ Ò¯Ò¯ÑÑÑÐ½ Ð±Ð°Ð¹Ð½Ð°.") from error
-
-    return [
-        GuardianshipOut(
-            id=grant.id,
-            guardian_user_id=guardian.id,
-            guardian_display_name=guardian.display_name,
-            scope=grant.scope,
-            status=grant.status,
-            active=True,
-            expires_at=grant.expires_at,
-        )
-        for grant in grants
-    ]
-
-
-@router.get(
-    "/{family_id}/persons/{person_id}/guardianships",
-    response_model=list[GuardianshipOut],
-)
-def list_guardian_grants(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner"})
-    _person_in_family(db, family_id, person_id)
-    rows = db.execute(
-        select(PersonGuardianship, User.display_name)
-        .join(User, User.id == PersonGuardianship.guardian_user_id)
-        .where(
-            PersonGuardianship.family_id == family_id,
-            PersonGuardianship.person_id == person_id,
-        )
-        .order_by(PersonGuardianship.created_at)
-    ).all()
-    now = datetime.now(UTC)
-    result = []
-    for grant, display_name in rows:
-        expiry = grant.expires_at
-        if expiry is not None and expiry.tzinfo is None:
-            expiry = expiry.replace(tzinfo=UTC)
-        result.append(
-            GuardianshipOut(
-                id=grant.id,
-                guardian_user_id=grant.guardian_user_id,
-                guardian_display_name=display_name,
-                scope=grant.scope,
-                status=grant.status,
-                active=(
-                    grant.status == "active"
-                    and grant.revoked_at is None
-                    and (expiry is None or expiry > now)
-                ),
-                expires_at=grant.expires_at,
-            )
-        )
-    return result
-
-
-@router.delete("/{family_id}/persons/{person_id}/guardianships/{grant_id}", status_code=204)
-def revoke_guardian_grant(
-    family_id: UUID,
-    person_id: UUID,
-    grant_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner"})
-    _person_in_family(db, family_id, person_id)
-    grant = db.scalar(
-        select(PersonGuardianship).where(
-            PersonGuardianship.id == grant_id,
-            PersonGuardianship.family_id == family_id,
-            PersonGuardianship.person_id == person_id,
-        )
-    )
-    if grant is None:
-        raise HTTPException(status_code=404, detail="Guardian ÑÑ€Ñ… Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    if grant.status == "active":
-        now = datetime.now(UTC)
-        grant.status = "revoked"
-        grant.revoked_at = now
-        grant.revoked_by_user_id = user.id
-        grant.updated_at = now
-        _audit(db, user, family_id, "person.guardianship.revoked", "person", person_id)
-        db.commit()
-    return Response(status_code=204)
-
-
-@router.delete("/{family_id}/persons/{person_id}", status_code=204)
-def remove_person_from_family(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Detach from this family; preserve the person and relationship history."""
-    _member(db, family_id, user, {"owner", "editor"})
-    _person_in_family(db, family_id, person_id)
-    association = db.scalar(
-        select(FamilyPerson).where(
-            FamilyPerson.family_id == family_id, FamilyPerson.person_id == person_id
-        )
-    )
-    _audit(db, user, family_id, "person.detached", "person", person_id)
-    db.delete(association)
-    db.commit()
-    return Response(status_code=204)
-
-
-@router.post("/{family_id}/persons/{person_id}/link-me", status_code=204)
-def link_me(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    _person_in_family(db, family_id, person_id)
-    if db.scalar(select(UserPersonLink).where(UserPersonLink.user_id == user.id)):
-        raise HTTPException(
-            status_code=409, detail="Ð¢Ð°Ð½Ñ‹ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ» Ñ…Ò¯Ð½Ñ‚ÑÐ¹ Ð°Ð»ÑŒ Ñ…ÑÐ´Ð¸Ð¹Ð½ Ñ…Ð¾Ð»Ð±Ð¾Ð³Ð´ÑÐ¾Ð½ Ð±Ð°Ð¹Ð½Ð°."
-        )
-    if db.scalar(select(UserPersonLink).where(UserPersonLink.person_id == person_id)):
-        raise HTTPException(status_code=409, detail="Ð­Ð½Ñ Ñ…Ò¯Ð½ Ó©Ó©Ñ€ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ»Ñ‚ÑÐ¹ Ñ…Ð¾Ð»Ð±Ð¾Ð³Ð´ÑÐ¾Ð½ Ð±Ð°Ð¹Ð½Ð°.")
-    db.add(UserPersonLink(user_id=user.id, person_id=person_id, linked_by=user.id))
-    _commit(db, "Ð­Ð½Ñ Ñ…Ò¯Ð½ Ó©Ó©Ñ€ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ»Ñ‚ÑÐ¹ Ñ…Ð¾Ð»Ð±Ð¾Ð³Ð´ÑÐ¾Ð½ Ð±Ð°Ð¹Ð½Ð°.")
-    return Response(status_code=204)
-
-
-@router.post("/{family_id}/relationships/parent-child", status_code=201)
-def add_parent_child(
-    family_id: UUID,
-    body: ParentChildCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner", "editor"})
-    _person_in_family(db, family_id, body.parent_id)
-    _person_in_family(db, family_id, body.child_id)
-    _assert_person_visible(db, _person_in_family(db, family_id, body.parent_id), user)
-    _assert_person_visible(db, _person_in_family(db, family_id, body.child_id), user)
-    # Serialize ancestry writes on PostgreSQL to avoid concurrent inverse edges.
-    db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
-    family_person_ids = select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
-    edges = db.execute(
-        select(ParentChildRelationship.parent_id, ParentChildRelationship.child_id).where(
-            ParentChildRelationship.parent_id.in_(family_person_ids),
-            ParentChildRelationship.child_id.in_(family_person_ids),
-        )
-    ).all()
-    try:
-        assert_parent_child_is_acyclic(edges, body.parent_id, body.child_id)
-    except RelationshipError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    edge = ParentChildRelationship(
-        parent_id=body.parent_id,
-        child_id=body.child_id,
-        relationship_type=body.relationship_type,
-        created_by=user.id,
-    )
-    db.add(edge)
-    db.flush()
-    _audit(db, user, family_id, "relationship.parent_child.created", "parent_child", edge.id)
-    _commit(db, "Ð­Ð½Ñ ÑÑ†ÑÐ³ ÑÑ…-Ñ…Ò¯Ò¯Ñ…Ð´Ð¸Ð¹Ð½ Ñ…Ð¾Ð»Ð±Ð¾Ð¾ Ó©Ð¼Ð½Ó© Ð½ÑŒ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ³Ð´ÑÑÐ½ Ð±Ð°Ð¹Ð½Ð°.")
-    return {
-        "id": edge.id,
-        "parent_id": edge.parent_id,
-        "child_id": edge.child_id,
-        "relationship_type": edge.relationship_type,
-    }
-
-
-@router.post("/{family_id}/marriages", status_code=201)
-def create_marriage(
-    family_id: UUID,
-    body: MarriageCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner", "editor"})
-    _person_in_family(db, family_id, body.person_1_id)
-    _person_in_family(db, family_id, body.person_2_id)
-    _assert_person_visible(db, _person_in_family(db, family_id, body.person_1_id), user)
-    _assert_person_visible(db, _person_in_family(db, family_id, body.person_2_id), user)
-    try:
-        first, second = canonical_pair(body.person_1_id, body.person_2_id)
-        assert_date_order(body.start_date, body.end_date)
-    except RelationshipError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    marriage = Marriage(
-        person_1_id=first,
-        person_2_id=second,
-        status=body.status,
-        start_date=body.start_date,
-        end_date=body.end_date,
-        location=body.location,
-        description=body.description,
-        created_by=user.id,
-    )
-    db.add(marriage)
-    try:
-        db.flush()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=409, detail="Ð˜Ð¶Ð¸Ð» Ñ…Ð¾ÑÑ‹Ð½ Ð¸Ð´ÑÐ²Ñ…Ñ‚ÑÐ¹ Ð³ÑÑ€Ð»ÑÐ»Ñ‚ Ó©Ð¼Ð½Ó© Ð½ÑŒ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ³Ð´ÑÑÐ½ Ð±Ð°Ð¹Ð½Ð°."
-        ) from error
-    _audit(db, user, family_id, "marriage.created", "marriage", marriage.id)
-    _commit(db, "Ð­Ð½Ñ Ñ…Ð¾Ñ‘Ñ€ Ñ…Ò¯Ð½Ð¸Ð¹ Ð³ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ñ…Ð¾Ð»Ð±Ð¾Ð¾ Ó©Ð¼Ð½Ó© Ð½ÑŒ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ³Ð´ÑÑÐ½ Ð±Ð°Ð¹Ð½Ð°.")
-    return MarriageOut.model_validate(marriage)
-
-
-@router.get("/{family_id}/marriages", response_model=list[MarriageOut])
-def list_marriages(
-    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
-    _member(db, family_id, user)
-    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    family_person_rows = list(
-        db.scalars(
-            select(Person)
-            .join(FamilyPerson)
-            .where(
-                FamilyPerson.family_id == family_id,
-                or_(
-                    Person.visibility != "private",
-                    Person.created_by == user.id,
-                    Person.id == own_link,
-                ),
-            )
-        ).all()
-    )
-    person_ids = [person.id for person in family_person_rows]
-    scopes = active_guardian_scopes(db, user.id, family_id, person_ids)
-    relationship_visible = {
-        person.id
-        for person in family_person_rows
-        if not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
-    }
-    marriages = list(
-        db.execute(
-            select(Marriage).where(
-                Marriage.person_1_id.in_(person_ids),
-                Marriage.person_2_id.in_(person_ids),
-                Marriage.deleted_at.is_(None),
-            )
-            .order_by(*_marriage_order())
-        )
-        .scalars()
-        .all()
-    )
-    return [
-        marriage
-        for marriage in marriages
-        if marriage.person_1_id in relationship_visible
-        and marriage.person_2_id in relationship_visible
-    ]
-
-
-@router.get("/{family_id}/persons/{person_id}/marriages")
-def list_person_marriages(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    if person_is_minor(person):
-        _require_minor_scope(db, family_id, person, user, "view_profile")
-    family_person_ids = set(
-        db.scalars(select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)).all()
-    )
-    statements = select(Marriage).where(
-        or_(Marriage.person_1_id == person_id, Marriage.person_2_id == person_id),
-        Marriage.deleted_at.is_(None),
-    )
-    marriages = db.scalars(statements.order_by(*_marriage_order())).all()
-    visible = []
-    for marriage in marriages:
-        if marriage.person_1_id not in family_person_ids or marriage.person_2_id not in family_person_ids:
-            continue
-        people = _marriage_person_access(db, family_id, marriage, user)
-        other = people[1] if people[0].id == person_id else people[0]
-        visible.append(
-            {
-                **MarriageOut.model_validate(marriage).model_dump(),
-                "other_person": _person_output(db, family_id, other, user),
-            }
-        )
-    return visible
-
-
-@router.get("/{family_id}/marriages/{marriage_id}", response_model=MarriageOut)
-def get_marriage(
-    family_id: UUID,
-    marriage_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    marriage = db.get(Marriage, marriage_id)
-    if marriage is None or marriage.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Ð“ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»ÑÐ» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    _marriage_person_access(db, family_id, marriage, user)
-    return marriage
-
-
-@router.patch("/{family_id}/marriages/{marriage_id}")
-def update_marriage(
-    family_id: UUID,
-    marriage_id: UUID,
-    body: MarriagePatch,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner", "editor"})
-    marriage = db.get(Marriage, marriage_id)
-    if marriage is None or marriage.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Ð“ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»ÑÐ» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    _marriage_person_access(db, family_id, marriage, user)
-    updates = body.model_dump(exclude_unset=True)
-    next_start = updates.get("start_date", marriage.start_date)
-    next_end = updates.get("end_date", marriage.end_date)
-    try:
-        assert_date_order(next_start, next_end)
-    except RelationshipError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    next_status = updates.get("status", marriage.status)
-    if next_status == "married" and next_end is not None:
-        raise HTTPException(status_code=422, detail="Ð˜Ð´ÑÐ²Ñ…Ñ‚ÑÐ¹ Ð³ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ð´ÑƒÑƒÑÑÐ°Ð½ Ð¾Ð³Ð½Ð¾Ð¾ Ð±Ð°Ð¹Ñ… Ñ‘ÑÐ³Ò¯Ð¹.")
-    for field, value in updates.items():
-        setattr(marriage, field, value)
-    _audit(
-        db,
-        user,
-        family_id,
-        "marriage.divorced" if next_status == "divorced" else "marriage.updated",
-        "marriage",
-        marriage.id,
-    )
-    _commit(db, "Ð˜Ð¶Ð¸Ð» Ñ…Ð¾ÑÑ‹Ð½ Ð¸Ð´ÑÐ²Ñ…Ñ‚ÑÐ¹ Ð³ÑÑ€Ð»ÑÐ»Ñ‚ Ó©Ð¼Ð½Ó© Ð½ÑŒ Ð±Ò¯Ñ€Ñ‚Ð³ÑÐ³Ð´ÑÑÐ½ Ð±Ð°Ð¹Ð½Ð°.")
-    return MarriageOut.model_validate(marriage)
-
-
-@router.delete("/{family_id}/marriages/{marriage_id}", status_code=204)
-def remove_marriage(
-    family_id: UUID,
-    marriage_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner", "editor"})
-    marriage = db.get(Marriage, marriage_id)
-    if marriage is None or marriage.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="Ð“ÑÑ€Ð»ÑÐ»Ñ‚Ð¸Ð¹Ð½ Ð¼ÑÐ´ÑÑÐ»ÑÐ» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    _person_in_family(db, family_id, marriage.person_1_id)
-    _person_in_family(db, family_id, marriage.person_2_id)
-    marriage.deleted_at = datetime.now(UTC)
-    _audit(db, user, family_id, "marriage.archived", "marriage", marriage.id)
-    db.commit()
-    return Response(status_code=204)
-
-
-@router.get("/{family_id}/persons/{person_id}/biography")
-def get_biography(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    _require_minor_scope(db, family_id, person, user, "manage_biography")
-    biography = db.scalar(select(Biography).where(Biography.person_id == person_id))
-    return {
-        "content": biography.body if biography else "",
-        "updated_at": biography.updated_at if biography else None,
-    }
-
-
-@router.put("/{family_id}/persons/{person_id}/biography")
-def save_biography(
-    family_id: UUID,
-    person_id: UUID,
-    body: BiographyInput,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_biography")
-    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
-        raise HTTPException(status_code=403, detail="ÐÐ°Ð¼Ñ‚Ð°Ñ€ Ð·Ð°ÑÐ°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    biography = db.scalar(select(Biography).where(Biography.person_id == person_id))
-    if biography is None:
-        biography = Biography(person_id=person_id, body=body.content, updated_by=user.id)
-        db.add(biography)
-    else:
-        biography.body = body.content
-        biography.updated_by = user.id
-    db.flush()
-    _audit(db, user, family_id, "biography.updated", "person", person_id)
-    db.commit()
-    return {"content": biography.body, "updated_at": biography.updated_at}
-
-
-@router.get("/{family_id}/persons/{person_id}/events")
-def list_life_events(
-    family_id: UUID,
-    person_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    _require_minor_scope(db, family_id, person, user, "manage_events")
-    return list(
-        db.scalars(
-            select(LifeEvent).where(LifeEvent.person_id == person_id).order_by(LifeEvent.event_date)
-        ).all()
-    )
-
-
-@router.post("/{family_id}/persons/{person_id}/events", status_code=201)
-def create_life_event(
-    family_id: UUID,
-    person_id: UUID,
-    body: LifeEventInput,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_events")
-    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
-        raise HTTPException(status_code=403, detail="ÐÐ¼ÑŒÐ´Ñ€Ð°Ð»Ñ‹Ð½ Ò¯Ð¹Ð» ÑÐ²Ð´Ð°Ð» Ð½ÑÐ¼ÑÑ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    event = LifeEvent(person_id=person_id, created_by=user.id, **body.model_dump())
-    db.add(event)
-    db.flush()
-    _audit(db, user, family_id, "life_event.created", "life_event", event.id)
-    db.commit()
-    return event
-
-
-@router.patch("/{family_id}/persons/{person_id}/events/{event_id}")
-def update_life_event(
-    family_id: UUID,
-    person_id: UUID,
-    event_id: UUID,
-    body: LifeEventInput,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_events")
-    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
-        raise HTTPException(status_code=403, detail="ÐÐ¼ÑŒÐ´Ñ€Ð°Ð»Ñ‹Ð½ Ò¯Ð¹Ð» ÑÐ²Ð´Ð°Ð» Ð·Ð°ÑÐ°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    event = db.scalar(
-        select(LifeEvent).where(LifeEvent.id == event_id, LifeEvent.person_id == person_id)
-    )
-    if event is None:
-        raise HTTPException(status_code=404, detail="Ò®Ð¹Ð» ÑÐ²Ð´Ð°Ð» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    for key, value in body.model_dump().items():
-        setattr(event, key, value)
-    _audit(db, user, family_id, "life_event.updated", "life_event", event.id)
-    db.commit()
-    return event
-
-
-@router.delete("/{family_id}/persons/{person_id}/events/{event_id}", status_code=204)
-def delete_life_event(
-    family_id: UUID,
-    person_id: UUID,
-    event_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_events")
-    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
-        raise HTTPException(status_code=403, detail="ÐÐ¼ÑŒÐ´Ñ€Ð°Ð»Ñ‹Ð½ Ò¯Ð¹Ð» ÑÐ²Ð´Ð°Ð» ÑƒÑÑ‚Ð³Ð°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    event = db.scalar(
-        select(LifeEvent).where(LifeEvent.id == event_id, LifeEvent.person_id == person_id)
-    )
-    if event is None:
-        raise HTTPException(status_code=404, detail="Ò®Ð¹Ð» ÑÐ²Ð´Ð°Ð» Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    _audit(db, user, family_id, "life_event.deleted", "life_event", event.id)
-    db.delete(event)
-    db.commit()
-    return Response(status_code=204)
-
-
-@router.post("/{family_id}/memories", status_code=201)
-def create_memory(
-    family_id: UUID,
-    body: MemoryInput,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    for person_id in body.person_ids:
-        person = _person_in_family(db, family_id, person_id)
-        _assert_person_visible(db, person, user)
-        _require_minor_scope(db, family_id, person, user, "manage_memories")
-    memory = Memory(
-        family_id=family_id,
-        title=body.title.strip(),
-        description=body.description,
-        memory_date=body.memory_date,
-        visibility=body.visibility,
-        created_by=user.id,
-    )
-    db.add(memory)
-    db.flush()
-    for person_id in set(body.person_ids):
-        db.add(MemoryPersonTag(memory_id=memory.id, person_id=person_id))
-    _audit(db, user, family_id, "memory.created", "memory", memory.id)
-    db.commit()
-    return {
-        "id": memory.id,
-        "title": memory.title,
-        "description": memory.description,
-        "memory_date": memory.memory_date,
-        "visibility": memory.visibility,
-        "person_ids": list(set(body.person_ids)),
-        "created_at": memory.created_at,
-    }
-
-
-@router.get("/{family_id}/memories")
-def list_memories(
-    family_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    memories = list(
-        db.scalars(
-            select(Memory)
-            .where(
-                Memory.family_id == family_id,
-                or_(Memory.visibility != "private", Memory.created_by == user.id),
-            )
-            .order_by(Memory.memory_date.desc())
-        ).all()
-    )
-    visible_ids = _memory_visible_to_member(db, family_id, user, [item.id for item in memories])
-    visible_memories = [item for item in memories if item.id in visible_ids]
-    memory_ids = [item.id for item in visible_memories]
-    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    tagged = (
-        db.execute(
-            select(
-                MemoryPersonTag.memory_id,
-                MemoryPersonTag.person_id,
-                Person.first_name,
-                Person.last_name,
-                Person.middle_name,
-            )
-            .join(Person, Person.id == MemoryPersonTag.person_id)
-            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-            .where(
-                MemoryPersonTag.memory_id.in_(memory_ids),
-                FamilyPerson.family_id == family_id,
-                or_(
-                    Person.visibility != "private",
-                    Person.created_by == user.id,
-                    Person.id == own_link,
-                ),
-            )
-            .order_by(MemoryPersonTag.memory_id, Person.last_name, Person.first_name)
-        ).all()
-        if memory_ids
-        else []
-    )
-    names_by_memory: dict[UUID, list[str]] = {}
-    ids_by_memory: dict[UUID, list[UUID]] = {}
-    for memory_id, person_id, first_name, last_name, middle_name in tagged:
-        ids_by_memory.setdefault(memory_id, []).append(person_id)
-        names_by_memory.setdefault(memory_id, []).append(
-            " ".join(part for part in (last_name, first_name, middle_name) if part)
-        )
-    return [
-        {
-            "id": item.id,
-            "title": item.title,
-            "description": item.description,
-            "memory_date": item.memory_date,
-            "visibility": item.visibility,
-            "person_ids": ids_by_memory.get(item.id, []),
-            "person_names": names_by_memory.get(item.id, []),
-            "created_at": item.created_at,
-        }
-        for item in visible_memories
-    ]
-
-
-@router.get("/{family_id}/memories/{memory_id}")
-def get_memory(
-    family_id: UUID,
-    memory_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    memory = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.family_id == family_id))
-    if memory is None or (memory.visibility == "private" and memory.created_by != user.id):
-        raise HTTPException(status_code=404, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    tag_ids = list(
-        db.scalars(
-            select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
-        ).all()
-    )
-    try:
-        _assert_memory_minor_scopes(db, family_id, user, tag_ids)
-    except HTTPException as error:
-        if error.status_code == 403:
-            raise HTTPException(status_code=404, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.") from error
-        raise
-    from app.memory_photos import _photo_payload
-
-    photos = db.scalars(
-        select(Photo).where(Photo.family_id == family_id, Photo.memory_id == memory_id)
-        .order_by(Photo.created_at.desc()).limit(50)
-    ).all()
-    return {
-        "id": memory.id,
-        "title": memory.title,
-        "description": memory.description,
-        "memory_date": memory.memory_date,
-        "visibility": memory.visibility,
-        "person_ids": tag_ids,
-        "created_at": memory.created_at,
-        "photos": [_photo_payload(photo) for photo in photos],
-    }
-
-
-@router.patch("/{family_id}/memories/{memory_id}")
-def update_memory(
-    family_id: UUID,
-    memory_id: UUID,
-    body: MemoryInput,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    member, _ = _member(db, family_id, user)
-    memory = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.family_id == family_id))
-    if memory is None:
-        raise HTTPException(status_code=404, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    if memory.visibility == "private" and memory.created_by != user.id:
-        raise HTTPException(status_code=404, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    if member.role not in {"owner", "editor"} and memory.created_by != user.id:
-        raise HTTPException(status_code=403, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð·Ð°ÑÐ°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    existing_person_ids = list(
-        db.scalars(
-            select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
-        ).all()
-    )
-    _assert_memory_minor_scopes(db, family_id, user, existing_person_ids)
-    for person_id in body.person_ids:
-        person = _person_in_family(db, family_id, person_id)
-        _assert_person_visible(db, person, user)
-        _require_minor_scope(db, family_id, person, user, "manage_memories")
-    for key in ("title", "description", "memory_date", "visibility"):
-        setattr(memory, key, getattr(body, key))
-    db.execute(delete(MemoryPersonTag).where(MemoryPersonTag.memory_id == memory_id))
-    db.add_all(
-        MemoryPersonTag(memory_id=memory_id, person_id=person_id)
-        for person_id in set(body.person_ids)
-    )
-    _audit(db, user, family_id, "memory.updated", "memory", memory_id)
-    db.commit()
-    return get_memory(family_id, memory_id, user, db)
-
-
-@router.delete("/{family_id}/memories/{memory_id}", status_code=204)
-def delete_memory(
-    family_id: UUID,
-    memory_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    storage: ObjectStorage = Depends(get_storage),
-):
-    from app.memory_photos import _delete_objects
-    member, _ = _member(db, family_id, user)
-    memory = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.family_id == family_id))
-    if memory is None:
-        raise HTTPException(status_code=404, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    if memory.visibility == "private" and memory.created_by != user.id:
-        raise HTTPException(status_code=404, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    if member.role not in {"owner", "editor"} and memory.created_by != user.id:
-        raise HTTPException(status_code=403, detail="Ð”ÑƒÑ€ÑÐ°Ð¼Ð¶ ÑƒÑÑ‚Ð³Ð°Ñ… ÑÑ€Ñ…Ð³Ò¯Ð¹.")
-    tag_ids = list(
-        db.scalars(
-            select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
-        ).all()
-    )
-    _assert_memory_minor_scopes(db, family_id, user, tag_ids)
-    photos = db.scalars(select(Photo).where(Photo.memory_id == memory_id)).all()
-    _delete_objects(storage, [key for photo in photos for key in (
-        photo.thumbnail_object_key or "", photo.object_key
-    )])
-    for photo in photos:
-        db.delete(photo)
-    _audit(db, user, family_id, "memory.deleted", "memory", memory_id)
-    db.delete(memory)
-    db.commit()
-    return Response(status_code=204)
-
-
-@router.get("/{family_id}/audit")
-def family_audit(
-    family_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner"})
-    entries = db.scalars(
-        select(AuditLog)
-        .where(AuditLog.family_id == family_id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(100)
-    ).all()
-    return [
-        {
-            "id": entry.id,
-            "actor_id": entry.actor_id,
-            "action": entry.action,
-            "target_type": entry.target_type,
-            "target_id": entry.target_id,
-            "created_at": entry.created_at,
-        }
-        for entry in entries
-    ]
-
-
-@router.post("/{family_id}/invitations", status_code=201)
-def create_invitation(
-    family_id: UUID,
-    body: InvitationCreate,
-    request: Request,
-    email_provider: EmailProvider = Depends(get_email_provider),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner"})
-    email = normalize_email(str(body.email))
-    if not _consume_otp_rate(db, "invitation-recipient", email, 5):
-        raise HTTPException(
-            status_code=429, detail="Ð¥ÑÑ‚ Ð¾Ð»Ð¾Ð½ ÑƒÑ€Ð¸Ð»Ð³Ð° Ð¸Ð»Ð³ÑÑÐ»ÑÑ. Ð¢Ò¯Ñ€ Ñ…Ò¯Ð»ÑÑÐ³ÑÑÐ´ Ð´Ð°Ñ…Ð¸Ð½ Ð¾Ñ€Ð¾Ð»Ð´Ð¾Ð½Ð¾ ÑƒÑƒ."
-        )
-    if not _consume_otp_rate(db, "invitation-owner", str(user.id), 10):
-        raise HTTPException(
-            status_code=429, detail="Ð¥ÑÑ‚ Ð¾Ð»Ð¾Ð½ ÑƒÑ€Ð¸Ð»Ð³Ð° Ð¸Ð»Ð³ÑÑÐ»ÑÑ. Ð¢Ò¯Ñ€ Ñ…Ò¯Ð»ÑÑÐ³ÑÑÐ´ Ð´Ð°Ñ…Ð¸Ð½ Ð¾Ñ€Ð¾Ð»Ð´Ð¾Ð½Ð¾ ÑƒÑƒ."
-        )
-    if not _consume_otp_rate(db, "invitation-ip", _normalized_ip(request), 20):
-        raise HTTPException(
-            status_code=429, detail="Ð¥ÑÑ‚ Ð¾Ð»Ð¾Ð½ ÑƒÑ€Ð¸Ð»Ð³Ð° Ð¸Ð»Ð³ÑÑÐ»ÑÑ. Ð¢Ò¯Ñ€ Ñ…Ò¯Ð»ÑÑÐ³ÑÑÐ´ Ð´Ð°Ñ…Ð¸Ð½ Ð¾Ñ€Ð¾Ð»Ð´Ð¾Ð½Ð¾ ÑƒÑƒ."
-        )
-    existing_user = db.scalar(select(User).where(User.email == email))
-    if existing_user and db.scalar(
-        select(FamilyMember.id).where(
-            FamilyMember.family_id == family_id, FamilyMember.user_id == existing_user.id
-        )
-    ):
-        raise HTTPException(status_code=409, detail="Ð­Ð½Ñ Ñ…ÑÑ€ÑÐ³Ð»ÑÐ³Ñ‡ Ð³ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð³Ð¸ÑˆÒ¯Ò¯Ð½ Ð±Ð°Ð¹Ð½Ð°.")
-    raw_token = secrets.token_urlsafe(32)
-    invitation = Invitation(
-        family_id=family_id,
-        invited_email=email,
-        role=body.role,
-        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
-        invited_by=user.id,
-        expires_at=datetime.now(UTC) + timedelta(days=7),
-    )
-    db.add(invitation)
-    db.flush()
-    _audit(db, user, family_id, "invitation.created", "invitation", invitation.id)
-    db.commit()
-    family = db.get(Family, family_id)
-    settings = get_settings()
-    link = f"{settings.email_public_base_url.rstrip('/')}/invite#token={raw_token}"
-    try:
-        email_provider.send_invitation_email(invitation.invited_email, family.name, link)
-    except EmailDeliveryError as error:
-        invitation.revoked_at = datetime.now(UTC)
-        _audit(db, user, family_id, "invitation.email_failed", "invitation", invitation.id)
-        db.commit()
-        raise HTTPException(
-            status_code=503, detail="Ð£Ñ€Ð¸Ð»Ð³Ñ‹Ð½ Ð¸Ð¼ÑÐ¹Ð» Ð¸Ð»Ð³ÑÑÐ¶ Ñ‡Ð°Ð´ÑÐ°Ð½Ð³Ò¯Ð¹. Ð”Ð°Ñ…Ð¸Ð½ Ð¾Ñ€Ð¾Ð»Ð´Ð¾Ð½Ð¾ ÑƒÑƒ."
-        ) from error
-    _audit(db, user, family_id, "invitation.sent", "invitation", invitation.id)
-    db.commit()
-    return {
-        "id": invitation.id,
-        "email": invitation.invited_email,
-        "role": invitation.role,
-        "expires_at": invitation.expires_at,
-        "delivery": "sent",
-    }
-
-
-@router.delete("/{family_id}/invitations/{invitation_id}", status_code=204)
-def revoke_invitation(
-    family_id: UUID,
-    invitation_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user, {"owner"})
-    invitation = db.scalar(
-        select(Invitation)
-        .where(Invitation.id == invitation_id, Invitation.family_id == family_id)
-        .with_for_update()
-    )
-    if (
-        invitation is None
-        or invitation.accepted_at is not None
-        or invitation.revoked_at is not None
-    ):
-        raise HTTPException(status_code=404, detail="Ð£Ñ€Ð¸Ð»Ð³Ð° Ð¾Ð»Ð´ÑÐ¾Ð½Ð³Ò¯Ð¹.")
-    invitation.revoked_at = datetime.now(UTC)
-    _audit(db, user, family_id, "invitation.revoked", "invitation", invitation.id)
-    db.commit()
-    return Response(status_code=204)
-
-
-@invitations_router.post("/accept")
-def accept_invitation(
-    body: InvitationAccept,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    token_hash = hashlib.sha256(body.token.encode()).hexdigest()
-    invitation = db.scalar(
-        select(Invitation)
-        .where(
-            Invitation.token_hash == token_hash,
-            Invitation.accepted_at.is_(None),
-            Invitation.revoked_at.is_(None),
-            Invitation.expires_at > datetime.now(UTC),
-        )
-        .with_for_update()
-    )
-    if invitation is None:
-        raise HTTPException(status_code=404, detail="Ð£Ñ€Ð¸Ð»Ð³Ð° Ñ…Ò¯Ñ‡Ð¸Ð½Ð³Ò¯Ð¹ ÑÑÐ²ÑÐ» Ñ…ÑƒÐ³Ð°Ñ†Ð°Ð° Ð´ÑƒÑƒÑÑÐ°Ð½ Ð±Ð°Ð¹Ð½Ð°.")
-    if normalize_email(user.email) != invitation.invited_email:
-        raise HTTPException(status_code=403, detail="Ð­Ð½Ñ ÑƒÑ€Ð¸Ð»Ð³Ð° Ó©Ó©Ñ€ Ð¸Ð¼ÑÐ¹Ð» Ñ…Ð°ÑÐ³Ñ‚ Ð·Ð¾Ñ€Ð¸ÑƒÐ»Ð°Ð³Ð´ÑÐ°Ð½.")
-    verified_identity = db.scalar(
-        select(LoginIdentity.id).where(
-            LoginIdentity.user_id == user.id,
-            LoginIdentity.provider == "email",
-            LoginIdentity.normalized_identifier == invitation.invited_email,
-            LoginIdentity.verified_at.is_not(None),
-            LoginIdentity.disabled_at.is_(None),
-        )
-    )
-    if user.email_verified_at is None and verified_identity is None:
-        raise HTTPException(
-            status_code=403, detail="Ð£Ñ€Ð¸Ð»Ð³Ñ‹Ð³ Ð°Ð²Ð°Ñ…Ñ‹Ð½ Ó©Ð¼Ð½Ó© Ð¸Ð¼ÑÐ¹Ð»ÑÑ Ð±Ð°Ñ‚Ð°Ð»Ð³Ð°Ð°Ð¶ÑƒÑƒÐ»Ð½Ð° ÑƒÑƒ."
-        )
-    if db.scalar(
-        select(FamilyMember.id).where(
-            FamilyMember.family_id == invitation.family_id, FamilyMember.user_id == user.id
-        )
-    ):
-        raise HTTPException(status_code=409, detail="Ð¢Ð° ÑÐ½Ñ Ð³ÑÑ€ Ð±Ò¯Ð»Ð¸Ð¹Ð½ Ð³Ð¸ÑˆÒ¯Ò¯Ð½ Ð±Ð°Ð¹Ð½Ð°.")
-    invitation.accepted_at = datetime.now(UTC)
-    db.add(FamilyMember(family_id=invitation.family_id, user_id=user.id, role=invitation.role))
-    _audit(db, user, invitation.family_id, "invitation.accepted", "invitation", invitation.id)
-    _commit(db, "Ð£Ñ€Ð¸Ð»Ð³Ñ‹Ð³ Ð°ÑˆÐ¸Ð³Ð»Ð°Ñ… Ð±Ð¾Ð»Ð¾Ð¼Ð¶Ð³Ò¯Ð¹ Ð±Ð°Ð¹Ð½Ð°.")
-    return {"family_id": invitation.family_id, "role": invitation.role}
-
-
-@router.get("/{family_id}/tree", response_model=TreeOut)
-def family_tree(
-    family_id: UUID,
-    person_id: UUID | None = Query(default=None, description="ÐšÐ¾Ð½Ñ‚ÐµÐºÑÑ‚Ð¸Ð¹Ð½ Ð³Ð¾Ð» Ñ…Ò¯Ð½."),
-    depth: int = Query(default=2, ge=0, le=5, description="Ð¥Ð¾Ð»Ð±Ð¾Ð¾Ð½Ñ‹ Ð³Ò¯Ð½, Ñ…Ð°Ð¼Ð³Ð¸Ð¹Ð½ Ð¸Ñ…Ð´ÑÑ 5."),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Return a family-authorized tree neighborhood capped at 300 people and 1,200 edges."""
-    _member(db, family_id, user)
-    if person_id is None:
-        linked_person_id = db.scalar(
-            select(UserPersonLink.person_id)
-            .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
-            .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == family_id)
-        )
-        person_id = linked_person_id or db.scalar(
-            select(Person.id)
-            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-            .where(
-                FamilyPerson.family_id == family_id,
-                or_(Person.visibility != "private", Person.created_by == user.id),
-            )
-            .order_by(Person.search_last_name, Person.search_first_name, Person.id)
-            .limit(1)
-        )
-    if person_id is None:
-        return {
-            "root_person_id": None,
-            "persons": [],
-            "parent_child_relationships": [],
-            "marriages": [],
-            "meta": {"depth": depth, "node_count": 0, "node_limit": 300, "truncated": False},
-        }
-
-    root = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, root, user)
-    people: dict[UUID, Person] = {root.id: root}
-    parent_edges: dict[UUID, ParentChildRelationship] = {}
-    marriages: dict[UUID, Marriage] = {}
-    scopes = active_guardian_scopes(db, user.id, family_id, [root.id])
-    own_person_id = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    def can_traverse(person: Person) -> bool:
-        return not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
-
-    frontier = {root.id} if can_traverse(root) else set()
-    truncated = False
-    node_limit = 300
-    edge_limit = 1200
-
-    for _level in range(depth):
-        if not frontier:
-            break
-        parent_rows = list(
-            db.scalars(
-                select(ParentChildRelationship)
-                .where(
-                    or_(
-                        ParentChildRelationship.parent_id.in_(frontier),
-                        ParentChildRelationship.child_id.in_(frontier),
-                    )
-                )
-                .order_by(ParentChildRelationship.id)
-                .limit(edge_limit + 1)
-            ).all()
-        )
-        marriage_rows = list(
-            db.scalars(
-                select(Marriage)
-                .where(
-                    Marriage.deleted_at.is_(None),
-                    or_(Marriage.person_1_id.in_(frontier), Marriage.person_2_id.in_(frontier)),
-                )
-                .order_by(*_marriage_order())
-                .limit(edge_limit + 1)
-            ).all()
-        )
-        if len(parent_rows) > edge_limit or len(marriage_rows) > edge_limit:
-            truncated = True
-        parent_rows = parent_rows[:edge_limit]
-        marriage_rows = marriage_rows[:edge_limit]
-        candidate_ids = {
-            endpoint
-            for edge in parent_rows
-            for endpoint in (edge.parent_id, edge.child_id)
-        } | {
-            endpoint
-            for marriage in marriage_rows
-            for endpoint in (marriage.person_1_id, marriage.person_2_id)
-        }
-        candidate_ids -= people.keys()
-        candidate_rows = list(
-            db.scalars(
-                select(Person)
-                .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-                .where(
-                    FamilyPerson.family_id == family_id,
-                    Person.id.in_(candidate_ids),
-                    or_(
-                        Person.visibility != "private",
-                        Person.created_by == user.id,
-                        Person.id == own_person_id,
-                    ),
-                )
-                .order_by(Person.id)
-                .limit(node_limit + 1)
-            ).all()
-        ) if candidate_ids else []
-        if len(candidate_rows) > node_limit:
-            truncated = True
-            candidate_rows = candidate_rows[:node_limit]
-        candidate_scopes = active_guardian_scopes(
-            db, user.id, family_id, [person.id for person in candidate_rows]
-        )
-        scopes.update(candidate_scopes)
-        visible_candidates = {
-            person.id: person
-            for person in candidate_rows
-            if not person_is_minor(person)
-            or "view_profile" in candidate_scopes.get(person.id, set())
-        }
-        next_frontier: set[UUID] = set()
-
-        def admit(
-            person_id: UUID,
-            allowed: dict[UUID, Person],
-            next_ids: set[UUID],
-        ) -> bool:
-            nonlocal truncated
-            if person_id in people:
-                return True
-            person = allowed.get(person_id)
-            if person is None:
-                return False
-            if len(people) >= node_limit:
-                truncated = True
-                return False
-            people[person_id] = person
-            next_ids.add(person_id)
-            return True
-
-        for edge in parent_rows:
-            if not (edge.parent_id in frontier or edge.child_id in frontier):
-                continue
-            if admit(edge.parent_id, visible_candidates, next_frontier) and admit(
-                edge.child_id, visible_candidates, next_frontier
-            ):
-                parent_edges[edge.id] = edge
-            if len(parent_edges) + len(marriages) >= edge_limit:
-                truncated = True
-                break
-        if len(parent_edges) + len(marriages) < edge_limit:
-            for marriage in marriage_rows:
-                if not (marriage.person_1_id in frontier or marriage.person_2_id in frontier):
-                    continue
-                if admit(marriage.person_1_id, visible_candidates, next_frontier) and admit(
-                    marriage.person_2_id, visible_candidates, next_frontier
-                ):
-                    marriages[marriage.id] = marriage
-                if len(parent_edges) + len(marriages) >= edge_limit:
-                    truncated = True
-                    break
-        frontier = next_frontier
-
-    final_scopes = active_guardian_scopes(db, user.id, family_id, list(people))
-    return {
-        "persons": [
-            TreePersonOut(
-                id=person.id,
-                first_name=person.first_name,
-                last_name=person.last_name,
-                middle_name=person.middle_name,
-                birth_date=(
-                    None
-                    if person_is_minor(person)
-                    and "view_profile" not in final_scopes.get(person.id, set())
-                    else person.birth_date
-                ),
-                is_alive=person.is_alive,
-                death_date=(
-                    None
-                    if person_is_minor(person)
-                    and "view_profile" not in final_scopes.get(person.id, set())
-                    else person.death_date
-                ),
-            )
-            for person in people.values()
-        ],
-        "root_person_id": root.id,
-        "parent_child_relationships": list(parent_edges.values()),
-        "marriages": list(marriages.values()),
-        "meta": {
-            "depth": depth,
-            "node_count": len(people),
-            "node_limit": node_limit,
-            "truncated": truncated,
-        },
-    }
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛŽöá:-jZ.¶›­–)Þ³R""$WF†VçF–6FVBfÖ–Ç’ÂW'6öâæB&VÆF–öç6†——2â""  ¦–×÷'B†6†Æ– ¦–×÷'B6V7&WG0¦g&öÒFFWF–ÖR–×÷'BUD2ÂFFRÂFFWF–ÖRÂF–ÖVFVÇF¦g&öÒWV–B–×÷'BUT”@ ¦g&öÒf7F’–×÷'B•&÷WFW"ÂFWVæG2Â…EEW†6WF–öâÂVW'’Â&WVW7BÂ&W7öç6P¦g&öÒ–FçF–2–×÷'B&6TÖöFVÂÂ6öæf–tF–7BÂVÖ–Å7G"Âf–VÆBÂÖöFVÅ÷fÆ–FF÷ ¦g&öÒ7ÆÆ6†V×’–×÷'BFVÆWFRÂgVæ2Â÷%òÂ6VÆV7@¦g&öÒ7ÆÆ6†V×’æW†2–×÷'B–çFVw&—G”W'&÷ ¦g&öÒ7ÆÆ6†V×’æ÷&Ò–×÷'B6W76–öà ¦g&öÒæWF‚–×÷'Bö6öç7VÖUö÷G÷&FRÂöæ÷&ÖÆ—¦VEö—ÂvWEö7W'&VçE÷W6W ¦g&öÒæ6öæf–r–×÷'BvWE÷6WGF–æw0¦g&öÒæF"–×÷'BvWEöF ¦g&öÒæVÖ–Â–×÷'BVÖ–ÄFVÆ—fW'”W'&÷"ÂVÖ–Å&÷f–FW"ÂvWEöVÖ–Å÷&÷f–FW ¦g&öÒæ–FVçF—G’–×÷'Bæ÷&ÖÆ—¦UöVÖ–À¦g&öÒæÖöFVÇ2–×÷'B€¢VF—DÆörÀ¢&–öw&‡’À¢fÖ–Ç’À¢fÖ–Ç”ÖVÖ&W"À¢fÖ–Ç•W'6öâÀ¢–çf—FF–öâÀ¢Æ–fTWfVçBÀ¢Æöv–ä–FVçF—G’À¢Ö'&–vRÀ¢ÖVÖ÷'’À¢ÖVÖ÷'•W'6öåFrÀ¢&VçD6†–ÆE&VÆF–öç6†—À¢W'6öâÀ¢W'6öäwV&F–ç6†—À¢†÷FòÀ¢W6W"À¢W6W%W'6öäÆ–æ²À¢¦g&öÒçW'6öå÷6V&6‚–×÷'Bæ÷&ÖÆ—¦U÷6V&6…öæÖP¦g&öÒç&—f7’–×÷'B€¢uT$D”åõ44õU2À¢7F—fUöwV&F–å÷66÷W2À¢†5öwV&F–å÷66÷RÀ¢—5öÖ–æ÷"À¢W'6öåö—5öÖ–æ÷"À¢&VF7EöÖ–æ÷%÷&öf–ÆUöf–VÆG2À¢&WV—&UöÖ–æ÷%÷66÷RÀ¢¦g&öÒç&VÆF–öç6†—2–×÷'B€¢&VÆF–öç6†—W'&÷"À¢76W'EöFFUö÷&FW"À¢76W'E÷&VçEö6†–ÆEö—5ö7–6Æ–2À¢6æöæ–6Å÷—"À¢¦g&öÒç7F÷&vR–×÷'Bö&¦V7E7F÷&vRÂvWE÷7F÷&vP §&÷WFW"Ò•&÷WFW"‡&Vf—ƒÒ"öfÖ–Æ–W2"ÂFw3Õ²&fÖ–Æ–W2%Ò¦–çf—FF–öç5÷&÷WFW"Ò•&÷WFW"‡&Vf—ƒÒ"ö–çf—FF–öç2"ÂFw3Õ²&–çf—FF–öç2%Ò  ¦6Æ72fÖ–Ç”7&VFR„&6TÖöFVÂ“ ¢æÖS¢7G"Òf–VÆB†Ö–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓƒ¢FW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVb6†V6µöæÖR‡6VÆb“ ¢–bæ÷B6VÆbææÖRç7G&—‚“ ¢&—6RfÇVTW'&÷"‚-	=Ý*ý½ÒÝÝ]íííÒbí½í]=*ý’â"¢&WGW&â6VÆ`  ¦6Æ72fÖ–Ç•F6‚„&6TÖöFVÂ“ ¢æÖS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓƒ¢FW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVb6†V6µöæÖR‡6VÆb“ ¢–b&æÖR"–â6VÆbæÖöFVÅöf–VÆG5÷6WBæB6VÆbææÖR—2æöæS ¢&—6RfÇVTW'&÷"‚-	=Ý*ý½ÒÝÝ]íííÒbí½í]=*ý’â"¢–b6VÆbææÖR—2æ÷BæöæRæBæ÷B6VÆbææÖRç7G&—‚“ ¢&—6RfÇVTW'&÷"‚-	=Ý*ý½ÒÝÝ]íííÒbí½í]=*ý’â"¢&WGW&â6VÆ`  ¦6Æ72fÖ–Ç”÷WB„&6TÖöFVÂ“ ¢ÖöFVÅö6öæf–rÒ6öæf–tF–7B†g&öÕöGG&–'WFW3ÕG'VR¢–C¢UT”@¢æÖS¢7G ¢FW67&—F–öã¢7G"ÂæöæP¢7&VFVEöC¢FFWF–ÖP¢&öÆS¢7G   ¦6Æ72W'6öä7&VFR„&6TÖöFVÂ“ ¢f—'7EöæÖS¢7G"Òf–VÆB†Ö–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓ#¢Æ7EöæÖS¢7G"Òf–VÆB†FVfVÇCÒ""ÂÖ…öÆVæwFƒÓ#¢Ö–FFÆUöæÖS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#¢æ–6¶æÖS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#¢vVæFW#¢7G"Òf–VÆB†FVfVÇCÒ'Væ¶æ÷vâ"ÂGFW&ãÒ%â†fVÖÆWÆÖÆWÆ÷F†W'ÇVæ¶æ÷vâ’B"¢&—'F…öFFS¢FFRÂæöæRÒæöæP¢&—'F…÷Æ6S¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#C¢—5öÆ—fS¢&ööÂÒG'VP¢FVF…öFFS¢FFRÂæöæRÒæöæP¢FVF…÷Æ6S¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#C¢6†÷'EöFW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ¢f—6–&–Æ—G“¢7G"Òf–VÆB†FVfVÇCÒ&fÖ–Ç’"ÂGFW&ãÒ%â‡&—fFWÆfÖ–Ç—ÇV&Æ–2’B" ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVb6†V6µöFFW2‡6VÆb“ ¢–b6VÆbæf—'7EöæÖR—2æ÷BæöæRæBæ÷B6VÆbæf—'7EöæÖRç7G&—‚“ ¢&—6RfÇVTW'&÷"‚-	ÝÝ]íííÒbí½í]=*ý’â"¢–b6VÆbæ&—'F…öFFRæB6VÆbæ&—'F…öFFRâFFWF–ÖRææ÷r…UD2’æFFR‚“ ¢&—6RfÇVTW'&÷"‚-
+-::Òí=ÝíâÝÝM*ýBbí½í]=*ý’â"¢–b6VÆbæFVF…öFFRæB6VÆbæ&—'F…öFFRæB6VÆbæFVF…öFFRÂ6VÆbæ&—'F…öFFS ¢&—6RfÇVTW'&÷"‚-	ÝÒí=Ýíâ-::Òí=ÝííÝíí:ÍÝ:’bí½í]=*ý’â"¢–b6VÆbæ—5öÆ—fRæB6VÆbæFVF…öFFS ¢&—6RfÇVTW'&÷"‚-	ÍÍB]*ýÝ’ÝÒí=Ýíí2:=½:bí½í]=*ý’â"¢&WGW&â6VÆ`  ¦6Æ72W'6öåF6‚…W'6öä7&VFR“ ¢f—'7EöæÖS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓ#¢Æ7EöæÖS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#¢vVæFW#¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂGFW&ãÒ%â†fVÖÆWÆÖÆWÆ÷F†W'ÇVæ¶æ÷vâ’B"¢—5öÆ—fS¢&ööÂÂæöæRÒæöæP¢f—6–&–Æ—G“¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂGFW&ãÒ%â‡&—fFWÆfÖ–Ç—ÇV&Æ–2’B" ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVb&V¦V7EöçVÆÅ÷&WV—&VEöf–VÆG2‡6VÆb“ ¢f÷"f–VÆB–â‚&f—'7EöæÖR"Â&vVæFW""Â&—5öÆ—fR"Â'f—6–&–Æ—G’"“ ¢–bf–VÆB–â6VÆbæÖöFVÅöf–VÆG5÷6WBæBvWFGG"‡6VÆbÂf–VÆB’—2æöæS ¢&—6RfÇVTW'&÷"†b'¶f–VÆGÒ-½½2]íííÒí½=íRí½íÍm=*ý’â"¢&WGW&â6VÆ`  ¦6Æ72W'6öä÷WB„&6TÖöFVÂ“ ¢ÖöFVÅö6öæf–rÒ6öæf–tF–7B†g&öÕöGG&–'WFW3ÕG'VR ¢–C¢UT”@¢f—'7EöæÖS¢7G ¢Æ7EöæÖS¢7G ¢Ö–FFÆUöæÖS¢7G"ÂæöæP¢æ–6¶æÖS¢7G"ÂæöæP¢vVæFW#¢7G ¢&—'F…öFFS¢FFRÂæöæP¢&—'F…÷Æ6S¢7G"ÂæöæP¢—5öÆ—fS¢&ööÀ¢FVF…öFFS¢FFRÂæöæP¢FVF…÷Æ6S¢7G"ÂæöæP¢6†÷'EöFW67&—F–öã¢7G"ÂæöæP¢f—6–&–Æ—G“¢7G ¢7&VFVEöC¢FFWF–ÖP¢WFFVEöC¢FFWF–ÖP  ¦6Æ72W'6öå6V&6„—FVÒ„&6TÖöFVÂ“ ¢–C¢UT”@¢æÖS¢7G ¢&—'F…÷–V#¢–çBÂæöæP  ¦6Æ72W'6öå6V&6…vR„&6TÖöFVÂ“ ¢—FV×3¢Æ—7EµW'6öå6V&6„—FVÕÐ¢vS¢–ç@¢vU÷6—¦S¢–ç@¢F÷FÃ¢–ç@¢†5öæW‡C¢&ööÀ  ¦6Æ72G&VUW'6öä÷WB„&6TÖöFVÂ“ ¢–C¢UT”@¢f—'7EöæÖS¢7G ¢Æ7EöæÖS¢7G ¢Ö–FFÆUöæÖS¢7G"ÂæöæP¢&—'F…öFFS¢FFRÂæöæP¢—5öÆ—fS¢&ööÀ¢FVF…öFFS¢FFRÂæöæP  ¦6Æ72G&VU&VçD6†–ÆD÷WB„&6TÖöFVÂ“ ¢ÖöFVÅö6öæf–rÒ6öæf–tF–7B†g&öÕöGG&–'WFW3ÕG'VR ¢–C¢UT”@¢&VçEö–C¢UT”@¢6†–ÆEö–C¢UT”@¢&VÆF–öç6†—÷G—S¢7G   ¦6Æ72G&VT÷WB„&6TÖöFVÂ“ ¢&ö÷E÷W'6öåö–C¢UT”BÂæöæP¢W'6öç3¢Æ—7EµG&VUW'6öä÷WEÐ¢&VçEö6†–ÆE÷&VÆF–öç6†—3¢Æ—7EµG&VU&VçD6†–ÆD÷WEÐ¢Ö'&–vW3¢Æ—7E²$Ö'&–vT÷WB%Ð¢ÖWF¢F–7E·7G"Â–çBÂ&ööÅÐ  ¦6Æ72wV&F–ç6†—7&VFR„&6TÖöFVÂ“ ¢wV&F–å÷W6W%ö–C¢UT”@¢66÷W3¢Æ—7E·7G%ÒÒf–VÆB†Ö–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓb¢W‡—&W5öC¢FFWF–ÖRÂæöæRÒæöæP ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVbfÆ–FFUöw&çB‡6VÆb“ ¢–bÆVâ‡6WB‡6VÆbç66÷W2’’ÒÆVâ‡6VÆbç66÷W2“ ¢&—6RfÇVTW'&÷"‚-	m²Ý]2M-]í==½Rí½íÍm=*ý’â"¢–bæ÷B6WB‡6VÆbç66÷W2’æ—77V'6WB„uT$D”åõ44õU2“ ¢&—6RfÇVTW'&÷"‚$wV&F–âÝ]Ò-::²==2Ýâ"¢–b6VÆbæW‡—&W5öB—2æ÷BæöæS ¢–b6VÆbæW‡—&W5öBçG¦–æfò—2æöæS ¢&—6RfÇVTW'&÷"‚-	M==R]==mÝBm=Ò*ýM½=-’â"¢–b6VÆbæW‡—&W5öBÃÒFFWF–ÖRææ÷r…UD2“ ¢&—6RfÇVTW'&÷"‚-	M==R]==mÝÝM*ýBR-í’â"¢&WGW&â6VÆ`  ¦6Æ72wV&F–ç6†—÷WB„&6TÖöFVÂ“ ¢–C¢UT”@¢wV&F–å÷W6W%ö–C¢UT”@¢wV&F–åöF—7Æ•öæÖS¢7G ¢66÷S¢7G ¢7FGW3¢7G ¢7F—fS¢&ööÀ¢W‡—&W5öC¢FFWF–ÖRÂæöæP  ¦6Æ72&VçD6†–ÆD7&VFR„&6TÖöFVÂ“ ¢&VçEö–C¢UT”@¢6†–ÆEö–C¢UT”@¢&VÆF–öç6†—÷G—S¢7G"Òf–VÆB†FVfVÇCÒ&&–öÆöv–6Â"ÂGFW&ãÒ%â†&–öÆöv–6ÇÆF÷F—fR’B"  ¦6Æ72Ö'&–vT7&VFR„&6TÖöFVÂ“ ¢W'6öåóö–C¢UT”@¢W'6öåó%ö–C¢UT”@¢7FGW3¢7G"Òf–VÆB†FVfVÇCÒ&Ö'&–VB"ÂGFW&ãÒ%â†Ö'&–VGÆF—f÷&6VGÇv–F÷vVB’B"¢7F'EöFFS¢FFRÂæöæRÒæöæP¢VæEöFFS¢FFRÂæöæRÒæöæP¢Æö6F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#C¢FW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVbfÆ–EöFFW2‡6VÆb“ ¢76W'EöFFUö÷&FW"‡6VÆbç7F'EöFFRÂ6VÆbæVæEöFFR¢–b6VÆbç7FGW2ÓÒ&Ö'&–VB"æB6VÆbæVæEöFFR—2æ÷BæöæS ¢&—6RfÇVTW'&÷"‚-	MÝ-]-Ý’=Ý½Ý½-ÒM==Òí=ÝíâR=*ý’â"¢&WGW&â6VÆ`  ¦6Æ72Ö'&–vUF6‚„&6TÖöFVÂ“ ¢7FGW3¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂGFW&ãÒ%â†Ö'&–VGÆF—f÷&6VGÇv–F÷vVB’B"¢7F'EöFFS¢FFRÂæöæRÒæöæP¢VæEöFFS¢FFRÂæöæRÒæöæP¢Æö6F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#C¢FW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVbfÆ–FFU÷WFFR‡6VÆb“ ¢–bæ÷B6VÆbæÖöFVÅöf–VÆG5÷6WC ¢&—6RfÇVTW'&÷"‚-::}½:RÍÝMÝÝ½½ÝÒí==½Ý=2â"¢76W'EöFFUö÷&FW"‡6VÆbç7F'EöFFRÂ6VÆbæVæEöFFR¢&WGW&â6VÆ`  ¦6Æ72Ö'&–vT÷WB„&6TÖöFVÂ“ ¢ÖöFVÅö6öæf–rÒ6öæf–tF–7B†g&öÕöGG&–'WFW3ÕG'VR ¢–C¢UT”@¢W'6öåóö–C¢UT”@¢W'6öåó%ö–C¢UT”@¢7FGW3¢7G ¢7F'EöFFS¢FFRÂæöæP¢VæEöFFS¢FFRÂæöæP¢Æö6F–öã¢7G"ÂæöæP¢FW67&—F–öã¢7G"ÂæöæP¢7&VFVEöC¢FFWF–ÖP  ¦FVböÖ'&–vU÷W'6öåö66W72†F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂÖ'&–vS¢Ö'&–vRÂW6W#¢W6W"“ ¢V÷ÆRÒ°¢÷W'6öåö–åöfÖ–Ç’†F"ÂfÖ–Ç•ö–BÂÖ'&–vRçW'6öåóö–B’À¢÷W'6öåö–åöfÖ–Ç’†F"ÂfÖ–Ç•ö–BÂÖ'&–vRçW'6öåó%ö–B’À¢Ð¢f÷"W'6öâ–âV÷ÆS ¢ö76W'E÷W'6öå÷f—6–&ÆR†F"ÂW'6öâÂW6W"¢Ö–æ÷%ö–G2Ò·W'6öâæ–Bf÷"W'6öâ–âV÷ÆR–bW'6öåö—5öÖ–æ÷"‡W'6öâ•Ð¢–bÖ–æ÷%ö–G3 ¢66÷W2Ò7F—fUöwV&F–å÷66÷W2†F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂÖ–æ÷%ö–G2¢–bç’‚'f–Wu÷&öf–ÆR"æ÷B–â66÷W2ævWB‡W'6öåö–BÂ6WB‚’’f÷"W'6öåö–B–âÖ–æ÷%ö–G2“ ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-	=Ý½Ý½-ÒÍÝMÝÝ½Ý²í½MíÝ=*ý’â"¢&WGW&âV÷ÆP  ¦FVböÖ'&–vUö÷&FW"‚“ ¢2åTÄÂFFW26÷'BÆ7BÂföÆÆ÷vVB'’7F&ÆR–ç6W'F–öâ÷&FW"f÷"F–W2à¢&WGW&â€¢Ö'&–vRç7F'EöFFRæ—5ò„æöæR’À¢Ö'&–vRç7F'EöFFRÀ¢Ö'&–vRæ7&VFVEöBÀ¢Ö'&–vRæ–BÀ¢  ¦FVböW66UöÆ–¶U÷&Vf—‚‡fÇVS¢7G"’Óâ7G# ¢&WGW&âfÇVRç&WÆ6R‚%ÅÂ"Â%ÅÅÅÂ"’ç&WÆ6R‚"R"Â%ÅÂR"’ç&WÆ6R‚%ò"Â%ÅÅò"  ¦6Æ72ÖVÖ&W$÷WB„&6TÖöFVÂ“ ¢W6W%ö–C¢UT”@¢F—7Æ•öæÖS¢7G ¢&öÆS¢7G   ¦6Æ72–çf—FF–öä7&VFR„&6TÖöFVÂ“ ¢VÖ–Ã¢VÖ–Å7G ¢&öÆS¢7G"Òf–VÆB‡GFW&ãÒ%â†VF—F÷'ÆÖVÖ&W"’B"  ¦6Æ72–çf—FF–öä66WB„&6TÖöFVÂ“ ¢Fö¶Vã¢7G"Òf–VÆB†Ö–åöÆVæwFƒÓ3"ÂÖ…öÆVæwFƒÓ#‚  ¦6Æ72&–öw&‡”–çWB„&6TÖöFVÂ“ ¢6öçFVçC¢7G"Òf–VÆB†Ö…öÆVæwFƒÓS  ¦6Æ72Æ–fTWfVçD–çWB„&6TÖöFVÂ“ ¢WfVçE÷G—S¢7G"Òf–VÆB€¢GFW&ãÒ%â†&—'F‡Ç66†ööÇÇv÷&·ÆÖ'&–vWÆF—f÷&6WÆÖ÷fWÆ6†–ÆEö&—'F‡ÆFVF‡Æ÷F†W"’B ¢¢F—FÆS¢7G"Òf–VÆB†Ö–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓƒ¢WfVçEöFFS¢FFRÂæöæRÒæöæP¢FFUöæ÷FS¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓƒ¢Æö6F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#C¢FW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVb6†V6µ÷F—FÆR‡6VÆb“ ¢–bæ÷B6VÆbçF—FÆRç7G&—‚“ ¢&—6RfÇVTW'&÷"‚-*í²ý-M½½Ò=}2]íííÒbí½í]=*ý’â"¢&WGW&â6VÆ`  ¦6Æ72ÖVÖ÷'”–çWB„&6TÖöFVÂ“ ¢F—FÆS¢7G"Òf–VÆB†Ö–åöÆVæwFƒÓÂÖ…öÆVæwFƒÓƒ¢FW67&—F–öã¢7G"ÂæöæRÒf–VÆB†FVfVÇCÔæöæRÂÖ…öÆVæwFƒÓ#¢ÖVÖ÷'•öFFS¢FFRÂæöæRÒæöæP¢f—6–&–Æ—G“¢7G"Òf–VÆB†FVfVÇCÒ&fÖ–Ç’"ÂGFW&ãÒ%â‡&—fFWÆfÖ–Ç—ÇV&Æ–2’B"¢W'6öåö–G3¢Æ—7EµUT”EÒÒf–VÆB†FVfVÇEöf7F÷'“ÖÆ—7BÂÖ…öÆVæwFƒÓ ¢ÖöFVÅ÷fÆ–FF÷"†ÖöFSÒ&gFW""¢FVb6†V6µ÷F—FÆR‡6VÆb“ ¢–bæ÷B6VÆbçF—FÆRç7G&—‚“ ¢&—6RfÇVTW'&÷"‚-	M=ÍmÒ=}2]íííÒbí½í]=*ý’â"¢&WGW&â6VÆ`  ¦FVböÖVÖ&W"†F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW6W#¢W6W"Â&öÆW3¢6WE·7G%ÒÂæöæRÒæöæR“ ¢ÖVÖ&W"ÒF"ç66Æ"€¢6VÆV7B„fÖ–Ç”ÖVÖ&W"’çv†W&R€¢fÖ–Ç”ÖVÖ&W"æfÖ–Ç•ö–BÓÒfÖ–Ç•ö–BÀ¢fÖ–Ç”ÖVÖ&W"çW6W%ö–BÓÒW6W"æ–BÀ¢¢¢–bÖVÖ&W"—2æöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC2ÂFWF–ÃÒ-
+ÝÝÒ=Ý*ý½ÒÍÝMÝÝ½½2]RÝ]=*ý’â"¢–b&öÆW2æBÖVÖ&W"ç&öÆRæ÷B–â&öÆW3 ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC2ÂFWF–ÃÒ-
+ÝÝÒ*ý½M½2]RÝ]=*ý’â"¢fÖ–Ç’ÒF"ævWB„fÖ–Ç’ÂfÖ–Ç•ö–B¢–bfÖ–Ç’—2æöæR÷"fÖ–Ç’æ&6†—fVEöB—2æ÷BæöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-	=Ý*ý²í½MíÝ=*ý’â"¢&WGW&âÖVÖ&W"ÂfÖ–Ç  ¦FVb÷W'6öåö–åöfÖ–Ç’†F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW'6öåö–C¢UT”B’ÓâW'6öã ¢W'6öâÒF"ç66Æ"€¢6VÆV7B…W'6öâ¢æ¦ö–â„fÖ–Ç•W'6öâÂfÖ–Ç•W'6öâçW'6öåö–BÓÒW'6öâæ–B¢çv†W&R„fÖ–Ç•W'6öâæfÖ–Ç•ö–BÓÒfÖ–Ç•ö–BÂW'6öâæ–BÓÒW'6öåö–B¢¢–bW'6öâ—2æöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-
+]*ýÒí½MíÝ=*ý’â"¢&WGW&âW'6öà  ¦FVbö76W'E÷W'6öå÷f—6–&ÆR†F#¢6W76–öâÂW'6öã¢W'6öâÂW6W#¢W6W"’ÓâæöæS ¢–bW'6öâçf—6–&–Æ—G’ÓÒ'&—fFR# ¢Æ–æ¶VE÷Fõ÷W6W"ÒF"ç66Æ"€¢6VÆV7B…W6W%W'6öäÆ–æ²æ–B’çv†W&R€¢W6W%W'6öäÆ–æ²çW6W%ö–BÓÒW6W"æ–BÂW6W%W'6öäÆ–æ²çW'6öåö–BÓÒW'6öâæ–@¢¢¢–bW'6öâæ7&VFVEö'’ÒW6W"æ–BæBÆ–æ¶VE÷Fõ÷W6W"—2æöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-
+]*ýÒí½MíÝ=*ý’â"  ¦FVb÷W'6öåö÷WGWB†F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW'6öã¢W'6öâÂW6W#¢W6W"’ÓâW'6öä÷WC ¢66÷W2Ò7F—fUöwV&F–å÷66÷W2†F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂ·W'6öâæ–EÒ’ævWB‡W'6öâæ–BÂ6WB‚’¢&W7VÇBÒW'6öä÷WBæÖöFVÅ÷fÆ–FFR‡W'6öâ¢&VF7F–öç2Ò&VF7EöÖ–æ÷%÷&öf–ÆUöf–VÆG2‡W'6öâÂ66÷W2¢&WGW&â&W7VÇBæÖöFVÅö6÷’‡WFFS×&VF7F–öç2’–b&VF7F–öç2VÇ6R&W7VÇ@  ¦FVb÷&WV—&UöÖ–æ÷%÷66÷R€¢F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW'6öã¢W'6öâÂW6W#¢W6W"Â66÷S¢7G ¢’Óâ&ööÃ ¢&WGW&â&WV—&UöÖ–æ÷%÷66÷R†F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂW'6öâÂ66÷R  ¦FVbö76W'EöÖVÖ÷'•öÖ–æ÷%÷66÷W2€¢F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW6W#¢W6W"ÂW'6öåö–G3¢Æ—7EµUT”EÐ¢’ÓâæöæS ¢f÷"W'6öåö–B–â6WB‡W'6öåö–G2“ ¢W'6öâÒ÷W'6öåö–åöfÖ–Ç’†F"ÂfÖ–Ç•ö–BÂW'6öåö–B¢ö76W'E÷W'6öå÷f—6–&ÆR†F"ÂW'6öâÂW6W"¢÷&WV—&UöÖ–æ÷%÷66÷R†F"ÂfÖ–Ç•ö–BÂW'6öâÂW6W"Â&ÖævUöÖVÖ÷&–W2"  ¦FVböÖVÖ÷'•÷f—6–&ÆU÷FõöÖVÖ&W"€¢F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW6W#¢W6W"ÂÖVÖ÷'•ö–G3¢Æ—7EµUT”EÐ¢’Óâ6WEµUT”EÓ ¢–bæ÷BÖVÖ÷'•ö–G3 ¢&WGW&â6WB‚¢FvvVBÒF"æW†V7WFR€¢6VÆV7B„ÖVÖ÷'•W'6öåFræÖVÖ÷'•ö–BÂW'6öâæ–BÂW'6öâæ&—'F…öFFR¢æ¦ö–â…W'6öâÂW'6öâæ–BÓÒÖVÖ÷'•W'6öåFrçW'6öåö–B¢æ¦ö–â„fÖ–Ç•W'6öâÂfÖ–Ç•W'6öâçW'6öåö–BÓÒW'6öâæ–B¢çv†W&R€¢ÖVÖ÷'•W'6öåFræÖVÖ÷'•ö–Bæ–åò†ÖVÖ÷'•ö–G2’À¢fÖ–Ç•W'6öâæfÖ–Ç•ö–BÓÒfÖ–Ç•ö–BÀ¢¢’æÆÂ‚¢W'6öåö–G2Ò·W'6öåö–Bf÷"òÂW'6öåö–BÂò–âFvvVEÐ¢66÷W2Ò7F—fUöwV&F–å÷66÷W2†F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂW'6öåö–G2¢f—6–&ÆRÒ6WB†ÖVÖ÷'•ö–G2¢f÷"ÖVÖ÷'•ö–BÂW'6öåö–BÂ&—'F…öFFR–âFvvVC ¢–b—5öÖ–æ÷"†&—'F…öFFR’—2G'VRæB&ÖævUöÖVÖ÷&–W2"æ÷B–â66÷W2ævWB‡W'6öåö–BÂ6WB‚’“ ¢f—6–&ÆRæF—66&B†ÖVÖ÷'•ö–B¢&WGW&âf—6–&ÆP  ¦FVbö6öÖÖ—B†F#¢6W76–öâÂÖW76vS¢7G"“ ¢G'“ ¢F"æ6öÖÖ—B‚¢W†6WB–çFVw&—G”W'&÷"2W'&÷# ¢F"ç&öÆÆ&6²‚¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC’ÂFWF–ÃÖÖW76vR’g&öÒW'&÷   ¦FVböVF—B€¢F#¢6W76–öâÀ¢W6W#¢W6W"À¢fÖ–Ç•ö–C¢UT”BÂæöæRÀ¢7F–öã¢7G"À¢F&vWE÷G—S¢7G"À¢F&vWEö–C¢UT”BÂæöæRÀ¢’ÓâæöæS ¢F"æFB€¢VF—DÆör€¢7F÷%ö–C×W6W"æ–BÀ¢fÖ–Ç•ö–CÖfÖ–Ç•ö–BÀ¢7F–öãÖ7F–öâÀ¢F&vWE÷G—S×F&vWE÷G—RÀ¢F&vWEö–C×F&vWEö–BÀ¢¢  ¦FVbö6åöVF—E÷W'6öâ†F#¢6W76–öâÂfÖ–Ç•ö–C¢UT”BÂW'6öã¢W'6öâÂW6W#¢W6W"’Óâ&ööÃ ¢ÖVÖ&W"ÂòÒöÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"¢–bÖVÖ&W"ç&öÆR–â²&÷væW""Â&VF—F÷"'Ó ¢&WGW&âG'VP¢&WGW&â€¢F"ç66Æ"€¢6VÆV7B…W6W%W'6öäÆ–æ²æ–B’çv†W&R€¢W6W%W'6öäÆ–æ²çW6W%ö–BÓÒW6W"æ–BÂW6W%W'6öäÆ–æ²çW'6öåö–BÓÒW'6öâæ–@¢¢¢—2æ÷BæöæP¢  ¤&÷WFW"ç÷7B‚""Â&W7öç6UöÖöFVÃÔfÖ–Ç”÷WBÂ7FGW5ö6öFSÓ#¦FVb7&VFUöfÖ–Ç’€¢&öG“¢fÖ–Ç”7&VFRÂW6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’ÂF#¢6W76–öâÒFWVæG2†vWEöF"¢“ ¢fÖ–Ç’ÒfÖ–Ç’†æÖSÖ&öG’ææÖRç7G&—‚’ÂFW67&—F–öãÖ&öG’æFW67&—F–öâÂ7&VFVEö'“×W6W"æ–B¢F"æFB†fÖ–Ç’¢F"æfÇW6‚‚¢ÖVÖ&W"ÒfÖ–Ç”ÖVÖ&W"†fÖ–Ç•ö–CÖfÖ–Ç’æ–BÂW6W%ö–C×W6W"æ–BÂ&öÆSÒ&÷væW""¢F"æFB†ÖVÖ&W"¢F"æfÇW6‚‚¢öVF—B†F"ÂW6W"ÂfÖ–Ç’æ–BÂ&fÖ–Ç’æ7&VFVB"Â&fÖ–Ç’"ÂfÖ–Ç’æ–B¢F"æ6öÖÖ—B‚¢F"ç&Vg&W6‚†fÖ–Ç’¢&WGW&âfÖ–Ç”÷WB€¢–CÖfÖ–Ç’æ–BÀ¢æÖSÖfÖ–Ç’ææÖRÀ¢FW67&—F–öãÖfÖ–Ç’æFW67&—F–öâÀ¢7&VFVEöCÖfÖ–Ç’æ7&VFVEöBÀ¢&öÆSÖÖVÖ&W"ç&öÆRÀ¢  ¤&÷WFW"ævWB‚""Â&W7öç6UöÖöFVÃÖÆ—7E´fÖ–Ç”÷WEÒ¦FVbÆ—7EöfÖ–Æ–W2‡W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’ÂF#¢6W76–öâÒFWVæG2†vWEöF"’“ ¢&÷w2ÒF"æW†V7WFR€¢6VÆV7B„fÖ–Ç’ÂfÖ–Ç”ÖVÖ&W"ç&öÆR¢æ¦ö–â„fÖ–Ç”ÖVÖ&W"ÂfÖ–Ç”ÖVÖ&W"æfÖ–Ç•ö–BÓÒfÖ–Ç’æ–B¢çv†W&R„fÖ–Ç”ÖVÖ&W"çW6W%ö–BÓÒW6W"æ–BÂfÖ–Ç’æ&6†—fVEöBæ—5ò„æöæR’¢æ÷&FW%ö'’„fÖ–Ç’æ7&VFVEöB¢’æÆÂ‚¢&WGW&â°¢fÖ–Ç”÷WB€¢–CÖbæ–BÂæÖSÖbææÖRÂFW67&—F–öãÖbæFW67&—F–öâÂ7&VFVEöCÖbæ7&VFVEöBÂ&öÆS×&öÆP¢¢f÷"bÂ&öÆR–â&÷w0¢Ð  ¤&÷WFW"ævWB‚"÷¶fÖ–Ç•ö–GÒ"Â&W7öç6UöÖöFVÃÔfÖ–Ç”÷WB¦FVbvWEöfÖ–Ç’€¢fÖ–Ç•ö–C¢UT”BÂW6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’ÂF#¢6W76–öâÒFWVæG2†vWEöF"¢“ ¢ÖVÖ&W"ÂfÖ–Ç’ÒöÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"¢&WGW&âfÖ–Ç”÷WB€¢–CÖfÖ–Ç’æ–BÀ¢æÖSÖfÖ–Ç’ææÖRÀ¢FW67&—F–öãÖfÖ–Ç’æFW67&—F–öâÀ¢7&VFVEöCÖfÖ–Ç’æ7&VFVEöBÀ¢&öÆSÖÖVÖ&W"ç&öÆRÀ¢  ¤&÷WFW"çF6‚‚"÷¶fÖ–Ç•ö–GÒ"Â&W7öç6UöÖöFVÃÔfÖ–Ç”÷WB¦FVbWFFUöfÖ–Ç’€¢fÖ–Ç•ö–C¢UT”BÀ¢&öG“¢fÖ–Ç•F6‚À¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢ÖVÖ&W"ÂfÖ–Ç’vïn-¢G§²ÚîÆ­yÖVEöBæFW62‚’’æÆ–Ö—BƒS¢’æÆÂ‚¢f—6–&ÆU÷†÷Fõö–G2Ò÷FvvVE÷†÷Fõ÷f—6–&–Æ—G’†F"ÂfÖ–Ç•ö–BÂW6W"Â†÷F÷2¢&WGW&â°¢&–B#¢ÖVÖ÷'’æ–BÀ¢'F—FÆR#¢ÖVÖ÷'’çF—FÆRÀ¢&FW67&—F–öâ#¢ÖVÖ÷'’æFW67&—F–öâÀ¢&ÖVÖ÷'•öFFR#¢ÖVÖ÷'’æÖVÖ÷'•öFFRÀ¢'f—6–&–Æ—G’#¢ÖVÖ÷'’çf—6–&–Æ—G’À¢'W'6öåö–G2#¢Fuö–G2À¢&7&VFVEöB#¢ÖVÖ÷'’æ7&VFVEöBÀ¢'†÷F÷2#¢µ÷†÷Fõ÷–ÆöB‡†÷Fò’f÷"†÷Fò–â†÷F÷2–b†÷Fòæ–B–âf—6–&ÆU÷†÷Fõö–G5ÒÀ¢Ð  ¤&÷WFW"çF6‚‚"÷¶fÖ–Ç•ö–GÒöÖVÖ÷&–W2÷¶ÖVÖ÷'•ö–GÒ"¦FVbWFFUöÖVÖ÷'’€¢fÖ–Ç•ö–C¢UT”BÀ¢ÖVÖ÷'•ö–C¢UT”BÀ¢&öG“¢ÖVÖ÷'”–çWBÀ¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢ÖVÖ&W"ÂòÒöÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"¢ÖVÖ÷'’ÒF"ç66Æ"‡6VÆV7B„ÖVÖ÷'’’çv†W&R„ÖVÖ÷'’æ–BÓÒÖVÖ÷'•ö–BÂÖVÖ÷'’æfÖ–Ç•ö–BÓÒfÖ–Ç•ö–B’¢–bÖVÖ÷'’—2æöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-	M=Íbí½MíÝ=*ý’â"¢–bÖVÖ÷'’çf—6–&–Æ—G’ÓÒ'&—fFR"æBÖVÖ÷'’æ7&VFVEö'’ÒW6W"æ–C ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-	M=Íbí½MíÝ=*ý’â"¢–bÖVÖ&W"ç&öÆRæ÷B–â²&÷væW""Â&VF—F÷"'ÒæBÖVÖ÷'’æ7&VFVEö'’ÒW6W"æ–C ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC2ÂFWF–ÃÒ-	M=Íb}RÝ]=*ý’â"¢W†—7F–æu÷W'6öåö–G2ÒÆ—7B€¢F"ç66Æ'2€¢6VÆV7B„ÖVÖ÷'•W'6öåFrçW'6öåö–B’çv†W&R„ÖVÖ÷'•W'6öåFræÖVÖ÷'•ö–BÓÒÖVÖ÷'•ö–B¢’æÆÂ‚¢¢ö76W'EöÖVÖ÷'•öÖ–æ÷%÷66÷W2†F"ÂfÖ–Ç•ö–BÂW6W"ÂW†—7F–æu÷W'6öåö–G2¢f÷"W'6öåö–B–â&öG’çW'6öåö–G3 ¢W'6öâÒ÷W'6öåö–åöfÖ–Ç’†F"ÂfÖ–Ç•ö–BÂW'6öåö–B¢ö76W'E÷W'6öå÷f—6–&ÆR†F"ÂW'6öâÂW6W"¢÷&WV—&UöÖ–æ÷%÷66÷R†F"ÂfÖ–Ç•ö–BÂW'6öâÂW6W"Â&ÖævUöÖVÖ÷&–W2"¢f÷"¶W’–â‚'F—FÆR"Â&FW67&—F–öâ"Â&ÖVÖ÷'•öFFR"Â'f—6–&–Æ—G’"“ ¢6WFGG"†ÖVÖ÷'’Â¶W’ÂvWFGG"†&öG’Â¶W’’¢F"æW†V7WFR†FVÆWFR„ÖVÖ÷'•W'6öåFr’çv†W&R„ÖVÖ÷'•W'6öåFræÖVÖ÷'•ö–BÓÒÖVÖ÷'•ö–B’¢F"æFEöÆÂ€¢ÖVÖ÷'•W'6öåFr†ÖVÖ÷'•ö–CÖÖVÖ÷'•ö–BÂW'6öåö–C×W'6öåö–B¢f÷"W'6öåö–B–â6WB†&öG’çW'6öåö–G2¢¢öVF—B†F"ÂW6W"ÂfÖ–Ç•ö–BÂ&ÖVÖ÷'’çWFFVB"Â&ÖVÖ÷'’"ÂÖVÖ÷'•ö–B¢F"æ6öÖÖ—B‚¢&WGW&âvWEöÖVÖ÷'’†fÖ–Ç•ö–BÂÖVÖ÷'•ö–BÂW6W"ÂF"  ¤&÷WFW"æFVÆWFR‚"÷¶fÖ–Ç•ö–GÒöÖVÖ÷&–W2÷¶ÖVÖ÷'•ö–GÒ"Â7FGW5ö6öFSÓ#B¦FVbFVÆWFUöÖVÖ÷'’€¢fÖ–Ç•ö–C¢UT”BÀ¢ÖVÖ÷'•ö–C¢UT”BÀ¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢7F÷&vS¢ö&¦V7E7F÷&vRÒFWVæG2†vWE÷7F÷&vR’À¢“ ¢g&öÒæÖVÖ÷'•÷†÷F÷2–×÷'BFVÆWFUöÖVÖ÷'•÷†÷F÷0¢ÖVÖ&W"ÂòÒöÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"¢ÖVÖ÷'’ÒF"ç66Æ"‡6VÆV7B„ÖVÖ÷'’’çv†W&R„ÖVÖ÷'’æ–BÓÒÖVÖ÷'•ö–BÂÖVÖ÷'’æfÖ–Ç•ö–BÓÒfÖ–Ç•ö–B’¢–bÖVÖ÷'’—2æöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-	M=Íbí½MíÝ=*ý’â"¢–bÖVÖ÷'’çf—6–&–Æ—G’ÓÒ'&—fFR"æBÖVÖ÷'’æ7&VFVEö'’ÒW6W"æ–C ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-	M=Íbí½MíÝ=*ý’â"¢–bÖVÖ&W"ç&öÆRæ÷B–â²&÷væW""Â&VF—F÷"'ÒæBÖVÖ÷'’æ7&VFVEö'’ÒW6W"æ–C ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC2ÂFWF–ÃÒ-	M=Íb=-=RÝ]=*ý’â"¢Fuö–G2ÒÆ—7B€¢F"ç66Æ'2€¢6VÆV7B„ÖVÖ÷'•W'6öåFrçW'6öåö–B’çv†W&R„ÖVÖ÷'•W'6öåFræÖVÖ÷'•ö–BÓÒÖVÖ÷'•ö–B¢’æÆÂ‚¢¢ö76W'EöÖVÖ÷'•öÖ–æ÷%÷66÷W2†F"ÂfÖ–Ç•ö–BÂW6W"ÂFuö–G2¢FVÆWFUöÖVÖ÷'•÷†÷F÷2†F"Â7F÷&vRÂfÖ–Ç•ö–BÂÖVÖ÷'•ö–BÂW6W"¢öVF—B†F"ÂW6W"ÂfÖ–Ç•ö–BÂ&ÖVÖ÷'’æFVÆWFVB"Â&ÖVÖ÷'’"ÂÖVÖ÷'•ö–B¢F"æFVÆWFR†ÖVÖ÷'’¢F"æ6öÖÖ—B‚¢&WGW&â&W7öç6R‡7FGW5ö6öFSÓ#B  ¤&÷WFW"ævWB‚"÷¶fÖ–Ç•ö–GÒöVF—B"¦FVbfÖ–Ç•öVF—B€¢fÖ–Ç•ö–C¢UT”BÀ¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢öÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"Â²&÷væW"'Ò¢VçG&–W2ÒF"ç66Æ'2€¢6VÆV7B„VF—DÆör¢çv†W&R„VF—DÆöræfÖ–Ç•ö–BÓÒfÖ–Ç•ö–B¢æ÷&FW%ö'’„VF—DÆöræ7&VFVEöBæFW62‚’¢æÆ–Ö—Bƒ¢’æÆÂ‚¢&WGW&â°¢°¢&–B#¢VçG'’æ–BÀ¢&7F÷%ö–B#¢VçG'’æ7F÷%ö–BÀ¢&7F–öâ#¢VçG'’æ7F–öâÀ¢'F&vWE÷G—R#¢VçG'’çF&vWE÷G—RÀ¢'F&vWEö–B#¢VçG'’çF&vWEö–BÀ¢&7&VFVEöB#¢VçG'’æ7&VFVEöBÀ¢Ð¢f÷"VçG'’–âVçG&–W0¢Ð  ¤&÷WFW"ç÷7B‚"÷¶fÖ–Ç•ö–GÒö–çf—FF–öç2"Â7FGW5ö6öFSÓ#¦FVb7&VFUö–çf—FF–öâ€¢fÖ–Ç•ö–C¢UT”BÀ¢&öG“¢–çf—FF–öä7&VFRÀ¢&WVW7C¢&WVW7BÀ¢VÖ–Å÷&÷f–FW#¢VÖ–Å&÷f–FW"ÒFWVæG2†vWEöVÖ–Å÷&÷f–FW"’À¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢öÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"Â²&÷væW"'Ò¢VÖ–ÂÒæ÷&ÖÆ—¦UöVÖ–Â‡7G"†&öG’æVÖ–Â’¢–bæ÷Bö6öç7VÖUö÷G÷&FR†F"Â&–çf—FF–öâ×&V6—–VçB"ÂVÖ–ÂÂR“ ¢&—6R…EEW†6WF–öâ€¢7FGW5ö6öFSÓC#’ÂFWF–ÃÒ-
+]Ý"í½íÒ=½=½=ÝÝ½ÝÒâ
+-*ý]*ý½ÝÝ=ÝÝBM]Òíí½MíÝâ=2â ¢¢–bæ÷Bö6öç7VÖUö÷G÷&FR†F"Â&–çf—FF–öâÖ÷væW""Â7G"‡W6W"æ–B’Â“ ¢&—6R…EEW†6WF–öâ€¢7FGW5ö6öFSÓC#’ÂFWF–ÃÒ-
+]Ý"í½íÒ=½=½=ÝÝ½ÝÒâ
+-*ý]*ý½ÝÝ=ÝÝBM]Òíí½MíÝâ=2â ¢¢–bæ÷Bö6öç7VÖUö÷G÷&FR†F"Â&–çf—FF–öâÖ—"Âöæ÷&ÖÆ—¦VEö—‡&WVW7B’Â#“ ¢&—6R…EEW†6WF–öâ€¢7FGW5ö6öFSÓC#’ÂFWF–ÃÒ-
+]Ý"í½íÒ=½=½=ÝÝ½ÝÒâ
+-*ý]*ý½ÝÝ=ÝÝBM]Òíí½MíÝâ=2â ¢¢W†—7F–æu÷W6W"ÒF"ç66Æ"‡6VÆV7B…W6W"’çv†W&R…W6W"æVÖ–ÂÓÒVÖ–Â’¢–bW†—7F–æu÷W6W"æBF"ç66Æ"€¢6VÆV7B„fÖ–Ç”ÖVÖ&W"æ–B’çv†W&R€¢fÖ–Ç”ÖVÖ&W"æfÖ–Ç•ö–BÓÒfÖ–Ç•ö–BÂfÖ–Ç”ÖVÖ&W"çW6W%ö–BÓÒW†—7F–æu÷W6W"æ–@¢¢“ ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC’ÂFWF–ÃÒ-
+ÝÝÒ]ÝÝ=½Ý=r=Ý*ý½Ò=*ý*ýÒÝâ"¢&u÷Fö¶VâÒ6V7&WG2çFö¶Vå÷W&Ç6fRƒ3"¢–çf—FF–öâÒ–çf—FF–öâ€¢fÖ–Ç•ö–CÖfÖ–Ç•ö–BÀ¢–çf—FVEöVÖ–ÃÖVÖ–ÂÀ¢&öÆSÖ&öG’ç&öÆRÀ¢Fö¶Våö†6ƒÖ†6†Æ–"ç6†#Sb‡&u÷Fö¶VâæVæ6öFR‚’’æ†W†F–vW7B‚’À¢–çf—FVEö'“×W6W"æ–BÀ¢W‡—&W5öCÖFFWF–ÖRææ÷r…UD2’²F–ÖVFVÇF†F—3Ór’À¢¢F"æFB†–çf—FF–öâ¢F"æfÇW6‚‚¢öVF—B†F"ÂW6W"ÂfÖ–Ç•ö–BÂ&–çf—FF–öâæ7&VFVB"Â&–çf—FF–öâ"Â–çf—FF–öâæ–B¢F"æ6öÖÖ—B‚¢fÖ–Ç’ÒF"ævWB„fÖ–Ç’ÂfÖ–Ç•ö–B¢6WGF–æw2ÒvWE÷6WGF–æw2‚¢Æ–æ²Òb'·6WGF–æw2æVÖ–Å÷V&Æ–5ö&6U÷W&Âç'7G&—‚ròr—Òö–çf—FR7Fö¶Vã×·&u÷Fö¶VçÒ ¢G'“ ¢VÖ–Å÷&÷f–FW"ç6VæEö–çf—FF–öåöVÖ–Â†–çf—FF–öâæ–çf—FVEöVÖ–ÂÂfÖ–Ç’ææÖRÂÆ–æ²¢W†6WBVÖ–ÄFVÆ—fW'”W'&÷"2W'&÷# ¢–çf—FF–öâç&Wfö¶VEöBÒFFWF–ÖRææ÷r…UD2¢öVF—B†F"ÂW6W"ÂfÖ–Ç•ö–BÂ&–çf—FF–öâæVÖ–Åöf–ÆVB"Â&–çf—FF–öâ"Â–çf—FF–öâæ–B¢F"æ6öÖÖ—B‚¢&—6R…EEW†6WF–öâ€¢7FGW5ö6öFSÓS2ÂFWF–ÃÒ-
+=½=½ÒÍÝ²½=ÝÝb}MÝ=*ý’â	M]Òíí½MíÝâ=2â ¢’g&öÒW'&÷ ¢öVF—B†F"ÂW6W"ÂfÖ–Ç•ö–BÂ&–çf—FF–öâç6VçB"Â&–çf—FF–öâ"Â–çf—FF–öâæ–B¢F"æ6öÖÖ—B‚¢&WGW&â°¢&–B#¢–çf—FF–öâæ–BÀ¢&VÖ–Â#¢–çf—FF–öâæ–çf—FVEöVÖ–ÂÀ¢'&öÆR#¢–çf—FF–öâç&öÆRÀ¢&W‡—&W5öB#¢–çf—FF–öâæW‡—&W5öBÀ¢&FVÆ—fW'’#¢'6VçB"À¢Ð  ¤&÷WFW"æFVÆWFR‚"÷¶fÖ–Ç•ö–GÒö–çf—FF–öç2÷¶–çf—FF–öåö–GÒ"Â7FGW5ö6öFSÓ#B¦FVb&Wfö¶Uö–çf—FF–öâ€¢fÖ–Ç•ö–C¢UT”BÀ¢–çf—FF–öåö–C¢UT”BÀ¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢öÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"Â²&÷væW"'Ò¢–çf—FF–öâÒF"ç66Æ"€¢6VÆV7B„–çf—FF–öâ¢çv†W&R„–çf—FF–öâæ–BÓÒ–çf—FF–öåö–BÂ–çf—FF–öâæfÖ–Ç•ö–BÓÒfÖ–Ç•ö–B¢çv—F…öf÷%÷WFFR‚¢¢–b€¢–çf—FF–öâ—2æöæP¢÷"–çf—FF–öâæ66WFVEöB—2æ÷BæöæP¢÷"–çf—FF–öâç&Wfö¶VEöB—2æ÷BæöæP¢“ ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-
+=½=í½MíÝ=*ý’â"¢–çf—FF–öâç&Wfö¶VEöBÒFFWF–ÖRææ÷r…UD2¢öVF—B†F"ÂW6W"ÂfÖ–Ç•ö–BÂ&–çf—FF–öâç&Wfö¶VB"Â&–çf—FF–öâ"Â–çf—FF–öâæ–B¢F"æ6öÖÖ—B‚¢&WGW&â&W7öç6R‡7FGW5ö6öFSÓ#B  ¤–çf—FF–öç5÷&÷WFW"ç÷7B‚"ö66WB"¦FVb66WEö–çf—FF–öâ€¢&öG“¢–çf—FF–öä66WBÀ¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢Fö¶Våö†6‚Ò†6†Æ–"ç6†#Sb†&öG’çFö¶VâæVæ6öFR‚’’æ†W†F–vW7B‚¢–çf—FF–öâÒF"ç66Æ"€¢6VÆV7B„–çf—FF–öâ¢çv†W&R€¢–çf—FF–öâçFö¶Våö†6‚ÓÒFö¶Våö†6‚À¢–çf—FF–öâæ66WFVEöBæ—5ò„æöæR’À¢–çf—FF–öâç&Wfö¶VEöBæ—5ò„æöæR’À¢–çf—FF–öâæW‡—&W5öBâFFWF–ÖRææ÷r…UD2’À¢¢çv—F…öf÷%÷WFFR‚¢¢–b–çf—FF–öâ—2æöæS ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓCBÂFWF–ÃÒ-
+=½=]*ý}Ý=*ý’Ý-Ý²]==mM==ÒÝâ"¢–bæ÷&ÖÆ—¦UöVÖ–Â‡W6W"æVÖ–Â’Ò–çf—FF–öâæ–çf—FVEöVÖ–Ã ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC2ÂFWF–ÃÒ-
+ÝÝÒ=½=::ÍÝ²]ý="}í=½=MÒâ"¢fW&–f–VEö–FVçF—G’ÒF"ç66Æ"€¢6VÆV7B„Æöv–ä–FVçF—G’æ–B’çv†W&R€¢Æöv–ä–FVçF—G’çW6W%ö–BÓÒW6W"æ–BÀ¢Æöv–ä–FVçF—G’ç&÷f–FW"ÓÒ&VÖ–Â"À¢Æöv–ä–FVçF—G’ææ÷&ÖÆ—¦VEö–FVçF–f–W"ÓÒ–çf—FF–öâæ–çf—FVEöVÖ–ÂÀ¢Æöv–ä–FVçF—G’çfW&–f–VEöBæ—5öæ÷B„æöæR’À¢Æöv–ä–FVçF—G’æF—6&ÆVEöBæ—5ò„æöæR’À¢¢¢–bW6W"æVÖ–Å÷fW&–f–VEöB—2æöæRæBfW&–f–VEö–FVçF—G’—2æöæS ¢&—6R…EEW†6WF–öâ€¢7FGW5ö6öFSÓC2ÂFWF–ÃÒ-
+=½=½2-]½Ò:ÍÝ:’ÍÝ½ÝÒ-½=m==½Ý=2â ¢¢–bF"ç66Æ"€¢6VÆV7B„fÖ–Ç”ÖVÖ&W"æ–B’çv†W&R€¢fÖ–Ç”ÖVÖ&W"æfÖ–Ç•ö–BÓÒ–çf—FF–öâæfÖ–Ç•ö–BÂfÖ–Ç”ÖVÖ&W"çW6W%ö–BÓÒW6W"æ–@¢¢“ ¢&—6R…EEW†6WF–öâ‡7FGW5ö6öFSÓC’ÂFWF–ÃÒ-
+-ÝÝÒ=Ý*ý½Ò=*ý*ýÒÝâ"¢–çf—FF–öâæ66WFVEöBÒFFWF–ÖRææ÷r…UD2¢F"æFB„fÖ–Ç”ÖVÖ&W"†fÖ–Ç•ö–CÖ–çf—FF–öâæfÖ–Ç•ö–BÂW6W%ö–C×W6W"æ–BÂ&öÆSÖ–çf—FF–öâç&öÆR’¢öVF—B†F"ÂW6W"Â–çf—FF–öâæfÖ–Ç•ö–BÂ&–çf—FF–öâæ66WFVB"Â&–çf—FF–öâ"Â–çf—FF–öâæ–B¢ö6öÖÖ—B†F"Â-
+=½=½2=½Rí½íÍm=*ý’Ýâ"¢&WGW&â²&fÖ–Ç•ö–B#¢–çf—FF–öâæfÖ–Ç•ö–BÂ'&öÆR#¢–çf—FF–öâç&öÆWÐ  ¤&÷WFW"ævWB‚"÷¶fÖ–Ç•ö–GÒ÷G&VR"Â&W7öç6UöÖöFVÃÕG&VT÷WB¦FVbfÖ–Ç•÷G&VR€¢fÖ–Ç•ö–C¢UT”BÀ¢W'6öåö–C¢UT”BÂæöæRÒVW'’†FVfVÇCÔæöæRÂFW67&—F–öãÒ-	­íÝ-]­-Ò=í²]*ýÒâ"’À¢FWFƒ¢–çBÒVW'’†FVfVÇCÓ"ÂvSÓÂÆSÓRÂFW67&—F–öãÒ-
+]í½ííÝ²=*ýÒÂ]Í=Ò]MÝÒRâ"’À¢W6W#¢W6W"ÒFWVæG2†vWEö7W'&VçE÷W6W"’À¢F#¢6W76–öâÒFWVæG2†vWEöF"’À¢“ ¢""%&WGW&âfÖ–Ç’ÖWF†÷&—¦VBG&VRæV–v†&÷&†ööB6VBB3V÷ÆRæBÃ#VFvW2â"" ¢öÖVÖ&W"†F"ÂfÖ–Ç•ö–BÂW6W"¢–bW'6öåö–B—2æöæS ¢Æ–æ¶VE÷W'6öåö–BÒF"ç66Æ"€¢6VÆV7B…W6W%W'6öäÆ–æ²çW'6öåö–B¢æ¦ö–â„fÖ–Ç•W'6öâÂfÖ–Ç•W'6öâçW'6öåö–BÓÒW6W%W'6öäÆ–æ²çW'6öåö–B¢çv†W&R…W6W%W'6öäÆ–æ²çW6W%ö–BÓÒW6W"æ–BÂfÖ–Ç•W'6öâæfÖ–Ç•ö–BÓÒfÖ–Ç•ö–B¢¢W'6öåö–BÒÆ–æ¶VE÷W'6öåö–B÷"F"ç66Æ"€¢6VÆV7B…W'6öâæ–B¢æ¦ö–â„fÖ–Ç•W'6öâÂfÖ–Ç•W'6öâçW'6öåö–BÓÒW'6öâæ–B¢çv†W&R€¢fÖ–Ç•W'6öâæfÖ–Ç•ö–BÓÒfÖ–Ç•ö–BÀ¢÷%ò…W'6öâçf—6–&–Æ—G’Ò'&—fFR"ÂW'6öâæ7&VFVEö'’ÓÒW6W"æ–B’À¢¢æ÷&FW%ö'’…W'6öâç6V&6…öÆ7EöæÖRÂW'6öâç6V&6…öf—'7EöæÖRÂW'6öâæ–B¢æÆ–Ö—Bƒ¢¢–bW'6öåö–B—2æöæS ¢&WGW&â°¢'&ö÷E÷W'6öåö–B#¢æöæRÀ¢'W'6öç2#¢µÒÀ¢'&VçEö6†–ÆE÷&VÆF–öç6†—2#¢µÒÀ¢&Ö'&–vW2#¢µÒÀ¢&ÖWF#¢²&FWF‚#¢FWF‚Â&æöFUö6÷VçB#¢Â&æöFUöÆ–Ö—B#¢3Â'G'Væ6FVB#¢fÇ6WÒÀ¢Ð ¢&ö÷BÒ÷W'6öåö–åöfÖ–Ç’†F"ÂfÖ–Ç•ö–BÂW'6öåö–B¢ö76W'E÷W'6öå÷f—6–&ÆR†F"Â&ö÷BÂW6W"¢V÷ÆS¢F–7EµUT”BÂW'6öåÒÒ·&ö÷Bæ–C¢&ö÷GÐ¢&VçEöVFvW3¢F–7EµUT”BÂ&VçD6†–ÆE&VÆF–öç6†—ÒÒ·Ð¢Ö'&–vW3¢F–7EµUT”BÂÖ'&–vUÒÒ·Ð¢66÷W2Ò7F—fUöwV&F–å÷66÷W2†F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂ·&ö÷Bæ–EÒ¢÷vå÷W'6öåö–BÒF"ç66Æ"‡6VÆV7B…W6W%W'6öäÆ–æ²çW'6öåö–B’çv†W&R…W6W%W'6öäÆ–æ²çW6W%ö–BÓÒW6W"æ–B’¢FVb6å÷G&fW'6R‡W'6öã¢W'6öâ’Óâ&ööÃ ¢&WGW&âæ÷BW'6öåö—5öÖ–æ÷"‡W'6öâ’÷"'f–Wu÷&öf–ÆR"–â66÷W2ævWB‡W'6öâæ–BÂ6WB‚’ ¢g&öçF–W"Ò·&ö÷Bæ–GÒ–b6å÷G&fW'6R‡&ö÷B’VÇ6R6WB‚¢G'Væ6FVBÒfÇ6P¢æöFUöÆ–Ö—BÒ3 ¢VFvUöÆ–Ö—BÒ#  ¢f÷"öÆWfVÂ–â&ævR†FWF‚“ ¢–bæ÷Bg&öçF–W# ¢'&V°¢&VçE÷&÷w2ÒÆ—7B€¢F"ç66Æ'2€¢6VÆV7B…&VçD6†–ÆE&VÆF–öç6†—¢çv†W&R€¢÷%ò€¢&VçD6†–ÆE&VÆF–öç6†—ç&VçEö–Bæ–åò†g&öçF–W"’À¢&VçD6†–ÆE&VÆF–öç6†—æ6†–ÆEö–Bæ–åò†g&öçF–W"’À¢¢¢æ÷&FW%ö'’…&VçD6†–ÆE&VÆF–öç6†—æ–B¢æÆ–Ö—B†VFvUöÆ–Ö—B²¢’æÆÂ‚¢¢Ö'&–vU÷&÷w2ÒÆ—7B€¢F"ç66Æ'2€¢6VÆV7B„Ö'&–vR¢çv†W&R€¢Ö'&–vRæFVÆWFVEöBæ—5ò„æöæR’À¢÷%ò„Ö'&–vRçW'6öåóö–Bæ–åò†g&öçF–W"’ÂÖ'&–vRçW'6öåó%ö–Bæ–åò†g&öçF–W"’’À¢¢æ÷&FW%ö'’‚¥öÖ'&–vUö÷&FW"‚’¢æÆ–Ö—B†VFvUöÆ–Ö—B²¢’æÆÂ‚¢¢–bÆVâ‡&VçE÷&÷w2’âVFvUöÆ–Ö—B÷"ÆVâ†Ö'&–vU÷&÷w2’âVFvUöÆ–Ö—C ¢G'Væ6FVBÒG'VP¢&VçE÷&÷w2Ò&VçE÷&÷w5³¦VFvUöÆ–Ö—EÐ¢Ö'&–vU÷&÷w2ÒÖ'&–vU÷&÷w5³¦VFvUöÆ–Ö—EÐ¢6æF–FFUö–G2Ò°¢VæGö–ç@¢f÷"VFvR–â&VçE÷&÷w0¢f÷"VæGö–çB–â†VFvRç&VçEö–BÂVFvRæ6†–ÆEö–B¢ÒÂ°¢VæGö–ç@¢f÷"Ö'&–vR–âÖ'&–vU÷&÷w0¢f÷"VæGö–çB–â†Ö'&–vRçW'6öåóö–BÂÖ'&–vRçW'6öåó%ö–B¢Ð¢6æF–FFUö–G2ÓÒV÷ÆRæ¶W—2‚¢6æF–FFU÷&÷w2ÒÆ—7B€¢F"ç66Æ'2€¢6VÆV7B…W'6öâ¢æ¦ö–â„fÖ–Ç•W'6öâÂfÖ–Ç•W'6öâçW'6öåö–BÓÒW'6öâæ–B¢çv†W&R€¢fÖ–Ç•W'6öâæfÖ–Ç•ö–BÓÒfÖ–Ç•ö–BÀ¢W'6öâæ–Bæ–åò†6æF–FFUö–G2’À¢÷%ò€¢W'6öâçf—6–&–Æ—G’Ò'&—fFR"À¢W'6öâæ7&VFVEö'’ÓÒW6W"æ–BÀ¢W'6öâæ–BÓÒ÷vå÷W'6öåö–BÀ¢’À¢¢æ÷&FW%ö'’…W'6öâæ–B¢æÆ–Ö—B†æöFUöÆ–Ö—B²¢’æÆÂ‚¢’–b6æF–FFUö–G2VÇ6RµÐ¢–bÆVâ†6æF–FFU÷&÷w2’âæöFUöÆ–Ö—C ¢G'Væ6FVBÒG'VP¢6æF–FFU÷&÷w2Ò6æF–FFU÷&÷w5³¦æöFUöÆ–Ö—EÐ¢6æF–FFU÷66÷W2Ò7F—fUöwV&F–å÷66÷W2€¢F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂ·W'6öâæ–Bf÷"W'6öâ–â6æF–FFU÷&÷w5Ð¢¢66÷W2çWFFR†6æF–FFU÷66÷W2¢f—6–&ÆUö6æF–FFW2Ò°¢W'6öâæ–C¢W'6öà¢f÷"W'6öâ–â6æF–FFU÷&÷w0¢–bæ÷BW'6öåö—5öÖ–æ÷"‡W'6öâ¢÷"'f–Wu÷&öf–ÆR"–â6æF–FFU÷66÷W2ævWB‡W'6öâæ–BÂ6WB‚’¢Ð¢æW‡Eög&öçF–W#¢6WEµUT”EÒÒ6WB‚ ¢FVbFÖ—B€¢W'6öåö–C¢UT”BÀ¢ÆÆ÷vVC¢F–7EµUT”BÂW'6öåÒÀ¢æW‡Eö–G3¢6WEµUT”EÒÀ¢’Óâ&ööÃ ¢æöæÆö6ÂG'Væ6FV@¢–bW'6öåö–B–âV÷ÆS ¢&WGW&âG'VP¢W'6öâÒÆÆ÷vVBævWB‡W'6öåö–B¢–bW'6öâ—2æöæS ¢&WGW&âfÇ6P¢–bÆVâ‡V÷ÆR’ãÒæöFUöÆ–Ö—C ¢G'Væ6FVBÒG'VP¢&WGW&âfÇ6P¢V÷ÆU·W'6öåö–EÒÒW'6öà¢æW‡Eö–G2æFB‡W'6öåö–B¢&WGW&âG'VP ¢f÷"VFvR–â&VçE÷&÷w3 ¢–bæ÷B†VFvRç&VçEö–B–âg&öçF–W"÷"VFvRæ6†–ÆEö–B–âg&öçF–W"“ ¢6öçF–çVP¢–bFÖ—B†VFvRç&VçEö–BÂf—6–&ÆUö6æF–FFW2ÂæW‡Eög&öçF–W"’æBFÖ—B€¢VFvRæ6†–ÆEö–BÂf—6–&ÆUö6æF–FFW2ÂæW‡Eög&öçF–W ¢“ ¢&VçEöVFvW5¶VFvRæ–EÒÒVFvP¢–bÆVâ‡&VçEöVFvW2’²ÆVâ†Ö'&–vW2’ãÒVFvUöÆ–Ö—C ¢G'Væ6FVBÒG'VP¢'&V°¢–bÆVâ‡&VçEöVFvW2’²ÆVâ†Ö'&–vW2’ÂVFvUöÆ–Ö—C ¢f÷"Ö'&–vR–âÖ'&–vU÷&÷w3 ¢–bæ÷B†Ö'&–vRçW'6öåóö–B–âg&öçF–W"÷"Ö'&–vRçW'6öåó%ö–B–âg&öçF–W"“ ¢6öçF–çVP¢–bFÖ—B†Ö'&–vRçW'6öåóö–BÂf—6–&ÆUö6æF–FFW2ÂæW‡Eög&öçF–W"’æBFÖ—B€¢Ö'&–vRçW'6öåó%ö–BÂf—6–&ÆUö6æF–FFW2ÂæW‡Eög&öçF–W ¢“ ¢Ö'&–vW5¶Ö'&–vRæ–EÒÒÖ'&–vP¢–bÆVâ‡&VçEöVFvW2’²ÆVâ†Ö'&–vW2’ãÒVFvUöÆ–Ö—C ¢G'Væ6FVBÒG'VP¢'&V°¢g&öçF–W"ÒæW‡Eög&öçF–W  ¢f–æÅ÷66÷W2Ò7F—fUöwV&F–å÷66÷W2†F"ÂW6W"æ–BÂfÖ–Ç•ö–BÂÆ—7B‡V÷ÆR’¢&WGW&â°¢'W'6öç2#¢°¢G&VUW'6öä÷WB€¢–C×W'6öâæ–BÀ¢f—'7EöæÖS×W'6öâæf—'7EöæÖRÀ¢Æ7EöæÖS×W'6öâæÆ7EöæÖRÀ¢Ö–FFÆUöæÖS×W'6öâæÖ–FFÆUöæÖRÀ¢&—'F…öFFSÒ€¢æöæP¢–bW'6öåö—5öÖ–æ÷"‡W'6öâ¢æB'f–Wu÷&öf–ÆR"æ÷B–âf–æÅ÷66÷W2ævWB‡W'6öâæ–BÂ6WB‚’¢VÇ6RW'6öâæ&—'F…öFFP¢’À¢—5öÆ—fS×W'6öâæ—5öÆ—fRÀ¢FVF…öFFSÒ€¢æöæP¢–bW'6öåö—5öÖ–æ÷"‡W'6öâ¢æB'f–Wu÷&öf–ÆR"æ÷B–âf–æÅ÷66÷W2ævWB‡W'6öâæ–BÂ6WB‚’¢VÇ6RW'6öâæFVF…öFFP¢’À¢¢f÷"W'6öâ–âV÷ÆRçfÇVW2‚¢ÒÀ¢'&ö÷E÷W'6öåö–B#¢&ö÷Bæ–BÀ¢'&VçEö6†–ÆE÷&VÆF–öç6†—2#¢Æ—7B‡&VçEöVFvW2çfÇVW2‚’’À¢&Ö'&–vW2#¢Æ—7B†Ö'&–vW2çfÇVW2‚’’À¢&ÖWF#¢°¢&FWF‚#¢FWF‚À¢&æöFUö6÷VçB#¢ÆVâ‡V÷ÆR’À¢&æöFUöÆ–Ö—B#¢æöFUöÆ–Ö—BÀ¢'G'Væ6FVB#¢G'Væ6FVBÀ¢ÒÀ¢Ð

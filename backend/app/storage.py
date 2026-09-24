@@ -3,10 +3,25 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Protocol
 
 from app.config import get_settings
+
+
+def _validate_key(key: str) -> str:
+    if not isinstance(key, str) or not key or "\\" in key or "\x00" in key:
+        raise ValueError("Invalid object key")
+    parts = key.split("/")
+    windows_path = PureWindowsPath(key)
+    if (
+        any(part in {"", ".", ".."} for part in parts)
+        or PurePosixPath(key).is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+    ):
+        raise ValueError("Invalid object key")
+    return key
 
 
 class ObjectStorage(Protocol):
@@ -26,6 +41,7 @@ class LocalObjectStorage:
         self.root = Path(root).expanduser().resolve()
 
     def _path(self, key: str) -> Path:
+        key = _validate_key(key)
         path = (self.root / PurePosixPath(key)).resolve()
         if path == self.root or self.root not in path.parents:
             raise ValueError("Invalid object key")
@@ -52,23 +68,34 @@ class S3ObjectStorage:
     def __init__(self, endpoint: str, bucket: str, region: str, access_key: str, secret_key: str):
         try:
             import boto3
+            from botocore.config import Config
         except ImportError as error:  # pragma: no cover - dependency install check
             raise RuntimeError("S3 storage requires boto3") from error
         self.bucket = bucket
         self.client = boto3.client(
             "s3", endpoint_url=endpoint, region_name=region,
             aws_access_key_id=access_key, aws_secret_access_key=secret_key,
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=3,
+                read_timeout=10,
+                retries={"max_attempts": 3, "mode": "standard"},
+                s3={"addressing_style": "path"},
+            ),
         )
 
     def put(self, key: str, data: bytes, content_type: str) -> None:
+        key = _validate_key(key)
         self.client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
 
     def get(self, key: str) -> bytes:
+        key = _validate_key(key)
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
     def exists(self, key: str) -> bool:
         from botocore.exceptions import ClientError
 
+        key = _validate_key(key)
         try:
             self.client.head_object(Bucket=self.bucket, Key=key)
             return True
@@ -78,6 +105,7 @@ class S3ObjectStorage:
             raise
 
     def delete(self, key: str) -> None:
+        key = _validate_key(key)
         self.client.delete_object(Bucket=self.bucket, Key=key)
 
 

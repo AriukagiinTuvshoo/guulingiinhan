@@ -12,6 +12,10 @@
 - DB талд foreign key, unique, check constraint тавьсан.
 - Амьд хүний visibility анх `family`; нууц холбоо барих талбарууд person schema-д байхгүй.
 - Зураг зөвхөн object key хадгална; файл DB-д оруулахгүй.
+- Фото upload нь decoder-оор бодит JPEG/PNG/WebP формат, өргөтгөл болон MIME-г шалгаж, pixel/byte хязгаар хэрэглэнэ. API хариунд storage key, файл metadata болон original filename гарахгүй.
+- Зургийн upload/delete lifecycle `uploading` → `ready` эсвэл `deletion_pending` төлөвөөр илэрхийлэгдэнэ. Хэсэгчилсэн object амжилтгүй болсон үед зургийг шууд нууж, retry цэвэрлэгээний tombstone үлдээнэ. Thumbnail EXIF metadata-г дахин кодлохдоо арилгана; original EXIF хэвээр үлдэнэ.
+- S3/R2 bucket public биш, public access блоклогдсон байх ёстой. API object storage-д шууд URL өгөхгүй, зөвшөөрөл шалгасны дараа proxy binary дамжуулна; `private, no-store`, `nosniff`, sandbox CSP ба same-site CORP header ашиглана.
+- Зургийн storage key-г API үүсгэсэн UUID замтай тулгаж шалгана; adapter path traversal ба absolute key-г зөвшөөрөхгүй. Upload rate limit user/family/IP хэмжээнд минутын тохируулгатай.
 - CORS origin environment-оос уншигдана.
 - Production тохиргоо PostgreSQL URL болон ил тод HTTPS CORS origin-уудыг шаардана.
 - Liveness ба database readiness endpoint тусдаа; хүсэлт бүр серверийн үүсгэсэн request ID авна.
