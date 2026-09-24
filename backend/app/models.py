@@ -6,10 +6,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import Uuid
@@ -178,6 +180,74 @@ class UserPersonLink(Base):
     person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
     linked_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PersonGuardianship(Base):
+    """Explicit, revocable authorization scoped to one person in one family."""
+
+    __tablename__ = "person_guardianships"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["family_id", "person_id"],
+            ["family_persons.family_id", "family_persons.person_id"],
+            ondelete="CASCADE",
+            name="fk_guardianship_family_person",
+        ),
+        ForeignKeyConstraint(
+            ["family_id", "guardian_user_id"],
+            ["family_members.family_id", "family_members.user_id"],
+            ondelete="CASCADE",
+            name="fk_guardianship_family_member",
+        ),
+        CheckConstraint(
+            "scope IN ('view_profile', 'edit_profile', 'manage_biography', "
+            "'manage_events', 'manage_memories', 'manage_media')",
+            name="ck_guardianship_scope",
+        ),
+        CheckConstraint("status IN ('active', 'revoked')", name="ck_guardianship_status"),
+        CheckConstraint(
+            "(status = 'active' AND revoked_at IS NULL AND revoked_by_user_id IS NULL) OR "
+            "(status = 'revoked' AND revoked_at IS NOT NULL)",
+            name="ck_guardianship_revocation_state",
+        ),
+        Index(
+            "uq_guardianship_active_scope",
+            "family_id",
+            "person_id",
+            "guardian_user_id",
+            "scope",
+            unique=True,
+            sqlite_where=text("status = 'active' AND revoked_at IS NULL"),
+            postgresql_where=text("status = 'active' AND revoked_at IS NULL"),
+        ),
+        Index(
+            "ix_guardianship_scope_lookup",
+            "family_id",
+            "person_id",
+            "guardian_user_id",
+            "status",
+        ),
+        Index("ix_guardianship_guardian_user", "guardian_user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    person_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    guardian_user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(12), default="active", nullable=False)
+    granted_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class ParentChildRelationship(Base):

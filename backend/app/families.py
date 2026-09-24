@@ -26,8 +26,18 @@ from app.models import (
     MemoryPersonTag,
     ParentChildRelationship,
     Person,
+    PersonGuardianship,
     User,
     UserPersonLink,
+)
+from app.privacy import (
+    GUARDIAN_SCOPES,
+    active_guardian_scopes,
+    has_guardian_scope,
+    is_minor,
+    person_is_minor,
+    redact_minor_profile_fields,
+    require_minor_scope,
 )
 from app.relationships import (
     RelationshipError,
@@ -133,6 +143,35 @@ class PersonOut(BaseModel):
     visibility: str
     created_at: datetime
     updated_at: datetime
+
+
+class GuardianshipCreate(BaseModel):
+    guardian_user_id: UUID
+    scopes: list[str] = Field(min_length=1, max_length=6)
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_grant(self):
+        if len(set(self.scopes)) != len(self.scopes):
+            raise ValueError("Ижил эрхийг давхар оруулах боломжгүй.")
+        if not set(self.scopes).issubset(GUARDIAN_SCOPES):
+            raise ValueError("Guardian эрхийн төрөл буруу байна.")
+        if self.expires_at is not None:
+            if self.expires_at.tzinfo is None:
+                raise ValueError("Дуусах хугацаанд цагийн бүс шаардлагатай.")
+            if self.expires_at <= datetime.now(UTC):
+                raise ValueError("Дуусах хугацаа ирээдүйд байх ёстой.")
+        return self
+
+
+class GuardianshipOut(BaseModel):
+    id: UUID
+    guardian_user_id: UUID
+    guardian_display_name: str
+    scope: str
+    status: str
+    active: bool
+    expires_at: datetime | None
 
 
 class ParentChildCreate(BaseModel):
@@ -250,6 +289,51 @@ def _assert_person_visible(db: Session, person: Person, user: User) -> None:
         )
         if person.created_by != user.id and linked_to_user is None:
             raise HTTPException(status_code=404, detail="Хүн олдсонгүй.")
+
+
+def _person_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonOut:
+    scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
+    result = PersonOut.model_validate(person)
+    redactions = redact_minor_profile_fields(person, scopes)
+    return result.model_copy(update=redactions) if redactions else result
+
+
+def _require_minor_scope(
+    db: Session, family_id: UUID, person: Person, user: User, scope: str
+) -> bool:
+    return require_minor_scope(db, user.id, family_id, person, scope)
+
+
+def _assert_memory_minor_scopes(
+    db: Session, family_id: UUID, user: User, person_ids: list[UUID]
+) -> None:
+    for person_id in set(person_ids):
+        person = _person_in_family(db, family_id, person_id)
+        _assert_person_visible(db, person, user)
+        _require_minor_scope(db, family_id, person, user, "manage_memories")
+
+
+def _memory_visible_to_member(
+    db: Session, family_id: UUID, user: User, memory_ids: list[UUID]
+) -> set[UUID]:
+    if not memory_ids:
+        return set()
+    tagged = db.execute(
+        select(MemoryPersonTag.memory_id, Person.id, Person.birth_date)
+        .join(Person, Person.id == MemoryPersonTag.person_id)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(
+            MemoryPersonTag.memory_id.in_(memory_ids),
+            FamilyPerson.family_id == family_id,
+        )
+    ).all()
+    person_ids = [person_id for _, person_id, _ in tagged]
+    scopes = active_guardian_scopes(db, user.id, family_id, person_ids)
+    visible = set(memory_ids)
+    for memory_id, person_id, birth_date in tagged:
+        if is_minor(birth_date) is True and "manage_memories" not in scopes.get(person_id, set()):
+            visible.discard(memory_id)
+    return visible
 
 
 def _commit(db: Session, message: str):
@@ -410,7 +494,7 @@ def create_person(
     _audit(db, user, family_id, "person.created", "person", person.id)
     db.commit()
     db.refresh(person)
-    return person
+    return _person_output(db, family_id, person, user)
 
 
 @router.get("/{family_id}/persons", response_model=list[PersonOut])
@@ -439,7 +523,14 @@ def list_persons(
     query = query.where(
         or_(Person.visibility != "private", Person.created_by == user.id, Person.id == own_link)
     )
-    return list(db.scalars(query.order_by(Person.last_name, Person.first_name)).all())
+    persons = list(db.scalars(query.order_by(Person.last_name, Person.first_name)).all())
+    scopes = active_guardian_scopes(db, user.id, family_id, [person.id for person in persons])
+    return [
+        PersonOut.model_validate(person).model_copy(
+            update=redact_minor_profile_fields(person, scopes.get(person.id, set()))
+        )
+        for person in persons
+    ]
 
 
 @router.get("/{family_id}/persons/search", response_model=list[PersonOut])
@@ -462,7 +553,7 @@ def get_person(
     _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    return person
+    return _person_output(db, family_id, person, user)
 
 
 @router.patch("/{family_id}/persons/{person_id}", response_model=PersonOut)
@@ -476,18 +567,27 @@ def update_person(
     member, _ = _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    if member.role == "member":
-        linked_to_user = db.scalar(
-            select(UserPersonLink.id).where(
-                UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
-            )
-        )
-        if linked_to_user is None:
-            raise HTTPException(status_code=403, detail="Зөвхөн өөрийн profile-г засах эрхтэй.")
     data = body.model_dump(exclude_unset=True)
     candidate_birth = data.get("birth_date", person.birth_date)
     candidate_death = data.get("death_date", person.death_date)
     candidate_alive = data.get("is_alive", person.is_alive)
+    is_minor_record = person_is_minor(person) or is_minor(candidate_birth) is True
+    linked_to_user = db.scalar(
+        select(UserPersonLink.id).where(
+            UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
+        )
+    )
+    baseline_edit = member.role in {"owner", "editor"} or linked_to_user is not None
+    has_scoped_edit = has_guardian_scope(
+        db, user.id, family_id, person.id, "edit_profile"
+    ) if is_minor_record else False
+    if is_minor_record:
+        if data and not has_scoped_edit:
+            raise HTTPException(status_code=403, detail="Энэ хүний profile засах эрхгүй.")
+        if not baseline_edit and not has_scoped_edit:
+            raise HTTPException(status_code=403, detail="Profile засах эрхгүй.")
+    elif not baseline_edit:
+        raise HTTPException(status_code=403, detail="Зөвхөн өөрийн profile-г засах эрхтэй.")
     if candidate_birth and candidate_death and candidate_death < candidate_birth:
         raise HTTPException(
             status_code=422, detail="Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй."
@@ -501,7 +601,194 @@ def update_person(
     _audit(db, user, family_id, "person.updated", "person", person.id)
     db.commit()
     db.refresh(person)
-    return person
+    return _person_output(db, family_id, person, user)
+
+
+@router.post(
+    "/{family_id}/persons/{person_id}/guardianships",
+    response_model=list[GuardianshipOut],
+    status_code=201,
+)
+def create_guardian_grants(
+    family_id: UUID,
+    person_id: UUID,
+    body: GuardianshipCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    _person_in_family(db, family_id, person_id)
+    guardian_member = db.scalar(
+        select(FamilyMember.id).where(
+            FamilyMember.family_id == family_id,
+            FamilyMember.user_id == body.guardian_user_id,
+        )
+    )
+    if guardian_member is None:
+        raise HTTPException(status_code=404, detail="Гэр бүлийн гишүүн олдсонгүй.")
+
+    # An owner may grant themselves access only when a parent edge exists for
+    # their linked Person. The edge is eligibility context; the explicit grant
+    # below remains mandatory for every protected operation.
+    if body.guardian_user_id == user.id:
+        linked_parent = db.scalar(
+            select(UserPersonLink.id)
+            .join(
+                FamilyPerson,
+                FamilyPerson.person_id == UserPersonLink.person_id,
+            )
+            .join(
+                ParentChildRelationship,
+                ParentChildRelationship.parent_id == UserPersonLink.person_id,
+            )
+            .where(
+                UserPersonLink.user_id == user.id,
+                FamilyPerson.family_id == family_id,
+                ParentChildRelationship.child_id == person_id,
+            )
+        )
+        if linked_parent is None:
+            raise HTTPException(status_code=403, detail="Өөртөө guardian эрх олгох боломжгүй.")
+
+    guardian = db.get(User, body.guardian_user_id)
+    if guardian is None or not guardian.is_active:
+        raise HTTPException(status_code=404, detail="Гэр бүлийн гишүүн олдсонгүй.")
+
+    now = datetime.now(UTC)
+    grants: list[PersonGuardianship] = []
+    for scope in body.scopes:
+        previous = db.scalar(
+            select(PersonGuardianship).where(
+                PersonGuardianship.family_id == family_id,
+                PersonGuardianship.person_id == person_id,
+                PersonGuardianship.guardian_user_id == body.guardian_user_id,
+                PersonGuardianship.scope == scope,
+                PersonGuardianship.status == "active",
+                PersonGuardianship.revoked_at.is_(None),
+            )
+        )
+        if previous is not None:
+            expiry = previous.expires_at
+            if expiry is not None and expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=UTC)
+            if expiry is None or expiry > now:
+                raise HTTPException(status_code=409, detail="Энэ guardian эрх идэвхтэй байна.")
+            previous.status = "revoked"
+            previous.revoked_at = now
+            previous.revoked_by_user_id = user.id
+            previous.updated_at = now
+            _audit(db, user, family_id, "person.guardianship.expired", "person", person_id)
+
+        grant = PersonGuardianship(
+            family_id=family_id,
+            person_id=person_id,
+            guardian_user_id=body.guardian_user_id,
+            scope=scope,
+            status="active",
+            granted_by_user_id=user.id,
+            expires_at=body.expires_at,
+        )
+        db.add(grant)
+        grants.append(grant)
+
+    try:
+        db.flush()
+        for _ in grants:
+            _audit(db, user, family_id, "person.guardianship.granted", "person", person_id)
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Guardian эрх давхар үүссэн байна.") from error
+
+    return [
+        GuardianshipOut(
+            id=grant.id,
+            guardian_user_id=guardian.id,
+            guardian_display_name=guardian.display_name,
+            scope=grant.scope,
+            status=grant.status,
+            active=True,
+            expires_at=grant.expires_at,
+        )
+        for grant in grants
+    ]
+
+
+@router.get(
+    "/{family_id}/persons/{person_id}/guardianships",
+    response_model=list[GuardianshipOut],
+)
+def list_guardian_grants(
+    family_id: UUID,
+    person_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    _person_in_family(db, family_id, person_id)
+    rows = db.execute(
+        select(PersonGuardianship, User.display_name)
+        .join(User, User.id == PersonGuardianship.guardian_user_id)
+        .where(
+            PersonGuardianship.family_id == family_id,
+            PersonGuardianship.person_id == person_id,
+        )
+        .order_by(PersonGuardianship.created_at)
+    ).all()
+    now = datetime.now(UTC)
+    result = []
+    for grant, display_name in rows:
+        expiry = grant.expires_at
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=UTC)
+        result.append(
+            GuardianshipOut(
+                id=grant.id,
+                guardian_user_id=grant.guardian_user_id,
+                guardian_display_name=display_name,
+                scope=grant.scope,
+                status=grant.status,
+                active=(
+                    grant.status == "active"
+                    and grant.revoked_at is None
+                    and (expiry is None or expiry > now)
+                ),
+                expires_at=grant.expires_at,
+            )
+        )
+    return result
+
+
+@router.delete(
+    "/{family_id}/persons/{person_id}/guardianships/{grant_id}", status_code=204
+)
+def revoke_guardian_grant(
+    family_id: UUID,
+    person_id: UUID,
+    grant_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    _person_in_family(db, family_id, person_id)
+    grant = db.scalar(
+        select(PersonGuardianship).where(
+            PersonGuardianship.id == grant_id,
+            PersonGuardianship.family_id == family_id,
+            PersonGuardianship.person_id == person_id,
+        )
+    )
+    if grant is None:
+        raise HTTPException(status_code=404, detail="Guardian эрх олдсонгүй.")
+    if grant.status == "active":
+        now = datetime.now(UTC)
+        grant.status = "revoked"
+        grant.revoked_at = now
+        grant.revoked_by_user_id = user.id
+        grant.updated_at = now
+        _audit(db, user, family_id, "person.guardianship.revoked", "person", person_id)
+        db.commit()
+    return Response(status_code=204)
 
 
 @router.delete("/{family_id}/persons/{person_id}", status_code=204)
@@ -635,27 +922,42 @@ def list_marriages(
 ):
     _member(db, family_id, user)
     own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    family_people = (
-        select(Person.id)
-        .join(FamilyPerson)
-        .where(
-            FamilyPerson.family_id == family_id,
-            or_(
-                Person.visibility != "private", Person.created_by == user.id, Person.id == own_link
-            ),
-        )
+    family_person_rows = list(
+        db.scalars(
+            select(Person).join(FamilyPerson).where(
+                FamilyPerson.family_id == family_id,
+                or_(
+                    Person.visibility != "private",
+                    Person.created_by == user.id,
+                    Person.id == own_link,
+                ),
+            )
+        ).all()
     )
-    return list(
+    person_ids = [person.id for person in family_person_rows]
+    scopes = active_guardian_scopes(db, user.id, family_id, person_ids)
+    relationship_visible = {
+        person.id
+        for person in family_person_rows
+        if not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
+    }
+    marriages = list(
         db.execute(
             select(Marriage).where(
-                Marriage.person_1_id.in_(family_people),
-                Marriage.person_2_id.in_(family_people),
+                Marriage.person_1_id.in_(person_ids),
+                Marriage.person_2_id.in_(person_ids),
                 Marriage.deleted_at.is_(None),
             )
         )
         .scalars()
         .all()
     )
+    return [
+        marriage
+        for marriage in marriages
+        if marriage.person_1_id in relationship_visible
+        and marriage.person_2_id in relationship_visible
+    ]
 
 
 @router.patch("/{family_id}/marriages/{marriage_id}")
@@ -727,6 +1029,7 @@ def get_biography(
     _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
+    _require_minor_scope(db, family_id, person, user, "manage_biography")
     biography = db.scalar(select(Biography).where(Biography.person_id == person_id))
     return {
         "content": biography.body if biography else "",
@@ -742,9 +1045,13 @@ def save_biography(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    if not _can_edit_person(db, family_id, person, user):
+    is_minor_record = _require_minor_scope(
+        db, family_id, person, user, "manage_biography"
+    )
+    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
         raise HTTPException(status_code=403, detail="Намтар засах эрхгүй.")
     biography = db.scalar(select(Biography).where(Biography.person_id == person_id))
     if biography is None:
@@ -769,6 +1076,7 @@ def list_life_events(
     _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
+    _require_minor_scope(db, family_id, person, user, "manage_events")
     return list(
         db.scalars(
             select(LifeEvent).where(LifeEvent.person_id == person_id).order_by(LifeEvent.event_date)
@@ -784,9 +1092,11 @@ def create_life_event(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    if not _can_edit_person(db, family_id, person, user):
+    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_events")
+    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
         raise HTTPException(status_code=403, detail="Амьдралын үйл явдал нэмэх эрхгүй.")
     event = LifeEvent(person_id=person_id, created_by=user.id, **body.model_dump())
     db.add(event)
@@ -805,9 +1115,11 @@ def update_life_event(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    if not _can_edit_person(db, family_id, person, user):
+    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_events")
+    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
         raise HTTPException(status_code=403, detail="Амьдралын үйл явдал засах эрхгүй.")
     event = db.scalar(
         select(LifeEvent).where(LifeEvent.id == event_id, LifeEvent.person_id == person_id)
@@ -829,15 +1141,18 @@ def delete_life_event(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    if not _can_edit_person(db, family_id, person, user):
+    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_events")
+    if not is_minor_record and not _can_edit_person(db, family_id, person, user):
         raise HTTPException(status_code=403, detail="Амьдралын үйл явдал устгах эрхгүй.")
     event = db.scalar(
         select(LifeEvent).where(LifeEvent.id == event_id, LifeEvent.person_id == person_id)
     )
     if event is None:
         raise HTTPException(status_code=404, detail="Үйл явдал олдсонгүй.")
+    _audit(db, user, family_id, "life_event.deleted", "life_event", event.id)
     db.delete(event)
     db.commit()
     return Response(status_code=204)
@@ -854,6 +1169,7 @@ def create_memory(
     for person_id in body.person_ids:
         person = _person_in_family(db, family_id, person_id)
         _assert_person_visible(db, person, user)
+        _require_minor_scope(db, family_id, person, user, "manage_memories")
     memory = Memory(
         family_id=family_id,
         title=body.title.strip(),
@@ -886,7 +1202,7 @@ def list_memories(
     db: Session = Depends(get_db),
 ):
     _member(db, family_id, user)
-    return list(
+    memories = list(
         db.scalars(
             select(Memory)
             .where(
@@ -896,6 +1212,8 @@ def list_memories(
             .order_by(Memory.memory_date.desc())
         ).all()
     )
+    visible_ids = _memory_visible_to_member(db, family_id, user, [item.id for item in memories])
+    return [item for item in memories if item.id in visible_ids]
 
 
 @router.get("/{family_id}/memories/{memory_id}")
@@ -914,6 +1232,12 @@ def get_memory(
             select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
         ).all()
     )
+    try:
+        _assert_memory_minor_scopes(db, family_id, user, tag_ids)
+    except HTTPException as error:
+        if error.status_code == 403:
+            raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.") from error
+        raise
     return {
         "id": memory.id,
         "title": memory.title,
@@ -941,9 +1265,16 @@ def update_memory(
         raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.")
     if member.role not in {"owner", "editor"} and memory.created_by != user.id:
         raise HTTPException(status_code=403, detail="Дурсамж засах эрхгүй.")
+    existing_person_ids = list(
+        db.scalars(
+            select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
+        ).all()
+    )
+    _assert_memory_minor_scopes(db, family_id, user, existing_person_ids)
     for person_id in body.person_ids:
         person = _person_in_family(db, family_id, person_id)
         _assert_person_visible(db, person, user)
+        _require_minor_scope(db, family_id, person, user, "manage_memories")
     for key in ("title", "description", "memory_date", "visibility"):
         setattr(memory, key, getattr(body, key))
     db.execute(delete(MemoryPersonTag).where(MemoryPersonTag.memory_id == memory_id))
@@ -971,6 +1302,12 @@ def delete_memory(
         raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.")
     if member.role not in {"owner", "editor"} and memory.created_by != user.id:
         raise HTTPException(status_code=403, detail="Дурсамж устгах эрхгүй.")
+    tag_ids = list(
+        db.scalars(
+            select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
+        ).all()
+    )
+    _assert_memory_minor_scopes(db, family_id, user, tag_ids)
     _audit(db, user, family_id, "memory.deleted", "memory", memory_id)
     db.delete(memory)
     db.commit()
@@ -1094,6 +1431,12 @@ def family_tree(
         ).all()
     )
     ids = [person.id for person in persons]
+    scopes = active_guardian_scopes(db, user.id, family_id, ids)
+    relationship_visible = {
+        person.id
+        for person in persons
+        if not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
+    }
     parent_edges = (
         list(
             db.scalars(
@@ -1106,6 +1449,11 @@ def family_tree(
         if ids
         else []
     )
+    parent_edges = [
+        edge
+        for edge in parent_edges
+        if edge.parent_id in relationship_visible and edge.child_id in relationship_visible
+    ]
     marriages = (
         list(
             db.scalars(
@@ -1119,8 +1467,19 @@ def family_tree(
         if ids
         else []
     )
+    marriages = [
+        marriage
+        for marriage in marriages
+        if marriage.person_1_id in relationship_visible
+        and marriage.person_2_id in relationship_visible
+    ]
     return {
-        "persons": [PersonOut.model_validate(person) for person in persons],
+        "persons": [
+            PersonOut.model_validate(person).model_copy(
+                update=redact_minor_profile_fields(person, scopes.get(person.id, set()))
+            )
+            for person in persons
+        ],
         "parent_child_relationships": parent_edges,
         "marriages": marriages,
     }
