@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,7 @@ from app.models import (
     User,
     UserPersonLink,
 )
+from app.person_search import normalize_search_name
 from app.privacy import (
     GUARDIAN_SCOPES,
     active_guardian_scopes,
@@ -149,6 +150,47 @@ class PersonOut(BaseModel):
     updated_at: datetime
 
 
+class PersonSearchItem(BaseModel):
+    id: UUID
+    name: str
+    birth_year: int | None
+
+
+class PersonSearchPage(BaseModel):
+    items: list[PersonSearchItem]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
+class TreePersonOut(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    middle_name: str | None
+    birth_date: date | None
+    is_alive: bool
+    death_date: date | None
+
+
+class TreeParentChildOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    parent_id: UUID
+    child_id: UUID
+    relationship_type: str
+
+
+class TreeOut(BaseModel):
+    root_person_id: UUID | None
+    persons: list[TreePersonOut]
+    parent_child_relationships: list[TreeParentChildOut]
+    marriages: list["MarriageOut"]
+    meta: dict[str, int | bool]
+
+
 class GuardianshipCreate(BaseModel):
     guardian_user_id: UUID
     scopes: list[str] = Field(min_length=1, max_length=6)
@@ -253,6 +295,10 @@ def _marriage_order():
         Marriage.created_at,
         Marriage.id,
     )
+
+
+def _escape_like_prefix(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class MemberOut(BaseModel):
@@ -539,6 +585,9 @@ def create_person(
     data = body.model_dump()
     data["first_name"] = body.first_name.strip()
     data["last_name"] = body.last_name.strip()
+    data["search_first_name"] = normalize_search_name(body.first_name)
+    data["search_last_name"] = normalize_search_name(body.last_name)
+    data["search_middle_name"] = normalize_search_name(body.middle_name)
     person = Person(**data, created_by=user.id)
     db.add(person)
     db.flush()
@@ -586,14 +635,84 @@ def list_persons(
     ]
 
 
-@router.get("/{family_id}/persons/search", response_model=list[PersonOut])
+@router.get("/{family_id}/persons/search", response_model=PersonSearchPage)
 def search_persons(
     family_id: UUID,
-    q: str = Query(min_length=1, max_length=100),
+    q: str = Query(min_length=1, max_length=100, description="Нэрийн эхлэлээр хайх үг."),
+    page: int = Query(default=1, ge=1, description="1-ээс эхлэх үр дүнгийн хуудас."),
+    page_size: int = Query(default=25, ge=1, le=100, description="Нэг хуудсанд 1–100 үр дүн."),
+    birth_year: int | None = Query(default=None, ge=1, le=9998, description="Төрсөн он."),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return list_persons(family_id, q, user, db)
+    """Return a privacy-filtered page of lightweight family member search results."""
+    _member(db, family_id, user)
+    tokens = normalize_search_name(q).split()
+    if not tokens:
+        raise HTTPException(status_code=422, detail="Хайлтын үгээ оруулна уу.")
+    if birth_year is not None and birth_year >= datetime.now(UTC).date().year - 18:
+        # A year filter must not reveal a protected minor through result counts.
+        return PersonSearchPage(items=[], page=page, page_size=page_size, total=0, has_next=False)
+    predicates = [
+        or_(
+            Person.search_first_name.like(f"{_escape_like_prefix(token)}%", escape="\\"),
+            Person.search_last_name.like(f"{_escape_like_prefix(token)}%", escape="\\"),
+            Person.search_middle_name.like(f"{_escape_like_prefix(token)}%", escape="\\"),
+        )
+        for token in tokens
+    ]
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    privacy_filter = or_(
+        Person.visibility != "private", Person.created_by == user.id, Person.id == own_link
+    )
+    family_filter = FamilyPerson.family_id == family_id
+    conditions = [family_filter, privacy_filter, *predicates]
+    if birth_year is not None:
+        conditions.extend(
+            [
+                Person.birth_date >= date(birth_year, 1, 1),
+                Person.birth_date < date(birth_year + 1, 1, 1),
+            ]
+        )
+    total = db.scalar(
+        select(func.count(Person.id))
+        .select_from(Person)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(*conditions)
+    ) or 0
+    persons = list(
+        db.scalars(
+            select(Person)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(*conditions)
+            .order_by(Person.search_last_name, Person.search_first_name, Person.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+    )
+    scopes = active_guardian_scopes(db, user.id, family_id, [person.id for person in persons])
+    items = [
+        PersonSearchItem(
+            id=person.id,
+            name=" ".join(
+                part for part in (person.last_name, person.first_name, person.middle_name) if part
+            ),
+            birth_year=(
+                person.birth_date.year
+                if person.birth_date is not None
+                and (not person_is_minor(person) or "view_profile" in scopes.get(person.id, set()))
+                else None
+            ),
+        )
+        for person in persons
+    ]
+    return PersonSearchPage(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=total,
+        has_next=page * page_size < total,
+    )
 
 
 @router.get("/{family_id}/persons/{person_id}", response_model=PersonOut)
@@ -653,6 +772,9 @@ def update_person(
         setattr(
             person, key, value.strip() if key in {"first_name", "last_name"} and value else value
         )
+    person.search_first_name = normalize_search_name(person.first_name)
+    person.search_last_name = normalize_search_name(person.last_name)
+    person.search_middle_name = normalize_search_name(person.middle_name)
     _audit(db, user, family_id, "person.updated", "person", person.id)
     db.commit()
     db.refresh(person)
@@ -1313,7 +1435,54 @@ def list_memories(
         ).all()
     )
     visible_ids = _memory_visible_to_member(db, family_id, user, [item.id for item in memories])
-    return [item for item in memories if item.id in visible_ids]
+    visible_memories = [item for item in memories if item.id in visible_ids]
+    memory_ids = [item.id for item in visible_memories]
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    tagged = (
+        db.execute(
+            select(
+                MemoryPersonTag.memory_id,
+                MemoryPersonTag.person_id,
+                Person.first_name,
+                Person.last_name,
+                Person.middle_name,
+            )
+            .join(Person, Person.id == MemoryPersonTag.person_id)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(
+                MemoryPersonTag.memory_id.in_(memory_ids),
+                FamilyPerson.family_id == family_id,
+                or_(
+                    Person.visibility != "private",
+                    Person.created_by == user.id,
+                    Person.id == own_link,
+                ),
+            )
+            .order_by(MemoryPersonTag.memory_id, Person.last_name, Person.first_name)
+        ).all()
+        if memory_ids
+        else []
+    )
+    names_by_memory: dict[UUID, list[str]] = {}
+    ids_by_memory: dict[UUID, list[UUID]] = {}
+    for memory_id, person_id, first_name, last_name, middle_name in tagged:
+        ids_by_memory.setdefault(memory_id, []).append(person_id)
+        names_by_memory.setdefault(memory_id, []).append(
+            " ".join(part for part in (last_name, first_name, middle_name) if part)
+        )
+    return [
+        {
+            "id": item.id,
+            "title": item.title,
+            "description": item.description,
+            "memory_date": item.memory_date,
+            "visibility": item.visibility,
+            "person_ids": ids_by_memory.get(item.id, []),
+            "person_names": names_by_memory.get(item.id, []),
+            "created_at": item.created_at,
+        }
+        for item in visible_memories
+    ]
 
 
 @router.get("/{family_id}/memories/{memory_id}")
@@ -1578,76 +1747,201 @@ def accept_invitation(
     return {"family_id": invitation.family_id, "role": invitation.role}
 
 
-@router.get("/{family_id}/tree")
+@router.get("/{family_id}/tree", response_model=TreeOut)
 def family_tree(
-    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    family_id: UUID,
+    person_id: UUID | None = Query(default=None, description="Контекстийн гол хүн."),
+    depth: int = Query(default=2, ge=0, le=5, description="Холбооны гүн, хамгийн ихдээ 5."),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
+    """Return a family-authorized tree neighborhood capped at 300 people and 1,200 edges."""
     _member(db, family_id, user)
-    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    persons = list(
-        db.scalars(
-            select(Person)
+    if person_id is None:
+        linked_person_id = db.scalar(
+            select(UserPersonLink.person_id)
+            .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
+            .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == family_id)
+        )
+        person_id = linked_person_id or db.scalar(
+            select(Person.id)
             .join(FamilyPerson, FamilyPerson.person_id == Person.id)
             .where(
                 FamilyPerson.family_id == family_id,
-                or_(
-                    Person.visibility != "private",
-                    Person.created_by == user.id,
-                    Person.id == own_link,
-                ),
+                or_(Person.visibility != "private", Person.created_by == user.id),
             )
-        ).all()
-    )
-    ids = [person.id for person in persons]
-    scopes = active_guardian_scopes(db, user.id, family_id, ids)
-    relationship_visible = {
-        person.id
-        for person in persons
-        if not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
-    }
-    parent_edges = (
-        list(
+            .order_by(Person.search_last_name, Person.search_first_name, Person.id)
+            .limit(1)
+        )
+    if person_id is None:
+        return {
+            "root_person_id": None,
+            "persons": [],
+            "parent_child_relationships": [],
+            "marriages": [],
+            "meta": {"depth": depth, "node_count": 0, "node_limit": 300, "truncated": False},
+        }
+
+    root = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, root, user)
+    people: dict[UUID, Person] = {root.id: root}
+    parent_edges: dict[UUID, ParentChildRelationship] = {}
+    marriages: dict[UUID, Marriage] = {}
+    scopes = active_guardian_scopes(db, user.id, family_id, [root.id])
+    own_person_id = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    def can_traverse(person: Person) -> bool:
+        return not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
+
+    frontier = {root.id} if can_traverse(root) else set()
+    truncated = False
+    node_limit = 300
+    edge_limit = 1200
+
+    for _level in range(depth):
+        if not frontier:
+            break
+        parent_rows = list(
             db.scalars(
-                select(ParentChildRelationship).where(
-                    ParentChildRelationship.parent_id.in_(ids),
-                    ParentChildRelationship.child_id.in_(ids),
+                select(ParentChildRelationship)
+                .where(
+                    or_(
+                        ParentChildRelationship.parent_id.in_(frontier),
+                        ParentChildRelationship.child_id.in_(frontier),
+                    )
                 )
+                .order_by(ParentChildRelationship.id)
+                .limit(edge_limit + 1)
             ).all()
         )
-        if ids
-        else []
-    )
-    parent_edges = [
-        edge
-        for edge in parent_edges
-        if edge.parent_id in relationship_visible and edge.child_id in relationship_visible
-    ]
-    marriages = (
-        list(
+        marriage_rows = list(
             db.scalars(
-                select(Marriage).where(
-                    Marriage.person_1_id.in_(ids),
-                    Marriage.person_2_id.in_(ids),
+                select(Marriage)
+                .where(
                     Marriage.deleted_at.is_(None),
-                ).order_by(*_marriage_order())
+                    or_(Marriage.person_1_id.in_(frontier), Marriage.person_2_id.in_(frontier)),
+                )
+                .order_by(*_marriage_order())
+                .limit(edge_limit + 1)
             ).all()
         )
-        if ids
-        else []
-    )
-    marriages = [
-        marriage
-        for marriage in marriages
-        if marriage.person_1_id in relationship_visible
-        and marriage.person_2_id in relationship_visible
-    ]
+        if len(parent_rows) > edge_limit or len(marriage_rows) > edge_limit:
+            truncated = True
+        parent_rows = parent_rows[:edge_limit]
+        marriage_rows = marriage_rows[:edge_limit]
+        candidate_ids = {
+            endpoint
+            for edge in parent_rows
+            for endpoint in (edge.parent_id, edge.child_id)
+        } | {
+            endpoint
+            for marriage in marriage_rows
+            for endpoint in (marriage.person_1_id, marriage.person_2_id)
+        }
+        candidate_ids -= people.keys()
+        candidate_rows = list(
+            db.scalars(
+                select(Person)
+                .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+                .where(
+                    FamilyPerson.family_id == family_id,
+                    Person.id.in_(candidate_ids),
+                    or_(
+                        Person.visibility != "private",
+                        Person.created_by == user.id,
+                        Person.id == own_person_id,
+                    ),
+                )
+                .order_by(Person.id)
+                .limit(node_limit + 1)
+            ).all()
+        ) if candidate_ids else []
+        if len(candidate_rows) > node_limit:
+            truncated = True
+            candidate_rows = candidate_rows[:node_limit]
+        candidate_scopes = active_guardian_scopes(
+            db, user.id, family_id, [person.id for person in candidate_rows]
+        )
+        scopes.update(candidate_scopes)
+        visible_candidates = {
+            person.id: person
+            for person in candidate_rows
+            if not person_is_minor(person)
+            or "view_profile" in candidate_scopes.get(person.id, set())
+        }
+        next_frontier: set[UUID] = set()
+
+        def admit(
+            person_id: UUID,
+            allowed: dict[UUID, Person],
+            next_ids: set[UUID],
+        ) -> bool:
+            nonlocal truncated
+            if person_id in people:
+                return True
+            person = allowed.get(person_id)
+            if person is None:
+                return False
+            if len(people) >= node_limit:
+                truncated = True
+                return False
+            people[person_id] = person
+            next_ids.add(person_id)
+            return True
+
+        for edge in parent_rows:
+            if not (edge.parent_id in frontier or edge.child_id in frontier):
+                continue
+            if admit(edge.parent_id, visible_candidates, next_frontier) and admit(
+                edge.child_id, visible_candidates, next_frontier
+            ):
+                parent_edges[edge.id] = edge
+            if len(parent_edges) + len(marriages) >= edge_limit:
+                truncated = True
+                break
+        if len(parent_edges) + len(marriages) < edge_limit:
+            for marriage in marriage_rows:
+                if not (marriage.person_1_id in frontier or marriage.person_2_id in frontier):
+                    continue
+                if admit(marriage.person_1_id, visible_candidates, next_frontier) and admit(
+                    marriage.person_2_id, visible_candidates, next_frontier
+                ):
+                    marriages[marriage.id] = marriage
+                if len(parent_edges) + len(marriages) >= edge_limit:
+                    truncated = True
+                    break
+        frontier = next_frontier
+
+    final_scopes = active_guardian_scopes(db, user.id, family_id, list(people))
     return {
         "persons": [
-            PersonOut.model_validate(person).model_copy(
-                update=redact_minor_profile_fields(person, scopes.get(person.id, set()))
+            TreePersonOut(
+                id=person.id,
+                first_name=person.first_name,
+                last_name=person.last_name,
+                middle_name=person.middle_name,
+                birth_date=(
+                    None
+                    if person_is_minor(person)
+                    and "view_profile" not in final_scopes.get(person.id, set())
+                    else person.birth_date
+                ),
+                is_alive=person.is_alive,
+                death_date=(
+                    None
+                    if person_is_minor(person)
+                    and "view_profile" not in final_scopes.get(person.id, set())
+                    else person.death_date
+                ),
             )
-            for person in persons
+            for person in people.values()
         ],
-        "parent_child_relationships": parent_edges,
-        "marriages": marriages,
+        "root_person_id": root.id,
+        "parent_child_relationships": list(parent_edges.values()),
+        "marriages": list(marriages.values()),
+        "meta": {
+            "depth": depth,
+            "node_count": len(people),
+            "node_limit": node_limit,
+            "truncated": truncated,
+        },
     }

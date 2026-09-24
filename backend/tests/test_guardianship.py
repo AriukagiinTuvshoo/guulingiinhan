@@ -250,10 +250,23 @@ def test_minor_profile_projection_applies_to_search_and_tree(client, database):
         assert response.status_code == 200
         if path.endswith("/tree"):
             result = next(item for item in response.json()["persons"] if item["id"] == child["id"])
+        elif "/search?" in path:
+            result = next(item for item in response.json()["items"] if item["id"] == child["id"])
+            assert result["birth_year"] is None
+            assert "birth_place" not in result
+            continue
         else:
             result = next(item for item in response.json() if item["id"] == child["id"])
         assert result["birth_date"] is None
-        assert result["birth_place"] is None
+        if path.endswith("/tree"):
+            assert "birth_place" not in result
+        else:
+            assert result["birth_place"] is None
+    protected_year = client.get(
+        f"/api/v1/families/{family['id']}/persons/search?q=Болд&birth_year=2015"
+    )
+    assert protected_year.status_code == 200
+    assert protected_year.json()["total"] == 0
 
 
 def test_owner_self_grant_requires_linked_parent_and_explicit_action(client, database):

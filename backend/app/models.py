@@ -294,6 +294,22 @@ class Person(Base):
         CheckConstraint(
             "visibility IN ('private', 'family', 'public')", name="ck_person_visibility"
         ),
+        Index(
+            "ix_person_search_first",
+            "search_first_name",
+            postgresql_ops={"search_first_name": "text_pattern_ops"},
+        ),
+        Index(
+            "ix_person_search_last",
+            "search_last_name",
+            postgresql_ops={"search_last_name": "text_pattern_ops"},
+        ),
+        Index(
+            "ix_person_search_middle",
+            "search_middle_name",
+            postgresql_ops={"search_middle_name": "text_pattern_ops"},
+        ),
+        Index("ix_person_birth_date", "birth_date"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -312,6 +328,9 @@ class Person(Base):
     profile_photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     short_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     visibility: Mapped[str] = mapped_column(String(12), default="family")
+    search_first_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    search_last_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    search_middle_name: Mapped[str] = mapped_column(String(120), default="", server_default="")
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(

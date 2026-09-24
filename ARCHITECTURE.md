@@ -17,7 +17,7 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 1. `Person` нь бүртгэлтэй `User` биш тусдаа entity. Нас барсан, accountгүй өвөг дээдсийг бүртгэж болно.
 2. `FamilyPerson` олон-олон холбоосоор хүн олон гэр бүлийн хүрээнд оролцоно.
 3. Эцэг эх-хүүхэд ба гэрлэлт тусдаа. Салалт parent-child холбоонд нөлөөлөхгүй.
-4. `Marriage`-ийн хоёр хүнийг canonical дарааллаар хадгалж, яг ижил хосын хоёр дахь marriage record-ийг одоогийн unique constraint хориглоно. Remarriage түүхийг дэмжихийн тулд энэ constraint-ийг өгөгдөл хадгалсан migration-аар дараагийн phase-д өөрчлөх шаардлагатай.
+4. `Marriage`-ийн хоёр хүнийг canonical дарааллаар хадгална. P4.7-ийн `a71d3f0c92b4` migration-аас хойш нэг хос олон historical marriage occurrence хадгалж болно; зөвхөн ижил хосын давхар active occurrence-ийг partial unique index хориглоно.
 5. Амьд хүний нууцлалын анхны утга `family`; profile-д утас, email, гэрийн хаяг байхгүй.
 6. `PersonGuardianship` нь тухайн Family доторх Person-д хандах хэрэглэгчид олгосон тусгай, буцаан цуцалж болох эрх. Parent-child холбоо нь удмын мэдээлэл болохоос зөвшөөрөл биш.
 7. Төрсөн огноогоор 18 нас хүрээгүй нь мэдэгдэж байгаа хүний profile талбар, намтар, үйл явдал, дурсамжийг тус тусын guardian scope-оор хамгаална. Нас тодорхойлох төрсөн огноо байхгүй бол насанд хүрээгүй гэж автоматаар тооцохгүй; энэ тохиолдолд гэр бүлийн үндсэн дүрэм үйлчилнэ.
@@ -64,3 +64,11 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - Phase 4.2: minor profile redaction болон Family-scoped, explicit guardian grants.
 
 Authentication ба authorization бэлэн болтол user data-д CRUD API нээхгүй. Relationship cycle шалгалтыг service layer-д хийж байгаа; зэрэгцээ бичилтийн үед цикл үүсэх эрсдэлийг API transaction түвшинд шийдэх ажил мөн CRUD-тэй хамт хийнэ.
+
+## Хайлтын хуудаслалт ба хязгаартай tree (P4.8)
+
+- `GET /families/{family_id}/persons/search?q=...&page=1&page_size=25&birth_year=...` нь зөвхөн тухайн гэр бүлийн эрхтэй гишүүний нэрээр хайна. Хайлтын үг Unicode NFKC/casefold нормчилолтой, нэрийн эхлэлээр таарна; бүх талбар SQL параметрээр дамжина. Хариу нь `items`, `page`, `page_size`, `total`, `has_next` бүхий хөнгөн хуудас; `page_size` 100-аас их байж болохгүй.
+- `persons.search_first_name`, `search_last_name`, `search_middle_name` нь canonical нэрийг өөрчлөхгүй хайлтын түлхүүр. `b51c9e7a60f4` migration хуучин мөрүүдийг нормчилж backfill хийгээд PostgreSQL `text_pattern_ops`-той btree болон birth-date index нэмнэ. Шинэ/зассан хүний түлхүүрүүд API write үед шинэчлэгдэнэ.
+- Хайлтын хариу нэр, зөвшөөрөгдсөн төрсөн оноор хязгаарлагдана; хувийн мэдээлэл, зураг, намтар буцаахгүй. Private Person зөвхөн үүсгэсэн эсвэл холбосон хэрэглэгчид харагдана. Насанд хүрээгүй хүний төрсөн он хариунд нууцлагдаж, minor жилээр `birth_year` filter өгөхөд тоон мэдээлэл задруулахгүй.
+- `GET /families/{family_id}/tree?person_id=...&depth=2` нь сонгосон хүнээс эцэг-эх/хүүхэд болон гэрлэлтийн холбоогоор өргөжинө. Default depth 2, дээд тал нь 5; нэг хариу 300 хүн, 1,200 ирмэгээр хязгаарлагдана. `meta.truncated` нь хязгаарт хүрснийг илтгэнэ. Бүх гэр бүлийн хүмүүсийг нэг дор татахгүй, давтагдсан хүн/цикл traversal-ийг зогсооно.
+- Tree холбоосууд family membership, private visibility, guardian-ийн `view_profile` эрхийг сервер талд шалгана. Хайлтын, tree-ийн хуудаслалт болон том графын хязгаарыг `backend/tests/test_search_tree_scale.py`-д 1,001 хүний нэрийн хайлт, олон салаа tree, cycle болон query-count шалгалтаар батална.

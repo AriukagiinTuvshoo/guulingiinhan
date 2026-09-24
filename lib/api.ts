@@ -59,11 +59,15 @@ export type Person = {
   visibility: string;
 };
 export type TreeData = {
-  persons: Person[];
+  persons: TreePerson[];
   parent_child_relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[];
   marriages: Marriage[];
+  root_person_id?: string | null;
+  meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
+export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'>;
 export type Marriage = { id: string; person_1_id: string; person_2_id: string; status: 'married' | 'divorced' | 'widowed'; start_date: string | null; end_date: string | null; location?: string | null; description?: string | null; created_at?: string; other_person?: Person };
+export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
 
-export const personName = (person: Person) =>
+export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>
   [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ');

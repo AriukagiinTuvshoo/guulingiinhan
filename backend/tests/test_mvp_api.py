@@ -193,6 +193,9 @@ def test_family_person_relationship_tree_and_family_isolation(client):
     client.post("/api/v1/auth/logout")
     assert register(client, "other@example.com").status_code == 201
     assert client.get(f"/api/v1/families/{family_id}/persons").status_code == 403
+    assert (
+        client.get(f"/api/v1/families/{family_id}/persons/search?q=Дорж").status_code == 403
+    )
     assert client.get(f"/api/v1/families/{family_id}/tree").status_code == 403
 
 
