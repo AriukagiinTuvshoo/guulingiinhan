@@ -3,7 +3,7 @@ import './globals.css';
 import './mvp.css';
 
 export const metadata: Metadata = {
-  title: 'Угийнхан — Ургийн мод',
+  title: 'ГУУЛИНГИЙНХАН — Ургийн мод',
   description: 'Монгол гэр бүлийн ургийн мод, намтар, түүх, дурсамж.',
 };
 
