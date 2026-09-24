@@ -30,7 +30,7 @@ export default function RegisterPage() {
     }
   }
   return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 460 }}>
-    <Link href="/">← Гуулингийнхан</Link>
+    <Link href="/">← ГУУЛИНГИЙНХАН</Link>
     <h1 style={{ marginTop: 24 }}>Бүртгэл үүсгэх</h1>
     <p>Эхлээд аккаунтаа үүсгээд гэр бүлийн модоо эхлүүлнэ.</p>
     {registeredEmail ? <div className="success" role="status">
