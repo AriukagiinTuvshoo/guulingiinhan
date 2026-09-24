@@ -447,7 +447,16 @@ class Marriage(Base):
             "end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
             name="ck_marriage_dates",
         ),
-        UniqueConstraint("person_1_id", "person_2_id", name="uq_marriage_pair"),
+        Index(
+            "uq_marriage_pair_active",
+            "person_1_id",
+            "person_2_id",
+            unique=True,
+            sqlite_where=text("status = 'married' AND deleted_at IS NULL"),
+            postgresql_where=text("status = 'married' AND deleted_at IS NULL"),
+        ),
+        Index("ix_marriage_person_1_start", "person_1_id", "start_date", "created_at"),
+        Index("ix_marriage_person_2_start", "person_2_id", "start_date", "created_at"),
         Index("ix_marriage_person_2", "person_2_id"),
     )
 

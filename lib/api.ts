@@ -61,8 +61,9 @@ export type Person = {
 export type TreeData = {
   persons: Person[];
   parent_child_relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[];
-  marriages: { id: string; person_1_id: string; person_2_id: string; status: string; start_date: string | null; end_date: string | null }[];
+  marriages: Marriage[];
 };
+export type Marriage = { id: string; person_1_id: string; person_2_id: string; status: 'married' | 'divorced' | 'widowed'; start_date: string | null; end_date: string | null; location?: string | null; description?: string | null; created_at?: string; other_person?: Person };
 
 export const personName = (person: Person) =>
   [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ');

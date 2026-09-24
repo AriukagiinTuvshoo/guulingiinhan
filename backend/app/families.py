@@ -196,14 +196,63 @@ class MarriageCreate(BaseModel):
     @model_validator(mode="after")
     def valid_dates(self):
         assert_date_order(self.start_date, self.end_date)
-        if self.status == "divorced" and self.end_date is None:
-            raise ValueError("Салсан гэрлэлтийн дууссан огноог оруулна уу.")
+        if self.status == "married" and self.end_date is not None:
+            raise ValueError("Идэвхтэй гэрлэлтийн дууссан огноо байх ёсгүй.")
         return self
 
 
 class MarriagePatch(BaseModel):
-    status: str = Field(pattern="^(married|divorced|widowed)$")
+    status: str | None = Field(default=None, pattern="^(married|divorced|widowed)$")
+    start_date: date | None = None
     end_date: date | None = None
+    location: str | None = Field(default=None, max_length=240)
+    description: str | None = Field(default=None, max_length=10000)
+
+    @model_validator(mode="after")
+    def validate_update(self):
+        if not self.model_fields_set:
+            raise ValueError("Өөрчлөх мэдээллээ оруулна уу.")
+        assert_date_order(self.start_date, self.end_date)
+        return self
+
+
+class MarriageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    person_1_id: UUID
+    person_2_id: UUID
+    status: str
+    start_date: date | None
+    end_date: date | None
+    location: str | None
+    description: str | None
+    created_at: datetime
+
+
+def _marriage_person_access(db: Session, family_id: UUID, marriage: Marriage, user: User):
+    people = [
+        _person_in_family(db, family_id, marriage.person_1_id),
+        _person_in_family(db, family_id, marriage.person_2_id),
+    ]
+    for person in people:
+        _assert_person_visible(db, person, user)
+    minor_ids = [person.id for person in people if person_is_minor(person)]
+    if minor_ids:
+        scopes = active_guardian_scopes(db, user.id, family_id, minor_ids)
+        if any("view_profile" not in scopes.get(person_id, set()) for person_id in minor_ids):
+            raise HTTPException(status_code=404, detail="Гэрлэлтийн мэдээлэл олдсонгүй.")
+    return people
+
+
+def _marriage_order():
+    # NULL dates sort last, followed by stable insertion order for ties.
+    return (
+        Marriage.start_date.is_(None),
+        Marriage.start_date,
+        Marriage.created_at,
+        Marriage.id,
+    )
 
 
 class MemberOut(BaseModel):
@@ -907,20 +956,19 @@ def create_marriage(
         created_by=user.id,
     )
     db.add(marriage)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="Ижил хосын идэвхтэй гэрлэлт өмнө нь бүртгэгдсэн байна."
+        ) from error
     _audit(db, user, family_id, "marriage.created", "marriage", marriage.id)
     _commit(db, "Энэ хоёр хүний гэрлэлтийн холбоо өмнө нь бүртгэгдсэн байна.")
-    return {
-        "id": marriage.id,
-        "person_1_id": first,
-        "person_2_id": second,
-        "status": marriage.status,
-        "start_date": marriage.start_date,
-        "end_date": marriage.end_date,
-    }
+    return MarriageOut.model_validate(marriage)
 
 
-@router.get("/{family_id}/marriages")
+@router.get("/{family_id}/marriages", response_model=list[MarriageOut])
 def list_marriages(
     family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -954,6 +1002,7 @@ def list_marriages(
                 Marriage.person_2_id.in_(person_ids),
                 Marriage.deleted_at.is_(None),
             )
+            .order_by(*_marriage_order())
         )
         .scalars()
         .all()
@@ -964,6 +1013,56 @@ def list_marriages(
         if marriage.person_1_id in relationship_visible
         and marriage.person_2_id in relationship_visible
     ]
+
+
+@router.get("/{family_id}/persons/{person_id}/marriages")
+def list_person_marriages(
+    family_id: UUID,
+    person_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    if person_is_minor(person):
+        _require_minor_scope(db, family_id, person, user, "view_profile")
+    family_person_ids = set(
+        db.scalars(select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)).all()
+    )
+    statements = select(Marriage).where(
+        or_(Marriage.person_1_id == person_id, Marriage.person_2_id == person_id),
+        Marriage.deleted_at.is_(None),
+    )
+    marriages = db.scalars(statements.order_by(*_marriage_order())).all()
+    visible = []
+    for marriage in marriages:
+        if marriage.person_1_id not in family_person_ids or marriage.person_2_id not in family_person_ids:
+            continue
+        people = _marriage_person_access(db, family_id, marriage, user)
+        other = people[1] if people[0].id == person_id else people[0]
+        visible.append(
+            {
+                **MarriageOut.model_validate(marriage).model_dump(),
+                "other_person": _person_output(db, family_id, other, user),
+            }
+        )
+    return visible
+
+
+@router.get("/{family_id}/marriages/{marriage_id}", response_model=MarriageOut)
+def get_marriage(
+    family_id: UUID,
+    marriage_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    marriage = db.get(Marriage, marriage_id)
+    if marriage is None or marriage.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Гэрлэлтийн мэдээлэл олдсонгүй.")
+    _marriage_person_access(db, family_id, marriage, user)
+    return marriage
 
 
 @router.patch("/{family_id}/marriages/{marriage_id}")
@@ -978,32 +1077,29 @@ def update_marriage(
     marriage = db.get(Marriage, marriage_id)
     if marriage is None or marriage.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Гэрлэлтийн мэдээлэл олдсонгүй.")
-    _person_in_family(db, family_id, marriage.person_1_id)
-    _person_in_family(db, family_id, marriage.person_2_id)
-    if body.status == "divorced" and body.end_date is None:
-        raise HTTPException(status_code=422, detail="Салсан гэрлэлтийн дууссан огноог оруулна уу.")
+    _marriage_person_access(db, family_id, marriage, user)
+    updates = body.model_dump(exclude_unset=True)
+    next_start = updates.get("start_date", marriage.start_date)
+    next_end = updates.get("end_date", marriage.end_date)
     try:
-        assert_date_order(marriage.start_date, body.end_date)
+        assert_date_order(next_start, next_end)
     except RelationshipError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    marriage.status, marriage.end_date = body.status, body.end_date
+    next_status = updates.get("status", marriage.status)
+    if next_status == "married" and next_end is not None:
+        raise HTTPException(status_code=422, detail="Идэвхтэй гэрлэлтийн дууссан огноо байх ёсгүй.")
+    for field, value in updates.items():
+        setattr(marriage, field, value)
     _audit(
         db,
         user,
         family_id,
-        "marriage.divorced" if body.status == "divorced" else "marriage.updated",
+        "marriage.divorced" if next_status == "divorced" else "marriage.updated",
         "marriage",
         marriage.id,
     )
-    db.commit()
-    return {
-        "id": marriage.id,
-        "person_1_id": marriage.person_1_id,
-        "person_2_id": marriage.person_2_id,
-        "status": marriage.status,
-        "start_date": marriage.start_date,
-        "end_date": marriage.end_date,
-    }
+    _commit(db, "Ижил хосын идэвхтэй гэрлэлт өмнө нь бүртгэгдсэн байна.")
+    return MarriageOut.model_validate(marriage)
 
 
 @router.delete("/{family_id}/marriages/{marriage_id}", status_code=204)
@@ -1533,7 +1629,7 @@ def family_tree(
                     Marriage.person_1_id.in_(ids),
                     Marriage.person_2_id.in_(ids),
                     Marriage.deleted_at.is_(None),
-                )
+                ).order_by(*_marriage_order())
             ).all()
         )
         if ids

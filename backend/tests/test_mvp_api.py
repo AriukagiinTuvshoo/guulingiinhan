@@ -237,6 +237,87 @@ def test_spouse_divorce_keeps_parent_relationship(client):
     assert {marriage["status"] for marriage in tree["marriages"]} == {"divorced", "married"}
 
 
+def test_same_pair_remarriage_keeps_each_marriage_occurrence(client):
+    register(client, "remarriage@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Дахин гэрлэлт"}).json()["id"]
+    base = f"/api/v1/families/{family_id}"
+    first = client.post(
+        f"{base}/persons", json={"first_name": "Бат", "birth_date": "1980-01-01"}
+    ).json()
+    second = client.post(f"{base}/persons", json={"first_name": "Сар"}).json()
+    child = client.post(f"{base}/persons", json={"first_name": "Болд"}).json()
+    body = {"person_1_id": first["id"], "person_2_id": second["id"], "start_date": "2000-01-01"}
+
+    initial = client.post(f"{base}/marriages", json=body)
+    assert initial.status_code == 201
+    duplicate_active = client.post(f"{base}/marriages", json=body)
+    assert duplicate_active.status_code == 409
+    assert client.post(
+        f"{base}/relationships/parent-child",
+        json={"parent_id": first["id"], "child_id": child["id"]},
+    ).status_code == 201
+
+    ended = client.patch(
+        f"{base}/marriages/{initial.json()['id']}",
+        json={"status": "divorced", "end_date": "2010-01-01"},
+    )
+    assert ended.status_code == 200
+    repeated = client.post(
+        f"{base}/marriages",
+        json={**body, "start_date": "2015-01-01", "location": "Улаанбаатар"},
+    )
+    assert repeated.status_code == 201
+    second_end = client.patch(
+        f"{base}/marriages/{repeated.json()['id']}",
+        json={"status": "divorced", "end_date": None},
+    )
+    assert second_end.status_code == 200
+    third = client.post(
+        f"{base}/marriages", json={**body, "start_date": None, "description": "Дахин нийлсэн"}
+    )
+    assert third.status_code == 201
+
+    history = client.get(f"{base}/persons/{first['id']}/marriages")
+    assert history.status_code == 200
+    assert [item["status"] for item in history.json()] == ["divorced", "divorced", "married"]
+    assert [item["start_date"] for item in history.json()] == ["2000-01-01", "2015-01-01", None]
+    assert all(item["other_person"]["id"] == second["id"] for item in history.json())
+    assert client.get(f"{base}/marriages/{initial.json()['id']}").json()["id"] == initial.json()["id"]
+    tree = client.get(f"{base}/tree").json()
+    assert len(tree["marriages"]) == 3
+    assert len(tree["parent_child_relationships"]) == 1
+
+
+def test_marriage_validation_and_family_scoping(client):
+    register(client, "marriage-scope@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Нэг"}).json()["id"]
+    other_family = client.post("/api/v1/families", json={"name": "Хоёр"}).json()["id"]
+    person_a = client.post(f"/api/v1/families/{family_id}/persons", json={"first_name": "А"}).json()
+    person_b = client.post(f"/api/v1/families/{family_id}/persons", json={"first_name": "Б"}).json()
+    outsider = client.post(
+        f"/api/v1/families/{other_family}/persons", json={"first_name": "Г"}
+    ).json()
+    base = f"/api/v1/families/{family_id}"
+    self_marriage = client.post(
+        f"{base}/marriages", json={"person_1_id": person_a["id"], "person_2_id": person_a["id"]}
+    )
+    assert self_marriage.status_code == 422
+    reverse_dates = client.post(
+        f"{base}/marriages",
+        json={
+            "person_1_id": person_a["id"],
+            "person_2_id": person_b["id"],
+            "start_date": "2010-01-01",
+            "end_date": "2009-01-01",
+        },
+    )
+    assert reverse_dates.status_code == 422
+    cross_family = client.post(
+        f"{base}/marriages", json={"person_1_id": person_a["id"], "person_2_id": outsider["id"]}
+    )
+    assert cross_family.status_code == 404
+
+
 def test_biography_timeline_and_memory_round_trip(client):
     register(client, "archive@example.com")
     family_id = client.post("/api/v1/families", json={"name": "Архив"}).json()["id"]
