@@ -45,10 +45,10 @@ export default function OnboardingPage() {
   }
   if (loading) return <main className="mvp"><section className="mvpbox">Ачаалж байна…</section></main>;
   return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 580 }}>
-    <Link href="/families">← Гэр бүлүүд</Link><h1 style={{ marginTop: 22 }}>Ургийн модоо эхлүүлэх</h1><p>Гэр бүлээ үүсгээд өөрийн бүртгэл болон хүсвэл эцэг эхээ нэмнэ.</p>
+    <Link href="/families">← Гэр бүлүүд</Link><h1 style={{ marginTop: 22 }}>Ургийн модоо эхлүүлэх</h1><p>Гэр бүлээ үүсгээд өөрийгөө бүртгэж, хүсвэл эцэг эхээ нэмнэ.</p>
     {error && <div className="error" role="alert">{error}</div>}
     <form onSubmit={submit}>
-      <label>Гэр бүлийн нэр<input name="family" placeholder="Гуулингийнхан" maxLength={180} required /></label>
+      <label>Гэр бүлийн нэр<input name="family" placeholder="ГУУЛИНГИЙНХАН" maxLength={180} required /></label>
       <label>Таны нэр<input name="name" autoComplete="name" required maxLength={360} /></label>
       <label>Хүйс<select name="gender" defaultValue="unknown"><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>
       <div className="row"><label style={{ flex: 1 }}>Эцгийн нэр<input name="father" maxLength={360} /></label><label style={{ flex: 1 }}>Эхийн нэр<input name="mother" maxLength={360} /></label></div>
