@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Bell, ChevronDown, Home, GitFork, Network, BookOpen, Archive, MessageSquare, CalendarDays, MapPin, Settings, Plus, Minus, Maximize, UserRound, Users, Heart, Camera, FileText, Pencil, MoreHorizontal, TreeDeciduous, Menu, X, ZoomIn, ZoomOut } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { api as apiMe } from '../lib/api';
+import { api as apiMe } from '../../lib/api';
 
 type Person={id:number;name:string;years:string;generation:number;parents:number[];spouse?:number;photo:string;bio:string;place:string;gender:string};
 const initial:Person[]=[
