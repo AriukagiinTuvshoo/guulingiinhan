@@ -58,7 +58,7 @@ def make_photo(family_id: UUID, memory_id: UUID, photo_id: UUID) -> Photo:
     )
 
 
-def test_consistency_report_detects_expected_failure_classes():
+def test_consistency_report_detects_missing_thumbnail_and_orphan_object():
     family_id, memory_id, photo_id = uuid4(), uuid4(), uuid4()
     photo = make_photo(family_id, memory_id, photo_id)
     extra = "families/synthetic/unknown/original"
@@ -66,10 +66,20 @@ def test_consistency_report_detects_expected_failure_classes():
 
     report = check_storage_consistency(FakeSession([photo]), storage)
 
-    assert report.orphaned_metadata == [str(photo_id)]
+    assert report.orphaned_metadata == []
     assert report.missing_thumbnails == [str(photo_id)]
     assert report.broken_photos == []
     assert report.orphaned_objects == [extra]
+
+
+def test_consistency_report_detects_orphaned_metadata():
+    family_id, memory_id, photo_id = uuid4(), uuid4(), uuid4()
+    photo = make_photo(family_id, memory_id, photo_id)
+
+    report = check_storage_consistency(FakeSession([photo]), MemoryStorage())
+
+    assert report.orphaned_metadata == [str(photo_id)]
+    assert report.broken_photos == []
 
 
 def test_consistency_report_detects_broken_photo():
