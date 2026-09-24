@@ -56,7 +56,7 @@ export default function PasswordResetPage() {
     {!token && !complete && <form onSubmit={request}>
       <label>Имэйл<input name="email" type="email" autoComplete="email" maxLength={320} required /></label>
       <button className="primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Холбоос илгээх'}</button>
-      <p className="muted">Account байгаа эсэхийг харуулахгүй.</p>
+      <p className="muted">Бүртгэлтэй эсэхийг харуулахгүй.</p>
     </form>}
     {token && !complete && <form onSubmit={confirm}>
       <label>Шинэ нууц үг<input name="password" type="password" autoComplete="new-password" minLength={10} maxLength={128} required /></label>
