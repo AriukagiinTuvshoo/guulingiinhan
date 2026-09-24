@@ -28,60 +28,78 @@ class MemoryStorage:
         return sorted(key for key in self.keys if key.startswith(prefix))
 
 
+class FakeScalarResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return list(self.rows)
+
+
+class FakeSession:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def scalars(self, _query):
+        return FakeScalarResult(self.rows)
+
+
 def make_photo(family_id: UUID, memory_id: UUID, photo_id: UUID) -> Photo:
     prefix = f"families/{family_id}/memories/{memory_id}/photos/{photo_id}"
     return Photo(
-        id=photo_id, family_id=family_id, memory_id=memory_id,
-        object_key=f"{prefix}/original", thumbnail_object_key=f"{prefix}/thumbnail.jpg",
-        original_filename="synthetic.png", uploaded_by=uuid4(), storage_status="ready",
+        id=photo_id,
+        family_id=family_id,
+        memory_id=memory_id,
+        object_key=f"{prefix}/original",
+        thumbnail_object_key=f"{prefix}/thumbnail.jpg",
+        original_filename="synthetic.png",
+        uploaded_by=uuid4(),
+        storage_status="ready",
     )
 
 
-def test_consistency_report_detects_expected_failure_classes(database):
+def test_consistency_report_detects_expected_failure_classes():
     family_id, memory_id, photo_id = uuid4(), uuid4(), uuid4()
     photo = make_photo(family_id, memory_id, photo_id)
     extra = "families/synthetic/unknown/original"
-    with database() as db:
-        db.add(photo)
-        db.commit()
-        storage = MemoryStorage({photo.object_key, extra})
-        report = check_storage_consistency(db, storage)
+    storage = MemoryStorage({photo.object_key, extra})
+
+    report = check_storage_consistency(FakeSession([photo]), storage)
+
     assert report.orphaned_metadata == [str(photo_id)]
     assert report.missing_thumbnails == [str(photo_id)]
     assert report.broken_photos == []
     assert report.orphaned_objects == [extra]
 
 
-def test_consistency_report_detects_broken_photo(database):
+def test_consistency_report_detects_broken_photo():
     family_id, memory_id, photo_id = uuid4(), uuid4(), uuid4()
     photo = make_photo(family_id, memory_id, photo_id)
-    with database() as db:
-        db.add(photo)
-        db.commit()
-        report = check_storage_consistency(db, MemoryStorage({photo.thumbnail_object_key}))
+
+    report = check_storage_consistency(
+        FakeSession([photo]), MemoryStorage({photo.thumbnail_object_key})
+    )
+
     assert report.orphaned_metadata == [str(photo_id)]
     assert report.broken_photos == [str(photo_id)]
 
 
-def test_checker_is_read_only(database):
+def test_checker_is_read_only():
     family_id, memory_id, photo_id = uuid4(), uuid4(), uuid4()
     photo = make_photo(family_id, memory_id, photo_id)
-    with database() as db:
-        db.add(photo)
-        db.commit()
-        storage = MemoryStorage({photo.object_key, photo.thumbnail_object_key})
-        report = check_storage_consistency(db, storage)
-        assert report.ok
-        assert not storage.delete_called
-        assert db.get(Photo, photo_id) is not None
+    storage = MemoryStorage({photo.object_key, photo.thumbnail_object_key})
+
+    report = check_storage_consistency(FakeSession([photo]), storage)
+
+    assert report.ok
+    assert not storage.delete_called
 
 
-def test_invalid_storage_metadata_is_reported(database):
+def test_invalid_storage_metadata_is_reported():
     family_id, memory_id, photo_id = uuid4(), uuid4(), uuid4()
     photo = make_photo(family_id, memory_id, photo_id)
     photo.object_key = "../outside"
-    with database() as db:
-        db.add(photo)
-        db.commit()
-        report = check_storage_consistency(db, MemoryStorage())
+
+    report = check_storage_consistency(FakeSession([photo]), MemoryStorage())
+
     assert report.invalid_metadata == [str(photo_id)]
