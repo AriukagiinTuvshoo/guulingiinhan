@@ -116,7 +116,7 @@ export default function LoginPage() {
   }
 
   return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 460 }}>
-    <Link href="/" aria-label="Нүүр">← Гуулингийнхан</Link>
+    <Link href="/" aria-label="Нүүр">← ГУУЛИНГИЙНХАН</Link>
     <h1 style={{ marginTop: 24 }}>{mode === 'recovery' ? 'Нууц үг сэргээх' : 'Нэвтрэх'}</h1>
     <p>Гэр бүлийнхээ түүхийг үргэлжлүүлэн хадгалаарай.</p>
     <div className="tabs" role="tablist" aria-label="Нэвтрэх арга">
