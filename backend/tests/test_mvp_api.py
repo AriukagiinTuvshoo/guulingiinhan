@@ -1,8 +1,9 @@
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
 
-from app.models import FamilyMember, User
+from app.models import AuditLog, FamilyMember, User
 
 
 def register(client, email):
@@ -65,7 +66,17 @@ def test_private_person_is_not_exposed_to_other_family_members(client, database)
     assert client.get(f"/api/v1/families/{family_id}/tree").json()["persons"] == []
 
 
-def test_invitation_is_single_use_and_email_bound(client):
+def _token_from_mail(email_provider, recipient, subject_prefix):
+    delivery = next(
+        item
+        for item in reversed(email_provider.deliveries)
+        if item.recipient == recipient and item.subject.startswith(subject_prefix)
+    )
+    link = delivery.text.rsplit(" ", 1)[-1]
+    return urlsplit(link).fragment.removeprefix("token=")
+
+
+def test_invitation_is_single_use_email_bound_and_revocable(client, database, email_provider):
     register(client, "owner@example.com")
     family_id = client.post("/api/v1/families", json={"name": "Урилга"}).json()["id"]
     invite = client.post(
@@ -73,17 +84,51 @@ def test_invitation_is_single_use_and_email_bound(client):
         json={"email": "new.member@example.com", "role": "editor"},
     )
     assert invite.status_code == 201
-    token = invite.json()["token"]
+    assert "token" not in invite.json()
+    token = _token_from_mail(email_provider, "new.member@example.com", "Урилга")
     client.post("/api/v1/auth/logout")
     register(client, "wrong.member@example.com")
     assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 403
     client.post("/api/v1/auth/logout")
     register(client, "new.member@example.com")
+    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 403
+    verification = _token_from_mail(
+        email_provider, "new.member@example.com", "Гуулингийнхан — имэйл"
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/email/verification/confirm", json={"token": verification}
+        ).status_code
+        == 200
+    )
     accepted = client.post("/api/v1/invitations/accept", json={"token": token})
     assert accepted.status_code == 200
     assert accepted.json() == {"family_id": family_id, "role": "editor"}
     assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 404
     assert client.get(f"/api/v1/families/{family_id}").status_code == 200
+
+
+def test_invitation_revocation_invalidates_email_link(client, database, email_provider):
+    register(client, "revoker@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Цуцлах"}).json()["id"]
+    created = client.post(
+        f"/api/v1/families/{family_id}/invitations",
+        json={"email": "revoked@example.com", "role": "member"},
+    )
+    token = _token_from_mail(email_provider, "revoked@example.com", "Цуцлах")
+    assert created.status_code == 201
+    assert (
+        client.delete(
+            f"/api/v1/families/{family_id}/invitations/{created.json()['id']}"
+        ).status_code
+        == 204
+    )
+    client.post("/api/v1/auth/logout")
+    register(client, "revoked@example.com")
+    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 404
+    with database() as db:
+        actions = set(db.scalars(select(AuditLog.action)).all())
+        assert "invitation.revoked" in actions
 
 
 def test_family_person_relationship_tree_and_family_isolation(client):

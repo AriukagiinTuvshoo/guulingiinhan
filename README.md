@@ -41,4 +41,4 @@ uv run ruff check app tests migrations
 uv run alembic check
 ```
 
-Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Owner урилгын нэг удаагийн код үүсгэж гараар дамжуулж болно. Үндсэн demo нүүр sample өгөгдөл харуулсаар байна. Email баталгаажуулалт, нууц үг сэргээх email, автоматаар урилга илгээх, зураг хадгалах үйлчилгээ тохируулаагүй; энэ хувилбарыг нээлттэй хэрэглэгчдэд production болгон гаргах боломжгүй.
+Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Email verification, нууц үг сэргээх, invitation хүргэлтэд local `EMAIL_PROVIDER=fake`, production-д TLS-тэй SMTP тохируулна. Email хүргэлт болон object storage production-д хараахан тохируулагдаагүй.

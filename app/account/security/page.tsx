@@ -68,6 +68,19 @@ export default function AccountSecurityPage() {
     } finally { setBusy(false); }
   }
 
+  async function requestEmailVerification() {
+    const email = identities.find((item) => item.provider === 'email')?.display_identifier;
+    if (!email) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const result = await api<{message: string}>('/auth/email/verification/request', {
+        method: 'POST', body: JSON.stringify({email}),
+      });
+      setNotice(result.message);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Хүсэлт илгээж чадсангүй.'); }
+    finally { setBusy(false); }
+  }
+
   const linkedPhone = identities.some((item) => item.provider === 'phone' && item.verified);
   return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 680 }}>
     <Link href="/families">← Гэр бүлүүд</Link>
@@ -81,6 +94,10 @@ export default function AccountSecurityPage() {
         <strong>{identity.provider === 'email' ? 'Имэйл' : identity.provider === 'phone' ? 'Утас' : 'Google'}</strong>
         {' · '}{identity.display_identifier ?? 'холбогдсон'}{' · '}{identity.verified ? 'Баталгаажсан' : 'баталгаажаагүй'}
       </p>)}
+      {identities.some((item) => item.provider === 'email' && !item.verified) && <div className="card">
+        <p>Имэйл баталгаажаагүй байна.</p>
+        <button type="button" disabled={busy} onClick={requestEmailVerification}>Баталгаажуулах холбоос дахин илгээх</button>
+      </div>}
       {!linkedPhone && !challenge && <form onSubmit={requestPhone}>
         <label>Утасны дугаар (E.164)<input name="phone" type="tel" placeholder="+97699112233" required maxLength={16} /></label>
         <button className="primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Утас холбох'}</button>

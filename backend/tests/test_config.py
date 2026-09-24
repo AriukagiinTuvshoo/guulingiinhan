@@ -31,6 +31,12 @@ def test_production_accepts_postgresql_and_https_origin():
         twilio_account_sid="AC" + "x" * 32,
         twilio_auth_token="x" * 32,
         twilio_from_number="+12025550100",
+        email_provider="smtp",
+        email_from="no-reply@guulingiinhan.mn",
+        email_public_base_url="https://guulingiinhan.mn",
+        email_smtp_host="smtp.example.net",
+        email_smtp_username="smtp-user",
+        email_smtp_password="smtp-password",
     )
     assert settings.cors_origin_list == ["https://guulingiinhan.mn"]
 
@@ -45,3 +51,29 @@ def test_production_rejects_missing_otp_secret_or_sms_provider():
         Settings(**values)
     with pytest.raises(ValidationError):
         Settings(**values, otp_hash_secret="x" * 40, sms_provider="fake")
+
+
+def test_production_rejects_fake_email_provider_and_requires_tls():
+    values = {
+        "app_env": "production",
+        "database_url": "postgresql+psycopg://user:pass@host/db",
+        "cors_origins": "https://guulingiinhan.mn",
+        "otp_hash_secret": "x" * 40,
+        "sms_provider": "twilio",
+        "twilio_account_sid": "AC" + "x" * 32,
+        "twilio_auth_token": "x" * 32,
+        "twilio_from_number": "+12025550100",
+    }
+    with pytest.raises(ValidationError):
+        Settings(**values)
+    with pytest.raises(ValidationError):
+        Settings(
+            **values,
+            email_provider="smtp",
+            email_from="no-reply@guulingiinhan.mn",
+            email_public_base_url="https://guulingiinhan.mn",
+            email_smtp_host="smtp.example.net",
+            email_smtp_username="smtp-user",
+            email_smtp_password="smtp-password",
+            email_smtp_starttls=False,
+        )

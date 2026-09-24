@@ -10,7 +10,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import (
     BaseModel,
@@ -29,12 +29,15 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.email import EmailProvider, get_email_provider, send_email_safely
 from app.identity import email_is_registered, find_email_user, normalize_email, normalize_phone
 from app.models import (
     AuditLog,
+    EmailVerificationToken,
     IdentityLinkRequest,
     LoginIdentity,
     LoginThrottle,
+    PasswordResetToken,
     PhoneOtpChallenge,
     User,
     UserPersonLink,
@@ -70,6 +73,22 @@ class RegisterInput(BaseModel):
 class LoginInput(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+
+
+class EmailAddressInput(BaseModel):
+    email: EmailStr
+
+
+class EmailTokenInput(BaseModel):
+    token: str = Field(min_length=40, max_length=128)
+
+
+class PasswordResetConfirmInput(EmailTokenInput):
+    new_password: str = Field(min_length=10, max_length=128)
+
+
+class GenericEmailResponse(BaseModel):
+    message: str
 
 
 class UserOutput(BaseModel):
@@ -446,6 +465,135 @@ def _user_output(db: Session, user: User) -> UserOutput:
     )
 
 
+GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
+GENERIC_RESET_MESSAGE = "Хэрэв энэ имэйлд баталгаажсан account байвал нууц үг шинэчлэх холбоос илгээнэ."
+
+
+def _email_request_allowed(db: Session, request: Request, purpose: str, email: str) -> bool:
+    ip = _normalized_ip(request)
+    email_allowed = _consume_otp_rate(db, f"{purpose}-email", email, 1)
+    ip_allowed = _consume_otp_rate(db, f"{purpose}-ip", ip, 10)
+    return email_allowed and ip_allowed
+
+
+def _audit_auth_event(
+    db: Session, user_id: UUID, action: str, target_type: str, target_id: UUID | None = None
+) -> None:
+    db.add(
+        AuditLog(
+            actor_id=user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+        )
+    )
+
+
+def _create_email_token(
+    db: Session,
+    user: User,
+    *,
+    model,
+    kind: str,
+    ttl_seconds: int,
+    audit_action: str,
+) -> str:
+    now = datetime.now(UTC)
+    db.execute(delete(model).where(model.created_at < now - timedelta(days=90)))
+    db.execute(
+        update(model)
+        .where(model.user_id == user.id, model.consumed_at.is_(None))
+        .values(consumed_at=now)
+    )
+    raw_token = secrets.token_urlsafe(32)
+    row = model(
+        user_id=user.id,
+        token_hash=_token_hash(raw_token),
+        expires_at=now + timedelta(seconds=ttl_seconds),
+        created_at=now,
+    )
+    db.add(row)
+    db.flush()
+    _audit_auth_event(db, user.id, audit_action, kind, row.id)
+    db.commit()
+    return raw_token
+
+
+def _email_link(page: str, token: str) -> str:
+    base = get_settings().email_public_base_url.rstrip("/")
+    return f"{base}/{page}#token={token}"
+
+
+def _verified_email_identity(db: Session, user: User) -> LoginIdentity | None:
+    identity = db.scalar(
+        select(LoginIdentity).where(
+            LoginIdentity.user_id == user.id,
+            LoginIdentity.provider == "email",
+            LoginIdentity.normalized_identifier == normalize_email(user.email),
+            LoginIdentity.disabled_at.is_(None),
+        )
+    )
+    if identity and identity.verified_at is None and user.email_verified_at is not None:
+        identity.verified_at = user.email_verified_at
+        db.commit()
+    return identity if identity and identity.verified_at is not None else None
+
+
+def _verification_link_for_user(
+    db: Session,
+    user: User,
+    email_provider: EmailProvider,
+    background_tasks: BackgroundTasks,
+    request_id: str | None,
+) -> None:
+    if user.email_verified_at is not None:
+        return
+    identity = db.scalar(
+        select(LoginIdentity).where(
+            LoginIdentity.user_id == user.id,
+            LoginIdentity.provider == "email",
+            LoginIdentity.normalized_identifier == normalize_email(user.email),
+        )
+    )
+    if identity is None:
+        identity = LoginIdentity(
+            user_id=user.id,
+            provider="email",
+            normalized_identifier=normalize_email(user.email),
+            display_identifier=user.email,
+        )
+        db.add(identity)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            logger.info("Email verification skipped for conflicting identity", extra={"request_id": request_id})
+            return
+    if identity.verified_at is not None:
+        if user.email_verified_at is None:
+            user.email_verified_at = identity.verified_at
+            db.commit()
+        return
+    if identity.disabled_at is not None:
+        return
+    settings = get_settings()
+    raw_token = _create_email_token(
+        db,
+        user,
+        model=EmailVerificationToken,
+        kind="email_verification_token",
+        ttl_seconds=settings.email_verification_ttl_seconds,
+        audit_action="email_verification_requested",
+    )
+    background_tasks.add_task(
+        send_email_safely,
+        email_provider,
+        "send_verification_email",
+        (user.email, _email_link("email-verification", raw_token)),
+        request_id,
+    )
+
+
 def _google_provider() -> GoogleOIDCProvider:
     settings = get_settings()
     if not settings.google_oidc_enabled or not all(
@@ -686,7 +834,14 @@ def google_callback(
 
 
 @router.post("/register", response_model=UserOutput, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterInput, response: Response, db: Session = Depends(get_db)):
+def register(
+    body: RegisterInput,
+    request: Request,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    email_provider: EmailProvider = Depends(get_email_provider),
+    db: Session = Depends(get_db),
+):
     email = normalize_email(str(body.email))
     if email_is_registered(db, email):
         raise HTTPException(status_code=409, detail="Энэ имэйлээр бүртгэл үүссэн байна.")
@@ -724,7 +879,189 @@ def register(body: RegisterInput, response: Response, db: Session = Depends(get_
         raise
     db.refresh(user)
     set_session_cookie(db, response, user.id)
+    _verification_link_for_user(
+        db, user, email_provider, background_tasks, getattr(request.state, "request_id", None)
+    )
     return _user_output(db, user)
+
+
+@router.post(
+    "/email/verification/request", response_model=GenericEmailResponse, status_code=202
+)
+def request_email_verification(
+    body: EmailAddressInput,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    email_provider: EmailProvider = Depends(get_email_provider),
+    db: Session = Depends(get_db),
+):
+    email = normalize_email(str(body.email))
+    if not _email_request_allowed(db, request, "email-verification", email):
+        return GenericEmailResponse(message=GENERIC_VERIFICATION_MESSAGE)
+    user = find_email_user(db, email)
+    if user and _consume_otp_rate(db, "email-verification-account", str(user.id), 5):
+        _verification_link_for_user(
+            db,
+            user,
+            email_provider,
+            background_tasks,
+            getattr(request.state, "request_id", None),
+        )
+    return GenericEmailResponse(message=GENERIC_VERIFICATION_MESSAGE)
+
+
+@router.post("/email/verification/confirm", response_model=GenericEmailResponse)
+def confirm_email_verification(
+    body: EmailTokenInput,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    supplied_hash = _token_hash(body.token)
+    row = db.scalar(
+        select(EmailVerificationToken).where(EmailVerificationToken.token_hash == supplied_hash)
+    )
+    now = datetime.now(UTC)
+    if row is None or not hmac.compare_digest(row.token_hash, supplied_hash):
+        logger.info(
+            "Email verification rejected",
+            extra={"request_id": getattr(request.state, "request_id", None)},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Баталгаажуулах холбоос хүчингүй эсвэл хугацаа дууссан байна.",
+        )
+    user = db.get(User, row.user_id)
+    identity = db.scalar(
+        select(LoginIdentity).where(
+            LoginIdentity.user_id == row.user_id,
+            LoginIdentity.provider == "email",
+            LoginIdentity.normalized_identifier == normalize_email(user.email) if user else False,
+        )
+    )
+    consumed_user_id = db.execute(
+        update(EmailVerificationToken)
+        .where(
+            EmailVerificationToken.id == row.id,
+            EmailVerificationToken.consumed_at.is_(None),
+            EmailVerificationToken.expires_at > now,
+        )
+        .values(consumed_at=now)
+        .execution_options(synchronize_session=False)
+        .returning(EmailVerificationToken.user_id)
+    ).scalar_one_or_none()
+    if consumed_user_id is None or user is None or identity is None or identity.disabled_at is not None:
+        if user:
+            _audit_auth_event(
+                db,
+                user.id,
+                "email_verification_failed",
+                "email_identity",
+                identity.id if identity else None,
+            )
+            db.commit()
+        logger.info(
+            "Email verification rejected",
+            extra={"request_id": getattr(request.state, "request_id", None)},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Баталгаажуулах холбоос хүчингүй эсвэл хугацаа дууссан байна.",
+        )
+    identity.verified_at = now
+    user.email_verified_at = now
+    _audit_auth_event(db, user.id, "email_verified", "email_identity", identity.id)
+    db.commit()
+    return GenericEmailResponse(message="Имэйл хаяг баталгаажлаа. Одоо нэвтэрч болно.")
+
+
+@router.post("/password-reset/request", response_model=GenericEmailResponse, status_code=202)
+def request_email_password_reset(
+    body: EmailAddressInput,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    email_provider: EmailProvider = Depends(get_email_provider),
+    db: Session = Depends(get_db),
+):
+    email = normalize_email(str(body.email))
+    if not _email_request_allowed(db, request, "email-password-reset", email):
+        return GenericEmailResponse(message=GENERIC_RESET_MESSAGE)
+    user = find_email_user(db, email)
+    identity = _verified_email_identity(db, user) if user else None
+    if user and identity:
+        if _consume_otp_rate(db, "email-password-reset-account", str(user.id), 5):
+            settings = get_settings()
+            raw_token = _create_email_token(
+                db,
+                user,
+                model=PasswordResetToken,
+                kind="password_reset_token",
+                ttl_seconds=settings.email_password_reset_ttl_seconds,
+                audit_action="password_reset_requested",
+            )
+            background_tasks.add_task(
+                send_email_safely,
+                email_provider,
+                "send_password_reset_email",
+                (user.email, _email_link("password-reset", raw_token)),
+                getattr(request.state, "request_id", None),
+            )
+    elif user:
+        _password_matches("email-reset-enumeration-padding", _DUMMY_PASSWORD_HASH)
+        _audit_auth_event(db, user.id, "password_reset_failed", "user", user.id)
+        db.commit()
+    else:
+        _password_matches("email-reset-enumeration-padding", _DUMMY_PASSWORD_HASH)
+    return GenericEmailResponse(message=GENERIC_RESET_MESSAGE)
+
+
+@router.post("/password-reset/confirm", status_code=204)
+def confirm_email_password_reset(
+    body: PasswordResetConfirmInput,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    supplied_hash = _token_hash(body.token)
+    row = db.scalar(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == supplied_hash)
+    )
+    now = datetime.now(UTC)
+    user = db.get(User, row.user_id) if row else None
+    identity = _verified_email_identity(db, user) if user else None
+    consumed_user_id = None
+    if row is not None and hmac.compare_digest(row.token_hash, supplied_hash) and identity:
+        consumed_user_id = db.execute(
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.id == row.id,
+                PasswordResetToken.consumed_at.is_(None),
+                PasswordResetToken.expires_at > now,
+            )
+            .values(consumed_at=now)
+            .execution_options(synchronize_session=False)
+            .returning(PasswordResetToken.user_id)
+        ).scalar_one_or_none()
+    if consumed_user_id is None or user is None:
+        if user:
+            _audit_auth_event(db, user.id, "password_reset_failed", "password_reset_token", row.id)
+            db.commit()
+        logger.info(
+            "Password reset rejected",
+            extra={"request_id": getattr(request.state, "request_id", None)},
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Нууц үг шинэчлэх холбоос хүчингүй эсвэл хугацаа дууссан байна.",
+        )
+    user.password_hash = _password_hash(body.new_password)
+    user.updated_at = now
+    db.execute(delete(UserSession).where(UserSession.user_id == user.id))
+    _audit_auth_event(db, user.id, "password_reset_completed", "user", user.id)
+    _audit_auth_event(db, user.id, "sessions.invalidated", "user", user.id)
+    db.commit()
+    clear_session_cookie(response)
+    response.status_code = 204
+    return response
 
 
 @router.post("/login", response_model=UserOutput)

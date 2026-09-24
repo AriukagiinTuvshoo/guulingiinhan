@@ -35,6 +35,7 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 
 - `LoginIdentity` нь нэвтрэх арга/таних тэмдгийг `User` account-тай холбоно. `UserPersonLink` нь account-ыг удамд байгаа `Person`-той холбодог тул эдгээр хоёр холбоо хоорондоо солигдохгүй.
 - Бүртгэлээр үүссэн имэйл identity болон одоогийн email/password нэвтрэлт нэг `User`-ийг ашиглана. `users.email`, `password_hash`, `email_verified_at`, session хүснэгт хэвээр; legacy account-ын ID, password, verification төлөв болон session-ийг өөрчлөхгүй.
+- Имэйл баталгаажуулалт/reset-д зориулсан random token-ийг hash-лан тусдаа хүснэгтэд хадгална. SMTP adapter production-д, fake adapter local болон тестэд хэрэглэгдэнэ. Урилга 7 хоногийн хүчинтэй, raw token API-аас гарахгүй бөгөөд эзэмшигч revoke хийж болно.
 - Имэйлийг захын whitespace-гүй болгож бүх хаягт `casefold()` хэрэглэнэ. Gmail dot арилгах, `+tag` хасах зэрэг provider-specific хувиргалт хийхгүй. Нэвтрэхэд identity lookup indexed; хуучин бичлэгт fallback хийнэ.
 - Утасны identity нь E.164 `+` улсын кодтой canonical дугаар ашиглах загвартай. Google identity нь имэйл бус issuer + subject-аар ялгагдана.
 - Email/phone uniqueness нь provider + normalized identifier; Google uniqueness нь provider + issuer + subject. Нэг normalized утга өөр provider-д байж болно.
@@ -47,7 +48,7 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - `PhoneOtpChallenge` нь утас + зориулалт + хугацаатай, 6 оронтой OTP-ийн HMAC-SHA256 digest хадгална. Түүхий код DB, API response, application log-д орохгүй. HMAC pepper development-д process эхлэхэд түр үүсэж restart-аар солигдоно; production `OTP_HASH_SECRET`-ийг нууцын сангаас өгнө.
 - Нэг хэрэглэгч phone OTP-оор login хийхийн өмнө `/auth/me/phone/request` ба `/auth/me/phone/verify`-ээр утсаа баталгаажуулж account-даа холбоно. Энэ нь бүртгэлтэй User-ийг Person-той холбох өөрчлөлт биш.
 - `/auth/phone/login/request` нь account байгаа эсэхийг response-оор ялгахгүй; зөвхөн идэвхтэй, баталгаажсан утас login үүсгэж чадна. Challenge 5 минут, 60 секундийн resend cooldown, утас/IP-н нэг минутын rate limit, нэг кодод 5 буруу оролдлоготой.
-- Нууц үг сэргээх одоогоор verified phone-р хийгдэнэ: `POST /auth/password-reset/phone/request`, дараа нь OTP + шинэ нууц үгийг `POST /auth/password-reset/phone/confirm` руу илгээнэ. Амжилттай үед өмнөх бүх session цуцлагдаж, автоматаар шинэ session нээхгүй. Email delivery provider холбогдоогүй тул email recovery хийгдээгүй.
+- Нууц үг сэргээх verified phone OTP эсвэл verified email token-оор хийгдэнэ. Амжилттай үед өмнөх бүх session цуцлагдаж, автоматаар шинэ session нээхгүй.
 - `SMS_PROVIDER=twilio` нь Twilio Messages API руу TLS холболтоор OTP илгээнэ. Production startup-д PostgreSQL, HTTPS CORS-ийн дээр `SMS_PROVIDER=twilio`, `OTP_HASH_SECRET` (32+ тэмдэгт), Twilio account SID/token/from number бүгд шаардлагатай. Development-ийн `fake` provider бодит SMS илгээхгүй.
 - Account-ийн нэвтрэх identity-г `/account/security` хуудсаас шалгаж, SMS баталгаажуулах замаар утас холбож болно. Phone identity салгах UI/API одоогоор байхгүй.
 

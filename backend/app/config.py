@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import model_validator
+from pydantic import EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,11 +20,27 @@ class Settings(BaseSettings):
     google_oidc_redirect_uri: str | None = None
     google_oidc_issuer: str = "https://accounts.google.com"
     google_oidc_state_secret: str | None = None
+    email_provider: str = "fake"
+    email_from: EmailStr | None = None
+    email_public_base_url: str = "http://localhost:3000"
+    email_verification_ttl_seconds: int = 86400
+    email_password_reset_ttl_seconds: int = 1800
+    email_smtp_host: str | None = None
+    email_smtp_port: int = 587
+    email_smtp_username: str | None = None
+    email_smtp_password: str | None = None
+    email_smtp_starttls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
     def validate_production_settings(self):
+        if self.email_provider.lower() not in {"fake", "smtp"}:
+            raise ValueError("EMAIL_PROVIDER must be fake or smtp.")
+        if self.email_verification_ttl_seconds < 300 or self.email_verification_ttl_seconds > 86400:
+            raise ValueError("EMAIL_VERIFICATION_TTL_SECONDS must be between 300 and 86400.")
+        if self.email_password_reset_ttl_seconds < 300 or self.email_password_reset_ttl_seconds > 86400:
+            raise ValueError("EMAIL_PASSWORD_RESET_TTL_SECONDS must be between 300 and 86400.")
         if self.app_env.lower() == "production":
             if not self.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
                 raise ValueError("Production requires PostgreSQL in DATABASE_URL.")
@@ -42,6 +58,16 @@ class Settings(BaseSettings):
                 or not self.twilio_from_number
             ):
                 raise ValueError("Production requires a configured SMS provider.")
+            if self.email_provider.lower() != "smtp":
+                raise ValueError("Production requires a real EMAIL_PROVIDER; fake is development/test only.")
+            if not all(
+                (self.email_from, self.email_smtp_host, self.email_smtp_username, self.email_smtp_password)
+            ):
+                raise ValueError("Production email requires sender and authenticated SMTP configuration.")
+            if not self.email_smtp_starttls:
+                raise ValueError("Production SMTP must use STARTTLS.")
+            if not self.email_public_base_url.startswith("https://"):
+                raise ValueError("Production EMAIL_PUBLIC_BASE_URL must use HTTPS.")
         if self.google_oidc_enabled:
             if not all(
                 (

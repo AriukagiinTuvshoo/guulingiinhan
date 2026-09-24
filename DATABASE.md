@@ -1,6 +1,6 @@
 # Өгөгдлийн сан
 
-Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` → `2e9d7f4c1a63` (P4.4 head). `f10695a88229` нь account-person link ба memory tag, `74a31c87f462` нь auth/session, family archive болон audit schema, `b762e4a19d30` нь minor guardian authorization, `cc924bf31a12` нь login identity бүртгэл, `2e9d7f4c1a63` нь phone OTP challenge storage нэмдэг.
+Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` → `2e9d7f4c1a63` → `9b36d2c718fa` (P4.6 head). `9b36d2c718fa` нь email verification/password reset token хүснэгт болон invitation revocation талбар нэмдэг.
 
 | Хүснэгт | Хэрэглээ |
 |---|---|
@@ -14,6 +14,7 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 | user_sessions | Хугацаатай session cookie-ийн зөвхөн hash |
 | login_throttles | Hash key-ээр хадгалсан нэвтрэлтийн оролдлогын богино хугацааны тоолуур |
 | invitations | Нэг удаагийн, хугацаатай гэр бүлийн урилга |
+| email_verification_tokens, password_reset_tokens | Нэг удаагийн email token-ийн hash, expiry, consume төлөв |
 | audit_logs | Хэн ямар entity үйлдсэнийг PII агуулахгүй бүртгэл |
 | person_guardianships | Нэг Family/Person/guardian User-д олгосон нэг scope-ийн хугацаатай, цуцалж болох эрх |
 | login_identities | Email, phone, Google identity-г User account-д холбох registry |

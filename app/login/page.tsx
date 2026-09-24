@@ -130,7 +130,8 @@ export default function LoginPage() {
       <label>Имэйл<input name="email" type="email" autoComplete="email" required maxLength={320} /></label>
       <label>Нууц үг<input name="password" type="password" autoComplete="current-password" required maxLength={128} /></label>
       <button className="primary" type="submit" disabled={busy}>{busy ? 'Нэвтэрч байна…' : 'Нэвтрэх'}</button>
-      <p className="muted"><button type="button" className="text-button" onClick={() => chooseMode('recovery')}>Нууц үг мартсан уу?</button></p>
+      <p className="muted"><Link href="/password-reset">Имэйлээр нууц үг сэргээх</Link></p>
+      <p className="muted"><Link href="/email-verification">Баталгаажуулах имэйл дахин илгээх</Link></p>
     </form>}
     {mode !== 'email' && !challenge && <form onSubmit={requestCode}>
       <label>Утасны дугаар (E.164)<input name="phone" type="tel" autoComplete="tel" placeholder="+97699112233" required maxLength={16} /></label>

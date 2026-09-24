@@ -5,14 +5,17 @@ import secrets
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user
+from app.auth import _consume_otp_rate, _normalized_ip, get_current_user
+from app.config import get_settings
 from app.db import get_db
+from app.email import EmailDeliveryError, EmailProvider, get_email_provider
+from app.identity import normalize_email
 from app.models import (
     AuditLog,
     Biography,
@@ -21,6 +24,7 @@ from app.models import (
     FamilyPerson,
     Invitation,
     LifeEvent,
+    LoginIdentity,
     Marriage,
     Memory,
     MemoryPersonTag,
@@ -578,9 +582,11 @@ def update_person(
         )
     )
     baseline_edit = member.role in {"owner", "editor"} or linked_to_user is not None
-    has_scoped_edit = has_guardian_scope(
-        db, user.id, family_id, person.id, "edit_profile"
-    ) if is_minor_record else False
+    has_scoped_edit = (
+        has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
+        if is_minor_record
+        else False
+    )
     if is_minor_record:
         if data and not has_scoped_edit:
             raise HTTPException(status_code=403, detail="Энэ хүний profile засах эрхгүй.")
@@ -759,9 +765,7 @@ def list_guardian_grants(
     return result
 
 
-@router.delete(
-    "/{family_id}/persons/{person_id}/guardianships/{grant_id}", status_code=204
-)
+@router.delete("/{family_id}/persons/{person_id}/guardianships/{grant_id}", status_code=204)
 def revoke_guardian_grant(
     family_id: UUID,
     person_id: UUID,
@@ -924,7 +928,9 @@ def list_marriages(
     own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
     family_person_rows = list(
         db.scalars(
-            select(Person).join(FamilyPerson).where(
+            select(Person)
+            .join(FamilyPerson)
+            .where(
                 FamilyPerson.family_id == family_id,
                 or_(
                     Person.visibility != "private",
@@ -1048,9 +1054,7 @@ def save_biography(
     _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    is_minor_record = _require_minor_scope(
-        db, family_id, person, user, "manage_biography"
-    )
+    is_minor_record = _require_minor_scope(db, family_id, person, user, "manage_biography")
     if not is_minor_record and not _can_edit_person(db, family_id, person, user):
         raise HTTPException(status_code=403, detail="Намтар засах эрхгүй.")
     biography = db.scalar(select(Biography).where(Biography.person_id == person_id))
@@ -1344,11 +1348,25 @@ def family_audit(
 def create_invitation(
     family_id: UUID,
     body: InvitationCreate,
+    request: Request,
+    email_provider: EmailProvider = Depends(get_email_provider),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _member(db, family_id, user, {"owner"})
-    email = str(body.email).strip().lower()
+    email = normalize_email(str(body.email))
+    if not _consume_otp_rate(db, "invitation-recipient", email, 5):
+        raise HTTPException(
+            status_code=429, detail="Хэт олон урилга илгээлээ. Түр хүлээгээд дахин оролдоно уу."
+        )
+    if not _consume_otp_rate(db, "invitation-owner", str(user.id), 10):
+        raise HTTPException(
+            status_code=429, detail="Хэт олон урилга илгээлээ. Түр хүлээгээд дахин оролдоно уу."
+        )
+    if not _consume_otp_rate(db, "invitation-ip", _normalized_ip(request), 20):
+        raise HTTPException(
+            status_code=429, detail="Хэт олон урилга илгээлээ. Түр хүлээгээд дахин оролдоно уу."
+        )
     existing_user = db.scalar(select(User).where(User.email == email))
     if existing_user and db.scalar(
         select(FamilyMember.id).where(
@@ -1369,14 +1387,52 @@ def create_invitation(
     db.flush()
     _audit(db, user, family_id, "invitation.created", "invitation", invitation.id)
     db.commit()
+    family = db.get(Family, family_id)
+    settings = get_settings()
+    link = f"{settings.email_public_base_url.rstrip('/')}/invite#token={raw_token}"
+    try:
+        email_provider.send_invitation_email(invitation.invited_email, family.name, link)
+    except EmailDeliveryError as error:
+        invitation.revoked_at = datetime.now(UTC)
+        _audit(db, user, family_id, "invitation.email_failed", "invitation", invitation.id)
+        db.commit()
+        raise HTTPException(
+            status_code=503, detail="Урилгын имэйл илгээж чадсангүй. Дахин оролдоно уу."
+        ) from error
+    _audit(db, user, family_id, "invitation.sent", "invitation", invitation.id)
+    db.commit()
     return {
         "id": invitation.id,
         "email": invitation.invited_email,
         "role": invitation.role,
-        "token": raw_token,
         "expires_at": invitation.expires_at,
-        "delivery": "manual",
+        "delivery": "sent",
     }
+
+
+@router.delete("/{family_id}/invitations/{invitation_id}", status_code=204)
+def revoke_invitation(
+    family_id: UUID,
+    invitation_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    invitation = db.scalar(
+        select(Invitation)
+        .where(Invitation.id == invitation_id, Invitation.family_id == family_id)
+        .with_for_update()
+    )
+    if (
+        invitation is None
+        or invitation.accepted_at is not None
+        or invitation.revoked_at is not None
+    ):
+        raise HTTPException(status_code=404, detail="Урилга олдсонгүй.")
+    invitation.revoked_at = datetime.now(UTC)
+    _audit(db, user, family_id, "invitation.revoked", "invitation", invitation.id)
+    db.commit()
+    return Response(status_code=204)
 
 
 @invitations_router.post("/accept")
@@ -1387,16 +1443,32 @@ def accept_invitation(
 ):
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
     invitation = db.scalar(
-        select(Invitation).where(
+        select(Invitation)
+        .where(
             Invitation.token_hash == token_hash,
             Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
             Invitation.expires_at > datetime.now(UTC),
         )
+        .with_for_update()
     )
     if invitation is None:
         raise HTTPException(status_code=404, detail="Урилга хүчингүй эсвэл хугацаа дууссан байна.")
-    if user.email != invitation.invited_email:
+    if normalize_email(user.email) != invitation.invited_email:
         raise HTTPException(status_code=403, detail="Энэ урилга өөр имэйл хаягт зориулагдсан.")
+    verified_identity = db.scalar(
+        select(LoginIdentity.id).where(
+            LoginIdentity.user_id == user.id,
+            LoginIdentity.provider == "email",
+            LoginIdentity.normalized_identifier == invitation.invited_email,
+            LoginIdentity.verified_at.is_not(None),
+            LoginIdentity.disabled_at.is_(None),
+        )
+    )
+    if user.email_verified_at is None and verified_identity is None:
+        raise HTTPException(
+            status_code=403, detail="Урилгыг авахын өмнө имэйлээ баталгаажуулна уу."
+        )
     if db.scalar(
         select(FamilyMember.id).where(
             FamilyMember.family_id == invitation.family_id, FamilyMember.user_id == user.id

@@ -47,16 +47,16 @@
 
 ## Нэвтрэх ба зөвшөөрлийн ажлууд
 
-Email verification хэрэгжээгүй. Одоогоор бүртгэл нэвтрэлтийг автоматаар зөвшөөрдөг тул `email_verified_at` утгагүй байна; хэрэглэгчид нээлттэй production-д гаргахын өмнө email token/provider-оор баталгаажуулах шаардлагатай. Email recovery, автоматаар хүргэх урилгын email, storage signed URL хараахан байхгүй.
+Имэйл баталгаажуулалт болон нууц үг сэргээх нь хугацаатай, нэг удаагийн random token ашиглаж; зөвхөн SHA-256 hash DB-д хадгална. Хариу нь бүртгэлтэй эсэхийг ил гаргахгүй, IP болон имэйлээр хүсэлтийн давтамж хязгаарлана. Баталгаажуулах/reset холбоос token-ийг URL fragment-д байрлуулж серверийн access log-д орохоос хамгаална. Бүртгэл login session үүсгэсээр байдаг тул UI-д баталгаажуулах сануулга харагдана; invitation acceptance баталгаатай email шаардана.
 
 ## Утасны OTP (P4.4)
 
 - Phone identity-г зөвхөн SMS код шалгасны дараа одоогийн account-д холбоно. OTP нь 6 оронтой, 5 минутын хүчинтэй, нэг удаа хэрэглэгдэнэ; 5 буруу оролдлогын дараа challenge түгжинэ. Нэг утсанд нэг минутын resend cooldown болон phone/IP rate limit үйлчилнэ.
 - Challenge хүснэгтэд raw OTP бус зориулалт, утас, challenge ID-тэй холбосон HMAC-SHA256 хадгална. `OTP_HASH_SECRET` нь 32+ тэмдэгт random нууц; production secret manager ашиглана. Кодыг API response болон application log-д бичихгүй.
 - `SMS_PROVIDER=fake` нь зөвхөн development/test-д no-op. Production тохиргоо Twilio-г credential-уудтай шаардаж startup validation хийнэ; credentials эх код, `.env.example`, log-д тавихгүй. SMS хүргэлт provider-оос хамаарах тул delivery receipt болон telecom fraud monitoring тусдаа нэмж хэрэгтэй.
-- Phone recovery-д challenge зөв дуусмагц password шинэчилж тухайн account-ын бүх session-ийг устгана. Утас бүртгэлтэй эсэх мэдээллийг request response-оор ил гаргахгүй. Email password recovery одоогоор байхгүй; нээлттэй хэрэглээнд гаргахаас өмнө email provider нэмэх шаардлагатай.
+- Phone болон email recovery амжилттай дуусмагц password шинэчилж тухайн account-ын бүх session-ийг устгана. Account байгаа эсэх response-оор ил гарахгүй. Email request-ууд shared throttle registry-д имэйл/IP/account түвшний хязгаартай.
 - OTP request audit-д challenge ID, action хадгална; дугаар болон кодыг audit-аар хадгалахгүй. SMS provider-ийн payload/response body application log руу дамжуулахгүй.
 
 Development-д `SMS_PROVIDER=fake` ямар ч мессеж хүргэхгүй; automated tests provider dependency override ашиглан code-ийг зөвхөн тестийн memory-д шалгана.
 
-PostgreSQL production руу орохын өмнө DB-г public network/API-д ил гаргахгүй, managed backup ба restore шалгалт, TLS, production домэйн cookie/CORS тохиргоо, email verification/reset, нэвтрэлтийн шалгалт хийнэ. CI migrations-ийг PostgreSQL дээр шалгана; managed орчны restore болон нэвтрэлтийн шалгалт хараахан хийгдээгүй. Одоогийн API-г нээлттэй production хэрэглээнд бэлэн гэж үзэж болохгүй.
+Production email-д TLS ашигласан SMTP provider заавал; fake provider production тохиргоонд хүчингүй. PostgreSQL руу орохын өмнө managed backup ба restore шалгалт, TLS, production домэйн cookie/CORS болон SMTP хүргэлтийн шалгалт хийнэ. CI migration-ийг PostgreSQL дээр шалгана; managed restore болон production SMTP шалгалт хараахан хийгдээгүй тул API-г нээлттэй production хэрэглээнд бэлэн гэж үзэхгүй.

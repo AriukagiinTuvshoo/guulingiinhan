@@ -20,17 +20,17 @@ Docker ашиглах бол төслийн root-д `docker compose up --build` 
 
 ## API
 
-`/api/v1/auth`: email register/login/logout, current user/identities, OTP phone linking and login, verified-phone password recovery. OTP create response reveals only a challenge ID and timing; SMS delivery uses `SMS_PROVIDER`.
+`/api/v1/auth`: register, login, logout, me.
 `/api/v1/families`: гэр бүл үүсгэх/жагсаах/засах/архивлах, гишүүд/урилга, хүн CRUD, өөрийн account-ыг хүнтэй холбох, хайлт, tree, parent-child, marriage/divorce, biography, life events, memories, audit log. `/api/v1/invitations/accept` урилгыг зөв имэйлтэй нэг удаа ашиглуулна.
 
 API нь санамсаргүй, DB-д hash хэлбэрээр хадгалсан 7 хоногийн session cookie ашиглана. Cookie нь HttpOnly, SameSite=Lax (production cross-site frontend үед Secure + SameSite=None) байна; production дээр state өөрчлөх хүсэлтийн Origin-ийг CORS жагсаалттай тулгана. Нэвтрэлтийн оролдлогын хязгаар нэг минутын window-оор DB-д тоологдоно. Данс үүсгэхэд Owner membership атомоор нэмэгдэнэ.
 
 `Person` устгах endpoint нь тухайн family-н холбоосыг салгаж, Person болон харилцааны түүхийг хадгална. Family устгах нь бодит устгал биш archive. Private Person-г зөвхөн үүсгэсэн эсвэл өөрийн account-тай холбосон хүн харна.
 
-Email verification болон email-based password reset үйлчилгээ холбогдоогүй тул шинэ бүртгэлийн `email_verified_at` хоосон хэвээр. Password recovery нь одоогоор зөвхөн verified phone OTP ашиглана. Production-д PostgreSQL/CORS тохиргооноос гадна `SMS_PROVIDER=twilio`, `OTP_HASH_SECRET` (32+ random characters), Twilio SID/token/from number шаардлагатай; OTP secret-ийг backend secret manager-д хадгална. Урилга API нь 7 хоног хүчинтэй нэг удаагийн token гаргадаг; email хүргэлт автоматаар хийгдэхгүй, owner кодыг өөрөө дамжуулна. Photo upload/storage signed URL одоогоор байхгүй. Эдгээрийг хийхээс өмнө production нээлт хийхгүй.
+Email verification, email password reset, invitation delivery нь provider abstraction-тай. Хөгжүүлэлт/тестэд `EMAIL_PROVIDER=fake` хэрэглэж, production-д TLS-тэй SMTP тохируулна. Урилга 7 хоног хүчинтэй бөгөөд API нь raw token буцаахгүй; owner илгээсэн урилгыг хүчингүй болгож болно. Email token hash хэлбэрээр хадгалагдаж нэг удаа хэрэглэгдэнэ. Photo upload/storage signed URL одоогоор байхгүй.
 
 Production тохиргоонд `APP_ENV=production`, PostgreSQL URL, зөвхөн `https://` CORS origin шаардана. Контейнер root бус `app` хэрэглэгчээр ажиллана.
 
 ## Тест
 
-`uv run pytest` — auth/session, identity, OTP consume/lock/cooldown, phone login/recovery, family isolation, CRUD, relationship integrity, biography/timeline/memory API тестүүд. GitHub Actions нь бодит PostgreSQL service дээр migration upgrade → downgrade → upgrade/check ажиллуулна.
+`uv run pytest` — auth/session, rate-limit, family isolation, CRUD, relationship integrity, biography/timeline/memory API тестүүд. GitHub Actions нь бодит PostgreSQL service дээр migration upgrade/check ажиллуулна.

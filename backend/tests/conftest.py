@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
 from app.db import Base, get_db
+from app.email import FakeEmailProvider, get_email_provider
 from app.main import app
 
 
@@ -28,12 +29,18 @@ def database():
 
 
 @pytest.fixture
-def client(database):
+def email_provider():
+    return FakeEmailProvider()
+
+
+@pytest.fixture
+def client(database, email_provider):
     def override_db():
         with database() as session:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_email_provider] = lambda: email_provider
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
