@@ -695,7 +695,7 @@ def _start_google(
 def _google_frontend_redirect(result: str) -> RedirectResponse:
     settings = get_settings()
     origin = settings.cors_origin_list[0] if settings.cors_origin_list else "http://localhost:3000"
-    path = "/families" if result == "success" else "/login"
+    path = "/dashboard" if result == "success" else "/login"
     return RedirectResponse(f"{origin}{path}?google={result}", status_code=303)
 
 
