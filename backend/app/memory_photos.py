@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import time
 import warnings
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePath
@@ -55,6 +56,13 @@ SUPPORTED_FORMATS = {
 }
 THUMBNAIL_MAX_SIZE = (1200, 1200)
 MAX_IMAGE_PIXELS = 40_000_000
+
+
+class PhotoStorageFailure(HTTPException):
+    def __init__(self, *, retryable: bool, error_code: str):
+        self.retryable = retryable
+        self.error_code = error_code
+        super().__init__(status_code=503, detail="Зургийг хадгалах сангаас боловсруулах боломжгүй байна.")
 
 
 class PhotoTagsInput(BaseModel):
@@ -154,17 +162,30 @@ def _image_payload(filename: str, content_type: str, data: bytes) -> tuple[str, 
 
 
 def _delete_objects(storage: ObjectStorage, keys: list[str]) -> None:
+    started = time.perf_counter()
     for key in keys:
         if not key:
             continue
         try:
             storage.delete(key)
         except Exception as error:
-            logger.warning("Object storage deletion failed", extra={"error_type": type(error).__name__})
-            raise HTTPException(
-                status_code=503,
-                detail="Зургийн файлыг хадгалах сангаас устгаж чадсангүй.",
-            ) from error
+            metadata = getattr(error, "response", {})
+            status_code = metadata.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            retryable = status_code is None or status_code == 429 or status_code >= 500
+            error_code = "STORAGE_UNAVAILABLE" if retryable else "STORAGE_REJECTED"
+            logger.warning(
+                "Object storage deletion failed",
+                extra={"event": "storage_operation_failed", "operation": "delete",
+                       "error_code": error_code, "error_type": type(error).__name__,
+                       "provider": get_settings().storage_provider},
+            )
+            raise PhotoStorageFailure(retryable=retryable, error_code=error_code) from error
+    logger.info(
+        "Photo objects deleted",
+        extra={"event": "storage_operation_completed", "operation": "delete",
+               "storage_duration_ms": round((time.perf_counter() - started) * 1000, 2),
+               "provider": get_settings().storage_provider},
+    )
 
 
 def _expected_object_keys(photo: Photo) -> tuple[str, str]:
@@ -237,6 +258,7 @@ def _record_denied_access(
 def _retry_pending_cleanup(
     db: Session, storage: ObjectStorage, family_id: UUID, user: User, limit: int = 20
 ) -> None:
+    max_attempts = get_settings().photo_cleanup_max_attempts
     cutoff = datetime.now(UTC) - timedelta(minutes=15)
     pending_ids = list(db.scalars(
         select(Photo.id).where(
@@ -245,6 +267,7 @@ def _retry_pending_cleanup(
                 Photo.storage_status == "deletion_pending",
                 (Photo.storage_status == "uploading") & (Photo.created_at < cutoff),
             ),
+            Photo.cleanup_attempts < max_attempts,
         ).order_by(Photo.created_at).limit(limit)
     ).all())
     for photo_id in pending_ids:
@@ -253,19 +276,54 @@ def _retry_pending_cleanup(
             continue
         photo.storage_status = "deletion_pending"
         try:
-            db.commit()
             original_key, thumbnail_key = _expected_object_keys(photo)
+        except HTTPException:
+            photo.cleanup_attempts = max_attempts
+            db.commit()
+            logger.error(
+                "Photo cleanup stopped for invalid storage metadata",
+                extra={"event": "photo_cleanup_exhausted", "error_code": "INVALID_STORAGE_KEY",
+                       "photo_id": str(photo.id), "memory_id": str(photo.memory_id),
+                       "family_id": str(family_id), "attempt": max_attempts,
+                       "max_attempts": max_attempts},
+            )
+            continue
+        photo.cleanup_attempts += 1
+        photo_id_for_log = str(photo.id)
+        memory_id_for_log = str(photo.memory_id) if photo.memory_id else None
+        attempt_number = photo.cleanup_attempts
+        try:
+            db.commit()
             _delete_objects(storage, [thumbnail_key, original_key])
             db.delete(photo)
             _audit(db, user, family_id, "photo.cleanup_retried", "photo", photo_id)
             db.commit()
         except HTTPException as error:
+            retryable = getattr(error, "retryable", True)
             db.rollback()
             if error.status_code != 503:
                 raise
+            if not retryable:
+                exhausted = db.get(Photo, photo_id)
+                if exhausted is not None:
+                    exhausted.cleanup_attempts = max_attempts
+                    db.commit()
+            logger.warning(
+                "Photo cleanup attempt failed",
+                extra={"event": "photo_cleanup_failed", "operation": "delete",
+                       "error_code": getattr(error, "error_code", "STORAGE_UNAVAILABLE"),
+                       "photo_id": photo_id_for_log,
+                       "memory_id": memory_id_for_log, "family_id": str(family_id),
+                       "attempt": attempt_number, "max_attempts": max_attempts},
+            )
         except SQLAlchemyError as error:
             db.rollback()
-            logger.warning("Photo cleanup retry database failure", extra={"error_type": type(error).__name__})
+            logger.warning(
+                "Photo cleanup retry database failure",
+                extra={"event": "photo_cleanup_state_failed", "error_code": "DATABASE_UNAVAILABLE",
+                       "error_type": type(error).__name__, "photo_id": photo_id_for_log,
+                       "family_id": str(family_id)},
+            )
 
 
 def _require_photo_scope(
@@ -495,28 +553,48 @@ async def upload_photo(
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()
-        logger.warning("Photo upload metadata initialization failed", extra={"error_type": type(error).__name__})
+        logger.warning(
+            "Photo upload metadata initialization failed",
+            extra={"event": "photo_upload_metadata_failed", "error_code": "DATABASE_UNAVAILABLE",
+                   "error_type": type(error).__name__, "memory_id": str(memory_id),
+                   "family_id": str(family_id)},
+        )
         raise HTTPException(status_code=503, detail="Зургийг бүртгэж чадсангүй.") from error
+    storage_started = time.perf_counter()
     try:
         storage.put(original_key, bytes(data), mime_type)
         storage.put(thumbnail_key, thumbnail, "image/jpeg")
+        storage_duration_ms = round((time.perf_counter() - storage_started) * 1000, 2)
         photo = db.get(Photo, photo_id)
         if photo is None:
             raise SQLAlchemyError("Photo upload record disappeared")
         photo.storage_status = "ready"
         _audit(db, user, family_id, "photo.created", "photo", photo.id)
         db.commit()
+        logger.info(
+            "Photo objects stored",
+            extra={"event": "photo_upload_completed", "operation": "upload",
+                   "storage_duration_ms": storage_duration_ms, "photo_id": str(photo_id),
+                   "memory_id": str(memory_id), "family_id": str(family_id),
+                   "provider": settings.storage_provider},
+        )
     except Exception as error:
         db.rollback()
         photo = db.get(Photo, photo_id)
         if photo is not None:
             photo.storage_status = "deletion_pending"
+            photo.cleanup_attempts += 1
             _audit(db, user, family_id, "photo.upload_failed", "photo", photo.id)
             try:
                 db.commit()
             except SQLAlchemyError as state_error:
                 db.rollback()
-                logger.warning("Photo failure state update failed", extra={"error_type": type(state_error).__name__})
+                logger.warning(
+                    "Photo failure state update failed",
+                    extra={"event": "photo_cleanup_state_failed", "error_code": "DATABASE_UNAVAILABLE",
+                           "error_type": type(state_error).__name__, "photo_id": str(photo_id),
+                           "family_id": str(family_id)},
+                )
         try:
             _delete_objects(storage, [thumbnail_key, original_key])
             current = db.get(Photo, photo_id)
@@ -525,8 +603,26 @@ async def upload_photo(
                 db.commit()
         except (HTTPException, SQLAlchemyError) as cleanup_error:
             db.rollback()
-            logger.warning("Photo upload cleanup deferred", extra={"error_type": type(cleanup_error).__name__})
-        logger.warning("Photo upload failed", extra={"error_type": type(error).__name__})
+            if isinstance(cleanup_error, PhotoStorageFailure) and not cleanup_error.retryable:
+                failed = db.get(Photo, photo_id)
+                if failed is not None:
+                    failed.cleanup_attempts = settings.photo_cleanup_max_attempts
+                    db.commit()
+            logger.warning(
+                "Photo upload cleanup deferred",
+                extra={"event": "photo_cleanup_failed", "operation": "delete",
+                       "error_code": getattr(cleanup_error, "error_code", "STORAGE_UNAVAILABLE"),
+                       "error_type": type(cleanup_error).__name__,
+                       "photo_id": str(photo_id), "memory_id": str(memory_id),
+                       "family_id": str(family_id), "provider": settings.storage_provider},
+            )
+        logger.warning(
+            "Photo upload failed",
+            extra={"event": "photo_upload_failed", "error_code": "STORAGE_UNAVAILABLE",
+                   "error_type": type(error).__name__, "photo_id": str(photo_id),
+                   "memory_id": str(memory_id), "family_id": str(family_id),
+                   "provider": settings.storage_provider},
+        )
         raise HTTPException(status_code=503, detail="Зургийг хадгалж чадсангүй.") from error
     return _photo_payload(photo)
 
@@ -694,11 +790,26 @@ def get_photo_content(
     key = thumbnail_key if variant == "thumbnail" else original_key
     if not key:
         raise HTTPException(status_code=404, detail="Зургийн хувилбар олдсонгүй.")
+    storage_started = time.perf_counter()
     try:
         data = storage.get(key)
     except Exception as error:
-        logger.warning("Photo read failed", extra={"error_type": type(error).__name__})
+        logger.warning(
+            "Photo read failed",
+            extra={"event": "storage_operation_failed", "operation": "read",
+                   "error_code": "STORAGE_UNAVAILABLE", "error_type": type(error).__name__,
+                   "photo_id": str(photo_id), "memory_id": str(photo.memory_id),
+                   "family_id": str(family_id), "provider": get_settings().storage_provider,
+                   "storage_duration_ms": round((time.perf_counter() - storage_started) * 1000, 2)},
+        )
         raise HTTPException(status_code=503, detail="Зураг ачаалж чадсангүй.") from error
+    logger.info(
+        "Photo object retrieved",
+        extra={"event": "photo_read_completed", "operation": "read",
+               "photo_id": str(photo_id), "memory_id": str(photo.memory_id),
+               "family_id": str(family_id), "provider": get_settings().storage_provider,
+               "storage_duration_ms": round((time.perf_counter() - storage_started) * 1000, 2)},
+    )
     return Response(
         content=data, media_type="image/jpeg" if variant == "thumbnail" else photo.mime_type,
         headers={
@@ -730,12 +841,52 @@ def delete_photo(
         db, family_id, user, _memory_person_ids(db, memory.id), "manage_media"
     )
     _require_photo_scope(db, family_id, user, photo, "manage_media")
-    original_key, thumbnail_key = _expected_object_keys(photo)
+    max_attempts = get_settings().photo_cleanup_max_attempts
+    try:
+        original_key, thumbnail_key = _expected_object_keys(photo)
+    except HTTPException:
+        photo.storage_status = "deletion_pending"
+        photo.cleanup_attempts = max_attempts
+        db.commit()
+        logger.error(
+            "Photo cleanup stopped for invalid storage metadata",
+            extra={"event": "photo_cleanup_exhausted", "error_code": "INVALID_STORAGE_KEY",
+                   "photo_id": str(photo.id), "memory_id": str(photo.memory_id),
+                   "family_id": str(family_id), "attempt": max_attempts,
+                   "max_attempts": max_attempts},
+        )
+        raise
+    if photo.cleanup_attempts >= max_attempts:
+        logger.error(
+            "Photo cleanup retry limit reached",
+            extra={"event": "photo_cleanup_exhausted", "error_code": "RETRY_LIMIT_REACHED",
+                   "photo_id": str(photo.id), "memory_id": str(photo.memory_id),
+                   "family_id": str(family_id), "attempt": photo.cleanup_attempts,
+                   "max_attempts": max_attempts},
+        )
+        raise HTTPException(status_code=503, detail="Зургийг устгах оролдлогын хязгаарт хүрлээ.")
     if photo.storage_status != "deletion_pending":
         photo.storage_status = "deletion_pending"
         _audit(db, user, family_id, "photo.delete_requested", "photo", photo.id)
-        db.commit()
-    _delete_objects(storage, [thumbnail_key, original_key])
+    photo.cleanup_attempts += 1
+    db.commit()
+    try:
+        _delete_objects(storage, [thumbnail_key, original_key])
+    except HTTPException as error:
+        if not getattr(error, "retryable", True):
+            failed = db.get(Photo, photo_id)
+            if failed is not None:
+                failed.cleanup_attempts = max_attempts
+                db.commit()
+        logger.warning(
+            "Photo deletion deferred",
+            extra={"event": "photo_cleanup_failed", "operation": "delete",
+                   "error_code": getattr(error, "error_code", "STORAGE_UNAVAILABLE"),
+                   "photo_id": str(photo.id), "memory_id": str(photo.memory_id),
+                   "family_id": str(family_id), "attempt": photo.cleanup_attempts,
+                   "max_attempts": max_attempts},
+        )
+        raise
     _audit(db, user, family_id, "photo.deleted", "photo", photo.id)
     db.delete(photo)
     db.commit()

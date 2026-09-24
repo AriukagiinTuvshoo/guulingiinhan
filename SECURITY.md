@@ -30,6 +30,15 @@
 - Урилгын token database-д hash-лагдаж, 7 хоногийн дараа дуусна; зөвхөн урьсан имэйлээр нэвтэрсэн user нэг удаа ашиглана.
 - Git-д `.env` хадгалахгүй.
 
+## Ажиглалтын лог ба алдааны хариу (P4.11)
+
+- API log JSON хэлбэртэй бөгөөд зөвхөн зөвшөөрсөн талбаруудыг хэвлэнэ. Raw message, exception текст/traceback, хүсэлтийн body/query, token, password, OTP, database URL, storage key/credential зэргийг formatter гаргахгүй. Uvicorn access log Docker command-д унтарсан тул URL query бүртгэгдэхгүй.
+- `X-Request-ID` серверээс үүснэ; client утга ignored. Лог, алдааны response болон response header ижил correlation ID хэрэглэнэ. Request log route template, method, статус, хугацаа л агуулна; IP болон person нэр логдохгүй.
+- Validation error нь хэрэглэгчийн өгсөн утгыг хариунд буцаахгүй. Бусад HTTP error-д `detail` хэвээр, `error_code` болон request ID нэмэгдэнэ. Ерөнхий unhandled error нь SQLAlchemy exception-т 503 `DATABASE_UNAVAILABLE`, бусад алдаанд 500 `INTERNAL_ERROR` буцаах бөгөөд exception internals response/log-д бичигдэхгүй.
+- Фото цэвэрлэгээний storage retry нь row бүрд дээд хязгаартай, `cleanup_attempts` хадгална. Retry limit хүрвэл автоматаар дахин оролдохоо зогсоож, photo hidden хэвээр үлдэнэ. Энэ нь operator-оор хянуулах шаардлагатай; автомат alert/queue байхгүй.
+- Email/OTP/Google/S3 client timeout ба S3 SDK retry нь кодонд тус тус тохирсон. Database pool/connect утгууд environment-аар override хийнэ. Managed production-д энэ тохиргоо хийгдсэн гэж үзэхгүй.
+- Managed database backup, object storage backup болон restore дадлага одоогоор тохируулаагүй/туршаагүй. Их хэмжээний эсвэл насанд хүрээгүй хүний гэр бүлийн өгөгдөл оруулахын өмнө backup retention, object versioning болон сэргээх туршилтыг infra талд тохируулах шаардлагатай.
+
 ## Minor profile ба guardian grant (P4.2)
 
 - Төрсөн огноогоор нас 18 хүрээгүй нь мэдэгдэж байгаа Person-д family-only profile response хүртэл төрсөн/нас барсан огноо, газар болон товч тайлбарыг redacted хэлбэрээр буцаана. `view_profile`-гүй хэрэглэгч biography, life event, minor-тэй tag хийсэн memory-д нэвтрэхгүй.

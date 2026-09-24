@@ -1,6 +1,6 @@
 # Өгөгдлийн сан
 
-Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` → `2e9d7f4c1a63` → `9b36d2c718fa` (P4.6 head). `9b36d2c718fa` нь email verification/password reset token хүснэгт болон invitation revocation талбар нэмдэг.
+Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` → `2e9d7f4c1a63` → `9b36d2c718fa` → `a71d3f0c92b4` → `b51c9e7a60f4` → `e8b0a6c14d29` → `d4a9f73b8210` → `c441b2f3a805` (P4.11 head). `c441b2f3a805` нь `audit_logs.request_id` correlation талбар, `photos.cleanup_attempts` bounded retry тоолуур нэмнэ.
 
 | Хүснэгт | Хэрэглээ |
 |---|---|
@@ -15,7 +15,7 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 | login_throttles | Hash key-ээр хадгалсан нэвтрэлтийн оролдлогын богино хугацааны тоолуур |
 | invitations | Нэг удаагийн, хугацаатай гэр бүлийн урилга |
 | email_verification_tokens, password_reset_tokens | Нэг удаагийн email token-ийн hash, expiry, consume төлөв |
-| audit_logs | Хэн ямар entity үйлдсэнийг PII агуулахгүй бүртгэл |
+| audit_logs | Хэн ямар entity үйлдсэнийг PII агуулахгүй бүртгэл; `request_id` нь API request log-той correlation хийх nullable UUID string |
 | person_guardianships | Нэг Family/Person/guardian User-д олгосон нэг scope-ийн хугацаатай, цуцалж болох эрх |
 | login_identities | Email, phone, Google identity-г User account-д холбох registry |
 | identity_link_requests | Ирээдүйн verification-д зориулсан хугацаатай, эрх олгодоггүй хүсэлтийн бүртгэл |
@@ -33,7 +33,9 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 
 P4.9-ийн `photos.object_key`, `thumbnail_object_key` нь private bucket/filesystem доторх opaque key. `file_size`, `mime_type`, dimensions, original filename нь metadata; binary-г DB-д хийхгүй. `d4a9f73b8210` хуучин мөрүүдэд metadata default backfill хийнэ. Downgrade нь шинэ metadata ашиглаж байгаа зураг байвал мэдээллийг чимээгүй алдахгүйн тулд цуцлагдана.
 
-P4.10-ийн `photos.storage_status` нь `uploading`, `ready`, `deletion_pending` төлөвтэй бөгөөд migration хуучин мөрүүдийг `ready` болгоно. Зөвхөн `ready` зураг уншигдана. Storage upload/delete нь DB transaction-тэй атом биш тул бүтэлгүй upload ба устгал `deletion_pending` tombstone болж үлдэж болно; дараагийн эрхтэй photo/memory жагсаалт эсвэл upload хүсэлт хязгаартай retry хийнэ. 15 минутаас хуучин `uploading` мөр мөн retry-д орно. Downgrade pending lifecycle мөр байхад зогсоно. `ix_photo_family_storage_status` нь family-ийн retry/list төлөв шалгалтад зориулагдсан.
+P4.10-ийн `photos.storage_status` нь `uploading`, `ready`, `deletion_pending` төлөвтэй бөгөөд migration хуучин мөрүүдийг `ready` болгоно. Зөвхөн `ready` зураг уншигдана. Storage upload/delete нь DB transaction-тэй атом биш тул бүтэлгүй upload ба устгал `deletion_pending` tombstone болж үлдэж болно; дараагийн эрхтэй photo/memory жагсаалт эсвэл upload хүсэлт хязгаартай retry хийнэ. 15 минутаас хуучин `uploading` мөр мөн retry-д орно. P4.11-ийн `cleanup_attempts` нь нэг зурагт хадгалагдах нийт retry-г хамгийн ихдээ 20-оор хязгаарлана. `ix_photo_family_storage_status` нь family-ийн retry/list төлөв шалгалтад зориулагдсан.
+
+P4.11-ийн `audit_logs.request_id` nullable тул өмнөх мөрүүд өөрчлөгдөхгүй; шинэ үйлдэл бүрийн request ID-г API логтой тулгаж болно. Энэ нь secret/PII хадгалахгүй.
 
 P4.2–P4.4 migration нь өмнөх хүснэгт/мөрүүдийг устгахгүй. `downgrade -1` нь зөвхөн туршилтын DB дээр зөвшөөрөгдөнө; P4.4-ийн дараа үүссэн OTP challenge мөрүүд буцаахад арилна. Production rollback-д forward-fix хэрэглэнэ.
 

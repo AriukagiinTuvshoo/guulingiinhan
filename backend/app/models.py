@@ -254,6 +254,7 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(60))
     target_type: Mapped[str] = mapped_column(String(40))
     target_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
@@ -558,6 +559,10 @@ class Photo(Base):
             "storage_status IN ('uploading', 'ready', 'deletion_pending')",
             name="ck_photo_storage_status",
         ),
+        CheckConstraint(
+            "cleanup_attempts >= 0 AND cleanup_attempts <= 20",
+            name="ck_photo_cleanup_attempts",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -575,6 +580,7 @@ class Photo(Base):
     storage_status: Mapped[str] = mapped_column(
         String(20), default="ready", server_default=text("'ready'")
     )
+    cleanup_attempts: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     width: Mapped[int | None] = mapped_column(nullable=True)
     height: Mapped[int | None] = mapped_column(nullable=True)
     title: Mapped[str | None] = mapped_column(String(180), nullable=True)

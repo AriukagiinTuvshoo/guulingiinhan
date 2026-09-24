@@ -82,3 +82,23 @@ def test_production_rejects_fake_email_provider_and_requires_tls():
             email_smtp_password="smtp-password",
             email_smtp_starttls=False,
         )
+
+
+def test_observability_and_database_pool_settings_are_validated():
+    settings = Settings(
+        db_pool_size=8,
+        db_max_overflow=12,
+        db_pool_timeout_seconds=45,
+        db_pool_recycle_seconds=900,
+        db_connect_timeout_seconds=12,
+        log_level="WARNING",
+        slow_request_threshold_ms=1500,
+        photo_cleanup_max_attempts=4,
+    )
+    assert settings.db_pool_size == 8
+    assert settings.slow_request_threshold_ms == 1500
+    assert settings.photo_cleanup_max_attempts == 4
+    with pytest.raises(ValidationError):
+        Settings(log_level="VERBOSE")
+    with pytest.raises(ValidationError):
+        Settings(photo_cleanup_max_attempts=21)

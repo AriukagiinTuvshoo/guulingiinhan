@@ -43,6 +43,7 @@ from app.models import (
     UserPersonLink,
     UserSession,
 )
+from app.observability import request_id_context
 from app.oidc import ISSUER, GoogleOIDCProvider, OIDCError
 from app.sms import SmsProvider, get_sms_provider
 
@@ -381,6 +382,7 @@ def _audit(db: Session, user_id: UUID, action: str, challenge: PhoneOtpChallenge
             action=action,
             target_type="phone_otp_challenge",
             target_id=challenge.id,
+            request_id=request_id_context.get(),
         )
     )
 
@@ -485,6 +487,7 @@ def _audit_auth_event(
             action=action,
             target_type=target_type,
             target_id=target_id,
+            request_id=request_id_context.get(),
         )
     )
 
@@ -567,7 +570,9 @@ def _verification_link_for_user(
             db.flush()
         except IntegrityError:
             db.rollback()
-            logger.info("Email verification skipped for conflicting identity", extra={"request_id": request_id})
+            logger.info("Email verification skipped for conflicting identity", extra={
+                "event": "email_verification_skipped", "request_id": request_id,
+            })
             return
     if identity.verified_at is not None:
         if user.email_verified_at is None:
@@ -732,7 +737,10 @@ def google_callback(
         or not hmac.compare_digest(state, str(state_payload.get("state", "")))
         or not _consume_google_state(db, state)
     ):
-        logger.info("Google OIDC callback rejected", extra={"request_id": getattr(request.state, "request_id", None)})
+        logger.info("Google OIDC callback rejected", extra={
+            "event": "google_callback_rejected",
+            "request_id": getattr(request.state, "request_id", None),
+        })
         result = "failed"
         response = _google_frontend_redirect(result)
         response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
@@ -744,7 +752,10 @@ def google_callback(
         subject = claims["sub"]
         email = normalize_email(str(TypeAdapter(EmailStr).validate_python(claims["email"])))
     except (OIDCError, ValidationError, ValueError, HTTPException):
-        logger.info("Google OIDC claim validation failed", extra={"request_id": getattr(request.state, "request_id", None)})
+        logger.info("Google OIDC claim validation failed", extra={
+            "event": "google_claim_validation_failed",
+            "request_id": getattr(request.state, "request_id", None),
+        })
         response = _google_frontend_redirect("failed")
         response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
         return response
@@ -923,7 +934,8 @@ def confirm_email_verification(
     if row is None or not hmac.compare_digest(row.token_hash, supplied_hash):
         logger.info(
             "Email verification rejected",
-            extra={"request_id": getattr(request.state, "request_id", None)},
+            extra={"event": "email_verification_rejected",
+                   "request_id": getattr(request.state, "request_id", None)},
         )
         raise HTTPException(
             status_code=400,
@@ -960,7 +972,8 @@ def confirm_email_verification(
             db.commit()
         logger.info(
             "Email verification rejected",
-            extra={"request_id": getattr(request.state, "request_id", None)},
+            extra={"event": "email_verification_rejected",
+                   "request_id": getattr(request.state, "request_id", None)},
         )
         raise HTTPException(
             status_code=400,
@@ -1046,7 +1059,8 @@ def confirm_email_password_reset(
             db.commit()
         logger.info(
             "Password reset rejected",
-            extra={"request_id": getattr(request.state, "request_id", None)},
+            extra={"event": "password_reset_rejected",
+                   "request_id": getattr(request.state, "request_id", None)},
         )
         raise HTTPException(
             status_code=400,
