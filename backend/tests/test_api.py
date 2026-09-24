@@ -13,6 +13,13 @@ from app.models import AuditLog
 from app.observability import JsonLogFormatter
 
 
+def test_root_is_public_backend_entrypoint():
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    assert response.json() == {"service": "guulingiinhan-api", "status": "ok"}
+    assert response.headers["x-request-id"]
+
+
 def test_health_is_liveness_and_sets_request_id():
     response = TestClient(app).get("/health")
     assert response.status_code == 200
