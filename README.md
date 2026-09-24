@@ -1,35 +1,44 @@
-# Угийнхан — Ургийн мод
+# Гуулингийнхан
 
-Монгол гэр бүлүүдийн ургийн мод, хүний профайл, намтрыг цэгцтэй хадгалах responsive вебийн эхний хувилбар.
+Монгол гэр бүлийн ургийн мод, хүмүүсийн намтар, түүх, дурсамжийг холбон хадгалах веб апп.
 
-## Эхлүүлэх
+Frontend нь Next.js App Router, TypeScript, React дээр ажиллана. `backend/` нь FastAPI, SQLAlchemy, Alembic, PostgreSQL суурьтай API-г агуулна. Төслийн үе шат, өгөгдлийн загвар, аюулгүй байдлын төлөвийг `ARCHITECTURE.md`, `DATABASE.md`, `SECURITY.md`, `DEPLOYMENT.md`-д тэмдэглэсэн.
+
+## Frontend
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
-Production build шалгах:
+## Backend ба PostgreSQL
+
+Python 3.11+, uv хэрэгтэй.
 
 ```bash
-npm run build
-npm run preview
+cd backend
+uv sync --dev
+cp .env.example .env
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload
 ```
 
-## Одоогийн боломж
+API баримт: `http://localhost:8000/docs`; ажиллагааны шалгалт: `/health`. Frontend `http://localhost:3000` дээр асна.
 
-- Ургийн модны жишээ өгөгдөл, модон холбоосын дүрслэл
-- Хүн хайх, сонгоход профайлыг харуулах
-- Үе солих, дэлгэц томруулах/багасгах
-- Хүүхэд, эцэг эх, хань нэмэх
-- Хүн нэмсэн мэдээллийг тухайн хөтөчийн localStorage-д хадгалах
-- Профайлын тойм, намтар, зураг, баримтын хэсэг
-- Утас, таблетад тохирох харагдац
+Frontend-ийн `.env` дахь `NEXT_PUBLIC_API_BASE_URL` нь browser-оос хүрэх API URL байх ёстой. Auth, гэр бүл, хүн болон харилцааны API нь `/api/v1`-ээр эхэлнэ. Browser-оос API руу cookie явуулахад backend-ийн `CORS_ORIGINS` дотор frontend origin байх шаардлагатай.
 
-## Анхаарах зүйл
+Google OIDC нэвтрэлтийг асаахдаа backend-д `GOOGLE_OIDC_ENABLED=true`, Google OAuth client ID/secret болон API callback URI-г тохируулна. Callback URI нь `/api/v1/auth/google/callback`. Тохиргоо байхгүй үед Google товч нуугдана; email/password болон утасны OTP нэвтрэлт хэвээр ажиллана.
 
-Энэ нь интерфейсийн эхний туршилтын хувилбар. Нэвтрэлт, API, PostgreSQL, сервер талын хадгалалт, гэр бүлийн урилга, эрхийн хяналт хараахан холбогдоогүй. Демо хүмүүс болон зураг нь жишээ зориулалттай. Хөтөчийн өгөгдөл сервертэй синхрончлогдохгүй.
+Эсвэл төслийн root дээр `docker compose up --build` ажиллуулж Postgres + API-г асаана.
 
-## Технологи
+## Шалгалт
 
-React, TypeScript, Vite, Lucide.
+```bash
+cd backend
+uv run pytest
+uv run ruff check app tests migrations
+uv run alembic check
+```
+
+Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Email verification, нууц үг сэргээх, invitation хүргэлтэд local `EMAIL_PROVIDER=fake`, production-д TLS-тэй SMTP тохируулна. Email хүргэлт болон object storage production-д хараахан тохируулагдаагүй.

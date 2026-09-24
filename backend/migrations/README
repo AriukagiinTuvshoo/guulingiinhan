@@ -1,0 +1,4 @@
+Alembic migration environment. Create versioned migrations with:
+  alembic revision --autogenerate -m "describe schema change"
+Apply with:
+  alembic upgrade head
