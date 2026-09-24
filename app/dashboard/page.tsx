@@ -24,7 +24,7 @@ const initial:Person[]=[
 const nav=[['Нүүр',Home],['Ургийн мод',GitFork],['Хүмүүс',Network],['Storybook',BookOpen],['Архив',Archive],['Чат',MessageSquare],['Календарь',CalendarDays],['Газар зүй',MapPin],['Тохиргоо',Settings]] as const;
 function App(){
  const [people,setPeople]=useState<Person[]>(initial);
- useEffect(()=>{ let active=true; apiMe().catch(()=>{ if(active) window.location.replace('/login'); }); return ()=>{active=false}; },[]);
+ useEffect(()=>{ let active=true; apiMe('/auth/me').catch(()=>{ if(active) window.location.replace('/login'); }); return ()=>{active=false}; },[]);
  useEffect(()=>{try{const raw=localStorage.getItem('ugiinhan_people');if(raw){const saved=JSON.parse(raw) as Person[];if(Array.isArray(saved)&&saved.length)setPeople(saved)}}catch{}} ,[]);
  const [selectedId,setSelectedId]=useState(9);
  const selected=people.find(p=>p.id===selectedId)??people[0]; const maxGeneration=Math.max(...people.map(p=>p.generation),1); const [query,setQuery]=useState('');const [modal,setModal]=useState(false);const [menu,setMenu]=useState(false);const [mobileNav,setMobileNav]=useState(false);const [zoom,setZoom]=useState(1);const [tab,setTab]=useState('Тойм');const [notice,setNotice]=useState('');
