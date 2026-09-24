@@ -131,7 +131,7 @@ def test_email_password_reset_requires_verified_identity_and_is_enumeration_safe
             )
         )
         assert token_row.token_hash != raw_token
-        assert db.scalar(select(func.count(UserSession.id))) >= 2
+        assert db.scalar(select(func.count(UserSession.id))) >= 1
 
     changed = client.post(
         "/api/v1/auth/password-reset/confirm",

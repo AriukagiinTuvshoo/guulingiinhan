@@ -36,6 +36,7 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - `LoginIdentity` нь нэвтрэх арга/таних тэмдгийг `User` account-тай холбоно. `UserPersonLink` нь account-ыг удамд байгаа `Person`-той холбодог тул эдгээр хоёр холбоо хоорондоо солигдохгүй.
 - Бүртгэлээр үүссэн имэйл identity болон одоогийн email/password нэвтрэлт нэг `User`-ийг ашиглана. `users.email`, `password_hash`, `email_verified_at`, session хүснэгт хэвээр; legacy account-ын ID, password, verification төлөв болон session-ийг өөрчлөхгүй.
 - Имэйл баталгаажуулалт/reset-д зориулсан random token-ийг hash-лан тусдаа хүснэгтэд хадгална. SMTP adapter production-д, fake adapter local болон тестэд хэрэглэгдэнэ. Урилга 7 хоногийн хүчинтэй, raw token API-аас гарахгүй бөгөөд эзэмшигч revoke хийж болно.
+- Шинэ email/password account баталгаажуулах холбоосоор verified болохоос өмнө session авдаггүй; password login зөвхөн verified email identity-д зөвшөөрөгдөнө.
 - Имэйлийг захын whitespace-гүй болгож бүх хаягт `casefold()` хэрэглэнэ. Gmail dot арилгах, `+tag` хасах зэрэг provider-specific хувиргалт хийхгүй. Нэвтрэхэд identity lookup indexed; хуучин бичлэгт fallback хийнэ.
 - Утасны identity нь E.164 `+` улсын кодтой canonical дугаар ашиглах загвартай. Google identity нь имэйл бус issuer + subject-аар ялгагдана.
 - Email/phone uniqueness нь provider + normalized identifier; Google uniqueness нь provider + issuer + subject. Нэг normalized утга өөр provider-д байж болно.

@@ -1,6 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from conftest import register_verified
 from sqlalchemy import func, select
 
 from app import auth
@@ -79,10 +80,7 @@ def test_google_state_is_single_use(client, monkeypatch, google_enabled):
 
 def test_google_email_does_not_auto_link_existing_account(client, database, monkeypatch, google_enabled):
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle(email="person@example.com"))
-    registered = client.post(
-        "/api/v1/auth/register",
-        json={"email": "person@example.com", "password": "safe-password-123"},
-    )
+    registered = register_verified(client, "person@example.com", "safe-password-123")
     assert registered.status_code == 201
     client.post("/api/v1/auth/logout")
     start = client.get("/api/v1/auth/google/start", follow_redirects=False)
@@ -101,10 +99,7 @@ def test_google_link_requires_existing_session(client, monkeypatch, google_enabl
 
 def test_google_identity_can_be_linked_to_authenticated_account(client, database, monkeypatch, google_enabled):
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle())
-    registered = client.post(
-        "/api/v1/auth/register",
-        json={"email": "existing@example.com", "password": "safe-password-123"},
-    )
+    registered = register_verified(client, "existing@example.com", "safe-password-123")
     assert registered.status_code == 201
     start = client.post("/api/v1/auth/me/google/start", follow_redirects=False)
     assert start.status_code == 303

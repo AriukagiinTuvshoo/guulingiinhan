@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from conftest import register_verified
 from sqlalchemy import select
 
 from app.auth import get_sms_provider
@@ -20,13 +21,7 @@ def test_phone_link_is_verified_once_and_secret_is_not_in_api_or_database(client
     sms = CapturingSms()
     app.dependency_overrides[get_sms_provider] = lambda: sms
     try:
-        assert (
-            client.post(
-                "/api/v1/auth/register",
-                json={"email": "owner@example.com", "password": "strong-passphrase-123"},
-            ).status_code
-            == 201
-        )
+        assert register_verified(client, "owner@example.com").status_code == 201
         response = client.post("/api/v1/auth/me/phone/request", json={"phone": "+819012345678"})
         assert response.status_code == 202
         assert set(response.json()) == {"challenge_id", "expires_in", "resend_after"}
@@ -63,10 +58,7 @@ def test_wrong_code_locks_challenge_after_five_attempts(client, database):
     sms = CapturingSms()
     app.dependency_overrides[get_sms_provider] = lambda: sms
     try:
-        client.post(
-            "/api/v1/auth/register",
-            json={"email": "owner@example.com", "password": "strong-passphrase-123"},
-        )
+        register_verified(client, "owner@example.com")
         requested = client.post("/api/v1/auth/me/phone/request", json={"phone": "+819012345678"})
         challenge_id = requested.json()["challenge_id"]
         body = {"phone": "+819012345678", "challenge_id": challenge_id, "code": "000000"}
@@ -84,10 +76,7 @@ def test_phone_link_request_has_resend_cooldown(client):
     sms = CapturingSms()
     app.dependency_overrides[get_sms_provider] = lambda: sms
     try:
-        client.post(
-            "/api/v1/auth/register",
-            json={"email": "owner@example.com", "password": "strong-passphrase-123"},
-        )
+        register_verified(client, "owner@example.com")
         payload = {"phone": "+819012345678"}
         assert client.post("/api/v1/auth/me/phone/request", json=payload).status_code == 202
         assert client.post("/api/v1/auth/me/phone/request", json=payload).status_code == 429
@@ -101,12 +90,7 @@ def test_phone_login_and_recovery_are_generic_and_recovery_revokes_sessions(clie
     app.dependency_overrides[get_sms_provider] = lambda: sms
     try:
         email, password = "owner@example.com", "strong-passphrase-123"
-        assert (
-            client.post(
-                "/api/v1/auth/register", json={"email": email, "password": password}
-            ).status_code
-            == 201
-        )
+        assert register_verified(client, email, password).status_code == 201
         challenge = client.post(
             "/api/v1/auth/me/phone/request", json={"phone": "+819012345678"}
         ).json()
@@ -181,10 +165,7 @@ def test_expired_and_phone_mismatched_challenges_cannot_be_used(client, database
     sms = CapturingSms()
     app.dependency_overrides[get_sms_provider] = lambda: sms
     try:
-        client.post(
-            "/api/v1/auth/register",
-            json={"email": "owner@example.com", "password": "strong-passphrase-123"},
-        )
+        register_verified(client, "owner@example.com")
         response = client.post("/api/v1/auth/me/phone/request", json={"phone": "+819012345678"})
         code = sms.messages[-1][1]
         with database() as db:

@@ -1,24 +1,29 @@
 from urllib.parse import urlsplit
 from uuid import UUID
 
+from conftest import confirm_registration_email, register_verified
 from sqlalchemy import select
 
 from app.models import AuditLog, FamilyMember, User
 
 
 def register(client, email):
-    return client.post(
+    return register_verified(client, email)
+
+
+def test_register_login_logout_me_and_email_normalization(client, email_provider):
+    response = client.post(
         "/api/v1/auth/register",
-        json={"email": email, "password": "strong-passphrase-123"},
+        json={"email": "Tree.Owner@example.com", "password": "strong-passphrase-123"},
     )
-
-
-def test_register_login_logout_me_and_email_normalization(client):
-    response = register(client, "Tree.Owner@example.com")
     assert response.status_code == 201
     assert response.json()["email"] == "tree.owner@example.com"
-    assert "httponly" in response.headers["set-cookie"].lower()
-    assert client.get("/api/v1/auth/me").status_code == 200
+    assert "set-cookie" not in response.headers
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
+    ).status_code == 403
 
     assert register(client, "tree.owner@example.com").status_code == 409
     assert (
@@ -28,15 +33,18 @@ def test_register_login_logout_me_and_email_normalization(client):
         ).status_code
         == 401
     )
+    assert confirm_registration_email(
+        client, email_provider, "Tree.Owner@example.com"
+    ).status_code == 200
+    logged_in = client.post(
+        "/api/v1/auth/login",
+        json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
+    )
+    assert logged_in.status_code == 200
+    assert "httponly" in logged_in.headers["set-cookie"].lower()
+    assert client.get("/api/v1/auth/me").status_code == 200
     assert client.post("/api/v1/auth/logout").status_code == 204
     assert client.get("/api/v1/auth/me").status_code == 401
-    assert (
-        client.post(
-            "/api/v1/auth/login",
-            json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
-        ).status_code
-        == 200
-    )
 
 
 def test_mutation_rejects_untrusted_browser_origin(client):
@@ -90,8 +98,14 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
     register(client, "wrong.member@example.com")
     assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 403
     client.post("/api/v1/auth/logout")
-    register(client, "new.member@example.com")
-    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 403
+    assert client.post(
+        "/api/v1/auth/register",
+        json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
+    ).status_code == 403
     verification = _token_from_mail(
         email_provider, "new.member@example.com", "Гуулингийнхан — имэйл"
     )
@@ -101,6 +115,10 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
         ).status_code
         == 200
     )
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
+    ).status_code == 200
     accepted = client.post("/api/v1/invitations/accept", json={"token": token})
     assert accepted.status_code == 200
     assert accepted.json() == {"family_id": family_id, "role": "editor"}

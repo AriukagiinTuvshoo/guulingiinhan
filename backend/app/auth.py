@@ -878,7 +878,6 @@ def register(
             ) from error
         raise
     db.refresh(user)
-    set_session_cookie(db, response, user.id)
     _verification_link_for_user(
         db, user, email_provider, background_tasks, getattr(request.state, "request_id", None)
     )
@@ -1084,6 +1083,11 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         _password_matches(body.password, _DUMMY_PASSWORD_HASH)
     if not valid or user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Имэйл эсвэл нууц үг буруу байна.")
+    if _verified_email_identity(db, user) is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Нэвтрэхийн өмнө имэйл хаягаа баталгаажуулна уу.",
+        )
     # A successful sign-in clears the shared failure bucket for this account/client pair.
     db.execute(
         delete(LoginThrottle).where(

@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from conftest import confirm_registration_email, register_verified
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,25 +17,29 @@ PASSWORD = "strong-passphrase-123"
 
 
 def register(client, email="owner@example.com"):
-    return client.post(
-        "/api/v1/auth/register", json={"email": email, "password": PASSWORD}
-    )
+    return register_verified(client, email, PASSWORD)
 
 
 def login(client, email="owner@example.com", password=PASSWORD):
     return client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
-def test_registration_email_identity_normalization_login_and_safe_output(client):
-    response = register(client, "Owner@Example.com")
+def test_registration_email_identity_normalization_login_and_safe_output(client, email_provider):
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "Owner@Example.com", "password": PASSWORD},
+    )
     assert response.status_code == 201
     assert "password_hash" not in response.json()
+    assert login(client, " OWNER@example.com ").status_code == 403
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert confirm_registration_email(client, email_provider, "Owner@Example.com").status_code == 200
     assert login(client, " OWNER@example.com ").status_code == 200
     identities = client.get("/api/v1/auth/me/identities")
     assert identities.status_code == 200
     assert identities.json()[0]["provider"] == "email"
     assert identities.json()[0]["display_identifier"] == "Owner@example.com"
-    assert identities.json()[0]["verified"] is False
+    assert identities.json()[0]["verified"] is True
     assert "normalized_identifier" not in identities.json()[0]
     assert "subject" not in identities.json()[0]
     assert login(client, "owner@example.com", "wrong-password").status_code == 401

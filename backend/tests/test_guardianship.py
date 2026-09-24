@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
+from conftest import register_verified
 from sqlalchemy import select
 
 from app.models import AuditLog, FamilyMember, PersonGuardianship
@@ -8,10 +9,7 @@ from app.privacy import is_minor
 
 
 def register(client, email):
-    return client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": "strong-passphrase-123"},
-    )
+    return register_verified(client, email)
 
 
 def setup_family(client, database, *, birth_date="2015-06-12"):
