@@ -32,7 +32,7 @@ export default function RegisterPage() {
   return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 460 }}>
     <Link href="/">← ГУУЛИНГИЙНХАН</Link>
     <h1 style={{ marginTop: 24 }}>Бүртгэл үүсгэх</h1>
-    <p>Эхлээд аккаунтаа үүсгээд гэр бүлийн модоо эхлүүлнэ.</p>
+    <p>Эхлээд бүртгэлээ үүсгээд гэр бүлийнхээ ургийн модыг эхлүүлнэ.</p>
     {registeredEmail ? <div className="success" role="status">
       <h2>Бүртгэл үүслээ</h2>
       <p>{registeredEmail} хаягт баталгаажуулах холбоос илгээлээ. Имэйлээ баталгаажуулсны дараа нэвтэрнэ үү.</p>
