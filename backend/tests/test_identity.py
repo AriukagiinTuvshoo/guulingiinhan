@@ -47,10 +47,24 @@ def test_registration_email_identity_normalization_login_and_safe_output(client,
     assert client.get("/api/v1/auth/me").status_code == 401
 
 
-def test_case_variant_registration_is_rejected_without_creating_duplicate_user(client, database):
-    assert register(client, "User@example.com").status_code == 201
+def test_case_variant_registration_is_generic_without_creating_duplicate_user(client, database):
+    first = client.post(
+        "/api/v1/auth/register",
+        json={"email": "User@example.com", "password": PASSWORD},
+    )
+    assert first.status_code == 201
+    assert first.json() == {
+        "message": "Бүртгэлийн хүсэлтийг хүлээн авлаа. Шаардлагатай бол баталгаажуулах холбоосыг имэйлээр илгээнэ."
+    }
     client.post("/api/v1/auth/logout")
-    assert register(client, "user@example.com").status_code == 409
+
+    duplicate = client.post(
+        "/api/v1/auth/register",
+        json={"email": "user@example.com", "password": PASSWORD},
+    )
+    assert duplicate.status_code == 201
+    assert duplicate.json() == first.json()
+
     with database() as db:
         assert len(db.scalars(select(User)).all()) == 1
         assert len(db.scalars(select(LoginIdentity)).all()) == 1
@@ -170,7 +184,13 @@ def test_registration_does_not_claim_ambiguous_legacy_email(client, database):
             ]
         )
         db.commit()
-    assert register(client, "TAKEN@example.com").status_code == 409
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "TAKEN@example.com", "password": PASSWORD},
+    )
+    assert response.status_code == 201
+    assert "email" not in response.json()
+    assert "user_id" not in response.json()
 
 
 def test_migration_backfills_unique_emails_and_preserves_user_security_state(tmp_path):
@@ -282,7 +302,8 @@ def test_email_password_requires_eight_characters_not_ten(client, database):
         json={"email": "eight@example.com", "password": "12345678"},
     )
     assert accepted.status_code == 201
-    assert accepted.json()["display_name"] == "eight"
+    assert accepted.json()["message"]
+    assert "display_name" not in accepted.json()
     with database() as db:
         user = db.scalar(select(User).where(User.email == "eight@example.com"))
         assert user is not None
