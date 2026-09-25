@@ -727,9 +727,8 @@ def _memory_detail(
         for photo in photos if photo.id in visible_photo_ids
     ]
     return MemoryOut(
-        **_memory_list_item(db, memory, len(people)).model_dump(),
+        **_memory_list_item(db, memory, len(people), photos).model_dump(),
         related_people=people,
-        photos=photos,
     )
 
 @router.get("/{family_id}/memories", response_model=MemoryPageResponse)
