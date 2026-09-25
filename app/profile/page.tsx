@@ -156,6 +156,10 @@ export default function ProfilePage() {
     try {
       await load(family, id);
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
       setError(
         cause instanceof ApiError && [403, 404].includes(cause.status)
           ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
