@@ -111,6 +111,39 @@ export type BranchSummary = {
   description: string | null;
 };
 
+export type ArchivePerson = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
+};
+
+export type ArchiveListItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  document_date: string | null;
+  place: string | null;
+  visibility: string;
+  author_id: string;
+  author_name: string;
+  related_people_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ArchiveListPage = {
+  items: ArchiveListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
+export type Archive = ArchiveListItem & {
+  related_people: ArchivePerson[];
+};
+
 export type StoryPerson = {
   id: string;
   first_name: string;
