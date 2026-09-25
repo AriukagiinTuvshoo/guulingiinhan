@@ -308,8 +308,9 @@ export default function RegisterPage() {
               required
               maxLength={6}
               autoFocus
+              aria-describedby="register-otp-help"
             />
-            <span className="auth-help">6 оронтой кодоо оруулна уу.</span>
+            <span id="register-otp-help" className="auth-help">6 оронтой кодоо оруулна уу.</span>
 
             <button className="auth-primary" type="submit" disabled={busy}>
               {busy ? 'Шалгаж байна…' : 'Код баталгаажуулах'}
