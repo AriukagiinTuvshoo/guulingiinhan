@@ -50,12 +50,14 @@ export type Person = {
   first_name: string;
   last_name: string;
   middle_name: string | null;
+  nickname: string | null;
   gender: string;
   birth_date: string | null;
   birth_place: string | null;
   is_alive: boolean;
   death_date: string | null;
   death_place: string | null;
+  profile_photo_url?: string | null;
   short_description: string | null;
   visibility: string;
 };
@@ -68,6 +70,20 @@ export type TreeData = {
 };
 export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'>;
 export type Marriage = { id: string; person_1_id: string; person_2_id: string; status: 'married' | 'divorced' | 'widowed'; start_date: string | null; end_date: string | null; location?: string | null; description?: string | null; created_at?: string; other_person?: Person };
+export type ProfileRelationPerson = Pick<
+  Person,
+  'id' | 'first_name' | 'last_name' | 'middle_name' | 'nickname' | 'gender' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'
+>;
+export type PersonProfile = Person & {
+  lineage_id: string | null;
+  lineage_name: string | null;
+  branch_id: string | null;
+  branch_name: string | null;
+  parents: ProfileRelationPerson[];
+  children: ProfileRelationPerson[];
+  spouses: ProfileRelationPerson[];
+};
+
 export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
 export type PersonDirectoryItem = Person & {
   lineage_id: string | null;
@@ -93,6 +109,40 @@ export type BranchSummary = {
   lineage_id: string;
   name: string;
   description: string | null;
+};
+
+export type StoryPerson = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
+};
+
+export type StoryListItem = {
+  id: string;
+  title: string;
+  excerpt: string;
+  event_date: string | null;
+  place: string | null;
+  visibility: string;
+  author_id: string;
+  author_name: string;
+  related_people_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoryListPage = {
+  items: StoryListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
+export type Story = StoryListItem & {
+  body: string;
+  related_people: StoryPerson[];
 };
 
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>
