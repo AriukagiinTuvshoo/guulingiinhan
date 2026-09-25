@@ -55,16 +55,26 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
 
   async function load(fid: string, pid: string) {
-    const [profile, bio, eventList, marriageList] = await Promise.all([
-      api<PersonProfile>(`/families/${fid}/persons/${pid}`),
+    const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
+    const [bio, eventList, marriageList] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
       api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
       api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
     ]);
+
+    const unexpectedFailure = [bio, eventList, marriageList].find(
+      (result) =>
+        result.status === 'rejected' &&
+        !(result.reason instanceof ApiError && [403, 404].includes(result.reason.status)),
+    );
+    if (unexpectedFailure?.status === 'rejected') {
+      throw unexpectedFailure.reason;
+    }
+
     setPerson(profile);
-    setBiography(bio.content);
-    setEvents(eventList);
-    setMarriages(marriageList);
+    setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
+    setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
+    setMarriages(marriageList.status === 'fulfilled' ? marriageList.value : []);
   }
 
   useEffect(() => {
