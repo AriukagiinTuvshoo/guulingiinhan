@@ -127,7 +127,7 @@ def test_delete_assignment_keeps_person_and_relationships(client, database):
 
 def test_cross_family_lineage_assignment_is_rejected(client):
     register_verified(client, "assignment-cross-family@example.com")
-    _, person, _, _, _ = _setup_family(client, "A")
+    family_a, person, _, _, _ = _setup_family(client, "A")
     family_b = client.post("/api/v1/families", json={"name": "B"}).json()
     lineage_b = client.post(
         f"/api/v1/families/{family_b['id']}/lineages",
