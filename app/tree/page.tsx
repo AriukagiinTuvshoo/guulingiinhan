@@ -49,10 +49,12 @@ export default function TreePage() {
     setFamily(f); setTree(data);
   }, [depth]);
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('family') ?? '';
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('family') ?? '';
+    const personId = params.get('person') ?? undefined;
     if (!id) { router.replace('/families'); return; }
     setFamilyId(id);
-    load(id).catch((cause) => {
+    load(id, personId).catch((cause) => {
       if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
       else setError(cause instanceof Error ? cause.message : 'Ургийн модыг ачаалж чадсангүй.');
     }).finally(() => setBusy(false));
