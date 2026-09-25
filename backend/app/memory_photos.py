@@ -7,7 +7,7 @@ import logging
 import re
 import time
 import warnings
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import PurePath
 from urllib.parse import unquote
 from uuid import UUID, uuid4
@@ -43,7 +43,7 @@ from app.models import (
     User,
     UserPersonLink,
 )
-from app.privacy import is_minor
+from app.privacy import active_guardian_scopes, is_minor
 from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/families", tags=["memories and photos"])
@@ -413,7 +413,7 @@ class MemoryListItem(BaseModel):
     id: UUID
     title: str
     description: str | None
-    memory_date: datetime.date | None
+    memory_date: date | None
     visibility: str
     author_id: UUID
     author_name: str
@@ -431,8 +431,8 @@ class MemoryPageResponse(BaseModel):
 
 
 class MemoryOut(MemoryListItem):
-    related_people: list[MemoryPersonOut] = []
-    photos: list[PhotoResponse] = []
+    related_people: list[MemoryPersonOut] = Field(default_factory=list)
+    photos: list[PhotoResponse] = Field(default_factory=list)
 
 
 class MemoryInput(BaseModel):
@@ -512,9 +512,7 @@ def _restricted_memory_person_ids(
     minor_ids = [person_id for person_id, birth_date in rows if is_minor(birth_date) is True]
     if not minor_ids:
         return set()
-    scopes = __import__("app.privacy", fromlist=["active_guardian_scopes"]).active_guardian_scopes(
-        db, user.id, family_id, minor_ids
-    )
+    scopes = active_guardian_scopes(db, user.id, family_id, minor_ids)
     return {
         person_id for person_id in minor_ids
         if "manage_memories" not in scopes.get(person_id, set())
@@ -703,106 +701,63 @@ def _memory_detail(
     db: Session, family_id: UUID, memory: Memory, user: User
 ) -> MemoryOut:
     people = _memory_people(db, family_id, memory.id, user)
-    photos = list_memory_photos.__wrapped__(
-        family_id=family_id, memory_id=memory.id, limit=50, user=user, db=db,
-        storage=get_storage(),
-    )
+    photos = db.scalars(
+        select(Photo).where(
+            Photo.family_id == family_id,
+            Photo.memory_id == memory.id,
+            Photo.storage_status == "ready",
+        ).order_by(Photo.created_at.desc(), Photo.id.desc()).limit(50)
+    ).all()
+    visible_photo_ids = _tagged_photo_visibility(db, family_id, user, photos)
+    photo_ids = [photo.id for photo in photos if photo.id in visible_photo_ids]
+    tags_by_photo: dict[UUID, list[UUID]] = {photo_id: [] for photo_id in photo_ids}
+    if photo_ids:
+        rows = db.execute(
+            select(PhotoPersonTag.photo_id, PhotoPersonTag.person_id).where(
+                PhotoPersonTag.photo_id.in_(photo_ids),
+                PhotoPersonTag.person_id.in_(_visible_people_query(user, family_id)),
+            )
+        ).all()
+        for photo_id, person_id in rows:
+            tags_by_photo[photo_id].append(person_id)
+    photos = [
+        _photo_payload(photo, tags_by_photo[photo.id])
+        for photo in photos if photo.id in visible_photo_ids
+    ]
     return MemoryOut(
         **_memory_list_item(db, memory, len(people)).model_dump(),
         related_people=people,
         photos=photos,
     )
 
-@router.get("/{family_id}/memories")
+@router.get("/{family_id}/memories", response_model=MemoryPageResponse)
 def list_memories(
     family_id: UUID,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
+    q: str = Query(default="", max_length=120),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    storage: ObjectStorage = Depends(get_storage),
 ):
     _member(db, family_id, user)
-    _retry_pending_cleanup(db, storage, family_id, user)
-    candidates = db.scalars(
-        select(Memory).where(
-            Memory.family_id == family_id,
-            or_(Memory.visibility != "private", Memory.created_by == user.id),
-        ).order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc())
+    base = _memory_query(db, family_id, user, q)
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    memories = db.scalars(
+        base.order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc(), Memory.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ).all()
-    visible_ids = _memory_visible_to_member(
-        db, family_id, user, [memory.id for memory in candidates]
-    )
-    visible = [memory for memory in candidates if memory.id in visible_ids]
-    total = len(visible)
-    page_items = visible[(page - 1) * page_size : page * page_size]
-    ids = [memory.id for memory in page_items]
-    ranked_photos = select(
-        Photo.id.label("photo_id"),
-        Photo.memory_id.label("memory_id"),
-        func.row_number().over(
-            partition_by=Photo.memory_id,
-            order_by=(Photo.created_at.desc(), Photo.id.desc()),
-        ).label("row_number"),
-    ).where(Photo.memory_id.in_(ids), Photo.storage_status == "ready").subquery() if ids else None
-    photo_rows = db.scalars(
-        select(Photo).join(ranked_photos, ranked_photos.c.photo_id == Photo.id)
-        .where(ranked_photos.c.row_number <= 12)
-        .order_by(ranked_photos.c.memory_id, ranked_photos.c.row_number)
-    ).all() if ranked_photos is not None else []
-    photos_by_memory: dict[UUID, list[Photo]] = {memory_id: [] for memory_id in ids}
-    for photo in photo_rows:
-        if len(photos_by_memory[photo.memory_id]) < 12:
-            photos_by_memory[photo.memory_id].append(photo)
-    page_photos = [photo for batch in photos_by_memory.values() for photo in batch]
-    visible_photo_ids = _tagged_photo_visibility(db, family_id, user, page_photos)
-    visible_media_memory_ids = {
-        memory.id for memory in page_items
-        if _memory_media_visible(db, family_id, user, memory)
+    counts = _memory_person_count_query(db, [memory.id for memory in memories])
+    return {
+        "items": [_memory_list_item(db, memory, counts.get(memory.id, 0)) for memory in memories],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_next": page * page_size < total,
     }
-    for memory_id, batch in photos_by_memory.items():
-        photos_by_memory[memory_id] = [
-            photo for photo in batch
-            if photo.id in visible_photo_ids and memory_id in visible_media_memory_ids
-        ]
-    photo_ids = [photo.id for batch in photos_by_memory.values() for photo in batch]
-    tags_by_photo: dict[UUID, list[UUID]] = {photo_id: [] for photo_id in photo_ids}
-    tag_rows = db.execute(
-        select(PhotoPersonTag.photo_id, PhotoPersonTag.person_id).where(
-            PhotoPersonTag.photo_id.in_(photo_ids),
-            PhotoPersonTag.person_id.in_(_visible_people_query(user, family_id)),
-        )
-    ).all() if photo_ids else []
-    for photo_id, person_id in tag_rows:
-        tags_by_photo[photo_id].append(person_id)
-    memory_ids = [memory.id for memory in page_items]
-    all_tag_rows = db.execute(
-        select(MemoryPersonTag.memory_id, MemoryPersonTag.person_id,
-               Person.first_name, Person.last_name, Person.middle_name)
-        .join(Person, Person.id == MemoryPersonTag.person_id)
-        .where(
-            MemoryPersonTag.memory_id.in_(memory_ids),
-            MemoryPersonTag.person_id.in_(_visible_people_query(user, family_id)),
-        )
-        .order_by(Person.last_name, Person.first_name)
-    ).all() if memory_ids else []
-    tags_by_memory: dict[UUID, list[tuple[UUID, str | None, str | None, str | None]]] = {
-        memory_id: [] for memory_id in memory_ids
-    }
-    for memory_id, person_id, first_name, last_name, middle_name in all_tag_rows:
-        tags_by_memory[memory_id].append((person_id, first_name, last_name, middle_name))
-    items = []
-    for memory in page_items:
-        item = _memory_page_payload(memory, tags_by_memory[memory.id])
-        item["photos"] = [
-            _photo_payload(photo, tags_by_photo[photo.id])
-            for photo in photos_by_memory[memory.id]
-        ]
-        items.append(item)
-    return {"items": items, "page": page, "page_size": page_size, "total": total}
-
 
 @router.post("/{family_id}/memories/{memory_id}/photos", status_code=201, response_model=PhotoResponse)
+
 async def upload_photo(
     family_id: UUID,
     memory_id: UUID,
