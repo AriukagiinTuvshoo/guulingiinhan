@@ -215,6 +215,8 @@ class PersonOut(BaseModel):
 
 
 class ProfileRelationPersonOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     first_name: str
     last_name: str
