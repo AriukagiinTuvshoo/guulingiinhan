@@ -248,7 +248,6 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
         </header>
 
         {error && <div className="error stories-error" role="alert" id="story-editor-error">{error}</div>}
-        {notice && <div className="success stories-error" role="status">{notice}</div>}
 
         <form className="card story-editor-form" onSubmit={save} aria-describedby={error ? 'story-editor-error' : undefined}>
           <div className="story-form-grid">
