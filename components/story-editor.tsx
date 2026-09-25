@@ -80,7 +80,6 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
         if (mode === 'create') {
           const items = await api<Family[]>('/families');
           if (cancelled) return;
-          setFamilies(items);
           const requested = effectiveFamilyId;
           const selected = items.find((item) => item.id === requested) ?? items[0] ?? null;
           setFamily(selected);
@@ -172,7 +171,6 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
 
     setSaving(true);
     setError('');
-    setNotice('');
     try {
       const payload = {
         title: cleanTitle,
@@ -187,7 +185,6 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
         ? await api<Story>('/families/' + familyId + '/stories', { method: 'POST', body: JSON.stringify(payload) })
         : await api<Story>('/families/' + familyId + '/stories/' + (story?.id || requestedStoryId), { method: 'PUT', body: JSON.stringify(payload) });
 
-      setNotice('Амжилттай хадгалагдлаа.');
       setInitialSnapshot(JSON.stringify({
         title: saved.title,
         body: saved.body,
