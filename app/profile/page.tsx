@@ -9,6 +9,7 @@ import {
   Marriage,
   PersonProfile,
   StoryListPage,
+  MemoryPage,
   ProfileRelationPerson,
   personName,
 } from '../../lib/api';
@@ -51,6 +52,7 @@ export default function ProfilePage() {
   const [marriages, setMarriages] = useState<Marriage[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
+  const [memories, setMemories] = useState<MemoryPage | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
@@ -63,9 +65,10 @@ export default function ProfilePage() {
       api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
       api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
       api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
+      api<MemoryPage>(`/families/${fid}/persons/${pid}/memories?page=1&page_size=5`),
     ]);
 
-    const unexpectedFailure = [bio, eventList, marriageList, storyPage].find(
+    const unexpectedFailure = [bio, eventList, marriageList, storyPage, memoryPage].find(
       (result) =>
         result.status === 'rejected' &&
         !(result.reason instanceof ApiError && [403, 404].includes(result.reason.status)),
@@ -78,6 +81,7 @@ export default function ProfilePage() {
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
     setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
+    setMemories(memoryPage.status === 'fulfilled' ? memoryPage.value : null);
     setMarriages(marriageList.status === 'fulfilled' ? marriageList.value : []);
   }
 
@@ -346,6 +350,23 @@ export default function ProfilePage() {
                 ))}
               </div>
             ) : <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>}
+          </section>
+
+          <section className="card profile-card">
+            <div className="profile-card-heading">
+              <div><p className="eyebrow">FAMILY MEMORIES</p><h2>Энэ хүнтэй холбоотой дурсамжууд</h2></div>
+              <Link href={'/memories?family=' + encodeURIComponent(family)}>Бүгд →</Link>
+            </div>
+            {memories?.items.length ? (
+              <div className="history-list">
+                {memories.items.slice(0, 5).map((memory) => (
+                  <Link className="history-item" key={memory.id} href={'/memories/' + memory.id + '?family=' + encodeURIComponent(family)}>
+                    <strong>{memory.title}</strong>
+                    <span>{memory.memory_date ?? 'Огноогүй'} · {memory.author_name}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : <p className="profile-empty">Энэ хүнтэй холбоотой дурсамж бүртгэгдээгүй байна.</p>}
           </section>
 
           <section className="card profile-card">
