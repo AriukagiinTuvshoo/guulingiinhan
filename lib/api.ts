@@ -20,7 +20,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       },
     });
   } catch {
-    throw new ApiError(0, 'Сервертэй холбогдож чадсангүй. API хаягаа шалгана уу.');
+    throw new ApiError(0, 'Холболтод асуудал гарлаа. Дахин оролдоно уу.');
   }
   if (!response.ok) {
     let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
