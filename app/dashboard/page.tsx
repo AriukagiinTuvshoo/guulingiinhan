@@ -28,21 +28,41 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   API_BASE,
   api,
   Family,
+  Marriage,
   Person,
   PersonSearchPage,
   TreeData,
+  TreePerson,
   User,
   personName,
 } from '../../lib/api';
 
-type DashboardPerson = Person & {
-  generation: number;
+type DashboardPerson = TreePerson & {
+  generation: number | null;
+};
+
+type NormalizedTreeNode = {
+  id: string;
+  person: TreePerson;
+  generation: number | null;
+  parentIds: string[];
+  childIds: string[];
+  spouseIds: string[];
+};
+
+type NormalizedTree = {
+  rootPersonId: string | null;
+  nodes: Map<string, NormalizedTreeNode>;
+  order: string[];
+  parentChildRelationships: TreeData['parent_child_relationships'];
+  marriages: Marriage[];
+  truncated: boolean;
 };
 
 type MemorySummary = {
@@ -121,82 +141,145 @@ function visibilityLabel(value: string) {
   return value === 'private' ? 'Зөвхөн би' : value === 'public' ? 'Нийтийн' : 'Гэр бүлийнхэн';
 }
 
-function relativeGenerations(tree: TreeData, rootId: string | null): Map<string, number> {
-  const levels = new Map<string, number>();
-  if (!rootId) return levels;
+function resolveTreeRoot(
+  tree: Pick<TreeData, 'persons' | 'root_person_id'>,
+  userPersonId: string | null,
+  selectedPersonId: string | null,
+): string | null {
+  const personIds = new Set(tree.persons.map((person) => person.id));
 
-  const parents = new Map<string, string[]>();
-  const children = new Map<string, string[]>();
-  const spouses = new Map<string, string[]>();
+  if (userPersonId && personIds.has(userPersonId)) return userPersonId;
+  if (selectedPersonId && personIds.has(selectedPersonId)) return selectedPersonId;
+  if (tree.root_person_id && personIds.has(tree.root_person_id)) return tree.root_person_id;
 
-  for (const edge of tree.parent_child_relationships) {
-    parents.set(edge.child_id, [...(parents.get(edge.child_id) ?? []), edge.parent_id]);
-    children.set(edge.parent_id, [...(children.get(edge.parent_id) ?? []), edge.child_id]);
-  }
-
-  for (const marriage of tree.marriages) {
-    spouses.set(marriage.person_1_id, [
-      ...(spouses.get(marriage.person_1_id) ?? []),
-      marriage.person_2_id,
-    ]);
-    spouses.set(marriage.person_2_id, [
-      ...(spouses.get(marriage.person_2_id) ?? []),
-      marriage.person_1_id,
-    ]);
-  }
-
-  const queue: Array<[string, number]> = [[rootId, 2]];
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current) break;
-
-    const [personId, level] = current;
-    if (levels.has(personId)) continue;
-
-    levels.set(personId, Math.max(1, Math.min(4, level)));
-
-    for (const parentId of parents.get(personId) ?? []) {
-      if (!levels.has(parentId)) queue.push([parentId, level - 1]);
-    }
-
-    for (const childId of children.get(personId) ?? []) {
-      if (!levels.has(childId)) queue.push([childId, level + 1]);
-    }
-
-    for (const spouseId of spouses.get(personId) ?? []) {
-      if (!levels.has(spouseId)) queue.push([spouseId, level]);
-    }
-  }
-
-  return levels;
+  return [...personIds].sort((a, b) => a.localeCompare(b))[0] ?? null;
 }
 
-function pickDashboardPeople(tree: TreeData, people: Person[], max = 12): DashboardPerson[] {
-  const byId = new Map(people.map((person) => [person.id, person]));
-  const rootId = tree.root_person_id ?? tree.persons[0]?.id ?? null;
-  if (!rootId) return [];
+function deriveTreeGenerations(
+  parentChildRelationships: TreeData['parent_child_relationships'],
+  marriages: Marriage[],
+  rootPersonId: string | null,
+): Map<string, number> {
+  const generations = new Map<string, number>();
+  if (!rootPersonId) return generations;
 
-  const levels = relativeGenerations(tree, rootId);
-  const distance = new Map<string, number>([[rootId, 0]]);
+  generations.set(rootPersonId, 0);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const edge of parentChildRelationships) {
+      const parentGeneration = generations.get(edge.parent_id);
+      const childGeneration = generations.get(edge.child_id);
+
+      if (parentGeneration !== undefined && childGeneration === undefined) {
+        generations.set(edge.child_id, parentGeneration + 1);
+        changed = true;
+      } else if (childGeneration !== undefined && parentGeneration === undefined) {
+        generations.set(edge.parent_id, childGeneration - 1);
+        changed = true;
+      }
+    }
+
+    // Marriage only carries the already-known generation sideways. It never
+    // increments/decrements generation and therefore never acts as ancestry.
+    for (const marriage of marriages) {
+      const firstGeneration = generations.get(marriage.person_1_id);
+      const secondGeneration = generations.get(marriage.person_2_id);
+
+      if (firstGeneration !== undefined && secondGeneration === undefined) {
+        generations.set(marriage.person_2_id, firstGeneration);
+        changed = true;
+      } else if (secondGeneration !== undefined && firstGeneration === undefined) {
+        generations.set(marriage.person_1_id, secondGeneration);
+        changed = true;
+      }
+    }
+  }
+
+  return generations;
+}
+
+function normalizeTree(
+  tree: TreeData,
+  userPersonId: string | null,
+  selectedPersonId: string | null,
+): NormalizedTree {
+  const personById = new Map<string, TreePerson>();
+  for (const person of tree.persons) {
+    if (!personById.has(person.id)) personById.set(person.id, person);
+  }
+
+  const personIds = new Set(personById.keys());
+  const parentChildRelationships = tree.parent_child_relationships.filter(
+    (edge) => personIds.has(edge.parent_id) && personIds.has(edge.child_id),
+  );
+  const marriages = tree.marriages.filter(
+    (marriage) => personIds.has(marriage.person_1_id) && personIds.has(marriage.person_2_id),
+  );
+  const rootPersonId = resolveTreeRoot(tree, userPersonId, selectedPersonId);
+  const generations = deriveTreeGenerations(
+    parentChildRelationships,
+    marriages,
+    rootPersonId,
+  );
+
+  const nodes = new Map<string, NormalizedTreeNode>(
+    [...personById.values()].map((person) => [
+      person.id,
+      {
+        id: person.id,
+        person,
+        generation: generations.get(person.id) ?? null,
+        parentIds: [],
+        childIds: [],
+        spouseIds: [],
+      },
+    ]),
+  );
+
+  for (const edge of parentChildRelationships) {
+    nodes.get(edge.parent_id)?.childIds.push(edge.child_id);
+    nodes.get(edge.child_id)?.parentIds.push(edge.parent_id);
+  }
+
+  for (const marriage of marriages) {
+    nodes.get(marriage.person_1_id)?.spouseIds.push(marriage.person_2_id);
+    nodes.get(marriage.person_2_id)?.spouseIds.push(marriage.person_1_id);
+  }
+
+  for (const node of nodes.values()) {
+    node.parentIds = [...new Set(node.parentIds)];
+    node.childIds = [...new Set(node.childIds)];
+    node.spouseIds = [...new Set(node.spouseIds)];
+  }
+
+  return {
+    rootPersonId,
+    nodes,
+    order: [...nodes.keys()],
+    parentChildRelationships,
+    marriages,
+    truncated: Boolean(tree.meta?.truncated),
+  };
+}
+
+function treeDistance(tree: NormalizedTree, rootPersonId: string | null): Map<string, number> {
+  const distance = new Map<string, number>();
+  if (!rootPersonId || !tree.nodes.has(rootPersonId)) return distance;
+
   const adjacency = new Map<string, string[]>();
-
-  for (const edge of tree.parent_child_relationships) {
-    adjacency.set(edge.parent_id, [...(adjacency.get(edge.parent_id) ?? []), edge.child_id]);
-    adjacency.set(edge.child_id, [...(adjacency.get(edge.child_id) ?? []), edge.parent_id]);
-  }
-
-  for (const marriage of tree.marriages) {
-    adjacency.set(marriage.person_1_id, [
-      ...(adjacency.get(marriage.person_1_id) ?? []),
-      marriage.person_2_id,
-    ]);
-    adjacency.set(marriage.person_2_id, [
-      ...(adjacency.get(marriage.person_2_id) ?? []),
-      marriage.person_1_id,
+  for (const node of tree.nodes.values()) {
+    adjacency.set(node.id, [
+      ...node.parentIds,
+      ...node.childIds,
+      ...node.spouseIds,
     ]);
   }
 
-  const queue = [rootId];
+  distance.set(rootPersonId, 0);
+  const queue = [rootPersonId];
   while (queue.length) {
     const current = queue.shift();
     if (!current) break;
@@ -209,33 +292,71 @@ function pickDashboardPeople(tree: TreeData, people: Person[], max = 12): Dashbo
     }
   }
 
-  const treeIds = tree.persons.map((person) => person.id);
-  const orderedIds = [...new Set(treeIds)]
-    .filter((id) => byId.has(id))
-    .sort((a, b) => (distance.get(a) ?? 999) - (distance.get(b) ?? 999));
+  return distance;
+}
 
-  const selectedIds = new Set(orderedIds.slice(0, max));
-  if (!selectedIds.has(rootId) && byId.has(rootId)) selectedIds.add(rootId);
+function pickDashboardPeople(
+  tree: NormalizedTree,
+  selectedPersonId: string | null,
+  max = 12,
+): DashboardPerson[] {
+  const distance = treeDistance(tree, tree.rootPersonId);
+  const selectedIds = new Set<string>();
+
+  for (const id of [tree.rootPersonId, selectedPersonId]) {
+    if (id && tree.nodes.has(id)) selectedIds.add(id);
+  }
+
+  const remainingIds = tree.order
+    .filter((id) => !selectedIds.has(id))
+    .sort((a, b) => {
+      const generationA = tree.nodes.get(a)?.generation ?? Number.POSITIVE_INFINITY;
+      const generationB = tree.nodes.get(b)?.generation ?? Number.POSITIVE_INFINITY;
+
+      if (generationA !== generationB) return generationA - generationB;
+      return (
+        (distance.get(a) ?? Number.POSITIVE_INFINITY) -
+          (distance.get(b) ?? Number.POSITIVE_INFINITY) ||
+        a.localeCompare(b)
+      );
+    });
+
+  for (const id of remainingIds) {
+    if (selectedIds.size >= max) break;
+    selectedIds.add(id);
+  }
 
   return [...selectedIds]
     .map((id) => {
-      const person = byId.get(id);
-      return person ? { ...person, generation: levels.get(id) ?? 2 } : null;
+      const node = tree.nodes.get(id);
+      return node ? { ...node.person, generation: node.generation } : null;
     })
     .filter((person): person is DashboardPerson => Boolean(person))
-    .sort(
-      (a, b) =>
-        a.generation - b.generation ||
-        (distance.get(a.id) ?? 999) - (distance.get(b.id) ?? 999),
-    )
+    .sort((a, b) => {
+      const generationA = a.generation ?? Number.POSITIVE_INFINITY;
+      const generationB = b.generation ?? Number.POSITIVE_INFINITY;
+
+      if (generationA !== generationB) return generationA - generationB;
+      return (
+        (distance.get(a.id) ?? Number.POSITIVE_INFINITY) -
+          (distance.get(b.id) ?? Number.POSITIVE_INFINITY) ||
+        a.id.localeCompare(b.id)
+      );
+    })
     .slice(0, max);
+}
+
+function generationLabel(generation: number | null) {
+  if (generation === null) return '—';
+  if (generation > 0) return '+' + generation + ' үе';
+  return generation + ' үе';
 }
 
 function ConnectorLayer({
   tree,
   visiblePeople,
 }: {
-  tree: TreeData;
+  tree: NormalizedTree;
   visiblePeople: DashboardPerson[];
 }) {
   const slotById = new Map(
@@ -250,7 +371,7 @@ function ConnectorLayer({
   return (
     <svg className="connectors" viewBox="0 0 950 640" preserveAspectRatio="none" aria-hidden="true">
       <g fill="none" stroke="#d0ac56" strokeWidth="2">
-        {tree.parent_child_relationships.map((edge) => {
+        {tree.parentChildRelationships.map((edge) => {
           const parentPosition = slotById.get(edge.parent_id);
           const childPosition = slotById.get(edge.child_id);
           if (!parentPosition || !childPosition) return null;
@@ -341,11 +462,10 @@ export default function DashboardPage() {
   const [biography, setBiography] = useState('');
   const [biographyLoading, setBiographyLoading] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
+  const userPersonIdRef = React.useRef<string | null>(null);
 
-  const familyIdFromUrl = useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    return new URLSearchParams(window.location.search).get('family') ?? '';
-  }, []);
+  const searchParams = useSearchParams();
+  const familyIdFromUrl = searchParams.get('family') ?? '';
 
   const loadDashboard = useCallback(async (familyId: string, personId?: string) => {
     setError('');
@@ -360,17 +480,17 @@ export default function DashboardPage() {
       api<MemorySummary[]>('/families/' + familyId + '/memories'),
     ]);
 
+    const normalizedTree = normalizeTree(treeData, userPersonIdRef.current, personId ?? null);
+
     setFamily(familyData);
     setTree(treeData);
     setPeople(personData);
     setMemories(memoryData.slice(0, 4));
 
-    const availableIds = new Set(treeData.persons.map((person) => person.id));
-    const preferredId = personId ?? treeData.root_person_id ?? treeData.persons[0]?.id ?? null;
     const nextSelected =
-      preferredId && availableIds.has(preferredId)
-        ? preferredId
-        : treeData.persons[0]?.id ?? null;
+      personId && normalizedTree.nodes.has(personId)
+        ? personId
+        : normalizedTree.rootPersonId;
 
     setSelectedId(nextSelected);
     setTab('Тойм');
@@ -378,7 +498,7 @@ export default function DashboardPage() {
     setPhotosByPerson({});
 
     const photoEntries = await Promise.all(
-      treeData.persons.slice(0, 12).map(async (treePerson) => {
+      [...new Map(treeData.persons.map((treePerson) => [treePerson.id, treePerson])).values()].slice(0, 12).map(async (treePerson) => {
         try {
           const result = await api<{ items: { id: string; thumbnail_url: string }[] }>(
             '/families/' +
@@ -424,6 +544,14 @@ export default function DashboardPage() {
       setError('');
 
       try {
+        setFamily(null);
+        setTree({ persons: [], parent_child_relationships: [], marriages: [] });
+        setPeople([]);
+        setMemories([]);
+        setMemoryDetails({});
+        setPhotosByPerson({});
+        setSelectedId(null);
+
         const [me, familyList] = await Promise.all([
           api<User>('/auth/me'),
           api<Family[]>('/families'),
@@ -432,6 +560,7 @@ export default function DashboardPage() {
         if (!active) return;
 
         setUser(me);
+        userPersonIdRef.current = me.person_id;
         setFamilies(familyList);
 
         if (!familyList.length) {
@@ -449,7 +578,7 @@ export default function DashboardPage() {
 
         await loadDashboard(nextFamily.id, preferredPerson);
 
-        if (active && !familyIdFromUrl) {
+        if (active && (!familyIdFromUrl || !requestedFamily)) {
           window.history.replaceState(
             null,
             '',
@@ -530,18 +659,26 @@ export default function DashboardPage() {
     };
   }, [family?.id, selectedId]);
 
+  const normalizedTree = useMemo(
+    () => normalizeTree(tree, userPersonIdRef.current, selectedId),
+    [tree, selectedId],
+  );
+
   const visiblePeople = useMemo(
-    () => pickDashboardPeople(tree, people, 12),
-    [tree, people],
+    () => pickDashboardPeople(normalizedTree, selectedId, 12),
+    [normalizedTree, selectedId],
   );
 
   const selected = useMemo(
-    () => people.find((person) => person.id === selectedId) ?? null,
-    [people, selectedId],
+    () =>
+      selectedId && normalizedTree.nodes.has(selectedId)
+        ? people.find((person) => person.id === selectedId) ?? null
+        : null,
+    [people, selectedId, normalizedTree],
   );
 
   const maxGeneration = useMemo(
-    () => Math.max(...visiblePeople.map((person) => person.generation), 1),
+    () => Math.max(...visiblePeople.map((person) => Math.abs(person.generation ?? 0) + 1), 1),
     [visiblePeople],
   );
 
@@ -893,6 +1030,11 @@ export default function DashboardPage() {
             </div>
 
             {error && <div className="error" role="alert" style={{ margin: 10 }}>{error}</div>}
+            {normalizedTree.truncated && (
+              <div className="muted" role="status" style={{ margin: '6px 10px 0', fontSize: 10 }}>
+                Ургийн мод хэсэгчлэн ачааллагдсан · харагдаж буй мэдээлэл нь API-ийн хязгаарт багтсан хэсэг.
+              </div>
+            )}
 
             {!tree.persons.length ? (
               <div className="treecanvas empty-tree">
@@ -909,7 +1051,7 @@ export default function DashboardPage() {
                 <div className="forest" />
 
                 <div className="treeworld" style={{ transform: 'scale(' + zoom + ')' }}>
-                  <ConnectorLayer tree={tree} visiblePeople={visiblePeople} />
+                  <ConnectorLayer tree={normalizedTree} visiblePeople={visiblePeople} />
 
                   {visiblePeople.map((person, index) => {
                     const photo = photosByPerson[person.id]?.[0];
@@ -941,7 +1083,7 @@ export default function DashboardPage() {
                             : '– ' + (person.death_date?.slice(0, 4) ?? '?')}
                         </span>
                         <i>
-                          {['I үе', 'II үе', 'III үе', 'IV үе'][Math.min(person.generation - 1, 3)]}
+                          {generationLabel(person.generation)}
                         </i>
                       </button>
                     );
