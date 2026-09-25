@@ -99,7 +99,7 @@ export default function AccountSecurityPage() {
         <button type="button" disabled={busy} onClick={requestEmailVerification}>Баталгаажуулах холбоос дахин илгээх</button>
       </div>}
       {!linkedPhone && !challenge && <form onSubmit={requestPhone}>
-        <label>Утасны дугаар (E.164)<input name="phone" type="tel" placeholder="+97699112233" required maxLength={16} /></label>
+        <label>Утасны дугаар<input name="phone" type="tel" placeholder="+976 99112233" required maxLength={20} /><span className="muted">+976 99112233 эсвэл 99112233 гэж оруулж болно.</span></label>
         <button className="primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Утас холбох'}</button>
       </form>}
       {googleEnabled && !identities.some((item) => item.provider === 'google' && item.verified) && <form method="post" action={`${process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1'}/auth/me/google/start`} style={{ marginTop: 16 }}>

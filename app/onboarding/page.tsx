@@ -15,8 +15,12 @@ export default function OnboardingPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [accountName, setAccountName] = useState('');
   useEffect(() => {
-    api<User>('/auth/me').catch(() => router.replace('/login')).finally(() => setLoading(false));
+    api<User>('/auth/me')
+      .then((me) => setAccountName(me.display_name))
+      .catch(() => router.replace('/login'))
+      .finally(() => setLoading(false));
   }, [router]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,7 +53,7 @@ export default function OnboardingPage() {
     {error && <div className="error" role="alert">{error}</div>}
     <form onSubmit={submit}>
       <label>Гэр бүлийн нэр<input name="family" placeholder="ГУУЛИНГИЙНХАН" maxLength={180} required /></label>
-      <label>Таны нэр<input name="name" autoComplete="name" required maxLength={360} /></label>
+      <label>Таны нэр<input name="name" autoComplete="name" required maxLength={360} value={accountName} onChange={(event) => setAccountName(event.target.value)} /></label>
       <label>Хүйс<select name="gender" defaultValue="unknown"><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>
       <div className="row"><label style={{ flex: 1 }}>Эцгийн нэр<input name="father" maxLength={360} /></label><label style={{ flex: 1 }}>Эхийн нэр<input name="mother" maxLength={360} /></label></div>
       <button className="primary" type="submit" disabled={busy}>{busy ? 'Үүсгэж байна…' : 'Гэр бүлээ үүсгэх'}</button>

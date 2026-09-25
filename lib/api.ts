@@ -30,7 +30,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
         response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
         response.status === 404 ? 'Мэдээлэл олдсонгүй.' :
-        response.status === 409 ? 'Энэ мэдээлэл аль хэдийн бүртгэгдсэн байна.' :
+        response.status === 409 ? 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.' :
         response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
         response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
         payload.detail ?? message;
@@ -43,7 +43,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export type User = { id: string; email: string; display_name: string; person_id: string | null };
+export type User = { id: string; email: string | null; display_name: string; person_id: string | null };
 export type Family = { id: string; name: string; description: string | null; role: string };
 export type Person = {
   id: string;
@@ -66,7 +66,12 @@ export type TreeData = {
   root_person_id?: string | null;
   meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
-export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'>;
+export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'> & {
+  lineage_id?: string | null;
+  lineage_name?: string | null;
+  branch_id?: string | null;
+  branch_name?: string | null;
+};
 export type Marriage = { id: string; person_1_id: string; person_2_id: string; status: 'married' | 'divorced' | 'widowed'; start_date: string | null; end_date: string | null; location?: string | null; description?: string | null; created_at?: string; other_person?: Person };
 export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
 

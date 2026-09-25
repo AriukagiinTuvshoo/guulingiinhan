@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
+import { TreeDeciduous } from 'lucide-react';
 import { api } from '../../lib/api';
 
 export default function EmailVerificationPage() {
@@ -38,18 +39,50 @@ export default function EmailVerificationPage() {
     finally { setBusy(false); }
   }
 
-  return <main className="mvp"><section className="mvpbox" style={{maxWidth: 500}}>
-    <Link href="/login">← Нэвтрэх</Link>
-    <h1 style={{marginTop: 24}}>Имэйл баталгаажуулах</h1>
-    <p>Холбоос 24 цагийн дараа хүчингүй болно. Баталгаажуулах нь гэр бүлийн зөвшөөрөл олгохгүй.</p>
-    {busy && <p role="status">Шалгаж байна…</p>}
-    {notice && <div className="success" role="status">{notice}</div>}
-    {error && <div className="error" role="alert">{error}</div>}
-    {!token && <form onSubmit={resend}>
-      <label>Имэйл<input name="email" type="email" autoComplete="email" maxLength={320} required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-      <button className="primary" disabled={busy}>Баталгаажуулах холбоос дахин илгээх</button>
-      <p className="muted">Бүртгэл байгаа эсэхийг ил гаргахгүйн тулд ижил хариу харуулна.</p>
-    </form>}
-    {notice && <p><Link className="button" href="/login">Нэвтрэх</Link></p>}
-  </section></main>;
+  return (
+    <main className="auth-shell">
+      <section className="auth-card" aria-labelledby="verification-title">
+        <Link className="auth-back" href="/login">← Нэвтрэх</Link>
+        <div className="auth-brand">
+          <div className="brandmark auth-mark"><TreeDeciduous /></div>
+          <div>
+            <strong>ГУУЛИНГИЙНХАН</strong>
+            <span>Миний удам · Манай түүх</span>
+          </div>
+        </div>
+        <div className="auth-heading">
+          <h1 id="verification-title">Имэйл баталгаажуулах</h1>
+          <p>Баталгаажуулах холбоос 24 цагийн дараа хүчингүй болно.</p>
+        </div>
+
+        {busy && <div className="auth-message" role="status">Шалгаж байна…</div>}
+        {notice && <div className="auth-message success" role="status">{notice}</div>}
+        {error && <div className="auth-message error" role="alert">{error}</div>}
+
+        {!token && (
+          <form className="auth-form" onSubmit={resend}>
+            <label htmlFor="verification-email">Имэйл</label>
+            <input
+              id="verification-email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              maxLength={320}
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            <button className="auth-primary" disabled={busy}>
+              Баталгаажуулах холбоос дахин авах
+            </button>
+            <span className="auth-help">
+              Бүртгэл байгаа эсэхийг ил гаргахгүй тул ижил хариу харуулна.
+            </span>
+          </form>
+        )}
+
+        {notice && <Link className="auth-primary auth-link-button" href="/login">Нэвтрэх</Link>}
+      </section>
+    </main>
+  );
 }
