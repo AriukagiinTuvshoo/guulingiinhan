@@ -257,3 +257,72 @@ def test_phone_registration_persists_same_user_after_logout_and_phone_login(clie
             assert len(db.scalars(select(User)).all()) == 1
     finally:
         app.dependency_overrides.pop(get_sms_provider, None)
+
+
+def test_phone_registration_reuses_existing_user_and_cannot_reuse_code(client, database):
+    sms = CapturingSms()
+    app.dependency_overrides[get_sms_provider] = lambda: sms
+    try:
+        created = client.post(
+            "/api/v1/auth/phone/register/request",
+            json={"phone": "99112231", "display_name": "Анхны нэр"},
+        )
+        assert created.status_code == 202
+        verification = client.post(
+            "/api/v1/auth/phone/register/verify",
+            json={
+                "phone": "+97699112231",
+                "challenge_id": created.json()["challenge_id"],
+                "code": sms.messages[-1][1],
+                "display_name": "Анхны нэр",
+            },
+        )
+        assert verification.status_code == 200
+        user_id = verification.json()["id"]
+
+        with database() as db:
+            challenge = db.get(
+                PhoneOtpChallenge, UUID(created.json()["challenge_id"])
+            )
+            challenge.created_at = datetime.now(UTC) - timedelta(seconds=61)
+            db.commit()
+
+        client.post("/api/v1/auth/logout")
+        second_request = client.post(
+            "/api/v1/auth/phone/register/request",
+            json={"phone": "+976 9911 2231", "display_name": "Өөр нэр"},
+        )
+        assert second_request.status_code == 202
+        second_code = sms.messages[-1][1]
+        second_verification = client.post(
+            "/api/v1/auth/phone/register/verify",
+            json={
+                "phone": "99112231",
+                "challenge_id": second_request.json()["challenge_id"],
+                "code": second_code,
+                "display_name": "Өөр нэр",
+            },
+        )
+        assert second_verification.status_code == 200
+        assert second_verification.json()["id"] == user_id
+        assert second_verification.json()["display_name"] == "Анхны нэр"
+
+        reused = client.post(
+            "/api/v1/auth/phone/register/verify",
+            json={
+                "phone": "99112231",
+                "challenge_id": second_request.json()["challenge_id"],
+                "code": second_code,
+                "display_name": "Гуравдагч нэр",
+            },
+        )
+        assert reused.status_code == 400
+        with database() as db:
+            assert len(db.scalars(select(User)).all()) == 1
+            assert len(
+                db.scalars(
+                    select(LoginIdentity).where(LoginIdentity.provider == "phone")
+                ).all()
+            ) == 1
+    finally:
+        app.dependency_overrides.pop(get_sms_provider, None)
