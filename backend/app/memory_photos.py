@@ -604,9 +604,10 @@ def create_memory(
         _assert_person_visible(db, person, user)
         people.append(person)
 
-    if member.role not in {"owner", "editor"}:
-        if not people or not all(is_minor(person.birth_date) is True for person in people):
-            raise HTTPException(status_code=403, detail="Энэ дурсамжийг үүсгэх эрхгүй.")
+    if member.role not in {"owner", "editor"} and (
+        not people or not all(is_minor(person.birth_date) is True for person in people)
+    ):
+        raise HTTPException(status_code=403, detail="Энэ дурсамжийг үүсгэх эрхгүй.")
     _assert_memory_minor_scopes(db, family_id, user, person_ids)
     memory = Memory(
         family_id=family_id,
