@@ -19,6 +19,7 @@ export default function ArchiveEditor({ mode }: { mode: 'create' | 'edit' }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PersonSearchPage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState('');
@@ -72,6 +73,7 @@ export default function ArchiveEditor({ mode }: { mode: 'create' | 'edit' }) {
             })),
           );
         }
+        setReady(true);
       } catch (cause) {
         if (cause instanceof ApiError && cause.status === 401) {
           window.location.href = '/login';
@@ -205,13 +207,13 @@ export default function ArchiveEditor({ mode }: { mode: 'create' | 'edit' }) {
     );
   }
 
-  if (!family) {
+  if (!family || !ready) {
     return (
       <main className="stories-page">
         <section className="stories-shell stories-state card">
-          <h2>Гэр бүлийг ачаалж чадсангүй.</h2>
+          <h2>{family && mode === 'edit' ? 'Архивийг ачаалж чадсангүй.' : 'Гэр бүлийг ачаалж чадсангүй.'}</h2>
           <p>{error || 'Дахин оролдоно уу.'}</p>
-          <Link className="button" href="/archives">← Архив</Link>
+          <Link className="button" href={'/archives?family=' + encodeURIComponent(familyId)}>← Архив</Link>
         </section>
       </main>
     );
