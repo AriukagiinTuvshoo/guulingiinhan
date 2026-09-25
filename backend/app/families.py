@@ -30,13 +30,13 @@ from app.models import (
     Marriage,
     Memory,
     MemoryPersonTag,
-    Story,
-    StoryPerson,
     ParentChildRelationship,
     Person,
     PersonGuardianship,
     PersonLineageAssignment,
     Photo,
+    Story,
+    StoryPerson,
     User,
     UserPersonLink,
 )
@@ -2263,7 +2263,7 @@ def update_story(
         updates["title"] = updates["title"].strip()
     if "body" in updates and updates["body"] is not None:
         updates["body"] = updates["body"].strip()
-    if "place" in updates and updates["place"]:
+    if updates.get("place"):
         updates["place"] = updates["place"].strip()
     for field, value in updates.items():
         setattr(story, field, value)
