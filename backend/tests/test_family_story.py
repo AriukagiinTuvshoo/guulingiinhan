@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from conftest import register_verified
 
 from app.models import FamilyMember, User
@@ -142,7 +144,7 @@ def test_private_story_is_visible_only_to_creator(client, database):
 
     register_verified(client, "story-private-member@example.com")
     with database() as db:
-        db.add(FamilyMember(family_id=family_id, user_id=db.query(User).filter(User.email == "story-private-member@example.com").one().id, role="member"))
+        db.add(FamilyMember(family_id=UUID(family_id), user_id=db.query(User).filter(User.email == "story-private-member@example.com").one().id, role="member"))
         db.commit()
 
     hidden = client.get(f"/api/v1/families/{family_id}/stories/{story['id']}")
