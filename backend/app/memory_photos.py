@@ -420,6 +420,7 @@ class MemoryListItem(BaseModel):
     related_people_count: int
     created_at: datetime
     updated_at: datetime
+    photos: list[PhotoResponse] = Field(default_factory=list)
 
 
 class MemoryPageResponse(BaseModel):
@@ -438,7 +439,7 @@ class MemoryOut(MemoryListItem):
 class MemoryInput(BaseModel):
     title: str = Field(min_length=1, max_length=180)
     description: str | None = Field(default=None, max_length=100000)
-    memory_date: datetime.date | None = None
+    memory_date: date | None = None
     visibility: str = Field(default="family", pattern="^(private|family|public)$")
     person_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
