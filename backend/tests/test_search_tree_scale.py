@@ -4,7 +4,16 @@ from uuid import UUID, uuid4
 from conftest import register_verified
 from sqlalchemy import event
 
-from app.models import FamilyPerson, Marriage, ParentChildRelationship, Person, User
+from app.models import (
+    Branch,
+    FamilyPerson,
+    Lineage,
+    Marriage,
+    ParentChildRelationship,
+    Person,
+    PersonLineageAssignment,
+    User,
+)
 from app.person_search import normalize_search_name
 
 
@@ -169,7 +178,8 @@ def test_tree_context_is_bounded_cycle_safe_and_constant_query_count(client, dat
     assert len({person["id"] for person in tree["persons"]}) == len(tree["persons"])
     assert "short_description" not in tree["persons"][0]
     assert "birth_place" not in tree["persons"][0]
-    assert len(queries) <= 30
+    # One constant-query enrichment fetch supplies authorized lineage metadata.
+    assert len(queries) <= 31
     assert client.get(
         f"/api/v1/families/{family_id}/tree?person_id={persons[60].id}&depth=6"
     ).status_code == 422
@@ -215,3 +225,146 @@ def test_tree_node_limit_caps_large_fanout(client, database):
     tree = response.json()
     assert tree["meta"]["node_count"] <= tree["meta"]["node_limit"]
     assert tree["meta"]["truncated"] is True
+
+
+def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scoped(
+    client, database
+):
+    register_verified(client, "tree-lineage@example.com")
+    owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    family_a_id = UUID(
+        client.post("/api/v1/families", json={"name": "Удмын гэр бүл"}).json()["id"]
+    )
+    family_b_id = UUID(
+        client.post("/api/v1/families", json={"name": "Өөр гэр бүл"}).json()["id"]
+    )
+
+    root = Person(
+        id=uuid4(),
+        first_name="Түвшин",
+        last_name="Мод",
+        search_first_name=normalize_search_name("Түвшин"),
+        search_last_name="мод",
+        search_middle_name="",
+        created_by=owner_id,
+        visibility="family",
+    )
+    child = Person(
+        id=uuid4(),
+        first_name="Бадмаа",
+        last_name="Мод",
+        search_first_name=normalize_search_name("Бадмаа"),
+        search_last_name="мод",
+        search_middle_name="",
+        created_by=owner_id,
+        visibility="family",
+    )
+    spouse = Person(
+        id=uuid4(),
+        first_name="Дулмаа",
+        last_name="Бусад",
+        search_first_name=normalize_search_name("Дулмаа"),
+        search_last_name="бусад",
+        search_middle_name="",
+        created_by=owner_id,
+        visibility="family",
+    )
+
+    with database() as db:
+        db.add_all([root, child, spouse])
+        db.flush()
+        db.add_all(
+            [
+                FamilyPerson(
+                    id=uuid4(), family_id=family_a_id, person_id=person.id, added_by=owner_id
+                )
+                for person in [root, child, spouse]
+            ]
+            + [
+                FamilyPerson(
+                    id=uuid4(), family_id=family_b_id, person_id=root.id, added_by=owner_id
+                ),
+                ParentChildRelationship(
+                    id=uuid4(), parent_id=root.id, child_id=child.id, created_by=owner_id
+                ),
+                Marriage(
+                    id=uuid4(),
+                    person_1_id=min(root.id, spouse.id, key=str),
+                    person_2_id=max(root.id, spouse.id, key=str),
+                    status="married",
+                    created_by=owner_id,
+                ),
+            ]
+        )
+        db.flush()
+
+        lineage_a = Lineage(
+            id=uuid4(),
+            family_id=family_a_id,
+            name="Удам A",
+            description=None,
+        )
+        lineage_b = Lineage(
+            id=uuid4(),
+            family_id=family_b_id,
+            name="Удам B",
+            description=None,
+        )
+        db.add_all([lineage_a, lineage_b])
+        db.flush()
+
+        branch_a = Branch(
+            id=uuid4(),
+            lineage_id=lineage_a.id,
+            name="Салаа A",
+            description=None,
+        )
+        db.add(branch_a)
+        db.flush()
+
+        db.add(
+            PersonLineageAssignment(
+                id=uuid4(),
+                person_id=root.id,
+                lineage_id=lineage_a.id,
+                branch_id=branch_a.id,
+            )
+        )
+        db.commit()
+
+    family_a_tree = client.get(
+        f"/api/v1/families/{family_a_id}/tree?person_id={root.id}&depth=1"
+    )
+    assert family_a_tree.status_code == 200
+    payload_a = family_a_tree.json()
+    root_a = next(person for person in payload_a["persons"] if person["id"] == str(root.id))
+    child_a = next(person for person in payload_a["persons"] if person["id"] == str(child.id))
+    spouse_a = next(person for person in payload_a["persons"] if person["id"] == str(spouse.id))
+
+    assert root_a["lineage_id"] == str(lineage_a.id)
+    assert root_a["lineage_name"] == "Удам A"
+    assert root_a["branch_id"] == str(branch_a.id)
+    assert root_a["branch_name"] == "Салаа A"
+    assert child_a["lineage_id"] is None
+    assert child_a["branch_name"] is None
+    assert {
+        (edge["parent_id"], edge["child_id"])
+        for edge in payload_a["parent_child_relationships"]
+    } == {(str(root.id), str(child.id))}
+    assert {
+        (marriage["person_1_id"], marriage["person_2_id"])
+        for marriage in payload_a["marriages"]
+    } == {tuple(sorted((str(root.id), str(spouse.id))))}
+    assert root_a["id"] == str(root.id)
+    assert spouse_a["id"] == str(spouse.id)
+
+    family_b_tree = client.get(
+        f"/api/v1/families/{family_b_id}/tree?person_id={root.id}&depth=0"
+    )
+    assert family_b_tree.status_code == 200
+    root_b = family_b_tree.json()["persons"][0]
+    assert root_b["id"] == str(root.id)
+    assert root_b["lineage_id"] is None
+    assert root_b["lineage_name"] is None
+    assert root_b["branch_id"] is None
+    assert root_b["branch_name"] is None
