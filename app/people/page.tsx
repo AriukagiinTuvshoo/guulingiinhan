@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
@@ -15,6 +15,11 @@ import {
 } from '../../lib/api';
 
 const PAGE_SIZE = 24;
+const SEARCH_DEBOUNCE_MS = 260;
+
+function normalizeSearchQuery(value: string) {
+  return value.replace(/\s+/g, ' ').trim();
+}
 
 function initials(person: Pick<PersonDirectoryItem, 'first_name' | 'last_name'>) {
   return [person.last_name, person.first_name]
@@ -54,6 +59,10 @@ export default function PeoplePage() {
   const [busy, setBusy] = useState(false);
   const [metaError, setMetaError] = useState('');
   const [error, setError] = useState('');
+  const [metaBusy, setMetaBusy] = useState(false);
+  const peopleRequestRef = useRef(0);
+  const familyRequestRef = useRef(0);
+  const metadataRequestRef = useRef(0);
 
   const loadPeople = useCallback(async (
     fid: string,
@@ -63,6 +72,7 @@ export default function PeoplePage() {
     nextPage: number,
   ) => {
     if (!fid) return;
+    const requestId = ++peopleRequestRef.current;
     setBusy(true);
     setError('');
     try {
@@ -70,101 +80,158 @@ export default function PeoplePage() {
         page: String(nextPage),
         page_size: String(PAGE_SIZE),
       });
-      if (nextQuery.trim()) params.set('q', nextQuery.trim());
+      const safeQuery = normalizeSearchQuery(nextQuery);
+      if (safeQuery) params.set('q', safeQuery);
       if (nextLineageId) params.set('lineage_id', nextLineageId);
       if (nextBranchId) params.set('branch_id', nextBranchId);
       const result = await api<PersonDirectoryPage>(
         `/families/${fid}/people?${params.toString()}`,
       );
+      if (requestId !== peopleRequestRef.current) return;
       setPeople(result);
     } catch (cause) {
+      if (requestId !== peopleRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
       setError(cause instanceof Error ? cause.message : 'Хүмүүсийг ачаалж чадсангүй.');
     } finally {
+      if (requestId === peopleRequestRef.current) {
+        setLoading(false);
+        setBusy(false);
+      }
+    }
+  }, [router]);
+
+  const loadFamilies = useCallback(async () => {
+    const requestId = ++familyRequestRef.current;
+    setLoading(true);
+    setError('');
+    try {
+      const list = await api<Family[]>('/families');
+      if (requestId !== familyRequestRef.current) return;
+      setFamilies(list);
+      peopleRequestRef.current += 1;
+      if (!list.length) {
+        setFamilyId('');
+        setPeople(null);
+        setLoading(false);
+        return;
+      }
+      const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
+      const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
+      setFamilyId(selected.id);
+      setPeople(null);
+      if (selected.id !== requestedFamily) {
+        router.replace('/people?family=' + encodeURIComponent(selected.id));
+      }
+    } catch (cause) {
+      if (requestId !== familyRequestRef.current) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
       setLoading(false);
-      setBusy(false);
+      setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
     }
   }, [router]);
 
   useEffect(() => {
-    const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
-    api<Family[]>('/families')
-      .then((list) => {
-        setFamilies(list);
-        if (!list.length) {
-          setLoading(false);
-          return;
-        }
-        const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
-        setFamilyId(selected.id);
-        if (selected.id !== requestedFamily) {
-          router.replace('/people?family=' + encodeURIComponent(selected.id));
-        }
-      })
-      .catch((cause) => {
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setLoading(false);
-        setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
-      });
-  }, [router]);
+    void loadFamilies();
+  }, [loadFamilies]);
+
+  const loadLineages = useCallback(async (fid: string) => {
+    const requestId = ++metadataRequestRef.current;
+    setMetaBusy(true);
+    setMetaError('');
+    try {
+      const result = await api<LineageSummary[]>(`/families/${fid}/lineages`);
+      if (requestId !== metadataRequestRef.current) return;
+      setLineages(result);
+    } catch (cause) {
+      if (requestId !== metadataRequestRef.current) return;
+      setLineages([]);
+      setMetaError(
+        cause instanceof Error
+          ? cause.message
+          : 'Удам угсааны мэдээллийг ачаалж чадсангүй.',
+      );
+    } finally {
+      if (requestId === metadataRequestRef.current) {
+        setMetaBusy(false);
+      }
+    }
+  }, []);
+
+  const loadBranches = useCallback(async (fid: string, lid: string) => {
+    const requestId = ++metadataRequestRef.current;
+    setMetaBusy(true);
+    setMetaError('');
+    try {
+      const result = await api<BranchSummary[]>(`/lineages/${lid}/branches`);
+      if (requestId !== metadataRequestRef.current) return;
+      setBranches(result);
+    } catch (cause) {
+      if (requestId !== metadataRequestRef.current) return;
+      setBranches([]);
+      setMetaError(
+        cause instanceof Error
+          ? cause.message
+          : 'Салааны мэдээллийг ачаалж чадсангүй.',
+      );
+    } finally {
+      if (requestId === metadataRequestRef.current) {
+        setMetaBusy(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    if (!familyId) return;
+    metadataRequestRef.current += 1;
     setMetaError('');
-    setLineages([]);
     setBranches([]);
+    setLineages([]);
     setLineageId('');
     setBranchId('');
-    api<LineageSummary[]>(`/families/${familyId}/lineages`)
-      .then(setLineages)
-      .catch((cause) => {
-        setMetaError(
-          cause instanceof Error
-            ? cause.message
-            : 'Удам угсааны мэдээллийг ачаалж чадсангүй.',
-        );
-      });
-  }, [familyId]);
+    if (!familyId) {
+      setMetaBusy(false);
+      return;
+    }
+    void loadLineages(familyId);
+  }, [familyId, loadLineages]);
 
   useEffect(() => {
     if (!familyId || !lineageId) {
+      metadataRequestRef.current += 1;
       setBranches([]);
+      setBranchId('');
+      setMetaBusy(false);
       return;
     }
     setBranchId('');
-    api<BranchSummary[]>(`/lineages/${lineageId}/branches`)
-      .then(setBranches)
-      .catch((cause) => {
-        setBranches([]);
-        setMetaError(
-          cause instanceof Error
-            ? cause.message
-            : 'Салааны мэдээллийг ачаалж чадсангүй.',
-        );
-      });
-  }, [familyId, lineageId]);
+    void loadBranches(familyId, lineageId);
+  }, [familyId, lineageId, loadBranches]);
 
   useEffect(() => {
     if (!familyId) return;
     const timer = window.setTimeout(() => {
       void loadPeople(familyId, query, lineageId, branchId, 1);
-    }, 260);
+    }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [branchId, familyId, lineageId, query, loadPeople]);
 
   function chooseFamily(nextFamilyId: string) {
+    peopleRequestRef.current += 1;
+    metadataRequestRef.current += 1;
     setFamilyId(nextFamilyId);
     setLineages([]);
     setBranches([]);
     setLineageId('');
     setBranchId('');
     setPeople(null);
+    setMetaError('');
+    setError('');
     router.replace('/people?family=' + encodeURIComponent(nextFamilyId));
   }
 
@@ -215,18 +282,17 @@ export default function PeoplePage() {
             <span>{error}</span>
             <button
               type="button"
-              onClick={() => void loadPeople(familyId, query, lineageId, branchId, 1)}
+              onClick={() =>
+                void (familyId
+                  ? loadPeople(familyId, query, lineageId, branchId, 1)
+                  : loadFamilies())
+              }
             >
               Дахин оролдох
             </button>
           </div>
         )}
-        {metaError && (
-          <div className="error people-error" role="alert">
-            <span>{metaError}</span>
-          </div>
-        )}
-
+        {family && (
         <section
           className="people-toolbar card"
           aria-label="Хүмүүсийн хайлт ба шүүлтүүр"
@@ -234,11 +300,14 @@ export default function PeoplePage() {
           <label className="people-search">
             <span>Хүн хайх</span>
             <input
+              id="people-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Нэрээр хайх…"
               autoComplete="off"
               spellCheck={false}
+              enterKeyHint="search"
+              aria-label="Гэр бүлийн хүн хайх"
             />
           </label>
           <div className="people-filters">
@@ -274,6 +343,22 @@ export default function PeoplePage() {
             </button>
           </div>
         </section>
+        )}
+
+        {metaError && family && (
+          <div className="error people-error" role="alert">
+            <span>{metaError}</span>
+            <button
+              type="button"
+              onClick={() =>
+                void (lineageId ? loadBranches(familyId, lineageId) : loadLineages(familyId))
+              }
+              disabled={metaBusy}
+            >
+              {metaBusy ? 'Шалгаж байна…' : 'Дахин оролдох'}
+            </button>
+          </div>
+        )}
 
         {loading && !people ? (
           <section className="people-state card" aria-live="polite">
@@ -292,23 +377,28 @@ export default function PeoplePage() {
             <h2>
               {hasFilters
                 ? 'Таны хайлтад тохирох хүн олдсонгүй.'
-                : 'Одоогоор харагдах хүн алга.'}
+                : 'Одоогоор бүртгэгдсэн хүн алга.'}
             </h2>
             <p>
               {hasFilters
                 ? 'Хайлтын үг эсвэл шүүлтүүрийг өөрчилж дахин үзээрэй.'
-                : 'Энэ гэр бүлийн нууцлалын тохиргоонд нийцэх хүн одоогоор бүртгэлгүй байна.'}
+                : 'Таны эрхтэй энэ гэр бүлийн орчинд одоогоор бүртгэгдсэн хүн алга.'}
             </p>
           </section>
         ) : (
           <>
-            <div className="people-results-head">
+            <div className="people-results-head" aria-live="polite">
               <strong>{people?.total ?? 0} хүн</strong>
               {busy && <span role="status">Шинэчилж байна…</span>}
             </div>
             <div className="people-grid" aria-busy={busy}>
               {people?.items.map((person) => (
-                <article className="card people-card" key={person.id}>
+                <Link
+                  className="card people-card"
+                  key={person.id}
+                  href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(person.id)}`}
+                  aria-label={`${personName(person) || 'Нэргүй хүн'} профайлыг нээх`}
+                >
                   <div className="people-card-top">
                     <span className="personavatar people-avatar" aria-hidden="true">
                       {initials(person)}
@@ -336,13 +426,8 @@ export default function PeoplePage() {
                     <p className="people-description">{person.short_description}</p>
                   )}
 
-                  <Link
-                    className="button people-profile-link"
-                    href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(person.id)}`}
-                  >
-                    Профайл нээх →
-                  </Link>
-                </article>
+                  <span className="button people-profile-link" aria-hidden="true">Профайл нээх →</span>
+                </Link>
               ))}
             </div>
 
