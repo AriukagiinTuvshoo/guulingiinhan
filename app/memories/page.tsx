@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, MemoryListItem, PersonSearchPage } from '../../lib/api';
 
-type SelectedPerson = { id: string; name: string };\nname: string };
+type SelectedPerson = { id: string; name: string };
 
 export default function MemoriesPage() {
   const router = useRouter();
