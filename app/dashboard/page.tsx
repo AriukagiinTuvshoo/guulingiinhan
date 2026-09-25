@@ -72,8 +72,6 @@ type MemorySummary = {
   description: string | null;
   memory_date: string | null;
   visibility: string;
-  person_ids: string[];
-  person_names?: string[];
   created_at: string;
 };
 
@@ -708,9 +706,9 @@ function DashboardContent() {
     if (requestId !== loadRequestRef.current) return null;
     setPhotosByPerson(Object.fromEntries(photoEntries));
 
-    if (memoryData.length) {
+    if (memoryData.items.length) {
       const detailEntries = await Promise.all(
-        memoryData.slice(0, 4).map(async (memory) => {
+        memoryData.items.slice(0, 4).map(async (memory) => {
           try {
             const detail = await api<MemoryDetail>(
               '/families/' + familyId + '/memories/' + memory.id,
