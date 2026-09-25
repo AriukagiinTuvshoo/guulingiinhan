@@ -2,12 +2,10 @@ from uuid import UUID
 
 from conftest import register_verified
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models import (
-    Branch,
     Lineage,
-    Marriage,
-    ParentChildRelationship,
     Person,
     PersonLineageAssignment,
 )
@@ -129,7 +127,7 @@ def test_delete_assignment_keeps_person_and_relationships(client, database):
 
 def test_cross_family_lineage_assignment_is_rejected(client):
     register_verified(client, "assignment-cross-family@example.com")
-    family_a, person, _, _, _ = _setup_family(client, "A")
+    _, person, _, _, _ = _setup_family(client, "A")
     family_b = client.post("/api/v1/families", json={"name": "B"}).json()
     lineage_b = client.post(
         f"/api/v1/families/{family_b['id']}/lineages",
@@ -288,7 +286,7 @@ def test_assignment_is_removed_when_person_is_detached_from_family(client, datab
 
 def test_duplicate_current_assignment_is_db_protected(client, database):
     register_verified(client, "assignment-duplicate@example.com")
-    family_id, person, lineage, branch_a1, _ = _setup_family(client, "Duplicate")
+    _, person, lineage, branch_a1, _ = _setup_family(client, "Duplicate")
 
     with database() as db:
         db.add(
@@ -308,7 +306,7 @@ def test_duplicate_current_assignment_is_db_protected(client, database):
         failed = False
         try:
             db.flush()
-        except Exception:
+        except IntegrityError:
             db.rollback()
             failed = True
         assert failed
