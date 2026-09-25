@@ -2,7 +2,7 @@ from uuid import UUID
 
 from conftest import register_verified
 
-from app.models import FamilyMember, ParentChildRelationship, User
+from app.models import FamilyMember, User
 
 
 def test_archive_crud_search_person_link_and_genealogy_regression(client):
