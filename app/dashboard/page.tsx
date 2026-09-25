@@ -1209,6 +1209,10 @@ function DashboardContent() {
                     router.push('/stories?family=' + encodeURIComponent(family.id));
                     return;
                   }
+                  if (label === 'Архив' && family?.id) {
+                    router.push('/archives?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
                   if (label !== 'Ургийн мод') {
                     setNotice(label + ' хэсэг тун удахгүй');
                   }
