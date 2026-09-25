@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from conftest import register_verified
+from app.models import Person
+from conftest import database, register_verified
 
 
 def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client):
@@ -112,6 +113,12 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Хүүхэд", "birth_date": (datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 10)).isoformat()},
     ).json()
+
+    with database() as db:
+        minor_record = db.get(Person, minor["id"])
+        assert minor_record is not None
+        minor_record.profile_photo_url = "https://example.invalid/minor-photo.jpg"
+        db.commit()
     assert client.post(
         f"/api/v1/families/{family_id}/relationships/parent-child",
         json={"parent_id": adult["id"], "child_id": minor["id"]},
@@ -122,6 +129,7 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
     )
     assert response.status_code == 200
     assert response.json()["children"] == []
+    assert response.json()["profile_photo_url"] is None
 
 
 def test_person_profile_private_person_is_not_exposed_across_creator_boundary(client, email_provider):
