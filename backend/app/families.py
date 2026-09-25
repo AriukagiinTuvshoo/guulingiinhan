@@ -214,6 +214,29 @@ class PersonOut(BaseModel):
     updated_at: datetime
 
 
+class ProfileRelationPersonOut(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    middle_name: str | None
+    nickname: str | None
+    gender: str
+    birth_date: date | None
+    is_alive: bool
+    death_date: date | None
+    profile_photo_url: str | None
+
+
+class PersonProfileOut(PersonOut):
+    lineage_id: UUID | None = None
+    lineage_name: str | None = None
+    branch_id: UUID | None = None
+    branch_name: str | None = None
+    parents: list[ProfileRelationPersonOut] = []
+    children: list[ProfileRelationPersonOut] = []
+    spouses: list[ProfileRelationPersonOut] = []
+
+
 class PersonSearchItem(BaseModel):
     id: UUID
     name: str
@@ -1149,7 +1172,103 @@ def search_persons(
     )
 
 
-@router.get("/{family_id}/persons/{person_id}", response_model=PersonOut)
+def _person_profile_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonProfileOut:
+    """Build one family-scoped profile payload without inferring genealogy data."""
+    scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
+    result = PersonProfileOut.model_validate(_person_output(db, family_id, person, user))
+
+    assignment = db.execute(
+        select(Lineage.id, Lineage.name, Branch.id, Branch.name)
+        .join(Lineage, Lineage.id == PersonLineageAssignment.lineage_id)
+        .outerjoin(Branch, Branch.id == PersonLineageAssignment.branch_id)
+        .where(
+            PersonLineageAssignment.person_id == person.id,
+            Lineage.family_id == family_id,
+        )
+    ).first()
+    if assignment is not None:
+        result = result.model_copy(
+            update={
+                "lineage_id": assignment[0],
+                "lineage_name": assignment[1],
+                "branch_id": assignment[2],
+                "branch_name": assignment[3],
+            }
+        )
+
+    parent_ids = set(
+        db.scalars(
+            select(ParentChildRelationship.parent_id).where(
+                ParentChildRelationship.child_id == person.id
+            )
+        ).all()
+    )
+    child_ids = set(
+        db.scalars(
+            select(ParentChildRelationship.child_id).where(
+                ParentChildRelationship.parent_id == person.id
+            )
+        ).all()
+    )
+    marriage_rows = db.execute(
+        select(Marriage.person_1_id, Marriage.person_2_id)
+        .where(
+            Marriage.deleted_at.is_(None),
+            or_(Marriage.person_1_id == person.id, Marriage.person_2_id == person.id),
+        )
+        .order_by(*_marriage_order())
+    ).all()
+    spouse_ids = {
+        person_2_id if person_1_id == person.id else person_1_id
+        for person_1_id, person_2_id in marriage_rows
+    }
+    relation_ids = parent_ids | child_ids | spouse_ids
+    if not relation_ids:
+        return result
+
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    relation_people = list(
+        db.scalars(
+            select(Person)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(
+                FamilyPerson.family_id == family_id,
+                Person.id.in_(relation_ids),
+                or_(
+                    Person.visibility != "private",
+                    Person.created_by == user.id,
+                    Person.id == own_link,
+                ),
+            )
+            .order_by(Person.last_name, Person.first_name, Person.middle_name, Person.id)
+        ).all()
+    )
+    relation_scopes = active_guardian_scopes(
+        db, user.id, family_id, [item.id for item in relation_people]
+    )
+    visible = {
+        item.id: item
+        for item in relation_people
+        if not person_is_minor(item) or "view_profile" in relation_scopes.get(item.id, set())
+    }
+
+    def relation_items(ids: set[UUID]) -> list[ProfileRelationPersonOut]:
+        return [
+            ProfileRelationPersonOut.model_validate(visible[item_id])
+            for item_id in ids
+            if item_id in visible
+        ]
+
+    return result.model_copy(
+        update={
+            "parents": relation_items(parent_ids),
+            "children": relation_items(child_ids),
+            "spouses": relation_items(spouse_ids),
+        }
+    )
+
+
+@router.get("/{family_id}/persons/{person_id}", response_model=PersonProfileOut)
 def get_person(
     family_id: UUID,
     person_id: UUID,
@@ -1159,7 +1278,7 @@ def get_person(
     _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
-    return _person_output(db, family_id, person, user)
+    return _person_profile_output(db, family_id, person, user)
 
 
 @router.patch("/{family_id}/persons/{person_id}", response_model=PersonOut)
