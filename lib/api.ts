@@ -43,7 +43,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export type User = { id: string; email: string; display_name: string; person_id: string | null };
+export type User = { id: string; email: string | null; display_name: string; person_id: string | null };
 export type Family = { id: string; name: string; description: string | null; role: string };
 export type Person = {
   id: string;
