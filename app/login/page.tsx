@@ -278,8 +278,9 @@ export default function LoginPage() {
               required
               maxLength={6}
               autoFocus
+              aria-describedby="login-otp-help"
             />
-            <span className="auth-help">6 оронтой кодоо оруулна уу.</span>
+            <span id="login-otp-help" className="auth-help">6 оронтой кодоо оруулна уу.</span>
 
             <button className="auth-primary" type="submit" disabled={busy}>
               {busy ? 'Шалгаж байна…' : 'Нэвтрэх'}
