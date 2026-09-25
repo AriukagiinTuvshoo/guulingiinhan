@@ -57,7 +57,7 @@ export type Person = {
   is_alive: boolean;
   death_date: string | null;
   death_place: string | null;
-  profile_photo_url: string | null;
+  profile_photo_url?: string | null;
   short_description: string | null;
   visibility: string;
 };
