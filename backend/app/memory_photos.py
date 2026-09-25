@@ -482,7 +482,15 @@ def _memory_people(
         )
         .order_by(Person.last_name, Person.first_name, Person.id)
     ).scalars().all()
-    return [MemoryPersonOut.model_validate(person) for person in rows]
+    return [
+        MemoryPersonOut(
+            id=person.id,
+            first_name=person.first_name,
+            last_name=person.last_name,
+            middle_name=person.middle_name,
+        )
+        for person in rows
+    ]
 
 
 def _memory_list_item(
