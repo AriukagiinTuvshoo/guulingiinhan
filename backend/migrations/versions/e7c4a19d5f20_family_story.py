@@ -1,13 +1,13 @@
 """Establish the family story domain.
 
 Revision ID: e7c4a19d5f20
-Revises: d4a9f73b8210
+Revises: 8e3a1b7c5d42
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = "e7c4a19d5f20"
-down_revision = "d4a9f73b8210"
+down_revision = "8e3a1b7c5d42"
 branch_labels = None
 depends_on = None
 
