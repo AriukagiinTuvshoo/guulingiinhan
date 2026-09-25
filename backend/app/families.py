@@ -669,9 +669,16 @@ def create_lineage(
         description=body.description,
     )
     db.add(lineage)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Энэ гэр бүлд ижил нэртэй удам угсаа аль хэдийн бүртгэгдсэн байна.",
+        ) from error
     _audit(db, user, family_id, "lineage.created", "lineage", lineage.id)
-    _commit(db, "Энэ гэр бүлд ижил нэртэй удам угсаа аль хэдийн бүртгэгдсэн байна.")
+    _commit(db, "Удам угсааг хадгалах үед зөрчил гарлаа.")
     db.refresh(lineage)
     return lineage
 
@@ -706,9 +713,16 @@ def create_branch(
         description=body.description,
     )
     db.add(branch)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Энэ удам угсаанд ижил нэртэй салаа аль хэдийн бүртгэгдсэн байна.",
+        ) from error
     _audit(db, user, lineage.family_id, "branch.created", "branch", branch.id)
-    _commit(db, "Энэ удам угсаанд ижил нэртэй салаа аль хэдийн бүртгэгдсэн байна.")
+    _commit(db, "Салааг хадгалах үед зөрчил гарлаа.")
     db.refresh(branch)
     return branch
 
