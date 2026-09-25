@@ -629,6 +629,7 @@ class StoryPerson(Base):
             name="fk_story_person_family_person",
             ondelete="CASCADE",
         ),
+        Index("ix_story_person_family_id", "family_id"),
         Index("ix_story_person_person", "person_id"),
     )
 
