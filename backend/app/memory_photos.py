@@ -28,7 +28,6 @@ from app.families import (
     _assert_person_visible,
     _audit,
     _member,
-    _memory_visible_to_member,
     _person_in_family,
     _require_minor_scope,
 )
