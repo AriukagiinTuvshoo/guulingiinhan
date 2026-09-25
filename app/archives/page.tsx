@@ -88,14 +88,24 @@ export default function ArchivesPage() {
               Танай гэр бүлийн хадгалсан баримт, эх сурвалж, түүхэн материал энд нэг дор байна.
             </p>
           </div>
-          {families.length > 1 && (
-            <label className="stories-family">
-              <span>Гэр бүл</span>
-              <select value={familyId} onChange={(event) => chooseFamily(event.target.value)} aria-label="Гэр бүл сонгох">
-                {families.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            </label>
-          )}
+          <div className="stories-actions">
+            {families.length > 1 && (
+              <label className="stories-family">
+                <span>Гэр бүл</span>
+                <select value={familyId} onChange={(event) => chooseFamily(event.target.value)} aria-label="Гэр бүл сонгох">
+                  {families.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+            )}
+            {family && (family.role === 'owner' || family.role === 'editor') && (
+              <Link
+                className="button primary"
+                href={'/archives/new?family=' + encodeURIComponent(familyId)}
+              >
+                + Шинэ архив
+              </Link>
+            )}
+          </div>
         </header>
 
         {error && (
