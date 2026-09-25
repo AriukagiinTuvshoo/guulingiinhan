@@ -19,7 +19,7 @@ def test_people_directory_is_family_scoped_and_hides_private_people(client, emai
 
     invitation = client.post(
         f"/api/v1/families/{family_id}/invitations",
-        json={"email": private_creator_email, "role": "member"},
+        json={"email": private_creator_email, "role": "editor"},
     )
     assert invitation.status_code == 201
     delivery = next(
