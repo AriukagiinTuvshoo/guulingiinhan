@@ -62,7 +62,7 @@ export default function ProfilePage() {
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
       api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
       api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
-      api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=50`),
+      api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
     ]);
 
     const unexpectedFailure = [bio, eventList, marriageList, storyPage].find(
