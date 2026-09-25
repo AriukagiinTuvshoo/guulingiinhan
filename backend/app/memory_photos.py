@@ -745,8 +745,10 @@ def list_memories(
     q: str = Query(default="", max_length=120),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
 ):
     _member(db, family_id, user)
+    _retry_pending_cleanup(db, storage, family_id, user)
     base = _memory_query(db, family_id, user, q)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     memories = db.scalars(
