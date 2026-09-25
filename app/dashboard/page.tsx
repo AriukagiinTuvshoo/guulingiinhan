@@ -92,7 +92,7 @@ const nav = [
   ['Нүүр', Home],
   ['Ургийн мод', GitFork],
   ['Хүмүүс', Network],
-  ['Storybook', BookOpen],
+  ['Манай түүх', BookOpen],
   ['Архив', Archive],
   ['Чат', MessageSquare],
   ['Календарь', CalendarDays],
@@ -1203,6 +1203,10 @@ function DashboardContent() {
                   setMobileNav(false);
                   if (label === 'Хүмүүс' && family?.id) {
                     router.push('/people?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
+                  if (label === 'Манай түүх' && family?.id) {
+                    router.push('/stories?family=' + encodeURIComponent(family.id));
                     return;
                   }
                   if (label !== 'Ургийн мод') {
