@@ -2,10 +2,9 @@ import io
 from uuid import UUID
 
 import pytest
+from conftest import register_verified
 from PIL import Image
 from sqlalchemy import select
-
-from conftest import register_verified
 
 from app.memory_photos import _memory_detail
 from app.models import AuditLog, FamilyMember, Memory, Photo, User
