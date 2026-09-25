@@ -524,3 +524,169 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
         "email": "guardian@example.com", "password": "strong-passphrase-123",
     })
     assert client.get(content_url).status_code == 404
+
+
+def test_memory_crud_family_privacy_author_and_person_relation(client, database):
+    register_verified(client, "memory-crud-owner@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Memory A"}).json()
+    family_b = client.post("/api/v1/families", json={"name": "Memory B"}).json()
+    person_a = client.post(
+        f"/api/v1/families/{family_a['id']}/persons",
+        json={"first_name": "Холбоотой", "last_name": "Хүн"},
+    ).json()
+    person_b = client.post(
+        f"/api/v1/families/{family_b['id']}/persons",
+        json={"first_name": "Өөр", "last_name": "Хүн"},
+    ).json()
+
+    invalid = client.post(
+        f"/api/v1/families/{family_a['id']}/memories",
+        json={"title": "   ", "person_ids": []},
+    )
+    assert invalid.status_code == 422
+
+    foreign = client.post(
+        f"/api/v1/families/{family_a['id']}/memories",
+        json={"title": "Cross family", "person_ids": [person_b["id"]]},
+    )
+    assert foreign.status_code == 404
+
+    created = client.post(
+        f"/api/v1/families/{family_a['id']}/memories",
+        json={
+            "title": "Гэр бүлийн өдөр",
+            "description": "Анхны дурсамж",
+            "memory_date": "2020-05-14",
+            "visibility": "family",
+            "person_ids": [person_a["id"], person_a["id"]],
+            "author_id": str(UUID(int=1)),
+        },
+    )
+    assert created.status_code == 422
+
+    created = client.post(
+        f"/api/v1/families/{family_a['id']}/memories",
+        json={
+            "title": "Гэр бүлийн өдөр",
+            "description": "Анхны дурсамж",
+            "memory_date": "2020-05-14",
+            "visibility": "family",
+            "person_ids": [person_a["id"]],
+            "author_id": str(UUID(int=1)),
+        },
+    )
+    assert created.status_code == 201
+    memory = created.json()
+    assert memory["author_id"] != str(UUID(int=1))
+    assert [person["id"] for person in memory["related_people"]] == [person_a["id"]]
+
+    detail = client.get(f"/api/v1/families/{family_a['id']}/memories/{memory['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["title"] == "Гэр бүлийн өдөр"
+
+    listing = client.get(
+        f"/api/v1/families/{family_a['id']}/memories?page=1&page_size=10&q=гэр бүлийн"
+    )
+    assert listing.status_code == 200
+    assert listing.json()["total"] == 1
+
+    updated = client.put(
+        f"/api/v1/families/{family_a['id']}/memories/{memory['id']}",
+        json={"title": "Шинэ гарчиг", "description": "Шинэ тайлбар", "person_ids": []},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "Шинэ гарчиг"
+    assert updated.json()["author_id"] == memory["author_id"]
+
+    client.post("/api/v1/auth/logout")
+    register_verified(client, "memory-crud-outsider@example.com")
+    assert client.get(f"/api/v1/families/{family_a['id']}/memories/{memory['id']}").status_code == 403
+    assert client.delete(f"/api/v1/families/{family_a['id']}/memories/{memory['id']}").status_code == 403
+
+
+def test_memory_member_is_read_only_and_wrong_family_memory_is_hidden(client, database):
+    register_verified(client, "memory-owner-readonly@example.com")
+    family = client.post("/api/v1/families", json={"name": "Read only"}).json()
+    memory = client.post(
+        f"/api/v1/families/{family['id']}/memories",
+        json={"title": "Харах дурсамж", "person_ids": []},
+    ).json()
+
+    register_verified(client, "memory-member-readonly@example.com")
+    with database() as db:
+        member = db.scalar(select(User).where(User.email == "memory-member-readonly@example.com"))
+        db.add(FamilyMember(family_id=UUID(family["id"]), user_id=member.id, role="member"))
+        db.commit()
+
+    assert client.get(f"/api/v1/families/{family['id']}/memories/{memory['id']}").status_code == 200
+    assert client.post(
+        f"/api/v1/families/{family['id']}/memories",
+        json={"title": "Denied", "person_ids": []},
+    ).status_code == 403
+    assert client.put(
+        f"/api/v1/families/{family['id']}/memories/{memory['id']}",
+        json={"title": "Denied", "person_ids": []},
+    ).status_code == 403
+    assert client.delete(f"/api/v1/families/{family['id']}/memories/{memory['id']}").status_code == 403
+
+
+def test_memory_delete_preserves_genealogy_state(client, database):
+    register_verified(client, "memory-genealogy@example.com")
+    family = client.post("/api/v1/families", json={"name": "Memory genealogy"}).json()
+    parent = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Эцэг"},
+    ).json()
+    child = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Хүүхэд"},
+    ).json()
+    spouse = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Хань"},
+    ).json()
+    assert client.post(
+        f"/api/v1/families/{family['id']}/relationships/parent-child",
+        json={"parent_id": parent["id"], "child_id": child["id"]},
+    ).status_code == 201
+    assert client.post(
+        f"/api/v1/families/{family['id']}/marriages",
+        json={"person_1_id": child["id"], "person_2_id": spouse["id"]},
+    ).status_code == 201
+    lineage = client.post(
+        f"/api/v1/families/{family['id']}/lineages", json={"name": "Удам"}
+    ).json()
+    branch = client.post(
+        f"/api/v1/lineages/{lineage['id']}/branches", json={"name": "Салаа"}
+    ).json()
+    assert client.put(
+        f"/api/v1/families/{family['id']}/persons/{child['id']}/lineage-assignment",
+        json={"lineage_id": lineage["id"], "branch_id": branch["id"]},
+    ).status_code == 200
+
+    before_tree = client.get(
+        f"/api/v1/families/{family['id']}/tree?person_id={child['id']}&depth=2"
+    ).json()
+    before_assignment = client.get(
+        f"/api/v1/families/{family['id']}/persons/{child['id']}/lineage-assignment"
+    ).json()
+    memory = client.post(
+        f"/api/v1/families/{family['id']}/memories",
+        json={"title": "Regression", "person_ids": [child["id"]]},
+    ).json()
+    assert client.put(
+        f"/api/v1/families/{family['id']}/memories/{memory['id']}",
+        json={"title": "Regression update", "person_ids": [child["id"]]},
+    ).status_code == 200
+    assert client.delete(
+        f"/api/v1/families/{family['id']}/memories/{memory['id']}"
+    ).status_code == 204
+
+    after_tree = client.get(
+        f"/api/v1/families/{family['id']}/tree?person_id={child['id']}&depth=2"
+    ).json()
+    after_assignment = client.get(
+        f"/api/v1/families/{family['id']}/persons/{child['id']}/lineage-assignment"
+    ).json()
+    assert before_tree == after_tree
+    assert before_assignment == after_assignment
