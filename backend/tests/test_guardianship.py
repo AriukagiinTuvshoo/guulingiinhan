@@ -152,6 +152,11 @@ def test_guardian_grants_are_scoped_independent_and_revocable(client, database):
         json={"title": "Гэр бүлийн дурсамж", "person_ids": [child["id"]]},
     )
     assert memory.status_code == 201
+    scoped_memory = client.get(
+        f"/api/v1/families/{family['id']}/persons/{child['id']}/memories"
+    )
+    assert scoped_memory.status_code == 200
+    assert scoped_memory.json()[0]["id"] == memory.json()["id"]
     assert client.get(f"/api/v1/families/{family['id']}/memories").status_code == 200
 
     client.post("/api/v1/auth/logout")
