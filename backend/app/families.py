@@ -822,7 +822,7 @@ def upsert_person_lineage_assignment(
     else:
         assignment.lineage_id = lineage.id
         assignment.branch_id = body.branch_id
-        assignment.updated_at = now_utc()
+        assignment.updated_at = datetime.now(UTC)
 
     try:
         db.flush()

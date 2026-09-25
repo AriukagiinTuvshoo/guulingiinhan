@@ -181,6 +181,13 @@ def test_person_not_in_supplied_family_is_rejected(client):
 def test_member_can_read_but_cannot_mutate_assignment(client, database):
     register_verified(client, "assignment-member-owner@example.com")
     family_id, person, lineage, _, _ = _setup_family(client, "Roles")
+    assignment_url = (
+        f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
+    )
+    assert client.put(
+        assignment_url,
+        json={"lineage_id": lineage["id"], "branch_id": None},
+    ).status_code == 200
     client.post("/api/v1/auth/logout")
     register_verified(client, "assignment-member@example.com")
     with database() as db:
