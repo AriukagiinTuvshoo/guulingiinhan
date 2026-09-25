@@ -232,9 +232,9 @@ class PersonProfileOut(PersonOut):
     lineage_name: str | None = None
     branch_id: UUID | None = None
     branch_name: str | None = None
-    parents: list[ProfileRelationPersonOut] = []
-    children: list[ProfileRelationPersonOut] = []
-    spouses: list[ProfileRelationPersonOut] = []
+    parents: list[ProfileRelationPersonOut] = Field(default_factory=list)
+    children: list[ProfileRelationPersonOut] = Field(default_factory=list)
+    spouses: list[ProfileRelationPersonOut] = Field(default_factory=list)
 
 
 class PersonSearchItem(BaseModel):
@@ -1176,6 +1176,8 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
     """Build one family-scoped profile payload without inferring genealogy data."""
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
     result = PersonProfileOut.model_validate(_person_output(db, family_id, person, user))
+    if person_is_minor(person) and "view_profile" not in scopes:
+        return result
 
     assignment = db.execute(
         select(Lineage.id, Lineage.name, Branch.id, Branch.name)
