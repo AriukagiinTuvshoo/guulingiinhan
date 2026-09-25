@@ -1,7 +1,7 @@
 """support phone registration and phone-only user accounts
 
 Revision ID: 9f4c2d7e8a31
-Revises: 8e3a1b7c5d42
+Revises: e7c4a19d5f20
 Create Date: 2026-09-25
 """
 
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "9f4c2d7e8a31"
-down_revision = "8e3a1b7c5d42"
+down_revision = "e7c4a19d5f20"
 branch_labels = None
 depends_on = None
 
