@@ -174,7 +174,7 @@ export default function LoginPage() {
           {phoneEnabled && (
             <div className="authv2-tabs" role="tablist" aria-label="Нэвтрэх арга">
               <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
-              <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны код</button>
+              <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
             </div>
           )}
 

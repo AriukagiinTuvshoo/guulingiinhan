@@ -192,10 +192,13 @@ export default function RegisterPage() {
           </div>
 
           {phoneEnabled && (
-            <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
+            <>
+              <div className="authv2-method-heading">Утасны дугаар ашиглах уу?</div>
+              <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
               <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
-              <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
-            </div>
+                <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
+              </div>
+            </>
           )}
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
