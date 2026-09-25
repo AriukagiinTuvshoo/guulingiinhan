@@ -157,3 +157,6 @@
   .story-dialog-actions{display:grid;grid-template-columns:1fr 1fr}
   .story-dialog-actions button{min-height:44px}
 }
+
+.archive-success{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:14px 0;padding:11px 14px;border:1px solid #c9d7c8;border-radius:10px;background:#f7fbf3;color:#31584a;font-size:12px}
+.archive-success button{border:0;background:transparent;color:#31584a;font-size:18px;line-height:1;cursor:pointer;padding:2px 5px}
