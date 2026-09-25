@@ -1,9 +1,7 @@
 from datetime import date
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from conftest import register_verified
-from app.models import FamilyPerson, Person, User
-from app.person_search import normalize_search_name
 
 
 def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client):
@@ -126,49 +124,51 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
     assert response.json()["children"] == []
 
 
-def test_person_profile_private_person_is_not_exposed_across_creator_boundary(client, database):
-    register_verified(client, "profile-private-owner@example.com")
-    owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
-    family_id = UUID(
-        client.post("/api/v1/families", json={"name": "Нууц профайл"}).json()["id"]
-    )
-    private_creator_id = uuid4()
-    private_person_id = uuid4()
+def test_person_profile_private_person_is_not_exposed_across_creator_boundary(client, email_provider):
+    owner_email = "profile-private-owner@example.com"
+    private_creator_email = "profile-private-creator@example.com"
+    password = "strong-passphrase-123"
+    register_verified(client, owner_email, password)
+    family_id = client.post(
+        "/api/v1/families", json={"name": "Нууц профайл"}
+    ).json()["id"]
 
-    with database() as db:
-        db.add(
-            User(
-                id=private_creator_id,
-                email="profile-private-creator@example.com",
-                display_name="Нууц бүтээгч",
-                password_hash=None,
-                is_active=True,
-            )
-        )
-        db.flush()
-        db.add(
-            Person(
-                id=private_person_id,
-                first_name="Нууц",
-                last_name="Хүн",
-                search_first_name=normalize_search_name("Нууц"),
-                search_last_name=normalize_search_name("Хүн"),
-                search_middle_name="",
-                visibility="private",
-                created_by=private_creator_id,
-            )
-        )
-        db.add(
-            FamilyPerson(
-                id=uuid4(),
-                family_id=family_id,
-                person_id=private_person_id,
-                added_by=owner_id,
-            )
-        )
-        db.commit()
+    invitation = client.post(
+        f"/api/v1/families/{family_id}/invitations",
+        json={"email": private_creator_email, "role": "member"},
+    )
+    assert invitation.status_code == 201
+    delivery = next(
+        item
+        for item in reversed(email_provider.deliveries)
+        if item.recipient == private_creator_email
+    )
+    token = delivery.text.rsplit(" ", 1)[-1].split("#token=", 1)[1]
+
+    register_verified(client, private_creator_email)
+    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 200
+    private_person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Нууц", "last_name": "Хүн", "visibility": "private"},
+    ).json()
+
+    client.post("/api/v1/auth/logout")
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": owner_email, "password": password},
+    ).status_code == 200
 
     response = client.get(
-        f"/api/v1/families/{family_id}/persons/{private_person_id}"
+        f"/api/v1/families/{family_id}/persons/{private_person['id']}"
     )
     assert response.status_code == 404
+
+
+def test_person_profile_unknown_id_is_not_resolvable(client):
+    register_verified(client, "profile-unknown@example.com")
+    family_id = client.post(
+        "/api/v1/families", json={"name": "UUID"}
+    ).json()["id"]
+    assert client.get(
+        f"/api/v1/families/{family_id}/persons/{uuid4()}"
+    ).status_code == 404
