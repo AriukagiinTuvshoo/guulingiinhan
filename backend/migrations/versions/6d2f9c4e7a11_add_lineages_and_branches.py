@@ -39,12 +39,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("lineage_id", "name", name="uq_branch_lineage_name"),
     )
-    op.create_index("ix_lineages_family_id", "lineages", ["family_id"])
-    op.create_index("ix_branches_lineage_id", "branches", ["lineage_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_branches_lineage_id", table_name="branches")
-    op.drop_index("ix_lineages_family_id", table_name="lineages")
     op.drop_table("branches")
     op.drop_table("lineages")

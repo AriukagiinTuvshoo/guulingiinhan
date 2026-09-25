@@ -31,6 +31,7 @@ from app.models import (
     Memory,
     MemoryPersonTag,
     ParentChildRelationship,
+    PersonLineageAssignment,
     Person,
     PersonGuardianship,
     Photo,
@@ -136,6 +137,19 @@ class BranchOut(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class PersonLineageAssignmentInput(BaseModel):
+    lineage_id: UUID
+    branch_id: UUID | None = None
+
+
+class PersonLineageAssignmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    person_id: UUID
+    lineage_id: UUID
+    branch_id: UUID | None
 
 
 class PersonCreate(BaseModel):
@@ -729,6 +743,130 @@ def create_branch(
 
 
 
+@router.get(
+    "/{family_id}/persons/{person_id}/lineage-assignment",
+    response_model=PersonLineageAssignmentOut,
+)
+def get_person_lineage_assignment(
+    family_id: UUID,
+    person_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    assignment = db.scalar(
+        select(PersonLineageAssignment).where(PersonLineageAssignment.person_id == person.id)
+    )
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Удам угсааны assignment олдсонгүй.")
+    return PersonLineageAssignmentOut(
+        person_id=assignment.person_id,
+        lineage_id=assignment.lineage_id,
+        branch_id=assignment.branch_id,
+    )
+
+
+@router.put(
+    "/{family_id}/persons/{person_id}/lineage-assignment",
+    response_model=PersonLineageAssignmentOut,
+)
+def upsert_person_lineage_assignment(
+    family_id: UUID,
+    person_id: UUID,
+    body: PersonLineageAssignmentInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+
+    lineage = db.scalar(
+        select(Lineage).where(
+            Lineage.id == body.lineage_id,
+            Lineage.family_id == family_id,
+        )
+    )
+    if lineage is None:
+        raise HTTPException(status_code=404, detail="Удам угсаа олдсонгүй.")
+
+    if body.branch_id is not None:
+        branch = db.scalar(
+            select(Branch).where(
+                Branch.id == body.branch_id,
+                Branch.lineage_id == lineage.id,
+            )
+        )
+        if branch is None:
+            raise HTTPException(status_code=404, detail="Салаа олдсонгүй.")
+
+    assignment = db.scalar(
+        select(PersonLineageAssignment).where(
+            PersonLineageAssignment.person_id == person.id
+        )
+    )
+    action = (
+        "person.lineage_assignment.updated"
+        if assignment is not None
+        else "person.lineage_assignment.created"
+    )
+    if assignment is None:
+        assignment = PersonLineageAssignment(
+            person_id=person.id,
+            lineage_id=lineage.id,
+            branch_id=body.branch_id,
+        )
+        db.add(assignment)
+    else:
+        assignment.lineage_id = lineage.id
+        assignment.branch_id = body.branch_id
+        assignment.updated_at = now_utc()
+
+    try:
+        db.flush()
+        _audit(db, user, family_id, action, "person", person.id)
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Хүний удам угсааны assignment давхар үүссэн байна.",
+        ) from error
+
+    db.refresh(assignment)
+    return PersonLineageAssignmentOut(
+        person_id=assignment.person_id,
+        lineage_id=assignment.lineage_id,
+        branch_id=assignment.branch_id,
+    )
+
+
+@router.delete(
+    "/{family_id}/persons/{person_id}/lineage-assignment",
+    status_code=204,
+)
+def delete_person_lineage_assignment(
+    family_id: UUID,
+    person_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    assignment = db.scalar(
+        select(PersonLineageAssignment).where(PersonLineageAssignment.person_id == person.id)
+    )
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Удам угсааны assignment олдсонгүй.")
+
+    _audit(db, user, family_id, "person.lineage_assignment.deleted", "person", person.id)
+    db.delete(assignment)
+    db.commit()
+    return Response(status_code=204)
+
 
 @router.post("/{family_id}/persons", response_model=PersonOut, status_code=201)
 def create_person(
@@ -1137,7 +1275,25 @@ def remove_person_from_family(
             FamilyPerson.family_id == family_id, FamilyPerson.person_id == person_id
         )
     )
+    assignments = db.scalars(
+        select(PersonLineageAssignment)
+        .join(Lineage, Lineage.id == PersonLineageAssignment.lineage_id)
+        .where(
+            PersonLineageAssignment.person_id == person_id,
+            Lineage.family_id == family_id,
+        )
+    ).all()
     _audit(db, user, family_id, "person.detached", "person", person_id)
+    for assignment in assignments:
+        _audit(
+            db,
+            user,
+            family_id,
+            "person.lineage_assignment.deleted",
+            "person",
+            person_id,
+        )
+        db.delete(assignment)
     db.delete(association)
     db.commit()
     return Response(status_code=204)

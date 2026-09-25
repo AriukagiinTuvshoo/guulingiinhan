@@ -310,6 +310,28 @@ class Branch(Base):
     )
 
 
+class PersonLineageAssignment(Base):
+    """The one current explicit lineage/branch assignment for a Person."""
+
+    __tablename__ = "person_lineage_assignments"
+    __table_args__ = (
+        UniqueConstraint("person_id", name="uq_person_lineage_assignment_person"),
+        Index("ix_person_lineage_assignment_lineage", "lineage_id"),
+        Index("ix_person_lineage_assignment_branch", "branch_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    lineage_id: Mapped[UUID] = mapped_column(ForeignKey("lineages.id", ondelete="CASCADE"))
+    branch_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
 class FamilyMember(Base):
     __tablename__ = "family_members"
     __table_args__ = (
