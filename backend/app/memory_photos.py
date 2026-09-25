@@ -401,6 +401,318 @@ def _memory_page_payload(
     }
 
 
+
+class MemoryPersonOut(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    middle_name: str | None
+
+
+class MemoryListItem(BaseModel):
+    id: UUID
+    title: str
+    description: str | None
+    memory_date: datetime.date | None
+    visibility: str
+    author_id: UUID
+    author_name: str
+    related_people_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class MemoryPageResponse(BaseModel):
+    items: list[MemoryListItem]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
+class MemoryOut(MemoryListItem):
+    related_people: list[MemoryPersonOut] = []
+    photos: list[PhotoResponse] = []
+
+
+class MemoryInput(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=100000)
+    memory_date: datetime.date | None = None
+    visibility: str = Field(default="family", pattern="^(private|family|public)$")
+    person_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Дурсамжийн гарчиг хоосон байж болохгүй.")
+        return value
+
+
+class MemoryPatch(MemoryInput):
+    pass
+
+
+def _validate_memory_input(body: MemoryInput) -> tuple[str, list[UUID]]:
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Дурсамжийн гарчиг хоосон байж болохгүй.")
+    person_ids = list(dict.fromkeys(body.person_ids))
+    if len(person_ids) != len(body.person_ids):
+        raise HTTPException(status_code=422, detail="Ижил хүнийг давхар сонгох боломжгүй.")
+    return title, person_ids
+
+
+def _memory_author_name(db: Session, author_id: UUID) -> str:
+    user = db.get(User, author_id)
+    return user.display_name if user else "Тодорхойгүй"
+
+
+def _memory_people(
+    db: Session, family_id: UUID, memory_id: UUID, user: User
+) -> list[MemoryPersonOut]:
+    rows = db.execute(
+        select(Person)
+        .join(MemoryPersonTag, MemoryPersonTag.person_id == Person.id)
+        .where(
+            MemoryPersonTag.memory_id == memory_id,
+            MemoryPersonTag.person_id.in_(_visible_people_query(user, family_id)),
+        )
+        .order_by(Person.last_name, Person.first_name, Person.id)
+    ).scalars().all()
+    return [MemoryPersonOut.model_validate(person) for person in rows]
+
+
+def _memory_list_item(
+    db: Session, memory: Memory, related_people_count: int
+) -> MemoryListItem:
+    return MemoryListItem(
+        id=memory.id,
+        title=memory.title,
+        description=memory.description,
+        memory_date=memory.memory_date,
+        visibility=memory.visibility,
+        author_id=memory.created_by,
+        author_name=_memory_author_name(db, memory.created_by),
+        related_people_count=related_people_count,
+        created_at=memory.created_at,
+        updated_at=memory.updated_at,
+    )
+
+
+def _restricted_memory_person_ids(
+    db: Session, family_id: UUID, user: User
+) -> set[UUID]:
+    rows = db.execute(
+        select(Person.id, Person.birth_date)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(FamilyPerson.family_id == family_id)
+    ).all()
+    minor_ids = [person_id for person_id, birth_date in rows if is_minor(birth_date) is True]
+    if not minor_ids:
+        return set()
+    scopes = __import__("app.privacy", fromlist=["active_guardian_scopes"]).active_guardian_scopes(
+        db, user.id, family_id, minor_ids
+    )
+    return {
+        person_id for person_id in minor_ids
+        if "manage_memories" not in scopes.get(person_id, set())
+    }
+
+
+def _memory_query(
+    db: Session, family_id: UUID, user: User, q: str
+):
+    from sqlalchemy import exists, not_
+    restricted = _restricted_memory_person_ids(db, family_id, user)
+    conditions = [
+        Memory.family_id == family_id,
+        or_(Memory.visibility != "private", Memory.created_by == user.id),
+    ]
+    if restricted:
+        conditions.append(
+            not_(
+                exists(
+                    select(MemoryPersonTag.id).where(
+                        MemoryPersonTag.memory_id == Memory.id,
+                        MemoryPersonTag.person_id.in_(restricted),
+                    )
+                )
+            )
+        )
+    if q.strip():
+        term = "%" + q.strip().lower() + "%"
+        conditions.append(
+            or_(
+                func.lower(Memory.title).like(term),
+                func.lower(func.coalesce(Memory.description, "")).like(term),
+            )
+        )
+    return select(Memory).where(*conditions)
+
+
+def _memory_person_count_query(db: Session, memory_ids: list[UUID]):
+    if not memory_ids:
+        return {}
+    rows = db.execute(
+        select(MemoryPersonTag.memory_id, func.count(MemoryPersonTag.id))
+        .where(MemoryPersonTag.memory_id.in_(memory_ids))
+        .group_by(MemoryPersonTag.memory_id)
+    ).all()
+    return {memory_id: count for memory_id, count in rows}
+
+
+def _set_memory_people(
+    db: Session, family_id: UUID, user: User, memory_id: UUID, person_ids: list[UUID]
+) -> None:
+    _assert_memory_minor_scopes(db, family_id, user, person_ids)
+    db.execute(delete(MemoryPersonTag).where(MemoryPersonTag.memory_id == memory_id))
+    db.add_all(
+        MemoryPersonTag(memory_id=memory_id, person_id=person_id)
+        for person_id in person_ids
+    )
+
+
+@router.post("/{family_id}/memories", response_model=MemoryOut, status_code=201)
+def create_memory(
+    family_id: UUID,
+    body: MemoryInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    member, _ = _member(db, family_id, user, {"owner", "editor"})
+    title, person_ids = _validate_memory_input(body)
+    for person_id in person_ids:
+        person = _person_in_family(db, family_id, person_id)
+        _assert_person_visible(db, person, user)
+    _assert_memory_minor_scopes(db, family_id, user, person_ids)
+    memory = Memory(
+        family_id=family_id,
+        title=title,
+        description=body.description,
+        memory_date=body.memory_date,
+        visibility=body.visibility,
+        created_by=user.id,
+    )
+    db.add(memory)
+    db.flush()
+    _set_memory_people(db, family_id, user, memory.id, person_ids)
+    _audit(db, user, family_id, "memory.created", "memory", memory.id)
+    db.commit()
+    db.refresh(memory)
+    return _memory_detail(db, family_id, memory, user)
+
+
+@router.get("/{family_id}/memories/{memory_id}", response_model=MemoryOut)
+def get_memory(
+    family_id: UUID,
+    memory_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    memory = _visible_memory(db, family_id, memory_id, user)
+    return _memory_detail(db, family_id, memory, user)
+
+
+@router.put("/{family_id}/memories/{memory_id}", response_model=MemoryOut)
+def update_memory(
+    family_id: UUID,
+    memory_id: UUID,
+    body: MemoryPatch,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    member, _ = _member(db, family_id, user)
+    memory = _visible_memory(db, family_id, memory_id, user)
+    if not _can_edit_memory(memory, member, user):
+        raise HTTPException(status_code=403, detail="Энэ дурсамжийг засах эрхгүй.")
+    title, person_ids = _validate_memory_input(body)
+    for person_id in person_ids:
+        person = _person_in_family(db, family_id, person_id)
+        _assert_person_visible(db, person, user)
+    _assert_memory_minor_scopes(db, family_id, user, person_ids)
+    memory.title = title
+    memory.description = body.description
+    memory.memory_date = body.memory_date
+    memory.visibility = body.visibility
+    _set_memory_people(db, family_id, user, memory.id, person_ids)
+    _audit(db, user, family_id, "memory.updated", "memory", memory.id)
+    db.commit()
+    db.refresh(memory)
+    return _memory_detail(db, family_id, memory, user)
+
+
+@router.delete("/{family_id}/memories/{memory_id}", status_code=204)
+def delete_memory(
+    family_id: UUID,
+    memory_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    member, _ = _member(db, family_id, user)
+    memory = _visible_memory(db, family_id, memory_id, user)
+    if not _can_edit_memory(memory, member, user):
+        raise HTTPException(status_code=403, detail="Энэ дурсамжийг устгах эрхгүй.")
+    _assert_memory_minor_scopes(db, family_id, user, _memory_person_ids(db, memory.id))
+    delete_memory_photos(db, storage, family_id, memory.id, user)
+    db.delete(memory)
+    _audit(db, user, family_id, "memory.deleted", "memory", memory.id)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/{family_id}/persons/{person_id}/memories", response_model=MemoryPageResponse)
+def list_person_memories(
+    family_id: UUID,
+    person_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=5, ge=1, le=25),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    _require_minor_scope(db, family_id, person, user, "view_profile")
+    memory_ids = select(MemoryPersonTag.memory_id).where(
+        MemoryPersonTag.person_id == person_id
+    )
+    base = _memory_query(db, family_id, user, "").where(Memory.id.in_(memory_ids))
+    total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    memories = db.scalars(
+        base.order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc())
+        .offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    counts = _memory_person_count_query(db, [memory.id for memory in memories])
+    return {
+        "items": [
+            _memory_list_item(db, memory, counts.get(memory.id, 0))
+            for memory in memories
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_next": page * page_size < total,
+    }
+
+
+def _memory_detail(
+    db: Session, family_id: UUID, memory: Memory, user: User
+) -> MemoryOut:
+    people = _memory_people(db, family_id, memory.id, user)
+    photos = list_memory_photos.__wrapped__(
+        family_id=family_id, memory_id=memory.id, limit=50, user=user, db=db,
+        storage=get_storage(),
+    )
+    return MemoryOut(
+        **_memory_list_item(db, memory, len(people)).model_dump(),
+        related_people=people,
+        photos=photos,
+    )
+
 @router.get("/{family_id}/memories")
 def list_memories(
     family_id: UUID,
