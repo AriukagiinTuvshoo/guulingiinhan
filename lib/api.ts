@@ -69,6 +69,31 @@ export type TreeData = {
 export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'>;
 export type Marriage = { id: string; person_1_id: string; person_2_id: string; status: 'married' | 'divorced' | 'widowed'; start_date: string | null; end_date: string | null; location?: string | null; description?: string | null; created_at?: string; other_person?: Person };
 export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
+export type PersonDirectoryItem = Person & {
+  lineage_id: string | null;
+  lineage_name: string | null;
+  branch_id: string | null;
+  branch_name: string | null;
+};
+export type PersonDirectoryPage = {
+  items: PersonDirectoryItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+export type LineageSummary = {
+  id: string;
+  family_id: string;
+  name: string;
+  description: string | null;
+};
+export type BranchSummary = {
+  id: string;
+  lineage_id: string;
+  name: string;
+  description: string | null;
+};
 
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>
   [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ');

@@ -1201,6 +1201,10 @@ function DashboardContent() {
                 className={label === 'Ургийн мод' ? 'active' : ''}
                 onClick={() => {
                   setMobileNav(false);
+                  if (label === 'Хүмүүс' && family?.id) {
+                    router.push('/people?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
                   if (label !== 'Ургийн мод') {
                     setNotice(label + ' хэсэг тун удахгүй');
                   }

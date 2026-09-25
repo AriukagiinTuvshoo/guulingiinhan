@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -222,6 +222,36 @@ class PersonSearchItem(BaseModel):
 
 class PersonSearchPage(BaseModel):
     items: list[PersonSearchItem]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
+class PersonDirectoryItem(BaseModel):
+    id: UUID
+    first_name: str
+    last_name: str
+    middle_name: str | None
+    nickname: str | None
+    gender: str
+    birth_date: date | None
+    birth_place: str | None
+    is_alive: bool
+    death_date: date | None
+    death_place: str | None
+    short_description: str | None
+    visibility: str
+    created_at: datetime
+    updated_at: datetime
+    lineage_id: UUID | None
+    lineage_name: str | None
+    branch_id: UUID | None
+    branch_name: str | None
+
+
+class PersonDirectoryPage(BaseModel):
+    items: list[PersonDirectoryItem]
     page: int
     page_size: int
     total: int
@@ -927,6 +957,116 @@ def list_persons(
         )
         for person in persons
     ]
+
+
+@router.get("/{family_id}/people", response_model=PersonDirectoryPage)
+def list_people_directory(
+    family_id: UUID,
+    q: str | None = Query(default=None, max_length=100, description="Хүний нэрээр хайх үг."),
+    page: int = Query(default=1, ge=1, description="1-ээс эхлэх үр дүнгийн хуудас."),
+    page_size: int = Query(default=24, ge=1, le=100, description="Нэг хуудсанд 1–100 хүн."),
+    lineage_id: UUID | None = Query(default=None, description="Тодорхой удам угсаагаар шүүх."),
+    branch_id: UUID | None = Query(default=None, description="Тодорхой салаагаар шүүх."),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return a paginated, family-scoped People Directory without loading the genealogy graph."""
+    _member(db, family_id, user)
+
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    conditions = [
+        FamilyPerson.family_id == family_id,
+        or_(Person.visibility != "private", Person.created_by == user.id, Person.id == own_link),
+    ]
+
+    if q and q.strip():
+        tokens = normalize_search_name(q).split()
+        for token in tokens:
+            prefix = f"{_escape_like_prefix(token)}%"
+            conditions.append(
+                or_(
+                    Person.search_first_name.like(prefix, escape="\\"),
+                    Person.search_last_name.like(prefix, escape="\\"),
+                    Person.search_middle_name.like(prefix, escape="\\"),
+                )
+            )
+
+    directory_query = (
+        select(
+            Person,
+            Lineage.id.label("lineage_id"),
+            Lineage.name.label("lineage_name"),
+            Branch.id.label("branch_id"),
+            Branch.name.label("branch_name"),
+        )
+        .select_from(Person)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .outerjoin(
+            PersonLineageAssignment,
+            PersonLineageAssignment.person_id == Person.id,
+        )
+        .outerjoin(
+            Lineage,
+            and_(
+                Lineage.id == PersonLineageAssignment.lineage_id,
+                Lineage.family_id == family_id,
+            ),
+        )
+        .outerjoin(
+            Branch,
+            and_(
+                Branch.id == PersonLineageAssignment.branch_id,
+                Branch.lineage_id == Lineage.id,
+            ),
+        )
+        .where(*conditions)
+    )
+
+    if lineage_id is not None:
+        directory_query = directory_query.where(Lineage.id == lineage_id)
+    if branch_id is not None:
+        directory_query = directory_query.where(Branch.id == branch_id)
+
+    total = db.scalar(
+        select(func.count()).select_from(directory_query.order_by(None).subquery())
+    ) or 0
+
+    rows = db.execute(
+        directory_query
+        .order_by(Person.last_name, Person.first_name, Person.middle_name, Person.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+
+    scopes = active_guardian_scopes(
+        db,
+        user.id,
+        family_id,
+        [row[0].id for row in rows],
+    )
+    items = []
+    for person, row_lineage_id, row_lineage_name, row_branch_id, row_branch_name in rows:
+        result = PersonOut.model_validate(person)
+        redactions = redact_minor_profile_fields(person, scopes.get(person.id, set()))
+        if redactions:
+            result = result.model_copy(update=redactions)
+        items.append(
+            PersonDirectoryItem(
+                **result.model_dump(),
+                lineage_id=row_lineage_id,
+                lineage_name=row_lineage_name,
+                branch_id=row_branch_id,
+                branch_name=row_branch_name,
+            )
+        )
+
+    return PersonDirectoryPage(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=total,
+        has_next=page * page_size < total,
+    )
 
 
 @router.get("/{family_id}/persons/search", response_model=PersonSearchPage)
