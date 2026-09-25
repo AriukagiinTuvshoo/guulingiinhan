@@ -228,6 +228,7 @@ class ProfileRelationPersonOut(BaseModel):
 
 
 class PersonProfileOut(PersonOut):
+    profile_photo_url: str | None = None
     lineage_id: UUID | None = None
     lineage_name: str | None = None
     branch_id: UUID | None = None
@@ -1176,6 +1177,7 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
     """Build one family-scoped profile payload without inferring genealogy data."""
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
     result = PersonProfileOut.model_validate(_person_output(db, family_id, person, user))
+    result = result.model_copy(update={"profile_photo_url": person.profile_photo_url})
     if person_is_minor(person) and "view_profile" not in scopes:
         return result
 
@@ -1198,18 +1200,18 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
             }
         )
 
-    parent_ids = set(
+    parent_ids = list(
         db.scalars(
-            select(ParentChildRelationship.parent_id).where(
-                ParentChildRelationship.child_id == person.id
-            )
+            select(ParentChildRelationship.parent_id)
+            .where(ParentChildRelationship.child_id == person.id)
+            .order_by(ParentChildRelationship.id)
         ).all()
     )
-    child_ids = set(
+    child_ids = list(
         db.scalars(
-            select(ParentChildRelationship.child_id).where(
-                ParentChildRelationship.parent_id == person.id
-            )
+            select(ParentChildRelationship.child_id)
+            .where(ParentChildRelationship.parent_id == person.id)
+            .order_by(ParentChildRelationship.id)
         ).all()
     )
     marriage_rows = db.execute(
@@ -1220,11 +1222,11 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
         )
         .order_by(*_marriage_order())
     ).all()
-    spouse_ids = {
+    spouse_ids = [
         person_2_id if person_1_id == person.id else person_1_id
         for person_1_id, person_2_id in marriage_rows
-    }
-    relation_ids = parent_ids | child_ids | spouse_ids
+    ]
+    relation_ids = set(parent_ids) | set(child_ids) | set(spouse_ids)
     if not relation_ids:
         return result
 
@@ -1254,7 +1256,7 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
         if not person_is_minor(item) or "view_profile" in relation_scopes.get(item.id, set())
     }
 
-    def relation_items(ids: set[UUID]) -> list[ProfileRelationPersonOut]:
+    def relation_items(ids: list[UUID]) -> list[ProfileRelationPersonOut]:
         return [
             ProfileRelationPersonOut.model_validate(visible[item_id])
             for item_id in ids
