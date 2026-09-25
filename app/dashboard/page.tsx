@@ -1229,9 +1229,13 @@ function DashboardContent() {
                 <div className="forest" />
 
                 <div className="treeworld" style={{ transform: 'scale(' + zoom + ')' }}>
-                  <ConnectorLayer\n                    tree={normalizedTree}\n                    visiblePeople={visiblePeople}\n                    slotByPersonId={slotByPersonId}\n                  />
+                  <ConnectorLayer
+                    tree={normalizedTree}
+                    visiblePeople={visiblePeople}
+                    slotByPersonId={slotByPersonId}
+                  />
 
-                  {visiblePeople.map((person, index) => {
+                  {visiblePeople.map((person) => {
                     const photo = photosByPerson[person.id]?.[0];
                     const isSelected = selectedId === person.id;
                     return (
