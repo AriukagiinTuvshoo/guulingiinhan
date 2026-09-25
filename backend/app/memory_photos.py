@@ -485,7 +485,7 @@ def _memory_people(
 
 
 def _memory_list_item(
-    db: Session, memory: Memory, related_people_count: int
+    db: Session, memory: Memory, related_people_count: int, photos: list[PhotoResponse] | None = None
 ) -> MemoryListItem:
     return MemoryListItem(
         id=memory.id,
@@ -498,6 +498,7 @@ def _memory_list_item(
         related_people_count=related_people_count,
         created_at=memory.created_at,
         updated_at=memory.updated_at,
+        photos=photos or [],
     )
 
 
@@ -747,9 +748,27 @@ def list_memories(
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
-    counts = _memory_person_count_query(db, [memory.id for memory in memories])
+    memory_ids = [memory.id for memory in memories]
+    counts = _memory_person_count_query(db, memory_ids)
+    photos_by_memory: dict[UUID, list[Photo]] = {memory_id: [] for memory_id in memory_ids}
+    if memory_ids:
+        photo_rows = db.scalars(
+            select(Photo).where(
+                Photo.family_id == family_id,
+                Photo.memory_id.in_(memory_ids),
+                Photo.storage_status == "ready",
+            ).order_by(Photo.created_at.desc(), Photo.id.desc())
+        ).all()
+        visible_photo_ids = _tagged_photo_visibility(db, family_id, user, photo_rows)
+        for photo in photo_rows:
+            if photo.id in visible_photo_ids and len(photos_by_memory[photo.memory_id]) < 4:
+                photos_by_memory[photo.memory_id].append(photo)
+    photo_payloads = {
+        memory_id: [_photo_payload(photo) for photo in photos]
+        for memory_id, photos in photos_by_memory.items()
+    }
     return {
-        "items": [_memory_list_item(db, memory, counts.get(memory.id, 0)) for memory in memories],
+        "items": [_memory_list_item(db, memory, counts.get(memory.id, 0), photo_payloads.get(memory.id, [])) for memory in memories],
         "page": page,
         "page_size": page_size,
         "total": total,
