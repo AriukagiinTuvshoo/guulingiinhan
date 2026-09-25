@@ -337,7 +337,8 @@ function TreePreview({
   };
 
   return (
-    <div className="homev2-tree">
+    <div className="homev2-tree-viewport">
+      <div className="homev2-tree">
       <div className="homev2-tree-backdrop" />
       <svg className="homev2-tree-connectors" viewBox="0 0 900 520" preserveAspectRatio="none" aria-hidden="true">
         {tree.marriages.map((marriage) => {
@@ -424,6 +425,7 @@ function TreePreview({
         <Link href={'/tree?family=' + encodeURIComponent(familyId)}>
           Удмын модыг бүтнээр харах <ArrowRight size={14} />
         </Link>
+      </div>
       </div>
     </div>
   );
