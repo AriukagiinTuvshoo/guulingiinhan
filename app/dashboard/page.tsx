@@ -212,12 +212,34 @@ function normalizeTree(
   }
 
   const personIds = new Set(personById.keys());
-  const parentChildRelationships = tree.parent_child_relationships.filter(
-    (edge) => personIds.has(edge.parent_id) && personIds.has(edge.child_id),
-  );
-  const marriages = tree.marriages.filter(
-    (marriage) => personIds.has(marriage.person_1_id) && personIds.has(marriage.person_2_id),
-  );
+
+  const parentChildByKey = new Map<
+    string,
+    TreeData['parent_child_relationships'][number]
+  >();
+  for (const edge of [...tree.parent_child_relationships].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!personIds.has(edge.parent_id) || !personIds.has(edge.child_id)) continue;
+    const key = edge.parent_id + ':' + edge.child_id + ':' + edge.relationship_type;
+    if (!parentChildByKey.has(key)) parentChildByKey.set(key, edge);
+  }
+
+  const marriageByKey = new Map<string, Marriage>();
+  for (const marriage of [...tree.marriages].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!personIds.has(marriage.person_1_id) || !personIds.has(marriage.person_2_id)) continue;
+    const pair = [marriage.person_1_id, marriage.person_2_id].sort().join(':');
+    const key =
+      pair +
+      ':' +
+      marriage.status +
+      ':' +
+      (marriage.start_date ?? '') +
+      ':' +
+      (marriage.end_date ?? '');
+    if (!marriageByKey.has(key)) marriageByKey.set(key, marriage);
+  }
+
+  const parentChildRelationships = [...parentChildByKey.values()];
+  const marriages = [...marriageByKey.values()];
   const rootPersonId = resolveTreeRoot(tree, userPersonId, selectedPersonId);
   const generations = deriveTreeGenerations(
     parentChildRelationships,
@@ -298,6 +320,10 @@ function treeDistance(tree: NormalizedTree, rootPersonId: string | null): Map<st
 
 type SlotAssignment = Map<string, (typeof positions)[number]>;
 
+function slotIndex(slot: (typeof positions)[number]) {
+  return positions.indexOf(slot);
+}
+
 const generationSlots: Record<string, (typeof positions)[number][]> = {
   '-2': ['p1', 'p2'],
   '-1': ['p3', 'p4'],
@@ -348,7 +374,7 @@ function preferredSlots(
 
   if (role === 'parent') {
     return [
-      ...generationSlots[String(generation)] ?? [],
+      ...(generationSlots[String(generation)] ?? []),
       'p3',
       'p4',
       'p1',
@@ -361,7 +387,7 @@ function preferredSlots(
     return [
       'p6',
       'p4',
-      ...generationSlots[String(generation)] ?? [],
+      ...(generationSlots[String(generation)] ?? []),
       'p3',
       'p5',
       ...positions,
@@ -370,7 +396,7 @@ function preferredSlots(
 
   if (role === 'child') {
     return [
-      ...generationSlots[String(generation)] ?? [],
+      ...(generationSlots[String(generation)] ?? []),
       'p7',
       'p8',
       'p9',
@@ -409,9 +435,13 @@ function buildVisualSlotMap(
 
   for (const person of ordered) {
     const candidates = preferredSlots(tree, tree.nodes.get(person.id)!);
+    const availableCandidate = candidates.find((candidate) => !occupied.has(candidate));
+
     const slot =
-      candidates.find((candidate) => !occupied.has(candidate)) ??
-      positions.find((candidate) => !occupied.has(candidate));
+      availableCandidate ??
+      positions
+        .filter((candidate) => !occupied.has(candidate))
+        .sort((a, b) => slotIndex(a) - slotIndex(b))[0];
 
     if (!slot) continue;
 
