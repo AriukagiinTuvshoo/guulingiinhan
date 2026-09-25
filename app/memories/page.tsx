@@ -33,8 +33,8 @@ export default function MemoriesPage() {
   const [uploadStatus, setUploadStatus] = useState('');
 
   async function load(id: string) {
-    const result = await api<{ items: Memory[] }>(`/families/${id}/memories?page=1&page_size=25`);
-    setMemories(result.items);
+    const result = await api<Memory[]>(`/families/${id}/memories`);
+    setMemories(result);
   }
 
   useEffect(() => {
