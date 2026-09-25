@@ -1,63 +1,55 @@
-from datetime import date
-from uuid import UUID, uuid4
-
 from conftest import register_verified
-from app.models import FamilyPerson, Person, User
-from app.person_search import normalize_search_name
 
 
-def test_people_directory_is_family_scoped_and_hides_private_people(client, database):
-    register_verified(client, "directory-owner@example.com")
-    owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
-    family_id = UUID(client.post("/api/v1/families", json={"name": "Нээлттэй гэр бүл"}).json()["id"])
+def test_people_directory_is_family_scoped_and_hides_private_people(client, email_provider):
+    owner_email = "directory-owner@example.com"
+    private_creator_email = "directory-private-creator@example.com"
+    owner_password = "strong-passphrase-123"
+    register_verified(client, owner_email, owner_password)
+    family_id = client.post("/api/v1/families", json={"name": "Нээлттэй гэр бүл"}).json()["id"]
     visible = client.post(
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Бат", "last_name": "Дорж"},
     ).json()
-    other_family = client.post(
-        "/api/v1/families", json={"name": "Өөр гэр бүл"}
-    ).json()
+    other_family = client.post("/api/v1/families", json={"name": "Өөр гэр бүл"}).json()
     outsider = client.post(
         f"/api/v1/families/{other_family['id']}/persons",
         json={"first_name": "Өөр", "last_name": "Хүн"},
     ).json()
 
-    private_creator_id = uuid4()
-    private_person_id = uuid4()
-    with database() as db:
-        db.add(User(
-            id=private_creator_id,
-            email="directory-private-creator@example.com",
-            display_name="Нууц бүтээгч",
-            password_hash=None,
-            is_active=True,
-        ))
-        db.flush()
-        db.add(Person(
-            id=private_person_id,
-            first_name="Нууц",
-            last_name="Хүн",
-            search_first_name=normalize_search_name("Нууц"),
-            search_last_name=normalize_search_name("Хүн"),
-            search_middle_name="",
-            birth_date=date(1988, 1, 1),
-            visibility="private",
-            created_by=private_creator_id,
-        ))
-        db.add(FamilyPerson(
-            id=uuid4(),
-            family_id=family_id,
-            person_id=private_person_id,
-            added_by=owner_id,
-        ))
-        db.commit()
+    invitation = client.post(
+        f"/api/v1/families/{family_id}/invitations",
+        json={"email": private_creator_email, "role": "member"},
+    )
+    assert invitation.status_code == 201
+    delivery = next(
+        item
+        for item in reversed(email_provider.deliveries)
+        if item.recipient == private_creator_email
+    )
+    token = delivery.text.rsplit(" ", 1)[-1].split("#token=", 1)[1]
+
+    register_verified(client, private_creator_email)
+    accepted = client.post("/api/v1/invitations/accept", json={"token": token})
+    assert accepted.status_code == 200
+    private_person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Нууц", "last_name": "Хүн", "visibility": "private"},
+    ).json()
+
+    client.post("/api/v1/auth/logout")
+    logged_in = client.post(
+        "/api/v1/auth/login",
+        json={"email": owner_email, "password": owner_password},
+    )
+    assert logged_in.status_code == 200
 
     payload = client.get(f"/api/v1/families/{family_id}/people")
     assert payload.status_code == 200
     ids = {item["id"] for item in payload.json()["items"]}
     assert payload.json()["total"] == 1
     assert visible["id"] in ids
-    assert str(private_person_id) not in ids
+    assert private_person["id"] not in ids
     assert outsider["id"] not in ids
 
     register_verified(client, "directory-outsider@example.com")
