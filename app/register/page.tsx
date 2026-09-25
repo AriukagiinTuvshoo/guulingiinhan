@@ -49,16 +49,17 @@ export default function RegisterPage() {
     }
     setBusy(true);
     try {
-      const registered = await api<User>('/auth/register', {
+      const submittedEmail = String(values.get('email') ?? '').trim();
+      const result = await api<{ message: string }>('/auth/register', {
         method: 'POST',
         body: JSON.stringify({
-          email: values.get('email'),
+          email: submittedEmail,
           password,
           display_name: values.get('name'),
         }),
       });
-      setRegisteredEmail(registered.email ?? '');
-      setNotice('Бүртгэл үүслээ. Имэйлээ баталгаажуулаарай.');
+      setRegisteredEmail(submittedEmail);
+      setNotice(result.message);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Бүртгэл үүсгэж чадсангүй.');
     } finally {
