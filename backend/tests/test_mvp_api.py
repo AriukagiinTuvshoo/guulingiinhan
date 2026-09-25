@@ -434,6 +434,10 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
         f"/api/v1/families/{family_id}/memories",
         json={"title": "Private person memory", "person_ids": [private_person["id"]]},
     ).json()
+    owner_private_memory = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "Private memory", "visibility": "private", "person_ids": [person_a["id"]]},
+    ).json()
     client.post("/api/v1/auth/logout")
     register(client, "memory-member@example.com")
     with database() as db:
@@ -451,12 +455,14 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
     assert client.get(
         f"/api/v1/families/{family_id}/persons/{private_person['id']}/memories"
     ).status_code == 404
-    assert client.get(
+    visible_to_member = client.get(
         f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
-    ).status_code == 200
+    )
+    assert visible_to_member.status_code == 200
+    assert owner_private_memory["id"] not in {item["id"] for item in visible_to_member.json()}
     assert private_memory["id"] != memory_a["id"]
 
     client.post("/api/v1/auth/logout")
     assert client.get(
         f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
-    ).status_code == 403
+    ).status_code == 401
