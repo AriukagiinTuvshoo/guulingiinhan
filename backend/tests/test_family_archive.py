@@ -181,3 +181,56 @@ def test_archive_validation_pagination_and_family_isolation(client):
     )
     assert no_result.status_code == 200
     assert no_result.json()["total"] == 0
+
+
+def test_archive_authoring_validation_and_editor_update(client, database):
+    register_verified(client, "archive-editor-owner@example.com")
+    family_id = client.post(
+        "/api/v1/families", json={"name": "Authoring validation"}
+    ).json()["id"]
+    archive = client.post(
+        f"/api/v1/families/{family_id}/archives",
+        json={"title": "Эх баримт"},
+    ).json()
+
+    invalid_visibility = client.post(
+        f"/api/v1/families/{family_id}/archives",
+        json={"title": "Буруу харагдац", "visibility": "everyone"},
+    )
+    assert invalid_visibility.status_code == 422
+
+    invalid_date = client.post(
+        f"/api/v1/families/{family_id}/archives",
+        json={"title": "Буруу огноо", "document_date": "not-a-date"},
+    )
+    assert invalid_date.status_code == 422
+
+    spoofed = client.put(
+        f"/api/v1/families/{family_id}/archives/{archive['id']}",
+        json={
+            "title": "Шинэ нэр",
+            "author_id": "00000000-0000-0000-0000-000000000001",
+            "person_ids": [],
+        },
+    )
+    assert spoofed.status_code == 200
+    assert spoofed.json()["author_id"] == archive["author_id"]
+
+    register_verified(client, "archive-editor@example.com")
+    with database() as db:
+        editor = db.query(User).filter(User.email == "archive-editor@example.com").one()
+        db.add(
+            FamilyMember(
+                family_id=UUID(family_id),
+                user_id=editor.id,
+                role="editor",
+            )
+        )
+        db.commit()
+
+    editor_update = client.put(
+        f"/api/v1/families/{family_id}/archives/{archive['id']}",
+        json={"title": "Editor шинэчилсэн", "person_ids": []},
+    )
+    assert editor_update.status_code == 200
+    assert editor_update.json()["title"] == "Editor шинэчилсэн"
