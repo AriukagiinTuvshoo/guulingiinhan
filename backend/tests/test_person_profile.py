@@ -1,8 +1,9 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from conftest import register_verified
 
 from app.models import Person
-from conftest import database, register_verified
 
 
 def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client):
@@ -115,7 +116,7 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
     ).json()
 
     with database() as db:
-        minor_record = db.get(Person, minor["id"])
+        minor_record = db.get(Person, UUID(minor['id']))
         assert minor_record is not None
         minor_record.profile_photo_url = "https://example.invalid/minor-photo.jpg"
         db.commit()

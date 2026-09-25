@@ -93,6 +93,7 @@ const nav = [
   ['Ургийн мод', GitFork],
   ['Хүмүүс', Network],
   ['Манай түүх', BookOpen],
+  ['Дурсамж', Heart],
   ['Архив', Archive],
   ['Чат', MessageSquare],
   ['Календарь', CalendarDays],
@@ -1201,12 +1202,32 @@ function DashboardContent() {
                 className={label === 'Ургийн мод' ? 'active' : ''}
                 onClick={() => {
                   setMobileNav(false);
+                  if (label === 'Нүүр') {
+                    router.push('/dashboard' + (family?.id ? '?family=' + encodeURIComponent(family.id) : ''));
+                    return;
+                  }
+                  if (label === 'Ургийн мод' && family?.id) {
+                    router.push('/tree?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
                   if (label === 'Хүмүүс' && family?.id) {
                     router.push('/people?family=' + encodeURIComponent(family.id));
                     return;
                   }
                   if (label === 'Манай түүх' && family?.id) {
                     router.push('/stories?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
+                  if (label === 'Дурсамж' && family?.id) {
+                    router.push('/memories?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
+                  if (label === 'Архив' && family?.id) {
+                    router.push('/archives?family=' + encodeURIComponent(family.id));
+                    return;
+                  }
+                  if (label === 'Тохиргоо') {
+                    router.push('/settings');
                     return;
                   }
                   if (label !== 'Ургийн мод') {

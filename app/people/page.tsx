@@ -182,7 +182,7 @@ export default function PeoplePage() {
       <section className="people-shell">
         <div className="people-heading">
           <div>
-            <Link href="/dashboard">← Аппын нүүр</Link>
+            <Link href={familyId ? `/dashboard?family=${encodeURIComponent(familyId)}` : '/dashboard'}>← Аппын нүүр</Link>
             <p className="eyebrow">ГУУЛИНГИЙНХАН · ХҮМҮҮС</p>
             <h1>Хүмүүс</h1>
             <p className="people-lede">

@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import {
   ApiError,
   api,
+  ArchiveListPage,
   Marriage,
+  MemoryListItem,
   PersonProfile,
   StoryListPage,
   ProfileRelationPerson,
@@ -51,6 +53,10 @@ export default function ProfilePage() {
   const [marriages, setMarriages] = useState<Marriage[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
+  const [archives, setArchives] = useState<ArchiveListPage | null>(null);
+  const [memories, setMemories] = useState<MemoryListItem[]>([]);
+  const [memoryState, setMemoryState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [memoryError, setMemoryError] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
@@ -58,14 +64,15 @@ export default function ProfilePage() {
 
   async function load(fid: string, pid: string) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
-    const [bio, eventList, marriageList, storyPage] = await Promise.allSettled([
+    const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
       api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
       api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
       api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
+      api<ArchiveListPage>(`/families/${fid}/persons/${pid}/archives?page=1&page_size=5`),
     ]);
 
-    const unexpectedFailure = [bio, eventList, marriageList, storyPage].find(
+    const unexpectedFailure = [bio, eventList, marriageList, storyPage, archivePage].find(
       (result) =>
         result.status === 'rejected' &&
         !(result.reason instanceof ApiError && [403, 404].includes(result.reason.status)),
@@ -78,6 +85,7 @@ export default function ProfilePage() {
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
     setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
+    setArchives(archivePage.status === 'fulfilled' ? archivePage.value : null);
     setMarriages(marriageList.status === 'fulfilled' ? marriageList.value : []);
   }
 
@@ -112,6 +120,35 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  async function loadMemories(fid: string, pid: string) {
+    setMemoryState('loading');
+    setMemoryError('');
+    try {
+      const result = await api<MemoryListItem[]>(
+        `/families/${fid}/persons/${pid}/memories`,
+      );
+      setMemories(result);
+      setMemoryState('ready');
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      if (cause instanceof ApiError && [403, 404].includes(cause.status)) {
+        setMemories([]);
+        setMemoryState('restricted');
+        setMemoryError('Энэ хүний дурсамжийн мэдээлэл одоогоор харагдахгүй байна.');
+        return;
+      }
+      setMemoryState('error');
+      setMemoryError(
+        cause instanceof Error
+          ? cause.message
+          : 'Дурсамжийг ачаалж чадсангүй.',
+      );
+    }
+  }
+
   async function retry() {
     if (!family || !id) return;
     setLoading(true);
@@ -119,6 +156,10 @@ export default function ProfilePage() {
     try {
       await load(family, id);
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
       setError(
         cause instanceof ApiError && [403, 404].includes(cause.status)
           ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
@@ -130,6 +171,11 @@ export default function ProfilePage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!family || !id) return;
+    void loadMemories(family, id);
+  }, [family, id]);
 
   async function saveBiography(event: FormEvent) {
     event.preventDefault();
@@ -333,6 +379,25 @@ export default function ProfilePage() {
 
           <section className="card profile-card">
             <div className="profile-card-heading">
+              <div><p className="eyebrow">FAMILY ARCHIVE</p><h2>Энэ хүнтэй холбоотой архив</h2></div>
+              <Link href={`/archives?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+            </div>
+            {archives?.items.length ? (
+              <div className="history-list">
+                {archives.items.map((archive) => (
+                  <Link className="history-item" key={archive.id} href={`/archives/${archive.id}?family=${encodeURIComponent(family)}`}>
+                    <strong>{archive.title}</strong>
+                    <span>{archive.document_date ?? 'Огноогүй'}{archive.place ? ` · ${archive.place}` : ''}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="profile-empty">Энэ хүнтэй холбоотой архив бүртгэгдээгүй байна.</p>
+            )}
+          </section>
+
+          <section className="card profile-card">
+            <div className="profile-card-heading">
               <div><p className="eyebrow">FAMILY STORY</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
               <Link href={`/stories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
             </div>
@@ -346,6 +411,57 @@ export default function ProfilePage() {
                 ))}
               </div>
             ) : <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>}
+          </section>
+
+          <section className="card profile-card">
+            <div className="profile-card-heading">
+              <div><p className="eyebrow">FAMILY MEMORIES</p><h2>Энэ хүнтэй холбоотой дурсамж</h2></div>
+              <Link href={`/memories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+            </div>
+
+            {memoryState === 'loading' && (
+              <p className="profile-empty" role="status" aria-live="polite">
+                Дурсамжийг ачаалж байна…
+              </p>
+            )}
+
+            {memoryState === 'restricted' && (
+              <div>
+                <p className="profile-empty">{memoryError}</p>
+                <button type="button" onClick={() => void loadMemories(family, id)}>
+                  Дахин оролдох
+                </button>
+              </div>
+            )}
+
+            {memoryState === 'error' && (
+              <div>
+                <p className="profile-empty" role="alert">{memoryError}</p>
+                <button type="button" onClick={() => void loadMemories(family, id)}>
+                  Дахин оролдох
+                </button>
+              </div>
+            )}
+
+            {memoryState === 'ready' && memories.length === 0 && (
+              <p className="profile-empty">
+                Энэ хүнтэй холбоотой дурсамж бүртгэгдээгүй байна.
+              </p>
+            )}
+
+            {memoryState === 'ready' && memories.length > 0 && (
+              <div className="history-list">
+                {memories.map((memory) => (
+                  <div className="history-item" key={memory.id}>
+                    <strong>{memory.title}</strong>
+                    <span>
+                      {memory.memory_date ?? 'Огноогүй'}
+                      {memory.description ? ` · ${memory.description}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="card profile-card">

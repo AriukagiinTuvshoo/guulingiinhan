@@ -17,6 +17,8 @@ from app.db import get_db
 from app.email import EmailDeliveryError, EmailProvider, get_email_provider
 from app.identity import normalize_email
 from app.models import (
+    Archive,
+    ArchivePerson,
     AuditLog,
     Biography,
     Branch,
@@ -30,13 +32,13 @@ from app.models import (
     Marriage,
     Memory,
     MemoryPersonTag,
-    Story,
-    StoryPerson,
     ParentChildRelationship,
     Person,
     PersonGuardianship,
     PersonLineageAssignment,
     Photo,
+    Story,
+    StoryPerson,
     User,
     UserPersonLink,
 )
@@ -473,6 +475,58 @@ class MemoryInput(BaseModel):
         return self
 
 
+class ArchiveInput(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=20000)
+    document_date: date | None = None
+    place: str | None = Field(default=None, max_length=240)
+    visibility: str = Field(default="family", pattern="^(private|family|public)$")
+    person_ids: list[UUID] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_content(self):
+        if not self.title.strip():
+            raise ValueError("Архивийн гарчиг хоосон байж болохгүй.")
+        if len(set(self.person_ids)) != len(self.person_ids):
+            raise ValueError("Холбоотой хүмүүс давхардаж болохгүй.")
+        return self
+
+
+class ArchivePersonOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    first_name: str
+    last_name: str
+    middle_name: str | None
+
+
+class ArchiveListItem(BaseModel):
+    id: UUID
+    title: str
+    description: str | None
+    document_date: date | None
+    place: str | None
+    visibility: str
+    author_id: UUID
+    author_name: str
+    related_people_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArchiveListPage(BaseModel):
+    items: list[ArchiveListItem]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
+class ArchiveOut(ArchiveListItem):
+    related_people: list[ArchivePersonOut] = Field(default_factory=list)
+
+
 class StoryInput(BaseModel):
     title: str = Field(min_length=1, max_length=180)
     body: str = Field(min_length=1, max_length=100000)
@@ -512,6 +566,8 @@ class StoryPatch(BaseModel):
 
 
 class StoryPersonOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     first_name: str
     last_name: str
@@ -2098,6 +2154,316 @@ def _story_excerpt(body: str) -> str:
     return normalized if len(normalized) <= 220 else normalized[:217].rstrip() + "..."
 
 
+def _archive_visible(archive: Archive, user: User) -> bool:
+    return archive.visibility != "private" or archive.created_by == user.id
+
+
+def _archive_people(
+    db: Session,
+    family_id: UUID,
+    archive_ids: list[UUID],
+    user: User,
+) -> dict[UUID, list[ArchivePersonOut]]:
+    if not archive_ids:
+        return {}
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    rows = db.execute(
+        select(ArchivePerson.archive_id, Person)
+        .join(Person, Person.id == ArchivePerson.person_id)
+        .where(
+            ArchivePerson.family_id == family_id,
+            ArchivePerson.archive_id.in_(archive_ids),
+            or_(
+                Person.visibility != "private",
+                Person.created_by == user.id,
+                Person.id == own_link,
+            ),
+        )
+        .order_by(Person.last_name, Person.first_name, Person.id)
+    ).all()
+    person_ids = [person.id for _, person in rows]
+    scopes = active_guardian_scopes(db, user.id, family_id, person_ids)
+    result: dict[UUID, list[ArchivePersonOut]] = {}
+    for archive_id, person in rows:
+        if person_is_minor(person) and "view_profile" not in scopes.get(person.id, set()):
+            continue
+        result.setdefault(archive_id, []).append(ArchivePersonOut.model_validate(person))
+    return result
+
+
+def _validate_archive_people(
+    db: Session,
+    family_id: UUID,
+    person_ids: list[UUID],
+    user: User,
+) -> list[Person]:
+    people: list[Person] = []
+    for person_id in dict.fromkeys(person_ids):
+        person = _person_in_family(db, family_id, person_id)
+        _assert_person_visible(db, person, user)
+        if person_is_minor(person):
+            _require_minor_scope(db, family_id, person, user, "view_profile")
+        people.append(person)
+    return people
+
+
+def _archive_out(
+    db: Session,
+    family_id: UUID,
+    archive: Archive,
+    user: User,
+) -> ArchiveOut:
+    people = _archive_people(db, family_id, [archive.id], user).get(archive.id, [])
+    author_name = db.scalar(select(User.display_name).where(User.id == archive.created_by))
+    return ArchiveOut(
+        id=archive.id,
+        title=archive.title,
+        description=archive.description,
+        document_date=archive.document_date,
+        place=archive.place,
+        visibility=archive.visibility,
+        author_id=archive.created_by,
+        author_name=author_name or "Нэргүй хэрэглэгч",
+        related_people_count=len(people),
+        related_people=people,
+        created_at=archive.created_at,
+        updated_at=archive.updated_at,
+    )
+
+
+@router.get("/{family_id}/archives", response_model=ArchiveListPage)
+def list_archives(
+    family_id: UUID,
+    q: str | None = Query(default=None, max_length=120),
+    document_date: date | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=12, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    conditions = [
+        Archive.family_id == family_id,
+        or_(Archive.visibility != "private", Archive.created_by == user.id),
+    ]
+    query = q.strip() if q else ""
+    if query:
+        pattern = f"%{query}%"
+        conditions.append(or_(Archive.title.ilike(pattern), Archive.description.ilike(pattern)))
+    if document_date is not None:
+        conditions.append(Archive.document_date == document_date)
+
+    total = db.scalar(select(func.count()).select_from(Archive).where(*conditions)) or 0
+    archives = list(
+        db.scalars(
+            select(Archive)
+            .where(*conditions)
+            .order_by(
+                Archive.document_date.desc().nullslast(),
+                Archive.created_at.desc(),
+                Archive.id,
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+    )
+    author_ids = [item.created_by for item in archives]
+    authors = (
+        {
+            user_id: name
+            for user_id, name in db.execute(
+                select(User.id, User.display_name).where(User.id.in_(author_ids))
+            ).all()
+        }
+        if author_ids
+        else {}
+    )
+    people = _archive_people(db, family_id, [item.id for item in archives], user)
+    items = [
+        ArchiveListItem(
+            id=item.id,
+            title=item.title,
+            description=item.description,
+            document_date=item.document_date,
+            place=item.place,
+            visibility=item.visibility,
+            author_id=item.created_by,
+            author_name=authors.get(item.created_by, "Нэргүй хэрэглэгч"),
+            related_people_count=len(people.get(item.id, [])),
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+        )
+        for item in archives
+    ]
+    return ArchiveListPage(
+        items=items,
+        page=page,
+        page_size=page_size,
+        total=total,
+        has_next=(page * page_size) < total,
+    )
+
+
+@router.post("/{family_id}/archives", response_model=ArchiveOut, status_code=201)
+def create_archive(
+    family_id: UUID,
+    body: ArchiveInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    people = _validate_archive_people(db, family_id, body.person_ids, user)
+    archive = Archive(
+        family_id=family_id,
+        title=body.title.strip(),
+        description=body.description.strip() if body.description else None,
+        document_date=body.document_date,
+        place=body.place.strip() if body.place else None,
+        visibility=body.visibility,
+        created_by=user.id,
+    )
+    db.add(archive)
+    db.flush()
+    for person in people:
+        db.add(ArchivePerson(archive_id=archive.id, family_id=family_id, person_id=person.id))
+    _audit(db, user, family_id, "archive.created", "archive", archive.id)
+    _commit(db, "Ижил архивийн холбоос давхар үүссэн байна.")
+    return _archive_out(db, family_id, archive, user)
+
+
+@router.get("/{family_id}/archives/{archive_id}", response_model=ArchiveOut)
+def get_archive(
+    family_id: UUID,
+    archive_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    archive = db.scalar(
+        select(Archive).where(Archive.id == archive_id, Archive.family_id == family_id)
+    )
+    if archive is None or not _archive_visible(archive, user):
+        raise HTTPException(status_code=404, detail="Архив олдсонгүй.")
+    return _archive_out(db, family_id, archive, user)
+
+
+@router.put("/{family_id}/archives/{archive_id}", response_model=ArchiveOut)
+def update_archive(
+    family_id: UUID,
+    archive_id: UUID,
+    body: ArchiveInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    archive = db.scalar(
+        select(Archive).where(Archive.id == archive_id, Archive.family_id == family_id)
+    )
+    if archive is None or not _archive_visible(archive, user):
+        raise HTTPException(status_code=404, detail="Архив олдсонгүй.")
+    people = _validate_archive_people(db, family_id, body.person_ids, user)
+    archive.title = body.title.strip()
+    archive.description = body.description.strip() if body.description else None
+    archive.document_date = body.document_date
+    archive.place = body.place.strip() if body.place else None
+    archive.visibility = body.visibility
+    archive.updated_at = datetime.now(UTC)
+    db.execute(delete(ArchivePerson).where(ArchivePerson.archive_id == archive.id))
+    for person in people:
+        db.add(ArchivePerson(archive_id=archive.id, family_id=family_id, person_id=person.id))
+    _audit(db, user, family_id, "archive.updated", "archive", archive.id)
+    _commit(db, "Ижил архивийн холбоос давхар үүссэн байна.")
+    return _archive_out(db, family_id, archive, user)
+
+
+@router.delete("/{family_id}/archives/{archive_id}", status_code=204)
+def delete_archive(
+    family_id: UUID,
+    archive_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    archive = db.scalar(
+        select(Archive).where(Archive.id == archive_id, Archive.family_id == family_id)
+    )
+    if archive is None or not _archive_visible(archive, user):
+        raise HTTPException(status_code=404, detail="Архив олдсонгүй.")
+    _audit(db, user, family_id, "archive.deleted", "archive", archive.id)
+    db.delete(archive)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/{family_id}/persons/{person_id}/archives", response_model=ArchiveListPage)
+def list_person_archives(
+    family_id: UUID,
+    person_id: UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=5, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    if person_is_minor(person):
+        _require_minor_scope(db, family_id, person, user, "view_profile")
+    archive_ids = select(ArchivePerson.archive_id).where(
+        ArchivePerson.family_id == family_id,
+        ArchivePerson.person_id == person_id,
+    )
+    conditions = [
+        Archive.family_id == family_id,
+        Archive.id.in_(archive_ids),
+        or_(Archive.visibility != "private", Archive.created_by == user.id),
+    ]
+    total = db.scalar(select(func.count()).select_from(Archive).where(*conditions)) or 0
+    archives = list(
+        db.scalars(
+            select(Archive)
+            .where(*conditions)
+            .order_by(Archive.document_date.desc().nullslast(), Archive.created_at.desc(), Archive.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+    )
+    author_ids = [item.created_by for item in archives]
+    authors = (
+        {
+            user_id: name
+            for user_id, name in db.execute(
+                select(User.id, User.display_name).where(User.id.in_(author_ids))
+            ).all()
+        }
+        if author_ids
+        else {}
+    )
+    people = _archive_people(db, family_id, [item.id for item in archives], user)
+    return ArchiveListPage(
+        items=[
+            ArchiveListItem(
+                id=item.id,
+                title=item.title,
+                description=item.description,
+                document_date=item.document_date,
+                place=item.place,
+                visibility=item.visibility,
+                author_id=item.created_by,
+                author_name=authors.get(item.created_by, "Нэргүй хэрэглэгч"),
+                related_people_count=len(people.get(item.id, [])),
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in archives
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+        has_next=(page * page_size) < total,
+    )
+
+
 @router.get("/{family_id}/stories", response_model=StoryListPage)
 def list_stories(
     family_id: UUID,
@@ -2261,7 +2627,7 @@ def update_story(
         updates["title"] = updates["title"].strip()
     if "body" in updates and updates["body"] is not None:
         updates["body"] = updates["body"].strip()
-    if "place" in updates and updates["place"]:
+    if updates.get("place"):
         updates["place"] = updates["place"].strip()
     for field, value in updates.items():
         setattr(story, field, value)
@@ -2412,6 +2778,91 @@ def list_memories(
         }
         for item in visible_memories
     ]
+
+
+@router.get("/{family_id}/persons/{person_id}/memories")
+def list_person_memories(
+    family_id: UUID,
+    person_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the existing family Memory list contract scoped to one visible Person."""
+    _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    if person_is_minor(person):
+        _require_minor_scope(db, family_id, person, user, "manage_memories")
+
+    memory_ids = select(MemoryPersonTag.memory_id).where(
+        MemoryPersonTag.person_id == person_id,
+    )
+    memories = list(
+        db.scalars(
+            select(Memory)
+            .where(
+                Memory.family_id == family_id,
+                Memory.id.in_(memory_ids),
+                or_(Memory.visibility != "private", Memory.created_by == user.id),
+            )
+            .order_by(Memory.memory_date.desc())
+        ).all()
+    )
+    visible_ids = _memory_visible_to_member(
+        db, family_id, user, [item.id for item in memories]
+    )
+    visible_memories = [item for item in memories if item.id in visible_ids]
+    memory_ids = [item.id for item in visible_memories]
+    own_link = db.scalar(
+        select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id)
+    )
+    tagged = (
+        db.execute(
+            select(
+                MemoryPersonTag.memory_id,
+                MemoryPersonTag.person_id,
+                Person.first_name,
+                Person.last_name,
+                Person.middle_name,
+            )
+            .join(Person, Person.id == MemoryPersonTag.person_id)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(
+                MemoryPersonTag.memory_id.in_(memory_ids),
+                FamilyPerson.family_id == family_id,
+                or_(
+                    Person.visibility != "private",
+                    Person.created_by == user.id,
+                    Person.id == own_link,
+                ),
+            )
+            .order_by(MemoryPersonTag.memory_id, Person.last_name, Person.first_name)
+        ).all()
+        if memory_ids
+        else []
+    )
+    names_by_memory: dict[UUID, list[str]] = {}
+    ids_by_memory: dict[UUID, list[UUID]] = {}
+    for memory_id, tagged_person_id, first_name, last_name, middle_name in tagged:
+        ids_by_memory.setdefault(memory_id, []).append(tagged_person_id)
+        names_by_memory.setdefault(memory_id, []).append(
+            " ".join(part for part in (last_name, first_name, middle_name) if part)
+        )
+
+    return [
+        {
+            "id": item.id,
+            "title": item.title,
+            "description": item.description,
+            "memory_date": item.memory_date,
+            "visibility": item.visibility,
+            "person_ids": ids_by_memory.get(item.id, []),
+            "person_names": names_by_memory.get(item.id, []),
+            "created_at": item.created_at,
+        }
+        for item in visible_memories
+    ]
+
 
 
 @router.get("/{family_id}/memories/{memory_id}")

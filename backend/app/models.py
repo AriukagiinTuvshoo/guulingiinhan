@@ -629,11 +629,69 @@ class StoryPerson(Base):
             name="fk_story_person_family_person",
             ondelete="CASCADE",
         ),
+        Index("ix_story_person_family_id", "family_id"),
         Index("ix_story_person_person", "person_id"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     story_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    family_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    person_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+
+
+class Archive(Base):
+    """A family source/document record kept separate from stories and memories."""
+
+    __tablename__ = "archives"
+    __table_args__ = (
+        UniqueConstraint("id", "family_id", name="uq_archive_family"),
+        CheckConstraint(
+            "visibility IN ('private', 'family', 'public')",
+            name="ck_archive_visibility",
+        ),
+        Index("ix_archive_family_created", "family_id", "created_at"),
+        Index("ix_archive_family_document_date", "family_id", "document_date"),
+        Index("ix_archive_family_title", "family_id", "title"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    document_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    place: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    visibility: Mapped[str] = mapped_column(String(12), default="family")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class ArchivePerson(Base):
+    __tablename__ = "archive_persons"
+    __table_args__ = (
+        UniqueConstraint("archive_id", "person_id", name="uq_archive_person"),
+        ForeignKeyConstraint(
+            ["archive_id", "family_id"],
+            ["archives.id", "archives.family_id"],
+            name="fk_archive_person_archive_family",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["family_id", "person_id"],
+            ["family_persons.family_id", "family_persons.person_id"],
+            name="fk_archive_person_family_person",
+            ondelete="CASCADE",
+        ),
+        Index("ix_archive_person_family_id", "family_id"),
+        Index("ix_archive_person_person", "person_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    archive_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     family_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     person_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
 

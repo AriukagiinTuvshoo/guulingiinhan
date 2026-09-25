@@ -366,3 +366,103 @@ def test_login_rate_limit_and_audit_records(client):
     audit = client.get(f"/api/v1/families/{family.json()['id']}/audit")
     assert audit.status_code == 200
     assert {entry["action"] for entry in audit.json()} >= {"family.created"}
+
+
+def test_person_scoped_memories_contract_and_isolation(client, database):
+    register(client, "memory-scope@example.com")
+    family_id = client.post(
+        "/api/v1/families", json={"name": "Memory scope"}
+    ).json()["id"]
+    person_a = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "А", "visibility": "family"},
+    ).json()
+    person_b = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Б", "visibility": "family"},
+    ).json()
+    memory_a = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "A memory", "person_ids": [person_a["id"]]},
+    ).json()
+    memory_b = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "B memory", "person_ids": [person_b["id"]]},
+    ).json()
+
+    scoped = client.get(
+        f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
+    )
+    assert scoped.status_code == 200
+    assert [item["id"] for item in scoped.json()] == [memory_a["id"]]
+    assert scoped.json()[0]["person_ids"] == [person_a["id"]]
+
+    empty_person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Хоосон", "visibility": "family"},
+    ).json()
+    empty = client.get(
+        f"/api/v1/families/{family_id}/persons/{empty_person['id']}/memories"
+    )
+    assert empty.status_code == 200
+    assert empty.json() == []
+    assert client.get(
+        f"/api/v1/families/{family_id}/persons/{person_b['id']}/memories"
+    ).json()[0]["id"] == memory_b["id"]
+
+    other_family = client.post(
+        "/api/v1/families", json={"name": "Other memory scope"}
+    ).json()["id"]
+    foreign_person = client.post(
+        f"/api/v1/families/{other_family}/persons",
+        json={"first_name": "Г"},
+    ).json()
+    foreign_memory = client.post(
+        f"/api/v1/families/{other_family}/memories",
+        json={"title": "Foreign memory", "person_ids": [foreign_person["id"]]},
+    ).json()
+    assert client.get(
+        f"/api/v1/families/{family_id}/persons/{foreign_person['id']}/memories"
+    ).status_code == 404
+    assert foreign_memory["id"] != memory_a["id"]
+
+    private_person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Нууц", "visibility": "private"},
+    ).json()
+    private_memory = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "Private person memory", "person_ids": [private_person["id"]]},
+    ).json()
+    owner_private_memory = client.post(
+        f"/api/v1/families/{family_id}/memories",
+        json={"title": "Private memory", "visibility": "private", "person_ids": [person_a["id"]]},
+    ).json()
+    client.post("/api/v1/auth/logout")
+    register(client, "memory-member@example.com")
+    with database() as db:
+        member = db.scalar(
+            select(User).where(User.email == "memory-member@example.com")
+        )
+        db.add(
+            FamilyMember(
+                family_id=UUID(family_id),
+                user_id=member.id,
+                role="member",
+            )
+        )
+        db.commit()
+    assert client.get(
+        f"/api/v1/families/{family_id}/persons/{private_person['id']}/memories"
+    ).status_code == 404
+    visible_to_member = client.get(
+        f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
+    )
+    assert visible_to_member.status_code == 200
+    assert owner_private_memory["id"] not in {item["id"] for item in visible_to_member.json()}
+    assert private_memory["id"] != memory_a["id"]
+
+    client.post("/api/v1/auth/logout")
+    assert client.get(
+        f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
+    ).status_code == 401
