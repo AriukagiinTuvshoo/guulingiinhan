@@ -60,7 +60,7 @@ export default function ProfilePage() {
 
   async function load(fid: string, pid: string) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
-    const [bio, eventList, marriageList, storyPage] = await Promise.allSettled([
+    const [bio, eventList, marriageList, storyPage, memoryPage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
       api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
       api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
