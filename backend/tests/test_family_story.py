@@ -112,7 +112,6 @@ def test_private_story_is_visible_only_to_creator(client, database):
 
     register_verified(client, "story-private-member@example.com")
     with database() as db:
-        owner = db.query(User).filter(User.email == "story-private-owner@example.com").one()
         db.add(FamilyMember(family_id=family_id, user_id=db.query(User).filter(User.email == "story-private-member@example.com").one().id, role="member"))
         db.commit()
 
