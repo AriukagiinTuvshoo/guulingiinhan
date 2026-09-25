@@ -433,6 +433,7 @@ class MemoryPageResponse(BaseModel):
 
 class MemoryOut(MemoryListItem):
     related_people: list[MemoryPersonOut] = Field(default_factory=list)
+    person_ids: list[UUID] = Field(default_factory=list)
     photos: list[PhotoResponse] = Field(default_factory=list)
 
 
@@ -550,11 +551,18 @@ def _memory_query(
             )
         )
     if q.strip():
-        term = "%" + q.strip().lower() + "%"
+        raw_term = q.strip()
+        term = "%" + raw_term.lower() + "%"
+        case_variants = {raw_term, raw_term.capitalize(), raw_term.upper()}
         conditions.append(
             or_(
                 func.lower(Memory.title).like(term),
                 func.lower(func.coalesce(Memory.description, "")).like(term),
+                *(
+                    expression.like("%" + variant + "%")
+                    for variant in case_variants
+                    for expression in (Memory.title, func.coalesce(Memory.description, ""))
+                ),
             )
         )
     return select(Memory).where(*conditions)
@@ -743,6 +751,7 @@ def _memory_detail(
     return MemoryOut(
         **_memory_list_item(db, memory, len(people), photos).model_dump(),
         related_people=people,
+        person_ids=[person.id for person in people],
     )
 
 @router.get("/{family_id}/memories", response_model=MemoryPageResponse)
