@@ -1183,6 +1183,7 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
 
     assignment = db.execute(
         select(Lineage.id, Lineage.name, Branch.id, Branch.name)
+        .select_from(PersonLineageAssignment)
         .join(Lineage, Lineage.id == PersonLineageAssignment.lineage_id)
         .outerjoin(Branch, Branch.id == PersonLineageAssignment.branch_id)
         .where(
