@@ -2,7 +2,7 @@ from uuid import UUID
 
 from conftest import register_verified
 
-from app.models import FamilyMember, User
+from app.models import ArchivePerson, FamilyMember, User
 
 
 def test_archive_crud_search_person_link_and_genealogy_regression(client):
@@ -234,3 +234,30 @@ def test_archive_authoring_validation_and_editor_update(client, database):
     )
     assert editor_update.status_code == 200
     assert editor_update.json()["title"] == "Editor шинэчилсэн"
+
+
+def test_archive_delete_cleans_relations(client, database):
+    register_verified(client, "archive-cleanup@example.com")
+    family_id = client.post(
+        "/api/v1/families", json={"name": "Cleanup"}
+    ).json()["id"]
+    person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Хүн"},
+    ).json()
+    archive = client.post(
+        f"/api/v1/families/{family_id}/archives",
+        json={"title": "Cleanup archive", "person_ids": [person["id"]]},
+    ).json()
+
+    assert client.delete(
+        f"/api/v1/families/{family_id}/archives/{archive['id']}"
+    ).status_code == 204
+
+    with database() as db:
+        assert (
+            db.query(ArchivePerson)
+            .filter(ArchivePerson.archive_id == UUID(archive["id"]))
+            .count()
+            == 0
+        )
