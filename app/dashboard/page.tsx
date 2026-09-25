@@ -155,6 +155,19 @@ function resolveTreeRoot(
   return [...personIds].sort((a, b) => a.localeCompare(b))[0] ?? null;
 }
 
+function resolveSelectedPersonId(
+  tree: Pick<TreeData, 'persons'>,
+  candidateId: string | null,
+  fallbackId: string | null,
+): string | null {
+  const personIds = new Set(tree.persons.map((person) => person.id));
+
+  if (candidateId && personIds.has(candidateId)) return candidateId;
+  if (fallbackId && personIds.has(fallbackId)) return fallbackId;
+
+  return [...personIds].sort((a, b) => a.localeCompare(b))[0] ?? null;
+}
+
 function deriveTreeGenerations(
   parentChildRelationships: TreeData['parent_child_relationships'],
   marriages: Marriage[],
@@ -626,12 +639,16 @@ function DashboardContent() {
   const [biographyLoading, setBiographyLoading] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const userPersonIdRef = React.useRef<string | null>(null);
+  // Mirrors the canonical selectedId so async reloads can read the latest backend Person.id.
   const selectedPersonIdRef = React.useRef<string | null>(null);
+  const loadRequestRef = React.useRef(0);
 
   const searchParams = useSearchParams();
   const familyIdFromUrl = searchParams.get('family') ?? '';
 
   const loadDashboard = useCallback(async (familyId: string, personId?: string) => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setError('');
 
     const contextPersonId = personId ?? selectedPersonIdRef.current ?? undefined;
@@ -645,6 +662,8 @@ function DashboardContent() {
       api<MemorySummary[]>('/families/' + familyId + '/memories'),
     ]);
 
+    if (requestId !== loadRequestRef.current) return null;
+
     const normalizedTree = normalizeTree(
       treeData,
       userPersonIdRef.current,
@@ -656,13 +675,13 @@ function DashboardContent() {
     setPeople(personData);
     setMemories(memoryData.slice(0, 4));
 
-    const nextSelected =
-      contextPersonId && normalizedTree.nodes.has(contextPersonId)
-        ? contextPersonId
-        : normalizedTree.rootPersonId;
+    const nextSelected = resolveSelectedPersonId(
+      treeData,
+      contextPersonId ?? null,
+      normalizedTree.rootPersonId,
+    );
 
-    setSelectedId(nextSelected);
-    selectedPersonIdRef.current = nextSelected;
+    setCanonicalSelectedPersonId(nextSelected);
     setTab('Тойм');
     setBiography('');
     setPhotosByPerson({});
@@ -683,6 +702,8 @@ function DashboardContent() {
         }
       }),
     );
+
+    if (requestId !== loadRequestRef.current) return null;
     setPhotosByPerson(Object.fromEntries(photoEntries));
 
     if (memoryData.length) {
@@ -698,8 +719,10 @@ function DashboardContent() {
           }
         }),
       );
+      if (requestId !== loadRequestRef.current) return null;
       setMemoryDetails(Object.fromEntries(detailEntries));
     } else {
+      if (requestId !== loadRequestRef.current) return null;
       setMemoryDetails({});
     }
 
@@ -720,8 +743,9 @@ function DashboardContent() {
         setMemories([]);
         setMemoryDetails({});
         setPhotosByPerson({});
-        setSelectedId(null);
-        selectedPersonIdRef.current = null;
+        setQuery('');
+        setSearchResults(null);
+        setCanonicalSelectedPersonId(null);
 
         const [me, familyList] = await Promise.all([
           api<User>('/auth/me'),
@@ -867,9 +891,15 @@ function DashboardContent() {
     ? photosByPerson[selectedId]?.[0]
     : undefined;
 
-  function choosePerson(personId: string) {
+  function setCanonicalSelectedPersonId(personId: string | null) {
     selectedPersonIdRef.current = personId;
     setSelectedId(personId);
+  }
+
+  function choosePerson(personId: string) {
+    if (!normalizedTree.nodes.has(personId)) return;
+
+    setCanonicalSelectedPersonId(personId);
     setQuery('');
     setSearchResults(null);
     setTab('Тойм');
@@ -978,9 +1008,10 @@ function DashboardContent() {
           );
         }
 
-        await loadDashboard(family.id, selected.id);
-        selectedPersonIdRef.current = created.id;
-        setSelectedId(created.id);
+        const refreshedTree = await loadDashboard(family.id, selected.id);
+        if (refreshedTree?.persons.some((person) => person.id === created.id)) {
+          setCanonicalSelectedPersonId(created.id);
+        }
         setNotice('Хүн ургийн модонд нэмэгдлээ.');
       }
 
