@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.models import Person
+
 from conftest import register_verified
 
 
