@@ -268,3 +268,22 @@ def test_migration_backfills_unique_emails_and_preserves_user_security_state(tmp
         assert db.get(User, verified_user_id).password_hash == "legacy-password-hash"
         assert db.scalar(select(UserSession.id).where(UserSession.user_id == preserved_user))
     engine.dispose()
+
+
+def test_email_password_requires_eight_characters_not_ten(client, database):
+    too_short = client.post(
+        "/api/v1/auth/register",
+        json={"email": "short@example.com", "password": "1234567"},
+    )
+    assert too_short.status_code == 422
+
+    accepted = client.post(
+        "/api/v1/auth/register",
+        json={"email": "eight@example.com", "password": "12345678"},
+    )
+    assert accepted.status_code == 201
+    assert accepted.json()["display_name"] == "eight"
+    with database() as db:
+        user = db.scalar(select(User).where(User.email == "eight@example.com"))
+        assert user is not None
+        assert user.password_hash is not None
