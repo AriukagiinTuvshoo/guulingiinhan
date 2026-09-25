@@ -34,7 +34,6 @@ function friendlyError(cause: unknown, fallback: string) {
 }
 
 export default function StoryEditor({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
-  const [families, setFamilies] = useState<Family[]>([]);
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState(requestedFamilyId);
   const [story, setStory] = useState<Story | null>(null);
@@ -49,9 +48,7 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   const [initialSnapshot, setInitialSnapshot] = useState('');
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const snapshot = useMemo(
     () => JSON.stringify({ title, body, eventDate, place, visibility, people: selectedPeople.map((person) => person.id) }),
