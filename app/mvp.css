@@ -2,3 +2,281 @@
 .auth-shortcuts{display:flex;gap:8px;align-items:center}.auth-shortcuts a{border:1px solid #376955;border-radius:18px;padding:8px 11px;color:#f0dfaa;font-size:12px;text-decoration:none;white-space:nowrap}.auth-shortcuts a:last-child{background:#d8b658;color:#18382b}@media(max-width:850px){.auth-shortcuts{display:none}}
 @media(max-width:850px){.auth-shortcuts{display:flex}.auth-shortcuts a:first-child{display:none}.auth-shortcuts a:last-child{padding:7px 9px;font-size:11px}}
 .mvp .tabs{display:flex;gap:8px;margin:18px 0;padding:4px;border:1px solid #285847;border-radius:25px;background:#05251f}.mvp .tabs button{flex:1;border:0;background:transparent;color:#b7c8bd}.mvp .tabs button[aria-selected="true"]{background:#0b4a39;color:#f2e6ba}.mvp .text-button{display:inline;padding:0;border:0;background:transparent;color:#e4c66f;text-decoration:underline}
+
+
+/* Authentication: restrained heritage UI, shared by login/register/recovery flows. */
+.auth-shell{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:32px 18px;
+  background:#03231e;
+  color:#edf2e9;
+}
+.auth-card{
+  width:min(460px,100%);
+  padding:28px 30px 24px;
+  background:#092f27;
+  border:1px solid #2b5c4c;
+  border-radius:18px;
+  box-shadow:0 20px 55px #00140f66;
+}
+.auth-back{
+  display:inline-block;
+  color:#aebfb4;
+  font-size:12px;
+  text-decoration:none;
+}
+.auth-back:hover{color:#ead17b}
+.auth-brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin:24px 0 20px;
+}
+.auth-brand strong{
+  display:block;
+  font:600 19px/1 Georgia,serif;
+  letter-spacing:.03em;
+  color:#f0dc9a;
+}
+.auth-brand span{
+  display:block;
+  margin-top:4px;
+  color:#93ab9f;
+  font-size:10px;
+}
+.auth-mark{
+  width:48px;
+  height:48px;
+}
+.auth-mark svg{width:34px;height:34px}
+.auth-heading h1{
+  margin:0;
+  font:500 29px/1.15 Georgia,serif;
+  color:#f2e7c9;
+}
+.auth-heading p{
+  margin:7px 0 18px;
+  color:#aebfb4;
+  font-size:12px;
+  line-height:1.55;
+}
+.auth-tabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:4px;
+  padding:4px;
+  margin:0 0 18px;
+  border:1px solid #1d4d40;
+  border-radius:12px;
+  background:#062a23;
+}
+.auth-tabs button{
+  min-height:38px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#9fb3a8;
+  font-size:11px;
+}
+.auth-tabs button.active{
+  background:#104738;
+  color:#f0dc9a;
+  box-shadow:inset 0 0 0 1px #826b42;
+}
+.auth-message{
+  margin:0 0 14px;
+  padding:10px 12px;
+  border-radius:9px;
+  font-size:11px;
+  line-height:1.5;
+}
+.auth-message.success{
+  background:#0d4334;
+  border:1px solid #316651;
+  color:#d9eadc;
+}
+.auth-message.error{
+  background:#4f302c;
+  border:1px solid #815249;
+  color:#f4dfd7;
+}
+.auth-form{
+  display:grid;
+  gap:8px;
+}
+.auth-form label{
+  margin-top:7px;
+  color:#d8e2da;
+  font-size:11px;
+}
+.auth-form input{
+  width:100%;
+  height:44px;
+  margin-top:2px;
+  padding:0 13px;
+  border:1px solid #315f50;
+  border-radius:9px;
+  background:#05271f;
+  color:#f5f3ea;
+  outline:none;
+  font-size:13px;
+}
+.auth-form input:focus{
+  border-color:#b49752;
+  box-shadow:0 0 0 3px #b4975220;
+}
+.auth-form input::placeholder{color:#718d81}
+.auth-help{
+  color:#91aa9e;
+  font-size:10px;
+  line-height:1.45;
+}
+.password-field{position:relative}
+.password-field input{padding-right:44px}
+.password-toggle{
+  position:absolute;
+  right:4px;
+  top:4px;
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#a8bbb0;
+}
+.password-toggle:hover{background:#0c3d30;color:#efd17d}
+.auth-primary,.auth-secondary{
+  width:100%;
+  min-height:43px;
+  margin-top:10px;
+  border-radius:21px;
+  font-size:11px;
+  font-weight:700;
+}
+.auth-primary{
+  border:0;
+  background:#d7b45b;
+  color:#17372b;
+}
+.auth-primary:hover{background:#e2c474}
+.auth-primary:disabled{
+  opacity:.6;
+  cursor:wait;
+}
+.auth-secondary{
+  border:1px solid #3b6d5a;
+  background:#082c24;
+  color:#e7e5d8;
+}
+.auth-secondary:hover{background:#0d3d31}
+.auth-link-button{
+  text-decoration:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.auth-links{
+  display:grid;
+  gap:6px;
+  margin-top:8px;
+}
+.auth-links a,.auth-footer a{
+  color:#d9bd69;
+  text-decoration:none;
+}
+.auth-links a:hover,.auth-footer a:hover{text-decoration:underline}
+.auth-links a{
+  font-size:10px;
+}
+.auth-footer{
+  margin:20px 0 0;
+  color:#899f94;
+  text-align:center;
+  font-size:11px;
+}
+.otp-summary{
+  padding:10px 12px;
+  border-left:2px solid #b79b55;
+  background:#072d25;
+  border-radius:8px;
+}
+.otp-summary span{
+  display:block;
+  color:#819b8e;
+  font-size:9px;
+  margin-bottom:3px;
+}
+.otp-summary strong{
+  font-size:12px;
+  font-weight:500;
+  color:#eee8d2;
+}
+.otp-input{
+  text-align:center;
+  letter-spacing:.65em;
+  font-variant-numeric:tabular-nums;
+  padding-left:20px !important;
+  font-size:18px !important;
+}
+.otp-actions{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  margin-top:4px;
+}
+.text-button{
+  padding:4px 0;
+  border:0;
+  background:transparent;
+  color:#cdb56f;
+  font-size:10px;
+}
+.text-button:hover{text-decoration:underline}
+.text-button:disabled{
+  color:#60766c;
+  text-decoration:none;
+  cursor:default;
+}
+.auth-complete{
+  padding:18px 0 4px;
+  text-align:center;
+}
+.auth-complete-mark{
+  width:42px;
+  height:42px;
+  margin:0 auto 12px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  border:1px solid #52745f;
+  color:#e2c778;
+  background:#0b3c2f;
+  font-size:20px;
+}
+.auth-complete h2{
+  margin:0;
+  font:500 21px Georgia,serif;
+  color:#f0dda1;
+}
+.auth-complete p{
+  margin:9px auto 16px;
+  color:#a8bab0;
+  font-size:11px;
+  line-height:1.65;
+}
+@media(max-width:520px){
+  .auth-shell{padding:16px 10px}
+  .auth-card{padding:23px 18px 20px;border-radius:15px}
+  .auth-brand{margin-top:19px}
+  .auth-heading h1{font-size:26px}
+}
+
+
+:where(a,button,input,select,textarea):focus-visible{
+  outline:2px solid #d6b85f;
+  outline-offset:2px;
+}
