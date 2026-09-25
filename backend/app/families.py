@@ -1181,7 +1181,11 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
     base = _person_output(db, family_id, person, user)
     result = PersonProfileOut(
         **base.model_dump(),
-        profile_photo_url=person.profile_photo_url,
+        profile_photo_url=(
+            person.profile_photo_url
+            if not person_is_minor(person) or "view_profile" in scopes
+            else None
+        ),
     )
     if person_is_minor(person) and "view_profile" not in scopes:
         return result
