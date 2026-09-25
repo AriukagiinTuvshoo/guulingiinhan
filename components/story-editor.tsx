@@ -33,7 +33,7 @@ function friendlyError(cause: unknown, fallback: string) {
   return fallback;
 }
 
-export default function StoryEditor({ mode, familyId: requestedFamilyId = '', storyId = '' }: Props) {
+export default function StoryEditor({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
   const [families, setFamilies] = useState<Family[]>([]);
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState(requestedFamilyId);
@@ -74,6 +74,9 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
     let cancelled = false;
 
     async function load() {
+      const params = new URLSearchParams(window.location.search);
+      const effectiveFamilyId = requestedFamilyId || params.get('family') || '';
+      const effectiveStoryId = requestedStoryId || window.location.pathname.split('/').filter(Boolean).at(-2) || '';
       setLoading(true);
       setError('');
       try {
@@ -81,7 +84,7 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
           const items = await api<Family[]>('/families');
           if (cancelled) return;
           setFamilies(items);
-          const requested = new URLSearchParams(window.location.search).get('family') ?? requestedFamilyId;
+          const requested = effectiveFamilyId;
           const selected = items.find((item) => item.id === requested) ?? items[0] ?? null;
           setFamily(selected);
           setFamilyId(selected?.id ?? '');
@@ -89,17 +92,17 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
           return;
         }
 
-        if (!requestedFamilyId || !storyId) {
+        if (!effectiveFamilyId || !effectiveStoryId) {
           setError('Түүхийн хаяг буруу байна.');
           return;
         }
         const [familyResult, storyResult] = await Promise.all([
-          api<Family>('/families/' + requestedFamilyId),
-          api<Story>('/families/' + requestedFamilyId + '/stories/' + storyId),
+          api<Family>('/families/' + effectiveFamilyId),
+          api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId),
         ]);
         if (cancelled) return;
         setFamily(familyResult);
-        setFamilyId(requestedFamilyId);
+        setFamilyId(effectiveFamilyId);
         setStory(storyResult);
         setTitle(storyResult.title);
         setBody(storyResult.body);
@@ -128,7 +131,7 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
 
     void load();
     return () => { cancelled = true; };
-  }, [mode, requestedFamilyId, storyId]);
+  }, [mode, requestedFamilyId, requestedStoryId]);
 
   useEffect(() => {
     if (!familyId || !personQuery.trim()) {
@@ -148,7 +151,7 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
     if (mode === 'create') {
       window.location.href = '/stories?family=' + encodeURIComponent(familyId);
     } else {
-      window.location.href = '/stories/' + encodeURIComponent(storyId) + '?family=' + encodeURIComponent(familyId);
+      window.location.href = '/stories/' + encodeURIComponent(story?.id || requestedStoryId) + '?family=' + encodeURIComponent(familyId);
     }
   }
 
@@ -185,7 +188,7 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
 
       const saved = mode === 'create'
         ? await api<Story>('/families/' + familyId + '/stories', { method: 'POST', body: JSON.stringify(payload) })
-        : await api<Story>('/families/' + familyId + '/stories/' + storyId, { method: 'PUT', body: JSON.stringify(payload) });
+        : await api<Story>('/families/' + familyId + '/stories/' + (story?.id || requestedStoryId), { method: 'PUT', body: JSON.stringify(payload) });
 
       setNotice('Амжилттай хадгалагдлаа.');
       setInitialSnapshot(JSON.stringify({
