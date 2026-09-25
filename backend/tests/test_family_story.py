@@ -1,3 +1,5 @@
+from conftest import register_verified
+
 from app.models import FamilyMember, User
 
 
