@@ -156,7 +156,7 @@ class PhoneRegisterVerifyInput(PhoneOtpVerifyInput):
 
 
 class PasswordRecoveryInput(PhoneOtpVerifyInput):
-    new_password: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
 
 
 class PhoneLoginOutput(UserOutput):
