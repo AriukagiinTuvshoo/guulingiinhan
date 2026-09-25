@@ -463,6 +463,7 @@ export default function DashboardPage() {
   const [biographyLoading, setBiographyLoading] = useState(false);
   const [searchBusy, setSearchBusy] = useState(false);
   const userPersonIdRef = React.useRef<string | null>(null);
+  const selectedPersonIdRef = React.useRef<string | null>(null);
 
   const searchParams = useSearchParams();
   const familyIdFromUrl = searchParams.get('family') ?? '';
@@ -470,8 +471,9 @@ export default function DashboardPage() {
   const loadDashboard = useCallback(async (familyId: string, personId?: string) => {
     setError('');
 
+    const contextPersonId = personId ?? selectedPersonIdRef.current ?? undefined;
     const queryParams = new URLSearchParams({ depth: '5' });
-    if (personId) queryParams.set('person_id', personId);
+    if (contextPersonId) queryParams.set('person_id', contextPersonId);
 
     const [familyData, treeData, personData, memoryData] = await Promise.all([
       api<Family>('/families/' + familyId),
@@ -480,7 +482,11 @@ export default function DashboardPage() {
       api<MemorySummary[]>('/families/' + familyId + '/memories'),
     ]);
 
-    const normalizedTree = normalizeTree(treeData, userPersonIdRef.current, personId ?? null);
+    const normalizedTree = normalizeTree(
+      treeData,
+      userPersonIdRef.current,
+      contextPersonId ?? null,
+    );
 
     setFamily(familyData);
     setTree(treeData);
@@ -488,11 +494,12 @@ export default function DashboardPage() {
     setMemories(memoryData.slice(0, 4));
 
     const nextSelected =
-      personId && normalizedTree.nodes.has(personId)
-        ? personId
+      contextPersonId && normalizedTree.nodes.has(contextPersonId)
+        ? contextPersonId
         : normalizedTree.rootPersonId;
 
     setSelectedId(nextSelected);
+    selectedPersonIdRef.current = nextSelected;
     setTab('Тойм');
     setBiography('');
     setPhotosByPerson({});
@@ -551,6 +558,7 @@ export default function DashboardPage() {
         setMemoryDetails({});
         setPhotosByPerson({});
         setSelectedId(null);
+        selectedPersonIdRef.current = null;
 
         const [me, familyList] = await Promise.all([
           api<User>('/auth/me'),
@@ -692,6 +700,7 @@ export default function DashboardPage() {
     : undefined;
 
   function choosePerson(personId: string) {
+    selectedPersonIdRef.current = personId;
     setSelectedId(personId);
     setQuery('');
     setSearchResults(null);
@@ -802,6 +811,7 @@ export default function DashboardPage() {
         }
 
         await loadDashboard(family.id, selected.id);
+        selectedPersonIdRef.current = created.id;
         setSelectedId(created.id);
         setNotice('Хүн ургийн модонд нэмэгдлээ.');
       }
