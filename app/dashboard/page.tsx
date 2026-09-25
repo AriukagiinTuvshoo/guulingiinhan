@@ -1,26 +1,15 @@
 'use client';
 
-import React, { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
-  Bell,
+  ArrowRight,
   BookOpen,
-  CalendarDays,
-  Camera,
-  ChevronDown,
-  FileText,
   GitFork,
   Heart,
   Home,
-  MapPin,
-  Maximize,
   Menu,
-  MessageSquare,
-  Minus,
-  MoreHorizontal,
   Network,
-  Pencil,
-  Plus,
   Search,
   Settings,
   TreeDeciduous,
@@ -31,99 +20,64 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
-  API_BASE,
   api,
+  ArchiveListPage,
   Family,
   Marriage,
+  MemoryListItem,
   Person,
   PersonSearchPage,
+  StoryListPage,
   TreeData,
   TreePerson,
   User,
   personName,
 } from '../../lib/api';
 
-type DashboardPerson = TreePerson & {
-  generation: number | null;
-};
-
-type NormalizedTreeNode = {
+type TreeNode = {
   id: string;
   person: TreePerson;
-  generation: number | null;
-  parentIds: string[];
-  childIds: string[];
-  spouseIds: string[];
+  generation: number;
+  parents: string[];
+  children: string[];
+  spouses: string[];
 };
 
-type NormalizedTree = {
-  rootPersonId: string | null;
-  nodes: Map<string, NormalizedTreeNode>;
-  order: string[];
-  parentChildRelationships: TreeData['parent_child_relationships'];
+type PreviewTree = {
+  rootId: string | null;
+  nodes: Map<string, TreeNode>;
   marriages: Marriage[];
-  truncated: boolean;
 };
 
-type MemorySummary = {
-  id: string;
-  title: string;
-  description: string | null;
-  memory_date: string | null;
-  visibility: string;
-  person_ids: string[];
-  person_names?: string[];
-  created_at: string;
-};
+type ActivityItem =
+  | { kind: 'story'; id: string; title: string; date: string; meta: string }
+  | { kind: 'memory'; id: string; title: string; date: string; meta: string }
+  | { kind: 'archive'; id: string; title: string; date: string; meta: string };
 
-type MemoryDetail = MemorySummary & {
-  photos?: {
-    id: string;
-    title: string | null;
-    thumbnail_url: string;
-    content_url: string;
-    person_ids: string[];
-  }[];
-};
-
-type ModalMode = 'add' | 'edit';
-
-const nav = [
-  ['Нүүр', Home],
-  ['Ургийн мод', GitFork],
-  ['Хүмүүс', Network],
-  ['Манай түүх', BookOpen],
-  ['Дурсамж', Heart],
-  ['Архив', Archive],
-  ['Чат', MessageSquare],
-  ['Календарь', CalendarDays],
-  ['Газар зүй', MapPin],
-  ['Тохиргоо', Settings],
+const navItems = [
+  ['Нүүр', Home, (familyId: string) => '/dashboard?family=' + encodeURIComponent(familyId)],
+  ['Удмын мод', GitFork, (familyId: string) => '/tree?family=' + encodeURIComponent(familyId)],
+  ['Хүмүүс', Network, (familyId: string) => '/people?family=' + encodeURIComponent(familyId)],
+  ['Манай түүх', BookOpen, (familyId: string) => '/stories?family=' + encodeURIComponent(familyId)],
+  ['Дурсамж', Heart, (familyId: string) => '/memories?family=' + encodeURIComponent(familyId)],
+  ['Архив', Archive, (familyId: string) => '/archives?family=' + encodeURIComponent(familyId)],
+  ['Тохиргоо', Settings, () => '/account/security'],
 ] as const;
 
-const positions = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12'] as const;
+const previewSlots = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'] as const;
 
-const slotPoints: Record<(typeof positions)[number], [number, number]> = {
-  p1: [37, 11],
-  p2: [66, 11],
-  p3: [22, 35],
-  p4: [39, 35],
-  p5: [57, 35],
-  p6: [74, 35],
-  p7: [29, 63],
-  p8: [62, 63],
-  p9: [25, 88],
-  p10: [43, 88],
-  p11: [60, 88],
-  p12: [78, 88],
+const previewPoints: Record<(typeof previewSlots)[number], [number, number]> = {
+  p1: [24, 10],
+  p2: [64, 10],
+  p3: [14, 35],
+  p4: [42, 35],
+  p5: [70, 35],
+  p6: [35, 56],
+  p7: [58, 56],
+  p8: [22, 81],
+  p9: [46, 81],
+  p10: [70, 81],
 };
-
-const profileTabs = [
-  ['Тойм', FileText],
-  ['Намтар', BookOpen],
-  ['Зураг', Camera],
-  ['Бичиг', Archive],
-] as const;
 
 function initials(person: Pick<Person, 'first_name' | 'last_name'>) {
   return [person.last_name, person.first_name]
@@ -134,197 +88,116 @@ function initials(person: Pick<Person, 'first_name' | 'last_name'>) {
     .toUpperCase() || '?';
 }
 
-function displayName(person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) {
+function fullName(person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) {
   return personName(person) || 'Нэргүй хүн';
 }
 
-function visibilityLabel(value: string) {
-  return value === 'private' ? 'Зөвхөн би' : value === 'public' ? 'Нийтийн' : 'Гэр бүлийнхэн';
+function generationLabel(generation: number) {
+  if (generation === 0) return 'Төв хүн';
+  if (generation < 0) return Math.abs(generation) + ' үеийн өмнө';
+  return generation + ' үеийн үргэлжлэл';
 }
 
-function resolveTreeRoot(
-  tree: Pick<TreeData, 'persons' | 'root_person_id'>,
-  userPersonId: string | null,
-  selectedPersonId: string | null,
-): string | null {
-  const personIds = new Set(tree.persons.map((person) => person.id));
-
-  if (userPersonId && personIds.has(userPersonId)) return userPersonId;
-  if (selectedPersonId && personIds.has(selectedPersonId)) return selectedPersonId;
-  if (tree.root_person_id && personIds.has(tree.root_person_id)) return tree.root_person_id;
-
-  return [...personIds].sort((a, b) => a.localeCompare(b))[0] ?? null;
-}
-
-function resolveSelectedPersonId(
-  tree: Pick<TreeData, 'persons'>,
-  candidateId: string | null,
-  fallbackId: string | null,
-): string | null {
-  const personIds = new Set(tree.persons.map((person) => person.id));
-
-  if (candidateId && personIds.has(candidateId)) return candidateId;
-  if (fallbackId && personIds.has(fallbackId)) return fallbackId;
-
-  return [...personIds].sort((a, b) => a.localeCompare(b))[0] ?? null;
-}
-
-function deriveTreeGenerations(
-  parentChildRelationships: TreeData['parent_child_relationships'],
-  marriages: Marriage[],
-  rootPersonId: string | null,
-): Map<string, number> {
-  const generations = new Map<string, number>();
-  if (!rootPersonId) return generations;
-
-  generations.set(rootPersonId, 0);
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-
-    for (const edge of parentChildRelationships) {
-      const parentGeneration = generations.get(edge.parent_id);
-      const childGeneration = generations.get(edge.child_id);
-
-      if (parentGeneration !== undefined && childGeneration === undefined) {
-        generations.set(edge.child_id, parentGeneration + 1);
-        changed = true;
-      } else if (childGeneration !== undefined && parentGeneration === undefined) {
-        generations.set(edge.parent_id, childGeneration - 1);
-        changed = true;
-      }
-    }
-
-    // Marriage only carries the already-known generation sideways. It never
-    // increments/decrements generation and therefore never acts as ancestry.
-    for (const marriage of marriages) {
-      const firstGeneration = generations.get(marriage.person_1_id);
-      const secondGeneration = generations.get(marriage.person_2_id);
-
-      if (firstGeneration !== undefined && secondGeneration === undefined) {
-        generations.set(marriage.person_2_id, firstGeneration);
-        changed = true;
-      } else if (secondGeneration !== undefined && firstGeneration === undefined) {
-        generations.set(marriage.person_1_id, secondGeneration);
-        changed = true;
-      }
-    }
-  }
-
-  return generations;
-}
-
-function normalizeTree(
-  tree: TreeData,
-  userPersonId: string | null,
-  selectedPersonId: string | null,
-): NormalizedTree {
+function buildPreviewTree(tree: TreeData, preferredRootId: string | null): PreviewTree {
   const personById = new Map<string, TreePerson>();
-  for (const person of tree.persons) {
-    if (!personById.has(person.id)) personById.set(person.id, person);
+  for (const person of tree.persons) personById.set(person.id, person);
+
+  const nodes = new Map<string, TreeNode>();
+  for (const person of personById.values()) {
+    nodes.set(person.id, {
+      id: person.id,
+      person,
+      generation: 0,
+      parents: [],
+      children: [],
+      spouses: [],
+    });
   }
 
-  const personIds = new Set(personById.keys());
-
-  const parentChildByKey = new Map<
-    string,
-    TreeData['parent_child_relationships'][number]
-  >();
-  for (const edge of [...tree.parent_child_relationships].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (!personIds.has(edge.parent_id) || !personIds.has(edge.child_id)) continue;
-    const key = edge.parent_id + ':' + edge.child_id + ':' + edge.relationship_type;
-    if (!parentChildByKey.has(key)) parentChildByKey.set(key, edge);
-  }
-
-  const marriageByKey = new Map<string, Marriage>();
-  for (const marriage of [...tree.marriages].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (!personIds.has(marriage.person_1_id) || !personIds.has(marriage.person_2_id)) continue;
-    const pair = [marriage.person_1_id, marriage.person_2_id].sort().join(':');
-    const key =
-      pair +
-      ':' +
-      marriage.status +
-      ':' +
-      (marriage.start_date ?? '') +
-      ':' +
-      (marriage.end_date ?? '');
-    if (!marriageByKey.has(key)) marriageByKey.set(key, marriage);
-  }
-
-  const parentChildRelationships = [...parentChildByKey.values()];
-  const marriages = [...marriageByKey.values()];
-  const rootPersonId = resolveTreeRoot(tree, userPersonId, selectedPersonId);
-  const generations = deriveTreeGenerations(
-    parentChildRelationships,
-    marriages,
-    rootPersonId,
+  const marriages = tree.marriages.filter(
+    (marriage) => personById.has(marriage.person_1_id) && personById.has(marriage.person_2_id),
   );
 
-  const nodes = new Map<string, NormalizedTreeNode>(
-    [...personById.values()].map((person) => [
-      person.id,
-      {
-        id: person.id,
-        person,
-        generation: generations.get(person.id) ?? null,
-        parentIds: [],
-        childIds: [],
-        spouseIds: [],
-      },
-    ]),
-  );
-
-  for (const edge of parentChildRelationships) {
-    nodes.get(edge.parent_id)?.childIds.push(edge.child_id);
-    nodes.get(edge.child_id)?.parentIds.push(edge.parent_id);
+  for (const edge of tree.parent_child_relationships) {
+    if (!nodes.has(edge.parent_id) || !nodes.has(edge.child_id)) continue;
+    nodes.get(edge.parent_id)?.children.push(edge.child_id);
+    nodes.get(edge.child_id)?.parents.push(edge.parent_id);
   }
 
   for (const marriage of marriages) {
-    nodes.get(marriage.person_1_id)?.spouseIds.push(marriage.person_2_id);
-    nodes.get(marriage.person_2_id)?.spouseIds.push(marriage.person_1_id);
+    nodes.get(marriage.person_1_id)?.spouses.push(marriage.person_2_id);
+    nodes.get(marriage.person_2_id)?.spouses.push(marriage.person_1_id);
   }
 
-  for (const node of nodes.values()) {
-    node.parentIds = [...new Set(node.parentIds)];
-    node.childIds = [...new Set(node.childIds)];
-    node.spouseIds = [...new Set(node.spouseIds)];
-  }
+  const rootId =
+    (preferredRootId && nodes.has(preferredRootId) ? preferredRootId : null) ??
+    (tree.root_person_id && nodes.has(tree.root_person_id) ? tree.root_person_id : null) ??
+    [...nodes.keys()][0] ??
+    null;
 
-  return {
-    rootPersonId,
-    nodes,
-    order: [...nodes.keys()],
-    parentChildRelationships,
-    marriages,
-    truncated: Boolean(tree.meta?.truncated),
-  };
-}
+  if (!rootId) return { rootId: null, nodes, marriages };
 
-function treeDistance(tree: NormalizedTree, rootPersonId: string | null): Map<string, number> {
-  const distance = new Map<string, number>();
-  if (!rootPersonId || !tree.nodes.has(rootPersonId)) return distance;
-
-  const adjacency = new Map<string, string[]>();
-  for (const node of tree.nodes.values()) {
-    adjacency.set(node.id, [
-      ...node.parentIds,
-      ...node.childIds,
-      ...node.spouseIds,
-    ]);
-  }
-
-  distance.set(rootPersonId, 0);
-  const queue = [rootPersonId];
+  nodes.get(rootId)!.generation = 0;
+  const queue = [rootId];
+  const seen = new Set([rootId]);
 
   while (queue.length) {
-    const current = queue.shift();
-    if (!current) break;
+    const currentId = queue.shift();
+    if (!currentId) break;
+    const current = nodes.get(currentId);
+    if (!current) continue;
 
-    for (const next of adjacency.get(current) ?? []) {
-      if (!distance.has(next)) {
-        distance.set(next, (distance.get(current) ?? 0) + 1);
-        queue.push(next);
+    for (const parentId of current.parents) {
+      const parent = nodes.get(parentId);
+      if (!parent) continue;
+      parent.generation = Math.min(parent.generation, current.generation - 1);
+      if (!seen.has(parentId)) {
+        seen.add(parentId);
+        queue.push(parentId);
+      }
+    }
+
+    for (const spouseId of current.spouses) {
+      const spouse = nodes.get(spouseId);
+      if (!spouse) continue;
+      spouse.generation = current.generation;
+      if (!seen.has(spouseId)) {
+        seen.add(spouseId);
+        queue.push(spouseId);
+      }
+    }
+
+    for (const childId of current.children) {
+      const child = nodes.get(childId);
+      if (!child) continue;
+      child.generation = Math.max(child.generation, current.generation + 1);
+      if (!seen.has(childId)) {
+        seen.add(childId);
+        queue.push(childId);
+      }
+    }
+  }
+
+  return { rootId, nodes, marriages };
+}
+
+function treeDistance(tree: PreviewTree) {
+  const distance = new Map<string, number>();
+  if (!tree.rootId) return distance;
+  distance.set(tree.rootId, 0);
+  const queue = [tree.rootId];
+
+  while (queue.length) {
+    const currentId = queue.shift();
+    if (!currentId) break;
+    const current = tree.nodes.get(currentId);
+    if (!current) continue;
+
+    const nextIds = [...current.parents, ...current.children, ...current.spouses];
+    for (const nextId of nextIds) {
+      if (!distance.has(nextId)) {
+        distance.set(nextId, (distance.get(currentId) ?? 0) + 1);
+        queue.push(nextId);
       }
     }
   }
@@ -332,422 +205,300 @@ function treeDistance(tree: NormalizedTree, rootPersonId: string | null): Map<st
   return distance;
 }
 
-type SlotAssignment = Map<string, (typeof positions)[number]>;
+function pickPreviewPeople(tree: PreviewTree, max = 10) {
+  if (!tree.rootId) return [];
+  const distance = treeDistance(tree);
+  const root = tree.nodes.get(tree.rootId);
+  if (!root) return [];
 
-function slotIndex(slot: (typeof positions)[number]) {
-  return positions.indexOf(slot);
-}
+  const ids = new Set<string>([
+    tree.rootId,
+    ...root.parents,
+    ...root.spouses,
+    ...root.children,
+  ]);
 
-const generationSlots: Record<string, (typeof positions)[number][]> = {
-  '-2': ['p1', 'p2'],
-  '-1': ['p3', 'p4'],
-  '0': ['p5', 'p6'],
-  '1': ['p7', 'p8', 'p9', 'p10'],
-  '2': ['p11', 'p12'],
-};
-
-function compareTreePeople(a: TreePerson, b: TreePerson) {
-  if (a.birth_date && b.birth_date && a.birth_date !== b.birth_date) {
-    return a.birth_date.localeCompare(b.birth_date);
-  }
-  if (a.birth_date && !b.birth_date) return -1;
-  if (!a.birth_date && b.birth_date) return 1;
-  return a.id.localeCompare(b.id);
-}
-
-function relationshipRole(tree: NormalizedTree, personId: string): 'root' | 'parent' | 'child' | 'spouse' | 'related' {
-  if (personId === tree.rootPersonId) return 'root';
-
-  const root = tree.rootPersonId ? tree.nodes.get(tree.rootPersonId) : undefined;
-  if (!root) return 'related';
-
-  if (root.parentIds.includes(personId)) return 'parent';
-  if (root.childIds.includes(personId)) return 'child';
-  if (root.spouseIds.includes(personId)) return 'spouse';
-  return 'related';
-}
-
-function visualPriority(role: ReturnType<typeof relationshipRole>) {
-  return {
-    root: 0,
-    parent: 1,
-    spouse: 2,
-    child: 3,
-    related: 4,
-  }[role];
-}
-
-function preferredSlots(
-  tree: NormalizedTree,
-  node: NormalizedTreeNode,
-): (typeof positions)[number][] {
-  if (node.id === tree.rootPersonId) return ['p5', 'p6', ...positions];
-
-  const role = relationshipRole(tree, node.id);
-  const generation = node.generation;
-
-  if (role === 'parent') {
-    return [
-      ...(generationSlots[String(generation)] ?? []),
-      'p3',
-      'p4',
-      'p1',
-      'p2',
-      ...positions,
-    ];
-  }
-
-  if (role === 'spouse') {
-    return [
-      'p6',
-      'p4',
-      ...(generationSlots[String(generation)] ?? []),
-      'p3',
-      'p5',
-      ...positions,
-    ];
-  }
-
-  if (role === 'child') {
-    return [
-      ...(generationSlots[String(generation)] ?? []),
-      'p7',
-      'p8',
-      'p9',
-      'p10',
-      ...positions,
-    ];
-  }
-
-  return [
-    ...generationSlots[String(generation)] ?? [],
-    ...positions,
-  ];
-}
-
-function buildVisualSlotMap(
-  tree: NormalizedTree,
-  visiblePeople: DashboardPerson[],
-): SlotAssignment {
-  const assigned = new Map<string, (typeof positions)[number]>();
-  const occupied = new Set<(typeof positions)[number]>();
-
-  const ordered = [...visiblePeople].sort((a, b) => {
-    const roleDifference =
-      visualPriority(relationshipRole(tree, a.id)) -
-      visualPriority(relationshipRole(tree, b.id));
-
-    if (roleDifference !== 0) return roleDifference;
-
-    const generationA = a.generation ?? Number.POSITIVE_INFINITY;
-    const generationB = b.generation ?? Number.POSITIVE_INFINITY;
-
-    if (generationA !== generationB) return generationA - generationB;
-
-    return compareTreePeople(a, b);
-  });
-
-  for (const person of ordered) {
-    const candidates = preferredSlots(tree, tree.nodes.get(person.id)!);
-    const availableCandidate = candidates.find((candidate) => !occupied.has(candidate));
-
-    const slot =
-      availableCandidate ??
-      positions
-        .filter((candidate) => !occupied.has(candidate))
-        .sort((a, b) => slotIndex(a) - slotIndex(b))[0];
-
-    if (!slot) continue;
-
-    assigned.set(person.id, slot);
-    occupied.add(slot);
-  }
-
-  return assigned;
-}
-
-function pickDashboardPeople(
-  tree: NormalizedTree,
-  selectedPersonId: string | null,
-  max = 12,
-): DashboardPerson[] {
-  const distance = treeDistance(tree, tree.rootPersonId);
-  const selectedIds = new Set<string>();
-
-  for (const id of [tree.rootPersonId, selectedPersonId]) {
-    if (id && tree.nodes.has(id)) selectedIds.add(id);
-  }
-
-  const remainingIds = tree.order
-    .filter((id) => !selectedIds.has(id))
+  [...tree.nodes.keys()]
     .sort((a, b) => {
-      const roleDifference =
-        visualPriority(relationshipRole(tree, a)) -
-        visualPriority(relationshipRole(tree, b));
-
-      if (roleDifference !== 0) return roleDifference;
-
-      const generationA = tree.nodes.get(a)?.generation ?? Number.POSITIVE_INFINITY;
-      const generationB = tree.nodes.get(b)?.generation ?? Number.POSITIVE_INFINITY;
-
-      if (generationA !== generationB) return generationA - generationB;
-
-      return (
-        (distance.get(a) ?? Number.POSITIVE_INFINITY) -
-          (distance.get(b) ?? Number.POSITIVE_INFINITY) ||
-        compareTreePeople(tree.nodes.get(a)!.person, tree.nodes.get(b)!.person)
-      );
+      const da = distance.get(a) ?? Number.POSITIVE_INFINITY;
+      const db = distance.get(b) ?? Number.POSITIVE_INFINITY;
+      return da - db || a.localeCompare(b);
+    })
+    .forEach((id) => {
+      if (ids.size < max) ids.add(id);
     });
 
-  for (const id of remainingIds) {
-    if (selectedIds.size >= max) break;
-    selectedIds.add(id);
-  }
-
-  return [...selectedIds]
-    .map((id) => {
-      const node = tree.nodes.get(id);
-      return node ? { ...node.person, generation: node.generation } : null;
-    })
-    .filter((person): person is DashboardPerson => Boolean(person))
+  return [...ids]
+    .map((id) => tree.nodes.get(id))
+    .filter((node): node is TreeNode => Boolean(node))
     .sort((a, b) => {
-      const generationA = a.generation ?? Number.POSITIVE_INFINITY;
-      const generationB = b.generation ?? Number.POSITIVE_INFINITY;
-
-      if (generationA !== generationB) return generationA - generationB;
-
-      return (
-        (distance.get(a.id) ?? Number.POSITIVE_INFINITY) -
-          (distance.get(b.id) ?? Number.POSITIVE_INFINITY) ||
-        compareTreePeople(a, b)
-      );
+      if (a.generation !== b.generation) return a.generation - b.generation;
+      if (a.id === tree.rootId) return -1;
+      if (b.id === tree.rootId) return 1;
+      return a.person.id.localeCompare(b.person.id);
     })
     .slice(0, max);
 }
 
-function generationLabel(generation: number | null) {
-  if (generation === null) return '—';
-  if (generation > 0) return '+' + generation + ' үе';
-  return generation + ' үе';
+function assignSlots(nodes: TreeNode[]) {
+  const result = new Map<string, (typeof previewSlots)[number]>();
+  const used = new Set<string>();
+
+  const preferred = (node: TreeNode) => {
+    if (node.id === nodes.find((item) => item.id === node.id)?.id && node.generation === 0) {
+      return ['p6', 'p7', ...previewSlots];
+    }
+    if (node.generation < 0) return ['p1', 'p2', 'p3', 'p4', ...previewSlots];
+    if (node.generation > 0) return ['p8', 'p9', 'p10', 'p7', ...previewSlots];
+    return ['p5', 'p6', 'p7', ...previewSlots];
+  };
+
+  for (const node of nodes) {
+    const slot = preferred(node).find((candidate) => !used.has(candidate));
+    if (!slot) continue;
+    used.add(slot);
+    result.set(node.id, slot as (typeof previewSlots)[number]);
+  }
+
+  return result;
 }
 
-function ConnectorLayer({
-  tree,
-  visiblePeople,
-  slotByPersonId,
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('mn-MN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value));
+}
+
+function activityDate(value: string | null | undefined) {
+  return value ? value : '';
+}
+
+function activityMeta(kind: ActivityItem['kind'], item: ActivityItem) {
+  if (kind === 'story') return item.meta || 'Манай түүх';
+  if (kind === 'memory') return item.meta || 'Дурсамж';
+  return item.meta || 'Архив';
+}
+
+function QuickAction({
+  icon: Icon,
+  label,
+  href,
+  description,
 }: {
-  tree: NormalizedTree;
-  visiblePeople: DashboardPerson[];
-  slotByPersonId: SlotAssignment;
+  icon: typeof Users;
+  label: string;
+  href: string;
+  description: string;
 }) {
-  const point = (slot: (typeof positions)[number]) => {
-    const [x, y] = slotPoints[slot];
-    return { x: (x / 100) * 950, y: (y / 100) * 640 };
+  return (
+    <Link className="homev2-quick-action" href={href}>
+      <span className="homev2-quick-icon" aria-hidden="true">
+        <Icon size={18} />
+      </span>
+      <span>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+      <ArrowRight size={16} aria-hidden="true" />
+    </Link>
+  );
+}
+
+function TreePreview({
+  tree,
+  familyId,
+  onOpenProfile,
+}: {
+  tree: PreviewTree;
+  familyId: string;
+  onOpenProfile: (personId: string) => void;
+}) {
+  const people = useMemo(() => pickPreviewPeople(tree, 10), [tree]);
+  const slots = useMemo(() => assignSlots(people), [people]);
+
+  if (!people.length) {
+    return (
+      <div className="homev2-tree-empty">
+        <TreeDeciduous size={34} aria-hidden="true" />
+        <h3>Удмын мод одоогоор хоосон байна</h3>
+        <p>Гэр бүлийн хүмүүсээ нэмээд модоо бага багаар ургуулж эхлээрэй.</p>
+        <Link className="homev2-button homev2-button--light" href={'/people?family=' + encodeURIComponent(familyId)}>
+          Хүмүүс рүү очих
+        </Link>
+      </div>
+    );
+  }
+
+  const point = (slot: (typeof previewSlots)[number]) => {
+    const [x, y] = previewPoints[slot];
+    return { x: (x / 100) * 900, y: (y / 100) * 520 };
   };
 
   return (
-    <svg className="connectors" viewBox="0 0 950 640" preserveAspectRatio="none" aria-hidden="true">
-      <g fill="none" stroke="#d0ac56" strokeWidth="2">
-        {tree.parentChildRelationships.map((edge) => {
-          const parentSlot = slotByPersonId.get(edge.parent_id);
-          const childSlot = slotByPersonId.get(edge.child_id);
-          if (!parentSlot || !childSlot) return null;
-
-          const start = point(parentSlot);
-          const end = point(childSlot);
-          const middleY = (start.y + end.y) / 2;
-
-          return (
-            <path
-              key={edge.id}
-              d={
-                'M ' +
-                start.x +
-                ' ' +
-                start.y +
-                ' C ' +
-                start.x +
-                ' ' +
-                middleY +
-                ', ' +
-                end.x +
-                ' ' +
-                middleY +
-                ', ' +
-                end.x +
-                ' ' +
-                end.y
-              }
-            />
-          );
-        })}
-      </g>
-
-      <g fill="none" stroke="#e7cd78" strokeWidth="2" strokeDasharray="5 4">
+    <div className="homev2-tree-viewport">
+      <div className="homev2-tree">
+      <div className="homev2-tree-backdrop" />
+      <svg className="homev2-tree-connectors" viewBox="0 0 900 520" preserveAspectRatio="none" aria-hidden="true">
         {tree.marriages.map((marriage) => {
-          const firstSlot = slotByPersonId.get(marriage.person_1_id);
-          const secondSlot = slotByPersonId.get(marriage.person_2_id);
-          if (!firstSlot || !secondSlot) return null;
-
-          const start = point(firstSlot);
-          const end = point(secondSlot);
-
+          const a = slots.get(marriage.person_1_id);
+          const b = slots.get(marriage.person_2_id);
+          if (!a || !b) return null;
+          const start = point(a);
+          const end = point(b);
           return (
-            <g key={'marriage-' + marriage.id}>
+            <g key={'m-' + marriage.id}>
               <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} />
-              <circle
-                cx={(start.x + end.x) / 2}
-                cy={(start.y + end.y) / 2}
-                r="5"
-                fill="#d0ac56"
-                stroke="none"
-              />
+              <circle cx={(start.x + end.x) / 2} cy={(start.y + end.y) / 2} r="4" />
             </g>
           );
         })}
-      </g>
-    </svg>
+        {people.flatMap((node) =>
+          node.children.flatMap((childId) => {
+            const a = slots.get(node.id);
+            const b = slots.get(childId);
+            if (!a || !b) return [];
+            const start = point(a);
+            const end = point(b);
+            const midY = (start.y + end.y) / 2;
+            return [
+              <path
+                key={'c-' + node.id + '-' + childId}
+                d={
+                  'M ' +
+                  start.x +
+                  ' ' +
+                  start.y +
+                  ' C ' +
+                  start.x +
+                  ' ' +
+                  midY +
+                  ', ' +
+                  end.x +
+                  ' ' +
+                  midY +
+                  ', ' +
+                  end.x +
+                  ' ' +
+                  end.y
+                }
+              />,
+            ];
+          }),
+        )}
+      </svg>
+
+      {people.map((node) => {
+        const slot = slots.get(node.id);
+        if (!slot) return null;
+        const isRoot = node.id === tree.rootId;
+        return (
+          <button
+            className={'homev2-tree-node ' + (isRoot ? 'homev2-tree-node--root' : '')}
+            key={node.id}
+            style={{ left: previewPoints[slot][0] + '%', top: previewPoints[slot][1] + '%' }}
+            onClick={() => onOpenProfile(node.id)}
+            aria-label={fullName(node.person) + ' профайл нээх'}
+          >
+            <span className="homev2-node-avatar" aria-hidden="true">
+              {initials({
+                first_name: node.person.first_name,
+                last_name: node.person.last_name,
+              })}
+            </span>
+            <strong>{fullName(node.person)}</strong>
+            <small>
+              {node.person.birth_date?.slice(0, 4) ?? '—'}{' '}
+              {node.person.is_alive ? '—' : node.person.death_date?.slice(0, 4) ?? '?'}
+            </small>
+            {(node.person.branch_name || node.person.lineage_name) && (
+              <em>{node.person.branch_name ?? node.person.lineage_name}</em>
+            )}
+            <span className="homev2-node-generation">{generationLabel(node.generation)}</span>
+          </button>
+        );
+      })}
+
+      <div className="homev2-tree-caption">
+        <span><TreeDeciduous size={14} /> Ургийн модны хураангуй</span>
+        <Link href={'/tree?family=' + encodeURIComponent(familyId)}>
+          Удмын модыг бүтнээр харах <ArrowRight size={14} />
+        </Link>
+      </div>
+      </div>
+    </div>
   );
 }
 
 function DashboardContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const familyIdFromUrl = searchParams.get('family') ?? '';
+
   const [user, setUser] = useState<User | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
   const [family, setFamily] = useState<Family | null>(null);
-  const [tree, setTree] = useState<TreeData>({
-    persons: [],
-    parent_child_relationships: [],
-    marriages: [],
-  });
   const [people, setPeople] = useState<Person[]>([]);
-  const [memories, setMemories] = useState<MemorySummary[]>([]);
-  const [memoryDetails, setMemoryDetails] = useState<Record<string, MemoryDetail>>({});
-  const [photosByPerson, setPhotosByPerson] = useState<Record<string, string[]>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [tree, setTree] = useState<TreeData>({ persons: [], parent_child_relationships: [], marriages: [] });
+  const [memories, setMemories] = useState<MemoryListItem[]>([]);
+  const [memoryCount, setMemoryCount] = useState(0);
+  const [stories, setStories] = useState<StoryListPage | null>(null);
+  const [archives, setArchives] = useState<ArchiveListPage | null>(null);
+  const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<PersonSearchPage | null>(null);
+  const [searchBusy, setSearchBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [modal, setModal] = useState<ModalMode | null>(null);
-  const [menu, setMenu] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [tab, setTab] = useState('Тойм');
-  const [biography, setBiography] = useState('');
-  const [biographyLoading, setBiographyLoading] = useState(false);
-  const [searchBusy, setSearchBusy] = useState(false);
-  const userPersonIdRef = React.useRef<string | null>(null);
-  // Mirrors the canonical selectedId so async reloads can read the latest backend Person.id.
-  const selectedPersonIdRef = React.useRef<string | null>(null);
-  const loadRequestRef = React.useRef(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  const searchParams = useSearchParams();
-  const familyIdFromUrl = searchParams.get('family') ?? '';
+  const loadDashboard = useCallback(
+    async (familyId: string, currentUser: User) => {
+      setRefreshing(true);
+      setError('');
 
-  const loadDashboard = useCallback(async (familyId: string, personId?: string) => {
-    const requestId = loadRequestRef.current + 1;
-    loadRequestRef.current = requestId;
-    setError('');
-
-    const contextPersonId = personId ?? selectedPersonIdRef.current ?? undefined;
-    const queryParams = new URLSearchParams({ depth: '5' });
-    if (contextPersonId) queryParams.set('person_id', contextPersonId);
-
-    const [familyData, treeData, personData, memoryData] = await Promise.all([
-      api<Family>('/families/' + familyId),
-      api<TreeData>('/families/' + familyId + '/tree?' + queryParams.toString()),
-      api<Person[]>('/families/' + familyId + '/persons'),
-      api<MemorySummary[]>('/families/' + familyId + '/memories'),
-    ]);
-
-    if (requestId !== loadRequestRef.current) return null;
-
-    const normalizedTree = normalizeTree(
-      treeData,
-      userPersonIdRef.current,
-      contextPersonId ?? null,
-    );
-
-    setFamily(familyData);
-    setTree(treeData);
-    setPeople(personData);
-    setMemories(memoryData.slice(0, 4));
-
-    const nextSelected = resolveSelectedPersonId(
-      treeData,
-      contextPersonId ?? null,
-      normalizedTree.rootPersonId,
-    );
-
-    setCanonicalSelectedPersonId(nextSelected);
-    setTab('Тойм');
-    setBiography('');
-    setPhotosByPerson({});
-
-    const photoEntries = await Promise.all(
-      [...new Map(treeData.persons.map((treePerson) => [treePerson.id, treePerson])).values()].slice(0, 12).map(async (treePerson) => {
-        try {
-          const result = await api<{ items: { id: string; thumbnail_url: string }[] }>(
-            '/families/' +
-              familyId +
-              '/persons/' +
-              treePerson.id +
-              '/photos?page=1&page_size=25',
-          );
-          return [treePerson.id, result.items.map((item) => item.thumbnail_url)] as const;
-        } catch {
-          return [treePerson.id, []] as const;
-        }
-      }),
-    );
-
-    if (requestId !== loadRequestRef.current) return null;
-    setPhotosByPerson(Object.fromEntries(photoEntries));
-
-    if (memoryData.length) {
-      const detailEntries = await Promise.all(
-        memoryData.slice(0, 4).map(async (memory) => {
-          try {
-            const detail = await api<MemoryDetail>(
-              '/families/' + familyId + '/memories/' + memory.id,
-            );
-            return [memory.id, detail] as const;
-          } catch {
-            return [memory.id, memory] as const;
-          }
-        }),
-      );
-      if (requestId !== loadRequestRef.current) return null;
-      setMemoryDetails(Object.fromEntries(detailEntries));
-    } else {
-      if (requestId !== loadRequestRef.current) return null;
-      setMemoryDetails({});
-    }
-
-    return treeData;
-  }, []);
-
-  const refreshTreeAfterMutation = useCallback(
-    async (familyId: string, preferredPersonId?: string) => {
       try {
-        return await loadDashboard(familyId, preferredPersonId);
+        const [familyData, peopleData, treeData, memoryData] = await Promise.all([
+          api<Family>('/families/' + familyId),
+          api<Person[]>('/families/' + familyId + '/persons'),
+          api<TreeData>('/families/' + familyId + '/tree?depth=5'),
+          api<MemoryListItem[]>('/families/' + familyId + '/memories'),
+        ]);
+
+        setFamily(familyData);
+        setPeople(peopleData);
+        setTree(treeData);
+        setMemoryCount(memoryData.length);
+        setMemories(memoryData.slice(0, 6));
+
+        const [storiesResult, archivesResult] = await Promise.all([
+          api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4').catch(() => null),
+          api<ArchiveListPage>('/families/' + familyId + '/archives?page=1&page_size=4').catch(() => null),
+        ]);
+        setStories(storiesResult);
+        setArchives(archivesResult);
+
+        if (currentUser.person_id && peopleData.some((person) => person.id === currentUser.person_id)) {
+          return currentUser.person_id;
+        }
+        return treeData.root_person_id && peopleData.some((person) => person.id === treeData.root_person_id)
+          ? treeData.root_person_id
+          : peopleData[0]?.id ?? null;
       } catch (cause) {
         if (cause instanceof ApiError && cause.status === 401) {
-          throw cause;
+          router.replace('/login');
+          return null;
         }
-
-        setError(
-          cause instanceof Error
-            ? 'Мэдээлэл хадгалагдсан боловч ургийн модыг шинэчилж чадсангүй. ' + cause.message
-            : 'Мэдээлэл хадгалагдсан боловч ургийн модыг шинэчилж чадсангүй.',
-        );
+        setError(cause instanceof Error ? cause.message : 'Гэр бүлийн мэдээллийг ачаалж чадсангүй.');
         return null;
+      } finally {
+        setRefreshing(false);
       }
     },
-    [loadDashboard],
+    [router],
   );
 
   useEffect(() => {
@@ -756,43 +507,24 @@ function DashboardContent() {
     async function initialize() {
       setLoading(true);
       setError('');
-
       try {
-        setFamily(null);
-        setTree({ persons: [], parent_child_relationships: [], marriages: [] });
-        setPeople([]);
-        setMemories([]);
-        setMemoryDetails({});
-        setPhotosByPerson({});
-        setQuery('');
-        setSearchResults(null);
-        setCanonicalSelectedPersonId(null);
-
         const [me, familyList] = await Promise.all([
           api<User>('/auth/me'),
           api<Family[]>('/families'),
         ]);
-
         if (!active) return;
 
         setUser(me);
-        userPersonIdRef.current = me.person_id;
         setFamilies(familyList);
 
         if (!familyList.length) {
           setFamily(null);
-          setTree({ persons: [], parent_child_relationships: [], marriages: [] });
-          setPeople([]);
-          setMemories([]);
           return;
         }
 
         const requestedFamily = familyList.find((item) => item.id === familyIdFromUrl);
         const nextFamily = requestedFamily ?? familyList[0];
-        const preferredPerson =
-          requestedFamily && me.person_id ? me.person_id : undefined;
-
-        await loadDashboard(nextFamily.id, preferredPerson);
+        await loadDashboard(nextFamily.id, me);
 
         if (active && (!familyIdFromUrl || !requestedFamily)) {
           window.history.replaceState(
@@ -803,30 +535,24 @@ function DashboardContent() {
         }
       } catch (cause) {
         if (!active) return;
-
         if (cause instanceof ApiError && cause.status === 401) {
           router.replace('/login');
-        } else {
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : 'Гэр бүлийн мэдээллийг ачаалж чадсангүй.',
-          );
+          return;
         }
+        setError(cause instanceof Error ? cause.message : 'Нэвтрэлтийг шалгаж чадсангүй.');
       } finally {
         if (active) setLoading(false);
       }
     }
 
     void initialize();
-
     return () => {
       active = false;
     };
   }, [familyIdFromUrl, loadDashboard, router]);
 
   useEffect(() => {
-    if (!family?.id || !query.trim()) {
+    if (!family?.id || !search.trim()) {
       setSearchResults(null);
       setSearchBusy(false);
       return;
@@ -838,216 +564,76 @@ function DashboardContent() {
         '/families/' +
           family.id +
           '/persons/search?q=' +
-          encodeURIComponent(query.trim()) +
-          '&page=1&page_size=25',
+          encodeURIComponent(search.trim()) +
+          '&page=1&page_size=10',
       )
         .then(setSearchResults)
-        .catch((cause) =>
-          setError(cause instanceof Error ? cause.message : 'Хайлт хийхэд алдаа гарлаа.'),
-        )
+        .catch((cause) => {
+          if (cause instanceof ApiError && cause.status === 401) {
+            router.replace('/login');
+            return;
+          }
+          setSearchResults(null);
+        })
         .finally(() => setSearchBusy(false));
-    }, 300);
+    }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [family?.id, query]);
+  }, [family?.id, router, search]);
 
-  useEffect(() => {
-    if (!family?.id || !selectedId) return;
+  const previewTree = useMemo(
+    () => buildPreviewTree(tree, user?.person_id && people.some((person) => person.id === user.person_id) ? user.person_id : null),
+    [people, tree, user?.person_id],
+  );
 
-    let active = true;
-    setBiographyLoading(true);
+  const activity = useMemo<ActivityItem[]>(() => {
+    const result: ActivityItem[] = [];
 
-    api<{ content: string }>(
-      '/families/' + family.id + '/persons/' + selectedId + '/biography',
-    )
-      .then((result) => {
-        if (active) setBiography(result.content);
-      })
-      .catch(() => {
-        if (active) setBiography('');
-      })
-      .finally(() => {
-        if (active) setBiographyLoading(false);
+    for (const item of stories?.items ?? []) {
+      result.push({
+        kind: 'story',
+        id: item.id,
+        title: item.title,
+        date: activityDate(item.created_at),
+        meta: item.author_name || 'Манай түүх',
       });
+    }
 
-    return () => {
-      active = false;
-    };
-  }, [family?.id, selectedId]);
+    for (const item of memories) {
+      result.push({
+        kind: 'memory',
+        id: item.id,
+        title: item.title,
+        date: activityDate(item.created_at),
+        meta: item.person_names?.slice(0, 2).join(' · ') || 'Дурсамж',
+      });
+    }
 
-  const normalizedTree = useMemo(
-    () => normalizeTree(tree, userPersonIdRef.current, selectedId),
-    [tree, selectedId],
-  );
+    for (const item of archives?.items ?? []) {
+      result.push({
+        kind: 'archive',
+        id: item.id,
+        title: item.title,
+        date: activityDate(item.created_at),
+        meta: item.author_name || 'Архив',
+      });
+    }
 
-  const visiblePeople = useMemo(
-    () => pickDashboardPeople(normalizedTree, selectedId, 12),
-    [normalizedTree, selectedId],
-  );
+    return result
+      .filter((item) => item.date)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 6);
+  }, [archives, memories, stories]);
 
-  const selected = useMemo(
-    () =>
-      selectedId && normalizedTree.nodes.has(selectedId)
-        ? people.find((person) => person.id === selectedId) ?? null
-        : null,
-    [people, selectedId, normalizedTree],
-  );
-
-  const slotByPersonId = useMemo(
-    () => buildVisualSlotMap(normalizedTree, visiblePeople),
-    [normalizedTree, visiblePeople],
-  );
-
-  const maxGeneration = useMemo(
-    () => Math.max(...visiblePeople.map((person) => Math.abs(person.generation ?? 0) + 1), 1),
-    [visiblePeople],
-  );
-
-  const activeMarriageCount = useMemo(
-    () => tree.marriages.filter((marriage) => marriage.status === 'married').length,
-    [tree.marriages],
-  );
-
-  const visibleSelectedPhoto = selectedId
-    ? photosByPerson[selectedId]?.[0]
-    : undefined;
-
-  function setCanonicalSelectedPersonId(personId: string | null) {
-    selectedPersonIdRef.current = personId;
-    setSelectedId(personId);
-  }
-
-  function choosePerson(personId: string) {
-    if (!normalizedTree.nodes.has(personId)) return;
-
-    setCanonicalSelectedPersonId(personId);
-    setQuery('');
-    setSearchResults(null);
-    setTab('Тойм');
-  }
-
-  async function selectSearchResult(personId: string) {
+  function openProfile(personId: string) {
     if (!family) return;
-
-    setRefreshing(true);
-    setError('');
-
-    try {
-      await loadDashboard(family.id, personId);
-      setQuery('');
-      setSearchResults(null);
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-      } else {
-        setError(
-          cause instanceof Error ? cause.message : 'Хүний мэдээллийг нээж чадсангүй.',
-        );
-      }
-    } finally {
-      setRefreshing(false);
-    }
+    router.push('/profile?family=' + encodeURIComponent(family.id) + '&person=' + encodeURIComponent(personId));
   }
 
-  async function submitPerson(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!family || !selected) return;
-
-    const form = new FormData(event.currentTarget);
-    setRefreshing(true);
-    setError('');
-
-    try {
-      if (modal === 'edit') {
-        const updated = await api<Person>(
-          '/families/' + family.id + '/persons/' + selected.id,
-          {
-            method: 'PATCH',
-            body: JSON.stringify({
-              first_name: String(form.get('first_name') ?? '').trim(),
-              last_name: String(form.get('last_name') ?? '').trim(),
-              gender: String(form.get('gender') ?? 'unknown'),
-              birth_date: form.get('birth_date') || null,
-              birth_place: form.get('birth_place') || null,
-              is_alive: form.get('is_alive') === 'true',
-              death_date: form.get('death_date') || null,
-              death_place: form.get('death_place') || null,
-              visibility: String(form.get('visibility') ?? 'family'),
-            }),
-          },
-        );
-
-        const refreshedTree = await refreshTreeAfterMutation(family.id, updated.id);
-        if (refreshedTree) {
-          setNotice('Хүний мэдээлэл шинэчлэгдлээ.');
-        }
-      } else {
-        const fullName = String(form.get('name') ?? '')
-          .trim()
-          .split(/\s+/)
-          .filter(Boolean);
-        const relation = String(form.get('relation') ?? '');
-
-        if (!fullName.length || !relation) return;
-
-        const created = await api<Person>(
-          '/families/' + family.id + '/persons',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              first_name: fullName.at(-1) ?? '',
-              last_name: fullName.slice(0, -1).join(' '),
-              gender: form.get('gender') || 'unknown',
-              birth_date: form.get('birth_date') || null,
-              visibility: 'family',
-            }),
-          },
-        );
-
-        if (relation === 'spouse') {
-          await api(
-            '/families/' + family.id + '/marriages',
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                person_1_id: selected.id,
-                person_2_id: created.id,
-                status: 'married',
-                start_date: form.get('start_date') || null,
-              }),
-            },
-          );
-        } else {
-          await api(
-            '/families/' + family.id + '/relationships/parent-child',
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                parent_id: relation === 'parent' ? created.id : selected.id,
-                child_id: relation === 'parent' ? selected.id : created.id,
-                relationship_type: form.get('relationship_type') || 'biological',
-              }),
-            },
-          );
-        }
-
-        const refreshedTree = await refreshTreeAfterMutation(family.id, selected.id);
-        if (refreshedTree?.persons.some((person) => person.id === created.id)) {
-          setCanonicalSelectedPersonId(created.id);
-          setNotice('Хүн ургийн модонд нэмэгдлээ.');
-        }
-      }
-
-      setModal(null);
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-      } else {
-        setError(cause instanceof Error ? cause.message : 'Мэдээллийг хадгалж чадсангүй.');
-      }
-    } finally {
-      setRefreshing(false);
-    }
+  function go(pathFactory: (familyId: string) => string) {
+    if (!family) return;
+    setMobileNav(false);
+    router.push(pathFactory(family.id));
   }
 
   async function logout() {
@@ -1061,20 +647,31 @@ function DashboardContent() {
 
   if (loading) {
     return (
-      <main className="mvp">
-        <section className="mvpbox" style={{ maxWidth: 760 }}>
-          Гэр бүлийн мэдээллийг ачаалж байна…
-        </section>
+      <main className="homev2-shell">
+        <div className="homev2-loading" aria-busy="true">
+          <div className="homev2-loading__line homev2-loading__line--wide" />
+          <div className="homev2-loading__line" />
+          <div className="homev2-loading__grid">
+            <div className="homev2-loading__block" />
+            <div className="homev2-loading__block" />
+            <div className="homev2-loading__block" />
+          </div>
+          <span>Гэр бүлийн орон зайг ачаалж байна…</span>
+        </div>
       </main>
     );
   }
 
-  if (error && !family && !families.length) {
+  if (error && !families.length) {
     return (
-      <main className="mvp">
-        <section className="mvpbox" style={{ maxWidth: 760 }}>
-          <div className="error" role="alert">{error}</div>
-          <Link className="button" href="/login" style={{ marginTop: 16 }}>Нэвтрэх</Link>
+      <main className="homev2-shell">
+        <section className="homev2-state homev2-state--error" role="alert">
+          <TreeDeciduous size={36} />
+          <h1>Гэр бүлийн мэдээллийг ачаалж чадсангүй</h1>
+          <p>Холболт эсвэл нэвтрэлтийн төлөвөө шалгаад дахин оролдоно уу.</p>
+          <button className="homev2-button homev2-button--dark" onClick={() => window.location.reload()}>
+            Дахин оролдох
+          </button>
         </section>
       </main>
     );
@@ -1082,863 +679,327 @@ function DashboardContent() {
 
   if (!families.length) {
     return (
-      <main className="mvp">
-        <section className="mvpbox" style={{ maxWidth: 760 }}>
-          <Link href="/families">← Гэр бүлүүд</Link>
-          <h1 style={{ marginTop: 22 }}>Ургийн модоо эхлүүлээрэй</h1>
-          <p>Танд одоогоор гэр бүл үүсээгүй байна. Эхлээд гэр бүлээ үүсгээд өөрийгөө нэмнэ.</p>
-          <Link className="button" href="/onboarding">Гэр бүл үүсгэх</Link>
+      <main className="homev2-shell">
+        <section className="homev2-state">
+          <TreeDeciduous size={42} />
+          <p className="homev2-eyebrow">ГУУЛИНГИЙНХАН</p>
+          <h1>Гэр бүлийн түүхээ эндээс эхлүүлээрэй.</h1>
+          <p>Одоогоор танд харагдах гэр бүл алга. Эхлээд гэр бүлээ үүсгээд өөрийн хүмүүсээ нэмнэ.</p>
+          <Link className="homev2-button homev2-button--dark" href="/onboarding">
+            Гэр бүл үүсгэх
+          </Link>
         </section>
       </main>
     );
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
+    <div className="homev2-app">
+      <header className="homev2-topbar">
         <button
-          className="hamb"
+          className="homev2-menu-button"
           onClick={() => setMobileNav((value) => !value)}
-          aria-label="Цэс"
+          aria-label="Навигаци нээх"
+          aria-expanded={mobileNav}
         >
-          <Menu />
+          <Menu size={20} />
         </button>
 
-        <div className="brand">
-          <div className="brandmark"><TreeDeciduous /></div>
-          <div>
-            <div className="brandname">ГУУЛИНГИЙНХАН</div>
-            <small>Миний удам · Манай түүх · Ирээдүйд өвлүүлнэ</small>
-          </div>
-        </div>
+        <Link className="homev2-brand" href={'/dashboard?family=' + encodeURIComponent(family?.id ?? '')}>
+          <span className="homev2-brand-mark"><TreeDeciduous size={23} /></span>
+          <span>
+            <strong>ГУУЛИНГИЙНХАН</strong>
+            <small>Миний удам · Манай түүх</small>
+          </span>
+        </Link>
 
-        <div className="auth-shortcuts">
-          <Link href="/families">Гэр бүлүүд</Link>
-        </div>
-
-        <div className="searchbox">
-          <Search size={19} />
+        <div className="homev2-search">
+          <Search size={17} aria-hidden="true" />
           <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Хүн, овог, газар, он, баримтаар хайх..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Гэр бүлийн хүн хайх…"
             aria-label="Гэр бүлийн хүн хайх"
           />
-
-          {query && (
-            <button onClick={() => setQuery('')} aria-label="Хайлтыг арилгах">
+          {search && (
+            <button onClick={() => setSearch('')} aria-label="Хайлтыг арилгах">
               <X size={15} />
             </button>
           )}
-
-          {query && (
-            <div className="searchresults">
+          {search && (
+            <div className="homev2-search-results">
               {searchBusy ? (
-                <span className="noresult">Хайж байна…</span>
+                <span>Хайж байна…</span>
               ) : searchResults?.items.length ? (
                 searchResults.items.map((result) => (
-                  <button key={result.id} onClick={() => void selectSearchResult(result.id)}>
-                    <span className="personavatar small">
-                      {result.name.slice(0, 2).toUpperCase()}
-                    </span>
+                  <button
+                    key={result.id}
+                    onClick={() => openProfile(result.id)}
+                  >
+                    <span className="homev2-search-avatar">{result.name.slice(0, 2).toUpperCase()}</span>
                     <span>
-                      {result.name}
+                      <strong>{result.name}</strong>
                       <small>{result.birth_year ?? '—'}</small>
                     </span>
                   </button>
                 ))
               ) : (
-                <span className="noresult">
-                  {searchResults ? 'Хүн олдсонгүй' : 'Нэрээр хайж байна…'}
-                </span>
+                <span>{searchResults ? 'Хүн олдсонгүй.' : 'Нэрээр хайж байна…'}</span>
               )}
             </div>
           )}
         </div>
 
-        <button
-          className="iconbutton notify"
-          onClick={() => setNotice('Одоогоор шинэ мэдэгдэл алга')}
-          aria-label="Мэдэгдэл"
-        >
-          <Bell size={19} />
-        </button>
+        <Link className="homev2-family-link" href="/families">
+          Гэр бүлүүд
+        </Link>
 
-        <button
-          className="userpill"
-          onClick={() => setMenu((value) => !value)}
-          aria-label="Хэрэглэгчийн цэс"
-        >
-          <span className="personavatar tiny">
-            {user ? initials({ first_name: user.display_name, last_name: '' }) : '?'}
-          </span>
-          <span>{user?.display_name ?? 'Хэрэглэгч'}</span>
-          <ChevronDown size={15} />
-        </button>
-
-        {menu && (
-          <div className="usermenu">
-            <strong>{user?.display_name ?? 'Хэрэглэгч'}</strong>
-            <button
-              onClick={() => {
-                setMenu(false);
-                if (user?.person_id) choosePerson(user.person_id);
-              }}
-            >
-              Миний профайл
-            </button>
-            <Link href="/families" onClick={() => setMenu(false)}>Гэр бүлүүд</Link>
-            <button onClick={() => void logout()}>Гарах</button>
-          </div>
-        )}
+        <div className="homev2-user-wrap">
+          <button
+            className="homev2-user-button"
+            onClick={() => setMenuOpen((value) => !value)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <span className="homev2-user-avatar">{user ? initials({ first_name: user.display_name, last_name: '' }) : '?'}</span>
+            <span>{user?.display_name ?? 'Хэрэглэгч'}</span>
+          </button>
+          {menuOpen && (
+            <div className="homev2-user-menu" role="menu">
+              <strong>{user?.display_name ?? 'Хэрэглэгч'}</strong>
+              {user?.person_id && family && (
+                <button role="menuitem" onClick={() => openProfile(user.person_id!)}>
+                  Миний профайл
+                </button>
+              )}
+              <Link role="menuitem" href="/families">Гэр бүлүүд</Link>
+              <button role="menuitem" onClick={() => void logout()}>Гарах</button>
+            </div>
+          )}
+        </div>
       </header>
 
-      <div className="layout">
-        <aside className={'sidebar ' + (mobileNav ? 'show' : '')}>
-          <div className="sideitems">
-            {nav.map(([label, Icon]) => (
-              <button
-                key={label}
-                className={label === 'Ургийн мод' ? 'active' : ''}
-                onClick={() => {
-                  setMobileNav(false);
-                  if (label === 'Нүүр') {
-                    router.push('/dashboard' + (family?.id ? '?family=' + encodeURIComponent(family.id) : ''));
-                    return;
-                  }
-                  if (label === 'Ургийн мод' && family?.id) {
-                    router.push('/tree?family=' + encodeURIComponent(family.id));
-                    return;
-                  }
-                  if (label === 'Хүмүүс' && family?.id) {
-                    router.push('/people?family=' + encodeURIComponent(family.id));
-                    return;
-                  }
-                  if (label === 'Манай түүх' && family?.id) {
-                    router.push('/stories?family=' + encodeURIComponent(family.id));
-                    return;
-                  }
-                  if (label === 'Дурсамж' && family?.id) {
-                    router.push('/memories?family=' + encodeURIComponent(family.id));
-                    return;
-                  }
-                  if (label === 'Архив' && family?.id) {
-                    router.push('/archives?family=' + encodeURIComponent(family.id));
-                    return;
-                  }
-                  if (label === 'Тохиргоо') {
-                    router.push('/settings');
-                    return;
-                  }
-                  if (label !== 'Ургийн мод') {
-                    setNotice(label + ' хэсэг тун удахгүй');
-                  }
-                }}
-              >
-                <Icon size={20} />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="sidequote">
+      <div className="homev2-layout">
+        <aside className={'homev2-sidebar ' + (mobileNav ? 'homev2-sidebar--open' : '')}>
+          <nav aria-label="Үндсэн навигаци">
+            {navItems.map(([label, Icon, getHref]) => {
+              const href = getHref(family?.id ?? '');
+              return (
+                <Link
+                  key={label}
+                  className={'homev2-nav-item ' + (label === 'Нүүр' ? 'homev2-nav-item--active' : '')}
+                  href={href}
+                  onClick={() => setMobileNav(false)}
+                >
+                  <Icon size={18} />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="homev2-sidebar-quote">
             Өнгөрсөн түүхээ<br />
-            танин мэдэж, өнөөдрийн<br />
-            дурсамжаа ирээдүйд<br />
-            өвлүүлэн үлдээе.
-            <b>⌁</b>
+            танин мэдэж,<br />
+            өнөөдрийн дурсамжаа<br />
+            ирээдүйд өвлүүлэн үлдээе.
           </div>
         </aside>
 
-        <main className="main">
-          <section className="treepanel">
-            <div className="treehead">
-              <div className="tree-title">
-                <div className="brandmark small"><TreeDeciduous /></div>
+        <main className="homev2-main">
+          {error && (
+            <div className="homev2-inline-alert" role="alert">
+              <span>{error}</span>
+              <button onClick={() => window.location.reload()}>Дахин ачаалах</button>
+            </div>
+          )}
+
+          <section className="homev2-hero">
+            <div>
+              <p className="homev2-eyebrow">МАНАЙ ГЭР БҮЛ</p>
+              <h1>{family?.name}</h1>
+              <p className="homev2-hero-copy">
+                Түүх, хүмүүс, дурсамж, өвийг нэг дороос хараарай.
+              </p>
+              {user?.display_name && <p className="homev2-welcome">Тавтай морил, {user.display_name}.</p>}
+            </div>
+            <div className="homev2-hero-meta">
+              <span className="homev2-context-pill"><TreeDeciduous size={15} /> Family context</span>
+              <Link href={'/tree?family=' + encodeURIComponent(family?.id ?? '')}>Мод руу орох <ArrowRight size={15} /></Link>
+            </div>
+          </section>
+
+          <section className="homev2-tree-card" aria-labelledby="home-tree-title">
+            <div className="homev2-section-header">
+              <div>
+                <p className="homev2-eyebrow">THE FAMILY TREE</p>
+                <h2 id="home-tree-title">Удмын модны хураангуй</h2>
+                <p>Хүнийг сонгоход тухайн хүний бодит профайл нээгдэнэ.</p>
+              </div>
+              <Link className="homev2-text-link" href={'/tree?family=' + encodeURIComponent(family?.id ?? '')}>
+                Удмын модыг бүтнээр харах <ArrowRight size={15} />
+              </Link>
+            </div>
+            <TreePreview tree={previewTree} familyId={family?.id ?? ''} onOpenProfile={openProfile} />
+          </section>
+
+          <section className="homev2-grid homev2-grid--split">
+            <div className="homev2-panel">
+              <div className="homev2-section-header homev2-section-header--compact">
                 <div>
-                  <h1>Ургийн мод</h1>
-                  <span>
-                    {maxGeneration} үе · {tree.persons.length} хүн · {activeMarriageCount} гэрлэлт
-                  </span>
+                  <p className="homev2-eyebrow">БҮХИЙ Л ЗҮЙЛ НЭГ ДОР</p>
+                  <h2>Хурдан үйлдлүүд</h2>
                 </div>
               </div>
-
-              <div className="viewtabs">
-                <button className="sel">3D харагдац</button>
-                <button onClick={() => setNotice('Жагсаалтын харагдац удахгүй')}>Жагсаалт</button>
-                <i />
-                <button onClick={() => setNotice('Таймлайн харагдац удахгүй')}>Таймлайн</button>
-              </div>
-
-              <div className="treecontrols">
-                <button onClick={() => setNotice('Үе сонголтыг дараагийн шатанд өргөтгөнө')}>
-                  {['I', 'II', 'III', 'IV'][Math.min(maxGeneration - 1, 3)]} үе
-                  <ChevronDown size={14} />
-                </button>
-                <div>
-                  <button onClick={() => setZoom((value) => Math.max(.75, value - .1))}>
-                    <Minus />
-                  </button>
-                  <button onClick={() => setZoom((value) => Math.min(1.3, value + .1))}>
-                    <Plus />
-                  </button>
-                  <button onClick={() => setZoom(1)}>
-                    <Maximize />
-                  </button>
-                </div>
+              <div className="homev2-actions">
+                <QuickAction icon={Users} label="Хүмүүс" description="Гэр бүлийн хүмүүс" href={'/people?family=' + encodeURIComponent(family?.id ?? '')} />
+                <QuickAction icon={GitFork} label="Удмын мод" description="Бүх холбоосууд" href={'/tree?family=' + encodeURIComponent(family?.id ?? '')} />
+                <QuickAction icon={BookOpen} label="Манай түүх" description="Түүх, үйл явдлууд" href={'/stories?family=' + encodeURIComponent(family?.id ?? '')} />
+                <QuickAction icon={Heart} label="Дурсамж" description="Гэр бүлийн дурсамж" href={'/memories?family=' + encodeURIComponent(family?.id ?? '')} />
+                <QuickAction icon={Archive} label="Архив" description="Баримтын metadata" href={'/archives?family=' + encodeURIComponent(family?.id ?? '')} />
               </div>
             </div>
 
-            {error && <div className="error" role="alert" style={{ margin: 10 }}>{error}</div>}
-            {normalizedTree.truncated && (
-              <div className="muted" role="status" style={{ margin: '6px 10px 0', fontSize: 10 }}>
-                Ургийн мод хэсэгчлэн ачааллагдсан · харагдаж буй мэдээлэл нь API-ийн хязгаарт багтсан хэсэг.
+            <div className="homev2-panel homev2-panel--snapshot">
+              <div className="homev2-section-header homev2-section-header--compact">
+                <div>
+                  <p className="homev2-eyebrow">FAMILY SNAPSHOT</p>
+                  <h2>Манай гэр бүл</h2>
+                </div>
               </div>
-            )}
+              <div className="homev2-stats">
+                <div><strong>{people.length}</strong><span>Хүн</span></div>
+                <div><strong>{stories?.total ?? '—'}</strong><span>Түүх</span></div>
+                <div><strong>{memoryCount}</strong><span>Дурсамж</span></div>
+                <div><strong>{archives?.total ?? '—'}</strong><span>Архив</span></div>
+              </div>
+            </div>
+          </section>
 
-            {error && !family ? (
-              <div className="treecanvas empty-tree">
-                <div className="empty-tree-card">
-                  <TreeDeciduous size={42} />
-                  <h2>Ургийн модыг ачаалж чадсангүй</h2>
-                  <p>Бодит ургийн мэдээллийг одоогоор ачаалж чадсангүй. Дахин оролдоно уу.</p>
-                  <button
-                    className="button"
-                    onClick={() => {
-                      const retryFamily =
-                        families.find((item) => item.id === familyIdFromUrl) ?? families[0];
-                      if (retryFamily) {
-                        void loadDashboard(
-                          retryFamily.id,
-                          selectedPersonIdRef.current ?? undefined,
-                        );
-                      }
-                    }}
-                  >
-                    Дахин ачаалах
-                  </button>
-                </div>
+          <section className="homev2-panel" aria-labelledby="recent-title">
+            <div className="homev2-section-header">
+              <div>
+                <p className="homev2-eyebrow">RECENT</p>
+                <h2 id="recent-title">Сүүлийн үеийн</h2>
+                <p>Одоогийн family context дээрх бодит агуулгаас.</p>
               </div>
-            ) : !tree.persons.length ? (
-              <div className="treecanvas empty-tree">
-                <div className="empty-tree-card">
-                  <TreeDeciduous size={42} />
-                  <h2>Одоогоор хүн нэмэгдээгүй байна</h2>
-                  <p>Гэр бүлийн модоо эхлүүлэхийн тулд өөрийгөө эсвэл анхны гэр бүлийн гишүүнээ нэмнэ үү.</p>
-                  <Link className="button" href="/onboarding">Ургийн модоо эхлүүлэх</Link>
-                </div>
+              <div className="homev2-recent-links">
+                <Link href={'/stories?family=' + encodeURIComponent(family?.id ?? '')}>Түүх <ArrowRight size={14} /></Link>
+                <Link href={'/memories?family=' + encodeURIComponent(family?.id ?? '')}>Дурсамж <ArrowRight size={14} /></Link>
+                <Link href={'/archives?family=' + encodeURIComponent(family?.id ?? '')}>Архив <ArrowRight size={14} /></Link>
+              </div>
+            </div>
+
+            {activity.length ? (
+              <div className="homev2-activity">
+                {activity.map((item) => {
+                  const href =
+                    item.kind === 'story'
+                      ? '/stories/' + encodeURIComponent(item.id) + '?family=' + encodeURIComponent(family?.id ?? '')
+                      : item.kind === 'archive'
+                        ? '/archives/' + encodeURIComponent(item.id) + '?family=' + encodeURIComponent(family?.id ?? '')
+                        : '/memories?family=' + encodeURIComponent(family?.id ?? '');
+
+                  const icon = item.kind === 'story' ? <BookOpen size={17} /> : item.kind === 'archive' ? <Archive size={17} /> : <Heart size={17} />;
+
+                  return (
+                    <Link className="homev2-activity-item" href={href} key={item.kind + '-' + item.id}>
+                      <span className="homev2-activity-icon" aria-hidden="true">{icon}</span>
+                      <span className="homev2-activity-copy">
+                        <strong>{item.title}</strong>
+                        <small>{activityMeta(item.kind, item)} · {formatDate(item.date)}</small>
+                      </span>
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </Link>
+                  );
+                })}
               </div>
             ) : (
-              <div className="treecanvas">
-                <div className="scenery" />
-                <div className="forest" />
-
-                <div className="treeworld" style={{ transform: 'scale(' + zoom + ')' }}>
-                  <ConnectorLayer
-                    tree={normalizedTree}
-                    visiblePeople={visiblePeople}
-                    slotByPersonId={slotByPersonId}
-                  />
-
-                  {visiblePeople.map((person) => {
-                    const photo = photosByPerson[person.id]?.[0];
-                    const isSelected = selectedId === person.id;
-                    return (
-                      <button
-                        key={person.id}
-                        className={
-                          'personnode ' +
-                          (slotByPersonId.get(person.id) ?? positions[0]) +
-                          (isSelected ? ' chosen' : '')
-                        }
-                        onClick={() => choosePerson(person.id)}
-                      >
-                        {photo ? (
-                          <img
-                            src={API_BASE + photo}
-                            alt=""
-                            crossOrigin="use-credentials"
-                          />
-                        ) : (
-                          <span className="personavatar">{initials(person)}</span>
-                        )}
-                        <strong>{displayName(person)}</strong>
-                        <span>
-                          {person.birth_date?.slice(0, 4) ?? '—'}{' '}
-                          {person.is_alive
-                            ? '–'
-                            : '– ' + (person.death_date?.slice(0, 4) ?? '?')}
-                        </span>
-                        {(person.lineage_name || person.branch_name) && (
-                          <em
-                            className="lineage-mark"
-                            title={
-                              person.branch_name
-                                ? person.lineage_name
-                                  ? person.lineage_name + ' · ' + person.branch_name
-                                  : person.branch_name
-                                : person.lineage_name ?? undefined
-                            }
-                          >
-                            {person.branch_name ?? person.lineage_name}
-                          </em>
-                        )}
-                        <i>
-                          {generationLabel(person.generation)}
-                        </i>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="zoomdock">
-                  <button onClick={() => setZoom(1)}><MapPin /></button>
-                  <button onClick={() => setZoom((value) => Math.min(1.3, value + .1))}>+</button>
-                  <button onClick={() => setZoom((value) => Math.max(.75, value - .1))}>−</button>
-                  <button onClick={() => setZoom(1)}><Maximize /></button>
-                </div>
-
-                <div className="generationbar">
-                  <span>Үеийн сонголт:</span>
-                  {['X', 'IX', 'VIII', 'VII', 'VI', 'V', 'IV', 'III', 'II', 'I'].map(
-                    (generation) => (
-                      <button
-                        key={generation}
-                        className={generation === 'VII' ? 'selected' : ''}
-                        onClick={() =>
-                          setNotice(
-                            generation + ' үеийн харагдацын шүүлтүүр дараагийн шатанд',
-                          )
-                        }
-                      >
-                        {generation}
-                      </button>
-                    ),
-                  )}
-                  <span className="range">
-                    Өнгөрсөн <input type="range" aria-label="Үеийн хязгаар" /> Ирээдүй →
-                  </span>
-                </div>
+              <div className="homev2-empty-content">
+                <Heart size={26} aria-hidden="true" />
+                <strong>Одоогоор энд мэдээлэл алга.</strong>
+                <span>Гэр бүлийн түүхээ бага багаар нэмээрэй.</span>
               </div>
             )}
-
-            <section className="bottomrow">
-              <div className="recent">
-                <div className="sectiontop">
-                  <h3>Сүүлд нэмэгдсэн дурсамж</h3>
-                  <Link href={family ? '/memories?family=' + family.id : '/memories'}>
-                    Бүгдийг харах →
-                  </Link>
-                </div>
-
-                <div className="memorycards">
-                  {memories.length ? (
-                    memories.map((memory) => {
-                      const detail = memoryDetails[memory.id];
-                      const photo = detail?.photos?.[0]?.thumbnail_url;
-
-                      return (
-                        <button
-                          className="memory"
-                          key={memory.id}
-                          onClick={() =>
-                            router.push(
-                              family ? '/memories?family=' + family.id : '/memories',
-                            )
-                          }
-                        >
-                          {photo ? (
-                            <img
-                              src={API_BASE + photo}
-                              alt=""
-                              crossOrigin="use-credentials"
-                            />
-                          ) : (
-                            <div className="memoryplaceholder">
-                              <BookOpen size={22} />
-                            </div>
-                          )}
-                          <strong>{memory.title}</strong>
-                          <small>◷ {memory.memory_date ?? 'Огноогүй'}</small>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="empty-memory">
-                      Одоогоор хадгалсан дурсамж алга.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="addcall">
-                <TreeDeciduous />
-                <p>
-                  {selected
-                    ? '“' + displayName(selected) + '” дээрээс гэр бүлийн холбоогоо үргэлжлүүлээрэй.'
-                    : 'Гэр бүлийн модоо өөрийн бодит мэдээллээр эхлүүлээрэй.'}
-                </p>
-                <button
-                  onClick={() => setModal('add')}
-                  disabled={!selected || refreshing}
-                >
-                  Шинэ хүн нэмэх <Plus size={15} />
-                </button>
-              </div>
-
-              <div className="promo">
-                <div className="promo-placeholder">
-                  <TreeDeciduous size={38} />
-                  <span>Ургийн мод</span>
-                  <small>үеийн үед ургасаар...</small>
-                </div>
-              </div>
-            </section>
           </section>
-        </main>
 
-        <aside className="profile">
-          <div className="profiletop">
-            <button
-              className="dots"
-              onClick={() => setNotice('Нэмэлт үйлдлүүд дараагийн шатанд')}
-              aria-label="Нэмэлт үйлдэл"
-            >
-              <MoreHorizontal />
-            </button>
-
-            {selected ? (
-              <>
-                <div className="identity">
-                  {visibleSelectedPhoto ? (
-                    <img
-                      src={API_BASE + visibleSelectedPhoto}
-                      alt=""
-                      crossOrigin="use-credentials"
-                    />
-                  ) : (
-                    <span className="personavatar large">{initials(selected)}</span>
-                  )}
-
-                  <div>
-                    <h2>
-                      {displayName(selected)}
-                      <button
-                        onClick={() => setModal('edit')}
-                        aria-label="Хүний мэдээлэл засах"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                    </h2>
-
-                    <span>
-                      {selected.birth_date?.slice(0, 4) ?? 'Төрсөн он тодорхойгүй'}{' '}
-                      {selected.is_alive
-                        ? '–'
-                        : '– ' + (selected.death_date?.slice(0, 4) ?? '?')}
-                    </span>
-
-                    <i>
-                      {[
-                        'I үе',
-                        'II үе',
-                        'III үе',
-                        'IV үе',
-                      ][
-                        Math.min(
-                          (visiblePeople.find((person) => person.id === selected.id)?.generation ??
-                            2) - 1,
-                          3,
-                        )
-                      ]}
-                    </i>
-
-                    <div className="tags">
-                      <b>
-                        {selected.gender === 'male'
-                          ? 'Эрэгтэй'
-                          : selected.gender === 'female'
-                            ? 'Эмэгтэй'
-                            : 'Тодорхойгүй'}
-                      </b>
-                      <b>{selected.is_alive ? 'Амьд' : 'Нас барсан'}</b>
-                      <b>{visibilityLabel(selected.visibility)}</b>
-                    </div>
-                  </div>
+          <section className="homev2-grid homev2-grid--content">
+            <div className="homev2-panel">
+              <div className="homev2-section-header homev2-section-header--compact">
+                <div>
+                  <p className="homev2-eyebrow">MEMORIES</p>
+                  <h2>Сүүлийн дурсамж</h2>
                 </div>
-
-                <div className="ptabs">
-                  {profileTabs.map(([label, Icon]) => (
-                    <button
-                      key={label}
-                      className={tab === label ? 'on' : ''}
-                      onClick={() => setTab(label)}
-                    >
-                      <Icon size={17} />
-                      {label}
-                    </button>
+                <Link className="homev2-text-link" href={'/memories?family=' + encodeURIComponent(family?.id ?? '')}>
+                  Бүгдийг харах <ArrowRight size={14} />
+                </Link>
+              </div>
+              {memories.length ? (
+                <div className="homev2-list">
+                  {memories.slice(0, 4).map((memory) => (
+                    <Link className="homev2-list-row" key={memory.id} href={'/memories?family=' + encodeURIComponent(family?.id ?? '')}>
+                      <span className="homev2-list-icon" aria-hidden="true"><Heart size={16} /></span>
+                      <span><strong>{memory.title}</strong><small>{memory.memory_date ?? 'Огноогүй'}</small></span>
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
                   ))}
                 </div>
-
-                {tab === 'Тойм' && (
-                  <div className="facts">
-                    <div>
-                      <CalendarDays />
-                      <span>Төрсөн он</span>
-                      <strong>{selected.birth_date?.slice(0, 4) ?? '—'}</strong>
-                    </div>
-                    <div>
-                      <MapPin />
-                      <span>Төрсөн газар</span>
-                      <strong>{selected.birth_place ?? 'Тодорхойгүй'}</strong>
-                    </div>
-                    <div>
-                      <Users />
-                      <span>Эцэг/эх</span>
-                      <strong>
-                        {
-                          tree.parent_child_relationships.filter(
-                            (edge) => edge.child_id === selected.id,
-                          ).length
-                        }
-                      </strong>
-                    </div>
-                    <div>
-                      <Heart />
-                      <span>Хань</span>
-                      <strong>
-                        {
-                          tree.marriages.filter(
-                            (marriage) =>
-                              marriage.person_1_id === selected.id ||
-                              marriage.person_2_id === selected.id,
-                          ).length
-                        }
-                      </strong>
-                    </div>
-                    <div>
-                      <Users />
-                      <span>Хүүхэд</span>
-                      <strong>
-                        {
-                          tree.parent_child_relationships.filter(
-                            (edge) => edge.parent_id === selected.id,
-                          ).length
-                        }
-                      </strong>
-                    </div>
-                    <div>
-                      <MapPin />
-                      <span>Харагдах байдал</span>
-                      <strong>{visibilityLabel(selected.visibility)}</strong>
-                    </div>
-                  </div>
-                )}
-
-                {tab === 'Намтар' && (
-                  <div className="biography">
-                    <h3>Товч намтар</h3>
-                    {biographyLoading ? (
-                      <p>Намтрыг ачаалж байна…</p>
-                    ) : (
-                      <p>
-                        {biography || 'Энэ хүний намтрыг хараахан оруулаагүй байна.'}
-                      </p>
-                    )}
-                    <Link
-                      className="button"
-                      href={
-                        family
-                          ? '/profile?family=' + family.id + '&person=' + selected.id
-                          : '/profile'
-                      }
-                    >
-                      Намтар засах <Pencil size={14} />
-                    </Link>
-                  </div>
-                )}
-
-                {tab === 'Зураг' && (
-                  <div className="biography">
-                    {visibleSelectedPhoto ? (
-                      <img
-                        className="profilephoto"
-                        src={API_BASE + visibleSelectedPhoto}
-                        alt=""
-                        crossOrigin="use-credentials"
-                      />
-                    ) : (
-                      <span className="personavatar photo-empty">{initials(selected)}</span>
-                    )}
-                    <p>
-                      {photosByPerson[selected.id]?.length
-                        ? photosByPerson[selected.id].length +
-                          ' хүртэлх зураг харагдаж байна.'
-                        : 'Энэ хүний харагдах зураг одоогоор алга.'}
-                    </p>
-                    <Link
-                      className="button"
-                      href={family ? '/memories?family=' + family.id : '/memories'}
-                    >
-                      Дурсамжийн зураг үзэх <Camera size={14} />
-                    </Link>
-                  </div>
-                )}
-
-                {tab === 'Бичиг' && (
-                  <div className="biography">
-                    <p>Холбоотой архивын баримт одоогоор алга.</p>
-                    <button
-                      onClick={() =>
-                        setNotice('Архивын баримтын модуль дараагийн шатанд')
-                      }
-                    >
-                      Баримт нэмэх <Plus size={14} />
-                    </button>
-                  </div>
-                )}
-
-                <Link
-                  className="profilelink"
-                  href={
-                    family
-                      ? '/profile?family=' + family.id + '&person=' + selected.id
-                      : '/profile'
-                  }
-                >
-                  Дэлгэрэнгүй профайл <span>→</span>
-                </Link>
-
-                <div className="stats">
-                  <div>
-                    <Camera />
-                    <b>{photosByPerson[selected.id]?.length ?? 0}</b>
-                    <span>Зураг</span>
-                  </div>
-                  <div>
-                    <FileText />
-                    <b>0</b>
-                    <span>Түүх</span>
-                  </div>
-                  <div>
-                    <BookOpen />
-                    <b>0</b>
-                    <span>Видео</span>
-                  </div>
-                  <div>
-                    <Heart />
-                    <b>0</b>
-                    <span>Дуу</span>
-                  </div>
+              ) : (
+                <div className="homev2-empty-content homev2-empty-content--small">
+                  <strong>Одоогоор хадгалсан дурсамж алга.</strong>
+                  <Link className="homev2-text-link" href={'/memories?family=' + encodeURIComponent(family?.id ?? '')}>Дурсамж руу очих</Link>
                 </div>
-              </>
-            ) : (
-              <div className="empty-profile">
-                <Users size={36} />
-                <p>Сонгосон хүн алга.</p>
+              )}
+            </div>
+
+            <div className="homev2-panel">
+              <div className="homev2-section-header homev2-section-header--compact">
+                <div>
+                  <p className="homev2-eyebrow">YOUR PLACE</p>
+                  <h2>Эндээс үргэлжлүүлээрэй</h2>
+                </div>
               </div>
-            )}
-          </div>
-        </aside>
+              {user?.person_id && people.some((person) => person.id === user.person_id) ? (
+                <div className="homev2-continue">
+                  <span className="homev2-continue-avatar">
+                    {initials({ first_name: user.display_name, last_name: '' })}
+                  </span>
+                  <div>
+                    <strong>{people.find((person) => person.id === user.person_id)?.first_name ? fullName(people.find((person) => person.id === user.person_id)!) : user.display_name}</strong>
+                    <span>Таны family profile</span>
+                  </div>
+                  <button className="homev2-button homev2-button--dark" onClick={() => openProfile(user.person_id!)}>
+                    Профайл <ArrowRight size={15} />
+                  </button>
+                </div>
+              ) : (
+                <div className="homev2-empty-content homev2-empty-content--small">
+                  <strong>Таны profile энэ family-д холбогдоогүй байна.</strong>
+                  <Link className="homev2-text-link" href={'/people?family=' + encodeURIComponent(family?.id ?? '')}>Хүмүүс рүү очих</Link>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {notice && (
+            <div className="homev2-toast" role="status">
+              <span>{notice}</span>
+              <button onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах"><X size={14} /></button>
+            </div>
+          )}
+
+          {refreshing && <div className="homev2-refresh" role="status">Шинэчилж байна…</div>}
+        </main>
       </div>
-
-      {notice && (
-        <div className="toast">
-          {notice}
-          <button onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {modal && selected && (
-        <div
-          className="overlay"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setModal(null);
-          }}
-        >
-          <form className="modal" onSubmit={submitPerson}>
-            <button
-              type="button"
-              className="close"
-              onClick={() => setModal(null)}
-              aria-label="Хаах"
-            >
-              <X />
-            </button>
-
-            <div className="brandmark"><TreeDeciduous /></div>
-
-            <h2>
-              {modal === 'edit' ? 'Хүний мэдээлэл засах' : 'Ургийн модонд хүн нэмэх'}
-            </h2>
-
-            <p>
-              {modal === 'edit'
-                ? 'Одоо байгаа бодит мэдээллийг шинэчилнэ.'
-                : displayName(selected) + '-тай холбоог сонгоно уу.'}
-            </p>
-
-            {modal === 'add' ? (
-              <>
-                <label>
-                  Холбоо
-                  <select name="relation" defaultValue="child">
-                    <option value="child">Хүүхэд</option>
-                    <option value="parent">Эцэг эх</option>
-                    <option value="spouse">Хань</option>
-                  </select>
-                </label>
-
-                <label>
-                  Холбооны төрөл
-                  <select name="relationship_type" defaultValue="biological">
-                    <option value="biological">Төрсөн</option>
-                    <option value="adoptive">Үрчилсэн</option>
-                  </select>
-                </label>
-
-                <label>
-                  Овог, нэр
-                  <input
-                    name="name"
-                    required
-                    maxLength={360}
-                    placeholder="Жишээ: Доржийн Бат"
-                  />
-                </label>
-
-                <label>
-                  Төрсөн огноо
-                  <input name="birth_date" type="date" />
-                </label>
-
-                <label>
-                  Хүйс
-                  <select name="gender" defaultValue="unknown">
-                    <option value="unknown">Тодорхойгүй</option>
-                    <option value="male">Эрэгтэй</option>
-                    <option value="female">Эмэгтэй</option>
-                    <option value="other">Бусад</option>
-                  </select>
-                </label>
-
-                <label>
-                  Гэрлэсэн огноо
-                  <input name="start_date" type="date" />
-                </label>
-              </>
-            ) : (
-              <>
-                <label>
-                  Нэр
-                  <input
-                    name="first_name"
-                    required
-                    maxLength={120}
-                    defaultValue={selected.first_name}
-                  />
-                </label>
-
-                <label>
-                  Овог
-                  <input
-                    name="last_name"
-                    maxLength={120}
-                    defaultValue={selected.last_name}
-                  />
-                </label>
-
-                <label>
-                  Төрсөн огноо
-                  <input
-                    name="birth_date"
-                    type="date"
-                    defaultValue={selected.birth_date ?? ''}
-                  />
-                </label>
-
-                <label>
-                  Төрсөн газар
-                  <input
-                    name="birth_place"
-                    maxLength={240}
-                    defaultValue={selected.birth_place ?? ''}
-                  />
-                </label>
-
-                <label>
-                  Хүйс
-                  <select name="gender" defaultValue={selected.gender}>
-                    <option value="unknown">Тодорхойгүй</option>
-                    <option value="male">Эрэгтэй</option>
-                    <option value="female">Эмэгтэй</option>
-                    <option value="other">Бусад</option>
-                  </select>
-                </label>
-
-                <label>
-                  Амьд эсэх
-                  <select name="is_alive" defaultValue={String(selected.is_alive)}>
-                    <option value="true">Амьд</option>
-                    <option value="false">Нас барсан</option>
-                  </select>
-                </label>
-
-                <label>
-                  Нас барсан огноо
-                  <input
-                    name="death_date"
-                    type="date"
-                    defaultValue={selected.death_date ?? ''}
-                  />
-                </label>
-
-                <label>
-                  Нас барсан газар
-                  <input
-                    name="death_place"
-                    maxLength={240}
-                    defaultValue={selected.death_place ?? ''}
-                  />
-                </label>
-
-                <label>
-                  Нууцлал
-                  <select name="visibility" defaultValue={selected.visibility}>
-                    <option value="private">Зөвхөн би</option>
-                    <option value="family">Гэр бүлийнхэн</option>
-                    <option value="public">Нийтийн</option>
-                  </select>
-                </label>
-              </>
-            )}
-
-            <button className="submit" disabled={refreshing}>
-              {refreshing
-                ? 'Хадгалж байна…'
-                : modal === 'edit'
-                  ? 'Мэдээлэл хадгалах'
-                  : 'Нэмэх'}
-              <Plus size={16} />
-            </button>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
-
 
 export default function DashboardPage() {
   return (
     <Suspense
       fallback={
-        <main className="mvp">
-          <section className="mvpbox" style={{ maxWidth: 760 }}>
-            Гэр бүлийн мэдээллийг ачаалж байна…
-          </section>
+        <main className="homev2-shell">
+          <div className="homev2-loading"><span>Гэр бүлийн орон зайг ачаалж байна…</span></div>
         </main>
       }
     >
