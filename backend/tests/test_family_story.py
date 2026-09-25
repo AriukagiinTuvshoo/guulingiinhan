@@ -101,7 +101,7 @@ def test_story_crud_person_links_and_genealogy_are_separate(client, database):
     assert client.get(f"/api/v1/families/{family_id}/stories/{story['id']}").status_code == 404
 
     with database() as db:
-        assert db.query(FamilyMember).filter(FamilyMember.family_id == family_id).count() == 1
+        assert db.query(FamilyMember).filter(FamilyMember.family_id == UUID(family_id)).count() == 1
 
 
 def test_story_rejects_cross_family_people_and_story_ids(client):
