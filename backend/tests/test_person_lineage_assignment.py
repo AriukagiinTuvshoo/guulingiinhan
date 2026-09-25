@@ -162,7 +162,7 @@ def test_cross_lineage_branch_assignment_is_rejected(client):
 
 def test_person_not_in_supplied_family_is_rejected(client):
     register_verified(client, "assignment-person-scope@example.com")
-    family_a, person, _, _, _ = _setup_family(client, "A")
+    _, person, _, _, _ = _setup_family(client, "A")
     family_b = client.post("/api/v1/families", json={"name": "B"}).json()
     lineage_b = client.post(
         f"/api/v1/families/{family_b['id']}/lineages",
