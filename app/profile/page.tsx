@@ -8,6 +8,7 @@ import {
   api,
   ArchiveListPage,
   Marriage,
+  MemoryListItem,
   PersonProfile,
   StoryListPage,
   ProfileRelationPerson,
@@ -53,6 +54,9 @@ export default function ProfilePage() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
+  const [memories, setMemories] = useState<MemoryListItem[]>([]);
+  const [memoryState, setMemoryState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [memoryError, setMemoryError] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
@@ -116,6 +120,35 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  async function loadMemories(fid: string, pid: string) {
+    setMemoryState('loading');
+    setMemoryError('');
+    try {
+      const result = await api<MemoryListItem[]>(
+        `/families/${fid}/persons/${pid}/memories`,
+      );
+      setMemories(result);
+      setMemoryState('ready');
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      if (cause instanceof ApiError && [403, 404].includes(cause.status)) {
+        setMemories([]);
+        setMemoryState('restricted');
+        setMemoryError('Энэ хүний дурсамжийн мэдээлэл одоогоор харагдахгүй байна.');
+        return;
+      }
+      setMemoryState('error');
+      setMemoryError(
+        cause instanceof Error
+          ? cause.message
+          : 'Дурсамжийг ачаалж чадсангүй.',
+      );
+    }
+  }
+
   async function retry() {
     if (!family || !id) return;
     setLoading(true);
@@ -134,6 +167,11 @@ export default function ProfilePage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!family || !id) return;
+    void loadMemories(family, id);
+  }, [family, id]);
 
   async function saveBiography(event: FormEvent) {
     event.preventDefault();
@@ -369,6 +407,57 @@ export default function ProfilePage() {
                 ))}
               </div>
             ) : <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>}
+          </section>
+
+          <section className="card profile-card">
+            <div className="profile-card-heading">
+              <div><p className="eyebrow">FAMILY MEMORIES</p><h2>Энэ хүнтэй холбоотой дурсамж</h2></div>
+              <Link href={`/memories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+            </div>
+
+            {memoryState === 'loading' && (
+              <p className="profile-empty" role="status" aria-live="polite">
+                Дурсамжийг ачаалж байна…
+              </p>
+            )}
+
+            {memoryState === 'restricted' && (
+              <div>
+                <p className="profile-empty">{memoryError}</p>
+                <button type="button" onClick={() => void loadMemories(family, id)}>
+                  Дахин оролдох
+                </button>
+              </div>
+            )}
+
+            {memoryState === 'error' && (
+              <div>
+                <p className="profile-empty" role="alert">{memoryError}</p>
+                <button type="button" onClick={() => void loadMemories(family, id)}>
+                  Дахин оролдох
+                </button>
+              </div>
+            )}
+
+            {memoryState === 'ready' && memories.length === 0 && (
+              <p className="profile-empty">
+                Энэ хүнтэй холбоотой дурсамж бүртгэгдээгүй байна.
+              </p>
+            )}
+
+            {memoryState === 'ready' && memories.length > 0 && (
+              <div className="history-list">
+                {memories.map((memory) => (
+                  <div className="history-item" key={memory.id}>
+                    <strong>{memory.title}</strong>
+                    <span>
+                      {memory.memory_date ?? 'Огноогүй'}
+                      {memory.description ? ` · ${memory.description}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="card profile-card">
