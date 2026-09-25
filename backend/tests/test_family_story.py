@@ -29,19 +29,19 @@ def test_story_crud_person_links_and_genealogy_are_separate(client, database):
         json={"name": "Үндсэн удам"},
     ).json()
     branch = client.post(
-        f"/api/v1/lineages/{lineage["id"]}/branches",
+        f"/api/v1/lineages/{lineage['id']}/branches",
         json={"name": "Үндсэн салаа"},
     ).json()
     assert client.put(
-        f"/api/v1/families/{family_id}/persons/{child["id"]}/lineage-assignment",
+        f"/api/v1/families/{family_id}/persons/{child['id']}/lineage-assignment",
         json={"lineage_id": lineage["id"], "branch_id": branch["id"]},
     ).status_code == 200
 
     before = client.get(f"/api/v1/families/{family_id}/persons/{child['id']}")
     assert before.status_code == 200
     before_parent_ids = [item["id"] for item in before.json()["parents"]]
-    before_tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={child["id"]}&depth=2").json()
-    before_lineage = client.get(f"/api/v1/families/{family_id}/persons/{child["id"]}/lineage-assignment").json()
+    before_tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={child['id']}&depth=2").json()
+    before_lineage = client.get(f"/api/v1/families/{family_id}/persons/{child['id']}/lineage-assignment").json()
 
     created = client.post(
         f"/api/v1/families/{family_id}/stories",
@@ -85,8 +85,8 @@ def test_story_crud_person_links_and_genealogy_are_separate(client, database):
     after = client.get(f"/api/v1/families/{family_id}/persons/{child['id']}")
     assert after.status_code == 200
     assert [item["id"] for item in after.json()["parents"]] == before_parent_ids
-    after_tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={child["id"]}&depth=2").json()
-    after_lineage = client.get(f"/api/v1/families/{family_id}/persons/{child["id"]}/lineage-assignment").json()
+    after_tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={child['id']}&depth=2").json()
+    after_lineage = client.get(f"/api/v1/families/{family_id}/persons/{child['id']}/lineage-assignment").json()
     assert after_tree["parent_child_relationships"] == before_tree["parent_child_relationships"]
     assert after_tree["marriages"] == before_tree["marriages"]
     assert after_lineage["lineage_id"] == before_lineage["lineage_id"]
