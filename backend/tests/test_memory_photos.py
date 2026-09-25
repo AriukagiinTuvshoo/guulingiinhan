@@ -532,9 +532,13 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
 def test_memory_detail_response_contract(client, database):
     register_verified(client, "memory-response-contract@example.com")
     family = client.post("/api/v1/families", json={"name": "Response contract"}).json()
+    person = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Гэрэл", "last_name": "Бат"},
+    ).json()
     response = client.post(
         f"/api/v1/families/{family['id']}/memories",
-        json={"title": "Contract", "description": "Response", "person_ids": []},
+        json={"title": "Contract", "description": "Response", "person_ids": [person["id"]]},
     )
     assert response.status_code == 201, response.text
     with database() as db:
