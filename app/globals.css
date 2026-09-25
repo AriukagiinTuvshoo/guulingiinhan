@@ -11,3 +11,67 @@
 .personavatar{width:61px;height:61px;display:grid;place-items:center;border:2px solid #d8b658;border-radius:50%;background:radial-gradient(circle,#1d5c49,#0b3b30);color:#f3d887;font:600 16px Georgia,serif;letter-spacing:.5px;flex-shrink:0}.personavatar.small{width:34px;height:34px;border-width:1px;font-size:10px}.personavatar.tiny{width:34px;height:34px;border-width:1px;font-size:10px}.personavatar.large{width:98px;height:98px;border-width:2px;font-size:24px;padding:3px;background:radial-gradient(circle,#174c3d,#082c23 66%,#124337 67%)}.personavatar.photo-empty{width:100%;height:140px;border-radius:9px;font-size:32px;margin:0 0 10px}.empty-tree{display:grid;place-items:center;padding:30px}.empty-tree-card{width:min(460px,90%);padding:30px;border:1px solid #3b6f5c;border-radius:18px;background:#092f27dd;text-align:center;box-shadow:0 18px 50px #00130f66}.empty-tree-card>svg{color:#e3ca78}.empty-tree-card h2{font:22px Georgia,serif;margin:12px 0 8px;color:#f0d58b}.empty-tree-card p{font-size:12px;line-height:1.6;color:#afc2b5}.empty-tree-card .button{display:inline-flex}.empty-memory{height:110px;display:grid;place-items:center;border:1px dashed #356b58;border-radius:9px;color:#9fb5aa;font-size:10px;text-align:center;padding:12px}.memoryplaceholder{width:100%;height:72px;display:grid;place-items:center;background:radial-gradient(ellipse at center,#174d3c,#082b23);color:#d9bd66}.promo-placeholder{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:4px;background:radial-gradient(ellipse at center,#1b5946,#06271f 70%);color:#f2d58b;text-align:center;font:italic 18px Georgia,serif}.promo-placeholder span{display:block}.promo-placeholder small{font-size:13px}.empty-profile{height:100%;min-height:300px;display:grid;place-items:center;align-content:center;gap:10px;color:#9fb5aa;text-align:center}
 
 .people-page{min-height:100vh;background:#f5f0e4;color:#18352a;padding:34px 24px 60px}.people-shell{width:min(1180px,100%);margin:0 auto}.people-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;margin-bottom:24px}.people-heading h1{font:500 clamp(36px,5vw,54px)/1 Georgia,serif;margin:10px 0 10px;color:#18352a}.people-heading .eyebrow{font-size:10px;letter-spacing:.18em;color:#9a7a34;margin:20px 0 0}.people-lede{max-width:680px;color:#68796d;font-size:13px;line-height:1.7;margin:0}.people-heading-actions{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;justify-content:flex-end}.people-control{display:grid;gap:6px;min-width:170px;font-size:11px;color:#66796c}.people-control select,.people-filters select,.people-search input{height:42px;border:1px solid #cfc7b6;border-radius:10px;background:#fffdf8;color:#18352a;padding:0 12px}.people-toolbar{display:grid;grid-template-columns:minmax(260px,1.5fr) minmax(420px,1fr);gap:18px;align-items:end;margin-bottom:18px;padding:18px;background:#fffdf8;border-color:#d6cfbe}.people-search{display:grid;gap:6px;font-size:11px;color:#66796c}.people-search input{width:100%;font-size:14px}.people-filters{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}.people-filters label{display:grid;gap:6px;font-size:11px;color:#66796c}.people-filters select:disabled{opacity:.7;cursor:not-allowed}.people-filters>button{height:42px;white-space:nowrap}.people-results-head{display:flex;justify-content:space-between;gap:12px;align-items:center;color:#506457;font-size:12px;margin:16px 2px 10px}.people-results-head>span{color:#9a7a34}.people-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.people-card{display:flex;flex-direction:column;gap:14px;min-height:225px;padding:18px;background:#fffdf8;border-color:#d9d1c0;box-shadow:0 8px 24px rgba(23,48,38,.07)}.people-card-top{display:flex;gap:12px;align-items:center}.people-avatar{width:70px;height:70px;font-size:20px}.people-card-identity{min-width:0}.people-card-identity h2{font:500 19px/1.2 Georgia,serif;color:#18352a;margin:0 0 5px;word-break:break-word}.people-card-identity span{font-size:11px;color:#718176}.people-card-tags{display:flex;align-items:center;flex-wrap:wrap;gap:7px;min-height:26px}.people-secondary-tag{display:inline-flex;align-items:center;min-height:26px;padding:0 9px;border:1px solid #d6cfbf;border-radius:14px;color:#66796c;font-size:10px;background:#fbf7ee}.people-description{margin:0;color:#607165;font-size:11px;line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.people-profile-link{margin-top:auto;align-self:flex-start}.people-state{min-height:260px;display:grid;place-items:center;align-content:center;text-align:center;padding:34px;background:#fffdf8;border-color:#d9d1c0}.people-state h2{font:500 24px Georgia,serif;margin:0 0 8px;color:#18352a}.people-state p{max-width:520px;margin:0;color:#718176;font-size:12px;line-height:1.7}.people-empty-avatar{margin-bottom:8px}.people-spinner{width:30px;height:30px;border:2px solid #cfc7b6;border-top-color:#8a6a27;border-radius:50%;animation:people-spin .8s linear infinite}@keyframes people-spin{to{transform:rotate(360deg)}}.people-error{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}.people-error button{margin-left:auto}.people-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;color:#65766a;font-size:11px}.people-pagination button{min-height:38px}.people-page a:focus-visible,.people-page button:focus-visible,.people-page input:focus-visible,.people-page select:focus-visible{outline:2px solid #9a7a34;outline-offset:2px}@media(max-width:980px){.people-heading{align-items:flex-start;flex-direction:column}.people-heading-actions{justify-content:flex-start}.people-toolbar{grid-template-columns:1fr}.people-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.people-page{padding:22px 12px 40px}.people-heading h1{font-size:40px}.people-grid{grid-template-columns:1fr}.people-filters{grid-template-columns:1fr}.people-filters>button{width:100%}.people-card{min-height:205px}.people-error{align-items:flex-start;flex-direction:column}.people-error button{margin-left:0}.people-pagination{align-items:stretch;flex-direction:column}.people-pagination button{width:100%}}
+
+.profile-page{min-height:100vh;background:#f3efe4;color:#17372b;padding:28px 18px 48px}
+.profile-shell{width:min(1120px,100%);margin:0 auto}
+.profile-nav{display:flex;align-items:center;gap:9px;color:#5d766b;font-size:12px;margin-bottom:18px}
+.profile-nav a{color:#2f5d4d;text-decoration:none;font-weight:700}
+.profile-alert{margin-bottom:14px}
+.profile-hero{display:grid;grid-template-columns:auto minmax(0,1fr);gap:24px;align-items:center;padding:28px;border:1px solid #d8cda9;border-radius:18px;background:#fffdf7;box-shadow:0 12px 35px #17372b12}
+.profile-photo{width:132px;height:132px;object-fit:cover;border-radius:50%;border:2px solid #d8b658}
+.profile-identity h1{font:500 clamp(32px,5vw,54px)/1.05 Georgia,serif;color:#17372b;margin:5px 0 8px}
+.profile-life{color:#5e756a;margin:0}
+.profile-nickname{color:#8a7134;font-style:italic;margin:7px 0 0}
+.profile-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:17px}
+.profile-actions .button,.profile-actions button{min-height:40px}
+.profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}
+.profile-card{border:1px solid #d8d1bd;background:#fffdf8;box-shadow:0 8px 24px #17372b0d}
+.profile-card-heading{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:14px}
+.profile-card-heading h2{font:500 22px Georgia,serif;color:#17372b;margin:2px 0 0}
+.profile-facts{margin:0;display:grid;gap:0}
+.profile-facts>div{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid #e8e0cb}
+.profile-facts>div:last-child{border-bottom:0}
+.profile-facts dt{font-size:11px;color:#75887f}
+.profile-facts dd{margin:0;font-size:13px;color:#284b3f;overflow-wrap:anywhere}
+.profile-note,.profile-text{font-size:12px;line-height:1.75;color:#61756c}
+.profile-relationships{grid-column:1 / -1}
+.relationship-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.relationship-columns>div{min-width:0}
+.relationship-columns h3{font-size:12px;color:#6c806f;margin:0 0 8px}
+.relationship-item{display:flex;align-items:center;gap:9px;padding:8px;border:1px solid #e5ddc9;border-radius:10px;text-decoration:none;color:#17372b;background:#fffefb;margin-bottom:7px}
+.relationship-item:hover,.relationship-item:focus-visible{border-color:#c6a34d;outline:none}
+.relationship-item>span:last-child{display:grid;gap:2px;min-width:0}
+.relationship-item strong{font-size:12px;overflow-wrap:anywhere}
+.relationship-item small{font-size:10px;color:#7a8c83}
+.profile-empty{font-size:11px;color:#899890;margin:8px 0}
+.history-item{display:grid;gap:3px;padding:10px 0;border-bottom:1px solid #e8e0cb}
+.history-item:last-of-type{border-bottom:0}
+.history-item strong{font-size:13px;color:#244b3d}
+.history-item span,.history-item small{font-size:10px;color:#74867e}
+.profile-card form{margin-top:12px}
+.profile-card label{display:grid;gap:5px;font-size:11px;color:#60766b;margin-bottom:10px}
+.profile-card textarea{min-height:110px;resize:vertical}
+.profile-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.profile-editor{margin-top:14px}
+.profile-footer{display:flex;justify-content:space-between;gap:12px;padding:20px 3px 0;font-size:12px}
+.profile-footer a{color:#315f50;text-decoration:none;font-weight:700}
+.profile-state{min-height:65vh;display:grid;place-items:center;align-content:center;gap:10px;text-align:center;color:#61756c}
+.profile-state h1{font:500 28px Georgia,serif;color:#17372b;margin:0}
+.profile-state p{max-width:520px;line-height:1.7;margin:0}
+@media(max-width:760px){
+  .profile-page{padding:14px 9px 35px}
+  .profile-hero{grid-template-columns:1fr;padding:20px;justify-items:center;text-align:center}
+  .profile-actions{justify-content:center}
+  .profile-grid{grid-template-columns:1fr}
+  .profile-relationships{grid-column:auto}
+  .relationship-columns{grid-template-columns:1fr}
+  .profile-form-grid{grid-template-columns:1fr 1fr}
+  .profile-footer{display:grid}
+}
+@media(max-width:480px){
+  .profile-hero{padding:16px}
+  .profile-photo,.profile-hero .personavatar.large{width:108px;height:108px}
+  .profile-facts>div{grid-template-columns:105px minmax(0,1fr)}
+  .profile-form-grid{grid-template-columns:1fr}
+  .profile-footer{gap:9px}
+}
