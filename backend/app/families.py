@@ -236,6 +236,10 @@ class TreePersonOut(BaseModel):
     birth_date: date | None
     is_alive: bool
     death_date: date | None
+    lineage_id: UUID | None = None
+    lineage_name: str | None = None
+    branch_id: UUID | None = None
+    branch_name: str | None = None
 
 
 class TreeParentChildOut(BaseModel):
@@ -2238,29 +2242,48 @@ def family_tree(
         frontier = next_frontier
 
     final_scopes = active_guardian_scopes(db, user.id, family_id, list(people))
-    return {
-        "persons": [
+    assignment_rows = db.execute(
+        select(PersonLineageAssignment, Lineage, Branch)
+        .join(Lineage, Lineage.id == PersonLineageAssignment.lineage_id)
+        .outerjoin(Branch, Branch.id == PersonLineageAssignment.branch_id)
+        .where(
+            PersonLineageAssignment.person_id.in_(list(people)),
+            Lineage.family_id == family_id,
+        )
+        .order_by(PersonLineageAssignment.person_id)
+    ).all()
+    assignment_by_person = {
+        assignment.person_id: (lineage, branch)
+        for assignment, lineage, branch in assignment_rows
+    }
+
+    tree_persons: list[TreePersonOut] = []
+    for person in people.values():
+        restricted = (
+            person_is_minor(person)
+            and "view_profile" not in final_scopes.get(person.id, set())
+        )
+        assignment = assignment_by_person.get(person.id)
+        lineage = assignment[0] if assignment else None
+        branch = assignment[1] if assignment else None
+        tree_persons.append(
             TreePersonOut(
                 id=person.id,
                 first_name=person.first_name,
                 last_name=person.last_name,
                 middle_name=person.middle_name,
-                birth_date=(
-                    None
-                    if person_is_minor(person)
-                    and "view_profile" not in final_scopes.get(person.id, set())
-                    else person.birth_date
-                ),
+                birth_date=None if restricted else person.birth_date,
                 is_alive=person.is_alive,
-                death_date=(
-                    None
-                    if person_is_minor(person)
-                    and "view_profile" not in final_scopes.get(person.id, set())
-                    else person.death_date
-                ),
+                death_date=None if restricted else person.death_date,
+                lineage_id=None if restricted or lineage is None else lineage.id,
+                lineage_name=None if restricted or lineage is None else lineage.name,
+                branch_id=None if restricted or branch is None else branch.id,
+                branch_name=None if restricted or branch is None else branch.name,
             )
-            for person in people.values()
-        ],
+        )
+
+    return {
+        "persons": tree_persons,
         "root_person_id": root.id,
         "parent_child_relationships": list(parent_edges.values()),
         "marriages": list(marriages.values()),
