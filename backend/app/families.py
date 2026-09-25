@@ -2049,7 +2049,7 @@ def accept_invitation(
     )
     if invitation is None:
         raise HTTPException(status_code=404, detail="Урилга хүчингүй эсвэл хугацаа дууссан байна.")
-    if normalize_email(user.email) != invitation.invited_email:
+    if not user.email or normalize_email(user.email) != invitation.invited_email:
         raise HTTPException(status_code=403, detail="Энэ урилга өөр имэйл хаягт зориулагдсан.")
     verified_identity = db.scalar(
         select(LoginIdentity.id).where(
