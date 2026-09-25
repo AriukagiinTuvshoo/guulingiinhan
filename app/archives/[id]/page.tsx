@@ -12,6 +12,7 @@ export default function ArchiveDetailPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [notice, setNotice] = useState('');
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
@@ -37,6 +38,14 @@ export default function ArchiveDetailPage() {
     const fid = params.get('family') ?? '';
     const archiveId = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
     setFamilyId(fid);
+    if (new URLSearchParams(window.location.search).get('saved') === '1') {
+      setNotice('Архив хадгалагдлаа.');
+      window.history.replaceState(
+        null,
+        '',
+        '/archives/' + archiveId + '?family=' + encodeURIComponent(fid),
+      );
+    }
     if (!fid || !archiveId) {
       setLoading(false);
       setError('Архивийн хаяг буруу байна.');
@@ -111,7 +120,15 @@ export default function ArchiveDetailPage() {
           </div>
           {canMutate && (
             <div className="story-detail-actions">
-              <button type="button" onClick={() => setShowDeleteDialog(true)} disabled={busy}>Архив устгах</button>
+              <Link
+                className="button primary"
+                href={'/archives/' + archive.id + '/edit?family=' + encodeURIComponent(familyId)}
+              >
+                Засах
+              </Link>
+              <button type="button" onClick={() => setShowDeleteDialog(true)} disabled={busy}>
+                Архив устгах
+              </button>
             </div>
           )}
         </header>
@@ -151,6 +168,15 @@ export default function ArchiveDetailPage() {
           </div>
           <p className="profile-note">Энэ foundation дээр баримтын metadata болон холбоосууд хадгалагдана. Файл upload, OCR болон document viewer дараагийн тусдаа feature байна.</p>
         </section>
+
+        {notice && (
+          <div className="archive-success" role="status" aria-live="polite">
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах">
+              ×
+            </button>
+          </div>
+        )}
 
         <footer className="profile-footer">
           <Link href={'/archives?family=' + encodeURIComponent(familyId)}>← Бүх архив</Link>
