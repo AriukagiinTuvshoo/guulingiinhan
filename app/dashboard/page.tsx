@@ -729,6 +729,26 @@ function DashboardContent() {
     return treeData;
   }, []);
 
+  const refreshTreeAfterMutation = useCallback(
+    async (familyId: string, preferredPersonId?: string) => {
+      try {
+        return await loadDashboard(familyId, preferredPersonId);
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.status === 401) {
+          throw cause;
+        }
+
+        setError(
+          cause instanceof Error
+            ? 'Мэдээлэл хадгалагдсан боловч ургийн модыг шинэчилж чадсангүй. ' + cause.message
+            : 'Мэдээлэл хадгалагдсан боловч ургийн модыг шинэчилж чадсангүй.',
+        );
+        return null;
+      }
+    },
+    [loadDashboard],
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -956,8 +976,10 @@ function DashboardContent() {
           },
         );
 
-        await loadDashboard(family.id, updated.id);
-        setNotice('Хүний мэдээлэл шинэчлэгдлээ.');
+        const refreshedTree = await refreshTreeAfterMutation(family.id, updated.id);
+        if (refreshedTree) {
+          setNotice('Хүний мэдээлэл шинэчлэгдлээ.');
+        }
       } else {
         const fullName = String(form.get('name') ?? '')
           .trim()
@@ -1008,11 +1030,11 @@ function DashboardContent() {
           );
         }
 
-        const refreshedTree = await loadDashboard(family.id, selected.id);
+        const refreshedTree = await refreshTreeAfterMutation(family.id, selected.id);
         if (refreshedTree?.persons.some((person) => person.id === created.id)) {
           setCanonicalSelectedPersonId(created.id);
+          setNotice('Хүн ургийн модонд нэмэгдлээ.');
         }
-        setNotice('Хүн ургийн модонд нэмэгдлээ.');
       }
 
       setModal(null);
