@@ -1,6 +1,6 @@
 'use client';
 
-import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
   Bell,
@@ -433,7 +433,7 @@ function ConnectorLayer({
   );
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
@@ -1636,5 +1636,22 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mvp">
+          <section className="mvpbox" style={{ maxWidth: 760 }}>
+            Гэр бүлийн мэдээллийг ачаалж байна…
+          </section>
+        </main>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }
