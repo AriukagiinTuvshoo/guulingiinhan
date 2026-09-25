@@ -1,11 +1,14 @@
 import io
 from uuid import UUID
 
+import pytest
+
 from conftest import register_verified
 from PIL import Image
 from sqlalchemy import select
 
-from app.models import AuditLog, FamilyMember, Photo, User
+from app.models import AuditLog, FamilyMember, Memory, Photo, User
+from app.memory_photos import _memory_detail
 from app.storage import get_storage
 
 
@@ -524,6 +527,26 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
         "email": "guardian@example.com", "password": "strong-passphrase-123",
     })
     assert client.get(content_url).status_code == 404
+
+
+def test_memory_detail_response_contract(client, database):
+    register_verified(client, "memory-response-contract@example.com")
+    family = client.post("/api/v1/families", json={"name": "Response contract"}).json()
+    response = client.post(
+        f"/api/v1/families/{family['id']}/memories",
+        json={"title": "Contract", "description": "Response", "person_ids": []},
+    )
+    assert response.status_code == 201, response.text
+    with database() as db:
+        user = db.scalar(select(User).where(User.email == "memory-response-contract@example.com"))
+        memory = db.scalar(select(Memory).where(Memory.family_id == UUID(family["id"])))
+        assert user is not None and memory is not None
+        try:
+            payload = _memory_detail(db, UUID(family["id"]), memory, user)
+        except Exception as error:  # noqa: BLE001 - expose the focused contract failure in pytest.
+            pytest.fail(f"MemoryOut response contract failed: {type(error).__name__}: {error}")
+        assert payload.id == memory.id
+        assert payload.author_id == user.id
 
 
 def test_memory_crud_family_privacy_author_and_person_relation(client, database):
