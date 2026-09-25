@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.models import Person
-from conftest import database, register_verified
+from conftest import register_verified
 
 
 def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client):
