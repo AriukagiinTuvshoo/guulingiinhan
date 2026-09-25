@@ -1176,8 +1176,11 @@ def search_persons(
 def _person_profile_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonProfileOut:
     """Build one family-scoped profile payload without inferring genealogy data."""
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
-    result = PersonProfileOut.model_validate(_person_output(db, family_id, person, user))
-    result = result.model_copy(update={"profile_photo_url": person.profile_photo_url})
+    base = _person_output(db, family_id, person, user)
+    result = PersonProfileOut(
+        **base.model_dump(),
+        profile_photo_url=person.profile_photo_url,
+    )
     if person_is_minor(person) and "view_profile" not in scopes:
         return result
 
