@@ -52,6 +52,7 @@ SESSION_SECONDS = 60 * 60 * 24 * 7
 OTP_SECONDS = 5 * 60
 OTP_COOLDOWN_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
+PASSWORD_MIN_LENGTH = 8
 _OTP_DEV_SECRET = secrets.token_bytes(32)
 _DUMMY_PASSWORD_HASH: str
 GOOGLE_STATE_SECONDS = 600
@@ -61,7 +62,7 @@ logger = logging.getLogger("guulingiinhan.auth")
 
 class RegisterInput(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
 
     @model_validator(mode="after")
@@ -85,7 +86,7 @@ class EmailTokenInput(BaseModel):
 
 
 class PasswordResetConfirmInput(EmailTokenInput):
-    new_password: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
 
 
 class GenericEmailResponse(BaseModel):
