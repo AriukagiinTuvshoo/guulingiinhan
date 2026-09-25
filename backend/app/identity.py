@@ -15,7 +15,7 @@ def normalize_email(value: str) -> str:
 
 def normalize_phone(value: str) -> str:
     """Canonicalize E.164 plus common Mongolian local/mobile input."""
-    candidate = re.sub(r"[\\s\\-()]", "", value.strip())
+    candidate = re.sub(r"[\s\-()]", "", value.strip())
     if re.fullmatch(r"[6-9][0-9]{7}", candidate):
         candidate = "+976" + candidate
     elif re.fullmatch(r"976[6-9][0-9]{7}", candidate):
