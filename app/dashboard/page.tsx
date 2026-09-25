@@ -280,6 +280,7 @@ function treeDistance(tree: NormalizedTree, rootPersonId: string | null): Map<st
 
   distance.set(rootPersonId, 0);
   const queue = [rootPersonId];
+
   while (queue.length) {
     const current = queue.shift();
     if (!current) break;
@@ -293,6 +294,132 @@ function treeDistance(tree: NormalizedTree, rootPersonId: string | null): Map<st
   }
 
   return distance;
+}
+
+type SlotAssignment = Map<string, (typeof positions)[number]>;
+
+const generationSlots: Record<string, (typeof positions)[number][]> = {
+  '-2': ['p1', 'p2'],
+  '-1': ['p3', 'p4'],
+  '0': ['p5', 'p6'],
+  '1': ['p7', 'p8', 'p9', 'p10'],
+  '2': ['p11', 'p12'],
+};
+
+function compareTreePeople(a: TreePerson, b: TreePerson) {
+  if (a.birth_date && b.birth_date && a.birth_date !== b.birth_date) {
+    return a.birth_date.localeCompare(b.birth_date);
+  }
+  if (a.birth_date && !b.birth_date) return -1;
+  if (!a.birth_date && b.birth_date) return 1;
+  return a.id.localeCompare(b.id);
+}
+
+function relationshipRole(tree: NormalizedTree, personId: string): 'root' | 'parent' | 'child' | 'spouse' | 'related' {
+  if (personId === tree.rootPersonId) return 'root';
+
+  const root = tree.rootPersonId ? tree.nodes.get(tree.rootPersonId) : undefined;
+  if (!root) return 'related';
+
+  if (root.parentIds.includes(personId)) return 'parent';
+  if (root.childIds.includes(personId)) return 'child';
+  if (root.spouseIds.includes(personId)) return 'spouse';
+  return 'related';
+}
+
+function visualPriority(role: ReturnType<typeof relationshipRole>) {
+  return {
+    root: 0,
+    parent: 1,
+    spouse: 2,
+    child: 3,
+    related: 4,
+  }[role];
+}
+
+function preferredSlots(
+  tree: NormalizedTree,
+  node: NormalizedTreeNode,
+): (typeof positions)[number][] {
+  if (node.id === tree.rootPersonId) return ['p5', 'p6', ...positions];
+
+  const role = relationshipRole(tree, node.id);
+  const generation = node.generation;
+
+  if (role === 'parent') {
+    return [
+      ...generationSlots[String(generation)] ?? [],
+      'p3',
+      'p4',
+      'p1',
+      'p2',
+      ...positions,
+    ];
+  }
+
+  if (role === 'spouse') {
+    return [
+      'p6',
+      'p4',
+      ...generationSlots[String(generation)] ?? [],
+      'p3',
+      'p5',
+      ...positions,
+    ];
+  }
+
+  if (role === 'child') {
+    return [
+      ...generationSlots[String(generation)] ?? [],
+      'p7',
+      'p8',
+      'p9',
+      'p10',
+      ...positions,
+    ];
+  }
+
+  return [
+    ...generationSlots[String(generation)] ?? [],
+    ...positions,
+  ];
+}
+
+function buildVisualSlotMap(
+  tree: NormalizedTree,
+  visiblePeople: DashboardPerson[],
+): SlotAssignment {
+  const assigned = new Map<string, (typeof positions)[number]>();
+  const occupied = new Set<(typeof positions)[number]>();
+
+  const ordered = [...visiblePeople].sort((a, b) => {
+    const roleDifference =
+      visualPriority(relationshipRole(tree, a.id)) -
+      visualPriority(relationshipRole(tree, b.id));
+
+    if (roleDifference !== 0) return roleDifference;
+
+    const generationA = a.generation ?? Number.POSITIVE_INFINITY;
+    const generationB = b.generation ?? Number.POSITIVE_INFINITY;
+
+    if (generationA !== generationB) return generationA - generationB;
+
+    return compareTreePeople(a, b);
+  });
+
+  for (const person of ordered) {
+    const candidates = preferredSlots(tree, tree.nodes.get(person.id)!);
+    const slot =
+      candidates.find((candidate) => !occupied.has(candidate)) ??
+      positions.find((candidate) => !occupied.has(candidate));
+
+    if (!slot) continue;
+
+    assigned.set(person.id, slot);
+    occupied.add(slot);
+  }
+
+  return assigned;
 }
 
 function pickDashboardPeople(
@@ -310,14 +437,21 @@ function pickDashboardPeople(
   const remainingIds = tree.order
     .filter((id) => !selectedIds.has(id))
     .sort((a, b) => {
+      const roleDifference =
+        visualPriority(relationshipRole(tree, a)) -
+        visualPriority(relationshipRole(tree, b));
+
+      if (roleDifference !== 0) return roleDifference;
+
       const generationA = tree.nodes.get(a)?.generation ?? Number.POSITIVE_INFINITY;
       const generationB = tree.nodes.get(b)?.generation ?? Number.POSITIVE_INFINITY;
 
       if (generationA !== generationB) return generationA - generationB;
+
       return (
         (distance.get(a) ?? Number.POSITIVE_INFINITY) -
           (distance.get(b) ?? Number.POSITIVE_INFINITY) ||
-        a.localeCompare(b)
+        compareTreePeople(tree.nodes.get(a)!.person, tree.nodes.get(b)!.person)
       );
     });
 
@@ -337,10 +471,11 @@ function pickDashboardPeople(
       const generationB = b.generation ?? Number.POSITIVE_INFINITY;
 
       if (generationA !== generationB) return generationA - generationB;
+
       return (
         (distance.get(a.id) ?? Number.POSITIVE_INFINITY) -
           (distance.get(b.id) ?? Number.POSITIVE_INFINITY) ||
-        a.id.localeCompare(b.id)
+        compareTreePeople(a, b)
       );
     })
     .slice(0, max);
@@ -355,16 +490,14 @@ function generationLabel(generation: number | null) {
 function ConnectorLayer({
   tree,
   visiblePeople,
+  slotByPersonId,
 }: {
   tree: NormalizedTree;
   visiblePeople: DashboardPerson[];
+  slotByPersonId: SlotAssignment;
 }) {
-  const slotById = new Map(
-    visiblePeople.map((person, index) => [person.id, positions[index] ?? positions[0]]),
-  );
-
-  const point = (position: (typeof positions)[number]) => {
-    const [x, y] = slotPoints[position];
+  const point = (slot: (typeof positions)[number]) => {
+    const [x, y] = slotPoints[slot];
     return { x: (x / 100) * 950, y: (y / 100) * 640 };
   };
 
@@ -372,12 +505,12 @@ function ConnectorLayer({
     <svg className="connectors" viewBox="0 0 950 640" preserveAspectRatio="none" aria-hidden="true">
       <g fill="none" stroke="#d0ac56" strokeWidth="2">
         {tree.parentChildRelationships.map((edge) => {
-          const parentPosition = slotById.get(edge.parent_id);
-          const childPosition = slotById.get(edge.child_id);
-          if (!parentPosition || !childPosition) return null;
+          const parentSlot = slotByPersonId.get(edge.parent_id);
+          const childSlot = slotByPersonId.get(edge.child_id);
+          if (!parentSlot || !childSlot) return null;
 
-          const start = point(parentPosition);
-          const end = point(childPosition);
+          const start = point(parentSlot);
+          const end = point(childSlot);
           const middleY = (start.y + end.y) / 2;
 
           return (
@@ -408,12 +541,12 @@ function ConnectorLayer({
 
       <g fill="none" stroke="#e7cd78" strokeWidth="2" strokeDasharray="5 4">
         {tree.marriages.map((marriage) => {
-          const firstPosition = slotById.get(marriage.person_1_id);
-          const secondPosition = slotById.get(marriage.person_2_id);
-          if (!firstPosition || !secondPosition) return null;
+          const firstSlot = slotByPersonId.get(marriage.person_1_id);
+          const secondSlot = slotByPersonId.get(marriage.person_2_id);
+          if (!firstSlot || !secondSlot) return null;
 
-          const start = point(firstPosition);
-          const end = point(secondPosition);
+          const start = point(firstSlot);
+          const end = point(secondSlot);
 
           return (
             <g key={'marriage-' + marriage.id}>
@@ -683,6 +816,11 @@ function DashboardContent() {
         ? people.find((person) => person.id === selectedId) ?? null
         : null,
     [people, selectedId, normalizedTree],
+  );
+
+  const slotByPersonId = useMemo(
+    () => buildVisualSlotMap(normalizedTree, visiblePeople),
+    [normalizedTree, visiblePeople],
   );
 
   const maxGeneration = useMemo(
@@ -1061,7 +1199,7 @@ function DashboardContent() {
                 <div className="forest" />
 
                 <div className="treeworld" style={{ transform: 'scale(' + zoom + ')' }}>
-                  <ConnectorLayer tree={normalizedTree} visiblePeople={visiblePeople} />
+                  <ConnectorLayer\n                    tree={normalizedTree}\n                    visiblePeople={visiblePeople}\n                    slotByPersonId={slotByPersonId}\n                  />
 
                   {visiblePeople.map((person, index) => {
                     const photo = photosByPerson[person.id]?.[0];
@@ -1071,7 +1209,7 @@ function DashboardContent() {
                         key={person.id}
                         className={
                           'personnode ' +
-                          (positions[index] ?? positions[0]) +
+                          (slotByPersonId.get(person.id) ?? positions[0]) +
                           (isSelected ? ' chosen' : '')
                         }
                         onClick={() => choosePerson(person.id)}
