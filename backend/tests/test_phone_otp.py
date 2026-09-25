@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from conftest import register_verified
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from app.auth import get_sms_provider
 from app.main import app
