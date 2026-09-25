@@ -5,12 +5,9 @@ import {
   Archive,
   ArrowRight,
   BookOpen,
-  CalendarDays,
-  FileText,
   GitFork,
   Heart,
   Home,
-  MapPin,
   Menu,
   Network,
   Search,
@@ -443,6 +440,7 @@ function DashboardContent() {
   const [people, setPeople] = useState<Person[]>([]);
   const [tree, setTree] = useState<TreeData>({ persons: [], parent_child_relationships: [], marriages: [] });
   const [memories, setMemories] = useState<MemoryListItem[]>([]);
+  const [memoryCount, setMemoryCount] = useState(0);
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [search, setSearch] = useState('');
@@ -471,6 +469,7 @@ function DashboardContent() {
         setFamily(familyData);
         setPeople(peopleData);
         setTree(treeData);
+        setMemoryCount(memoryData.length);
         setMemories(memoryData.slice(0, 6));
 
         const [storiesResult, archivesResult] = await Promise.all([
@@ -868,7 +867,7 @@ function DashboardContent() {
               <div className="homev2-stats">
                 <div><strong>{people.length}</strong><span>Хүн</span></div>
                 <div><strong>{stories?.total ?? '—'}</strong><span>Түүх</span></div>
-                <div><strong>{memories.length}</strong><span>Дурсамж</span></div>
+                <div><strong>{memoryCount}</strong><span>Дурсамж</span></div>
                 <div><strong>{archives?.total ?? '—'}</strong><span>Архив</span></div>
               </div>
             </div>
