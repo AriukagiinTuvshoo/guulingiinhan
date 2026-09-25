@@ -14,10 +14,14 @@ def normalize_email(value: str) -> str:
 
 
 def normalize_phone(value: str) -> str:
-    """Accept an already international E.164 number; do not guess a country code."""
-    candidate = value.strip()
+    """Canonicalize E.164 plus common Mongolian local/mobile input."""
+    candidate = re.sub(r"[\\s\\-()]", "", value.strip())
+    if re.fullmatch(r"[6-9][0-9]{7}", candidate):
+        candidate = "+976" + candidate
+    elif re.fullmatch(r"976[6-9][0-9]{7}", candidate):
+        candidate = "+" + candidate
     if not re.fullmatch(r"\+[1-9][0-9]{7,14}", candidate):
-        raise ValueError("Утасны дугаарыг + болон улсын кодтой E.164 хэлбэрээр оруулна уу.")
+        raise ValueError("Утасны дугаарыг улсын кодтой дугаараар оруулна уу.")
     return candidate
 
 
