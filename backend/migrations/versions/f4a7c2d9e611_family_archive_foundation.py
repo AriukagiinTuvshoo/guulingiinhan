@@ -1,14 +1,14 @@
 """Establish the family archive foundation domain.
 
 Revision ID: f4a7c2d9e611
-Revises: e7c4a19d5f20
+Revises: 9f4c2d7e8a31
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "f4a7c2d9e611"
-down_revision = "e7c4a19d5f20"
+down_revision = "9f4c2d7e8a31"
 branch_labels = None
 depends_on = None
 
