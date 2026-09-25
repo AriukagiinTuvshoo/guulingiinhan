@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   ApiError,
   api,
+  ArchiveListPage,
   Marriage,
   PersonProfile,
   StoryListPage,
@@ -51,6 +52,7 @@ export default function ProfilePage() {
   const [marriages, setMarriages] = useState<Marriage[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
+  const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
@@ -58,14 +60,15 @@ export default function ProfilePage() {
 
   async function load(fid: string, pid: string) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
-    const [bio, eventList, marriageList, storyPage] = await Promise.allSettled([
+    const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
       api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
       api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
       api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
+      api<ArchiveListPage>(`/families/${fid}/persons/${pid}/archives?page=1&page_size=5`),
     ]);
 
-    const unexpectedFailure = [bio, eventList, marriageList, storyPage].find(
+    const unexpectedFailure = [bio, eventList, marriageList, storyPage, archivePage].find(
       (result) =>
         result.status === 'rejected' &&
         !(result.reason instanceof ApiError && [403, 404].includes(result.reason.status)),
@@ -78,6 +81,7 @@ export default function ProfilePage() {
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
     setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
+    setArchives(archivePage.status === 'fulfilled' ? archivePage.value : null);
     setMarriages(marriageList.status === 'fulfilled' ? marriageList.value : []);
   }
 
@@ -329,6 +333,25 @@ export default function ProfilePage() {
                 )) : <p className="profile-empty">Мэдээлэл оруулаагүй байна</p>}
               </div>
             </div>
+          </section>
+
+          <section className="card profile-card">
+            <div className="profile-card-heading">
+              <div><p className="eyebrow">FAMILY ARCHIVE</p><h2>Энэ хүнтэй холбоотой архив</h2></div>
+              <Link href={`/archives?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+            </div>
+            {archives?.items.length ? (
+              <div className="history-list">
+                {archives.items.map((archive) => (
+                  <Link className="history-item" key={archive.id} href={`/archives/${archive.id}?family=${encodeURIComponent(family)}`}>
+                    <strong>{archive.title}</strong>
+                    <span>{archive.document_date ?? 'Огноогүй'}{archive.place ? ` · ${archive.place}` : ''}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="profile-empty">Энэ хүнтэй холбоотой архив бүртгэгдээгүй байна.</p>
+            )}
           </section>
 
           <section className="card profile-card">
