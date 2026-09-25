@@ -2102,6 +2102,7 @@ def _story_excerpt(body: str) -> str:
 def list_stories(
     family_id: UUID,
     q: str | None = Query(default=None, max_length=120),
+    person_id: UUID | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=12, ge=1, le=50),
     user: User = Depends(get_current_user),
@@ -2116,6 +2117,19 @@ def list_stories(
     if query:
         pattern = f"%{query}%"
         conditions.append(or_(Story.title.ilike(pattern), Story.body.ilike(pattern)))
+    if person_id is not None:
+        person = _person_in_family(db, family_id, person_id)
+        _assert_person_visible(db, person, user)
+        if person_is_minor(person):
+            _require_minor_scope(db, family_id, person, user, "view_profile")
+        conditions.append(
+            Story.id.in_(
+                select(StoryPerson.story_id).where(
+                    StoryPerson.family_id == family_id,
+                    StoryPerson.person_id == person_id,
+                )
+            )
+        )
     total = db.scalar(select(func.count()).select_from(Story).where(*conditions)) or 0
     stories = list(
         db.scalars(
