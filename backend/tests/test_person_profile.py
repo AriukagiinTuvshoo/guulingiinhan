@@ -135,7 +135,7 @@ def test_person_profile_private_person_is_not_exposed_across_creator_boundary(cl
 
     invitation = client.post(
         f"/api/v1/families/{family_id}/invitations",
-        json={"email": private_creator_email, "role": "member"},
+        json={"email": private_creator_email, "role": "editor"},
     )
     assert invitation.status_code == 201
     delivery = next(
