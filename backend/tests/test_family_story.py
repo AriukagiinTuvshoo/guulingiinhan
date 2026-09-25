@@ -254,5 +254,5 @@ def test_story_wrong_family_update_and_delete_are_denied(client):
     assert client.put(
         f"/api/v1/families/{family_b}/stories/{story['id']}",
         json={"title": "Wrong", "body": "Wrong"},
-    ).status_code == 403
-    assert client.delete(f"/api/v1/families/{family_b}/stories/{story['id']}").status_code == 403
+    ).status_code == 404
+    assert client.delete(f"/api/v1/families/{family_b}/stories/{story['id']}").status_code == 404
