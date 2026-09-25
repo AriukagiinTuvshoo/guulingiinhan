@@ -58,6 +58,7 @@ from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/families", tags=["families"])
 invitations_router = APIRouter(prefix="/invitations", tags=["invitations"])
+lineages_router = APIRouter(prefix="/lineages", tags=["lineages"])
 
 
 class FamilyCreate(BaseModel):
@@ -683,7 +684,7 @@ def create_lineage(
     return lineage
 
 
-@router.get("/lineages/{lineage_id}/branches", response_model=list[BranchOut])
+@lineages_router.get("/{lineage_id}/branches", response_model=list[BranchOut])
 def list_branches(
     lineage_id: UUID,
     user: User = Depends(get_current_user),
@@ -698,7 +699,7 @@ def list_branches(
     return list(branches)
 
 
-@router.post("/lineages/{lineage_id}/branches", response_model=BranchOut, status_code=201)
+@lineages_router.post("/{lineage_id}/branches", response_model=BranchOut, status_code=201)
 def create_branch(
     lineage_id: UUID,
     body: BranchCreate,
