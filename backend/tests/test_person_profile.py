@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from conftest import register_verified
@@ -110,7 +110,7 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
     ).json()
     minor = client.post(
         f"/api/v1/families/{family_id}/persons",
-        json={"first_name": "Хүүхэд", "birth_date": date.today().replace(year=date.today().year - 10).isoformat()},
+        json={"first_name": "Хүүхэд", "birth_date": (datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 10)).isoformat()},
     ).json()
     assert client.post(
         f"/api/v1/families/{family_id}/relationships/parent-child",
