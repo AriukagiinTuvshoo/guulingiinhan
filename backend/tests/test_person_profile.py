@@ -102,7 +102,7 @@ def test_person_profile_is_family_scoped_and_rejects_unknown_ids(client):
     ).status_code == 403
 
 
-def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(client):
+def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(client, database):
     register_verified(client, "profile-minor@example.com")
     family_id = client.post("/api/v1/families", json={"name": "Насанд хүрээгүй"}).json()["id"]
     adult = client.post(

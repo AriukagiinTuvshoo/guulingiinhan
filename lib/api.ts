@@ -111,5 +111,39 @@ export type BranchSummary = {
   description: string | null;
 };
 
+export type StoryPerson = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
+};
+
+export type StoryListItem = {
+  id: string;
+  title: string;
+  excerpt: string;
+  event_date: string | null;
+  place: string | null;
+  visibility: string;
+  author_id: string;
+  author_name: string;
+  related_people_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoryListPage = {
+  items: StoryListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
+export type Story = StoryListItem & {
+  body: string;
+  related_people: StoryPerson[];
+};
+
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>
   [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ');
