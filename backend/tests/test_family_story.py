@@ -156,3 +156,103 @@ def test_private_story_is_visible_only_to_creator(client, database):
     )
     visible = client.get(f"/api/v1/families/{family_id}/stories/{story['id']}")
     assert visible.status_code == 200
+
+
+def test_story_validation_author_protection_and_duplicate_people(client):
+    register_verified(client, "story-validation@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Validation"}).json()["id"]
+    person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Нэг", "last_name": "Хүн"},
+    ).json()
+
+    empty_title = client.post(
+        f"/api/v1/families/{family_id}/stories",
+        json={"title": "   ", "body": "Бие"},
+    )
+    assert empty_title.status_code == 422
+
+    empty_body = client.post(
+        f"/api/v1/families/{family_id}/stories",
+        json={"title": "Гарчиг", "body": "\t  "},
+    )
+    assert empty_body.status_code == 422
+
+    duplicate_people = client.post(
+        f"/api/v1/families/{family_id}/stories",
+        json={
+            "title": "Давхар холбоос",
+            "body": "Агуулга",
+            "person_ids": [person["id"], person["id"]],
+        },
+    )
+    assert duplicate_people.status_code == 422
+
+    created = client.post(
+        f"/api/v1/families/{family_id}/stories",
+        json={
+            "title": "Авторын хамгаалалт",
+            "body": "Зөвшөөрөгдсөн агуулга",
+            "person_ids": [person["id"]],
+            "author_id": "00000000-0000-0000-0000-000000000001",
+            "created_by": "00000000-0000-0000-0000-000000000001",
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["author_id"] != "00000000-0000-0000-0000-000000000001"
+
+
+def test_story_member_cannot_mutate_but_editor_can_without_changing_author(client, database):
+    register_verified(client, "story-mutation-owner@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Mutation roles"}).json()["id"]
+    story = client.post(
+        f"/api/v1/families/{family_id}/stories",
+        json={"title": "Role test", "body": "Role body"},
+    ).json()
+    author_id = story["author_id"]
+
+    register_verified(client, "story-mutation-member@example.com")
+    with database() as db:
+        member_user = db.query(User).filter(User.email == "story-mutation-member@example.com").one()
+        db.add(FamilyMember(family_id=UUID(family_id), user_id=member_user.id, role="member"))
+        db.commit()
+
+    denied_update = client.put(
+        f"/api/v1/families/{family_id}/stories/{story['id']}",
+        json={"title": "Member edit", "body": "Denied"},
+    )
+    assert denied_update.status_code == 403
+    denied_delete = client.delete(f"/api/v1/families/{family_id}/stories/{story['id']}")
+    assert denied_delete.status_code == 403
+
+    register_verified(client, "story-mutation-editor@example.com")
+    with database() as db:
+        editor_user = db.query(User).filter(User.email == "story-mutation-editor@example.com").one()
+        db.add(FamilyMember(family_id=UUID(family_id), user_id=editor_user.id, role="editor"))
+        db.commit()
+
+    updated = client.put(
+        f"/api/v1/families/{family_id}/stories/{story['id']}",
+        json={"title": "Editor edit", "body": "Editor body"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["author_id"] == author_id
+
+    deleted = client.delete(f"/api/v1/families/{family_id}/stories/{story['id']}")
+    assert deleted.status_code == 204
+
+
+def test_story_wrong_family_update_and_delete_are_denied(client):
+    register_verified(client, "story-wrong-family@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Story A"}).json()["id"]
+    family_b = client.post("/api/v1/families", json={"name": "Story B"}).json()["id"]
+    story = client.post(
+        f"/api/v1/families/{family_a}/stories",
+        json={"title": "A story", "body": "A body"},
+    ).json()
+
+    assert client.put(
+        f"/api/v1/families/{family_b}/stories/{story['id']}",
+        json={"title": "Wrong", "body": "Wrong"},
+    ).status_code == 403
+    assert client.delete(f"/api/v1/families/{family_b}/stories/{story['id']}").status_code == 403
