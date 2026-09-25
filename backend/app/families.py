@@ -23,6 +23,8 @@ from app.models import (
     FamilyMember,
     FamilyPerson,
     Invitation,
+    Lineage,
+    Branch,
     LifeEvent,
     LoginIdentity,
     Marriage,
@@ -89,6 +91,50 @@ class FamilyOut(BaseModel):
     description: str | None
     created_at: datetime
     role: str
+
+
+class LineageCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=10000)
+
+    @model_validator(mode="after")
+    def check_name(self):
+        if not self.name.strip():
+            raise ValueError("Удам угсааны нэр хоосон байж болохгүй.")
+        return self
+
+
+class LineageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    family_id: UUID
+    name: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BranchCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    description: str | None = Field(default=None, max_length=10000)
+
+    @model_validator(mode="after")
+    def check_name(self):
+        if not self.name.strip():
+            raise ValueError("Салааны нэр хоосон байж болохгүй.")
+        return self
+
+
+class BranchOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    lineage_id: UUID
+    name: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class PersonCreate(BaseModel):
@@ -371,6 +417,22 @@ def _member(db: Session, family_id: UUID, user: User, roles: set[str] | None = N
     return member, family
 
 
+def _lineage_in_member_family(db: Session, lineage_id: UUID, user: User) -> Lineage:
+    lineage = db.scalar(
+        select(Lineage)
+        .join(FamilyMember, FamilyMember.family_id == Lineage.family_id)
+        .join(Family, Family.id == Lineage.family_id)
+        .where(
+            Lineage.id == lineage_id,
+            FamilyMember.user_id == user.id,
+            Family.archived_at.is_(None),
+        )
+    )
+    if lineage is None:
+        raise HTTPException(status_code=404, detail="Удам угсаа олдсонгүй.")
+    return lineage
+
+
 def _person_in_family(db: Session, family_id: UUID, person_id: UUID) -> Person:
     person = db.scalar(
         select(Person)
@@ -576,6 +638,81 @@ def list_members(
         .where(FamilyMember.family_id == family_id)
     ).all()
     return [MemberOut(user_id=r.id, display_name=r.display_name, role=r.role) for r in rows]
+
+
+@router.get("/{family_id}/lineages", response_model=list[LineageOut])
+def list_lineages(
+    family_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    lineages = db.scalars(
+        select(Lineage)
+        .where(Lineage.family_id == family_id)
+        .order_by(Lineage.name, Lineage.created_at, Lineage.id)
+    ).all()
+    return list(lineages)
+
+
+@router.post("/{family_id}/lineages", response_model=LineageOut, status_code=201)
+def create_lineage(
+    family_id: UUID,
+    body: LineageCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    lineage = Lineage(
+        family_id=family_id,
+        name=body.name.strip(),
+        description=body.description,
+    )
+    db.add(lineage)
+    db.flush()
+    _audit(db, user, family_id, "lineage.created", "lineage", lineage.id)
+    _commit(db, "Энэ гэр бүлд ижил нэртэй удам угсаа аль хэдийн бүртгэгдсэн байна.")
+    db.refresh(lineage)
+    return lineage
+
+
+@router.get("/lineages/{lineage_id}/branches", response_model=list[BranchOut])
+def list_branches(
+    lineage_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    lineage = _lineage_in_member_family(db, lineage_id, user)
+    branches = db.scalars(
+        select(Branch)
+        .where(Branch.lineage_id == lineage.id)
+        .order_by(Branch.name, Branch.created_at, Branch.id)
+    ).all()
+    return list(branches)
+
+
+@router.post("/lineages/{lineage_id}/branches", response_model=BranchOut, status_code=201)
+def create_branch(
+    lineage_id: UUID,
+    body: BranchCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    lineage = _lineage_in_member_family(db, lineage_id, user)
+    _member(db, lineage.family_id, user, {"owner", "editor"})
+    branch = Branch(
+        lineage_id=lineage.id,
+        name=body.name.strip(),
+        description=body.description,
+    )
+    db.add(branch)
+    db.flush()
+    _audit(db, user, lineage.family_id, "branch.created", "branch", branch.id)
+    _commit(db, "Энэ удам угсаанд ижил нэртэй салаа аль хэдийн бүртгэгдсэн байна.")
+    db.refresh(branch)
+    return branch
+
+
 
 
 @router.post("/{family_id}/persons", response_model=PersonOut, status_code=201)

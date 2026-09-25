@@ -270,6 +270,46 @@ class Family(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Lineage(Base):
+    """An explicit ancestral/descent lineage within one Family."""
+
+    __tablename__ = "lineages"
+    __table_args__ = (
+        UniqueConstraint("family_id", "name", name="uq_lineage_family_name"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class Branch(Base):
+    """An explicit subdivision/path within one Lineage."""
+
+    __tablename__ = "branches"
+    __table_args__ = (
+        UniqueConstraint("lineage_id", "name", name="uq_branch_lineage_name"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    lineage_id: Mapped[UUID] = mapped_column(
+        ForeignKey("lineages.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
 class FamilyMember(Base):
     __tablename__ = "family_members"
     __table_args__ = (
