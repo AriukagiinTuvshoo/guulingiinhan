@@ -585,6 +585,59 @@ class LifeEvent(Base):
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
 
 
+class Story(Base):
+    __tablename__ = "stories"
+    __table_args__ = (
+        UniqueConstraint("id", "family_id", name="uq_story_family"),
+        CheckConstraint(
+            "visibility IN ('private', 'family', 'public')",
+            name="ck_story_visibility",
+        ),
+        Index("ix_story_family_created", "family_id", "created_at"),
+        Index("ix_story_family_event_date", "family_id", "event_date"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(180))
+    body: Mapped[str] = mapped_column(Text)
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    place: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    visibility: Mapped[str] = mapped_column(String(12), default="family")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class StoryPerson(Base):
+    __tablename__ = "story_persons"
+    __table_args__ = (
+        UniqueConstraint("story_id", "person_id", name="uq_story_person"),
+        ForeignKeyConstraint(
+            ["story_id", "family_id"],
+            ["stories.id", "stories.family_id"],
+            name="fk_story_person_story_family",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["family_id", "person_id"],
+            ["family_persons.family_id", "family_persons.person_id"],
+            name="fk_story_person_family_person",
+            ondelete="CASCADE",
+        ),
+        Index("ix_story_person_person", "person_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    story_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    family_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    person_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+
+
 class Memory(Base):
     __tablename__ = "memories"
 
