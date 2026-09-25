@@ -227,7 +227,7 @@
 .homev2-section-header p:last-child{margin:7px 0 0;color:#7b8179;font-size:11px}
 .homev2-text-link,.homev2-recent-links a{display:inline-flex;align-items:center;gap:6px;color:#8a6d35;font-size:10px}
 .homev2-text-link:hover,.homev2-text-link:focus-visible,.homev2-recent-links a:hover,.homev2-recent-links a:focus-visible{color:#5e4a26;outline:none}
-.homev2-tree{position:relative;min-height:465px;margin:0 14px 14px;border-radius:15px;overflow:hidden;background:#12372d}
+.homev2-tree-viewport{overflow:hidden;border-radius:15px;margin:0 14px 14px}.homev2-tree{position:relative;min-height:465px;margin:0 14px 14px;border-radius:15px;overflow:hidden;background:#12372d}
 .homev2-tree-backdrop{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 44%,#315244 0%,#19392f 48%,#0f2c24 100%)}
 .homev2-tree:before,.homev2-tree:after{content:"";position:absolute;inset:auto 8% 18px;height:44px;border-radius:50%;background:#0a221c55;filter:blur(16px)}
 .homev2-tree:after{inset:10% 18% auto;height:170px;background:#6e7b6250;filter:blur(50px)}
@@ -315,8 +315,7 @@
   .homev2-main{padding:24px 16px 36px}
   .homev2-hero{align-items:flex-start;flex-direction:column;padding-bottom:22px}
   .homev2-hero-meta{justify-content:flex-start}
-  .homev2-tree{min-height:410px;overflow-x:auto}
-  .homev2-tree-backdrop,.homev2-tree-connectors{min-width:720px}
+  .homev2-tree{min-height:410px;min-width:720px}
   .homev2-tree-node{width:118px;min-height:100px}
   .homev2-actions{grid-template-columns:1fr}
   .homev2-activity{grid-template-columns:1fr}
@@ -341,5 +340,4 @@
   .homev2-main{padding-left:10px;padding-right:10px}
   .homev2-search input{font-size:10px}
   .homev2-tree{min-height:360px}
-  .homev2-tree-backdrop,.homev2-tree-connectors{min-width:640px}
 }
