@@ -274,3 +274,9 @@
   .auth-brand{margin-top:19px}
   .auth-heading h1{font-size:26px}
 }
+
+
+:where(a,button,input,select,textarea):focus-visible{
+  outline:2px solid #d6b85f;
+  outline-offset:2px;
+}
