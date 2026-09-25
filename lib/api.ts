@@ -144,6 +144,15 @@ export type Archive = ArchiveListItem & {
   related_people: ArchivePerson[];
 };
 
+export type ArchiveInput = {
+  title: string;
+  description: string | null;
+  document_date: string | null;
+  place: string | null;
+  visibility: 'private' | 'family' | 'public';
+  person_ids: string[];
+};
+
 export type StoryPerson = {
   id: string;
   first_name: string;
