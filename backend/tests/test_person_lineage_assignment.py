@@ -260,7 +260,13 @@ def test_assignment_does_not_mutate_genealogy_counts(client):
     after = client.get(f"/api/v1/families/{family_id}/tree").json()
     assert len(after["parent_child_relationships"]) == len(before["parent_child_relationships"])
     assert len(after["marriages"]) == len(before["marriages"])
-    assert after["persons"] == before["persons"]
+    assignment_fields = {"lineage_id", "lineage_name", "branch_id", "branch_name"}
+    project_person = lambda row: {
+        key: value for key, value in row.items() if key not in assignment_fields
+    }
+    assert [project_person(row) for row in after["persons"]] == [
+        project_person(row) for row in before["persons"]
+    ]
 
 
 def test_assignment_is_removed_when_person_is_detached_from_family(client, database):

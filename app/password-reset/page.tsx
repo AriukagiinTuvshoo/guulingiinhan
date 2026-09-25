@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
+import { Eye, EyeOff, TreeDeciduous } from 'lucide-react';
 import { api } from '../../lib/api';
 
 export default function PasswordResetPage() {
@@ -10,6 +11,8 @@ export default function PasswordResetPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [complete, setComplete] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     const value = new URLSearchParams(window.location.hash.slice(1)).get('token');
@@ -47,22 +50,46 @@ export default function PasswordResetPage() {
     finally { setBusy(false); }
   }
 
-  return <main className="mvp"><section className="mvpbox" style={{maxWidth: 500}}>
-    <Link href="/login">← Нэвтрэх</Link>
-    <h1 style={{marginTop: 24}}>Нууц үг сэргээх</h1>
-    <p>Зөвхөн баталгаажсан имэйлд хугацаатай, нэг удаагийн холбоос илгээнэ.</p>
-    {notice && <div className="success" role="status">{notice}</div>}
-    {error && <div className="error" role="alert">{error}</div>}
-    {!token && !complete && <form onSubmit={request}>
-      <label>Имэйл<input name="email" type="email" autoComplete="email" maxLength={320} required /></label>
-      <button className="primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Холбоос илгээх'}</button>
-      <p className="muted">Бүртгэлтэй эсэхийг харуулахгүй.</p>
-    </form>}
-    {token && !complete && <form onSubmit={confirm}>
-      <label>Шинэ нууц үг<input name="password" type="password" autoComplete="new-password" minLength={10} maxLength={128} required /></label>
-      <label>Нууц үгээ давтах<input name="confirm" type="password" autoComplete="new-password" minLength={10} maxLength={128} required /></label>
-      <button className="primary" disabled={busy}>{busy ? 'Шинэчилж байна…' : 'Нууц үг шинэчлэх'}</button>
-    </form>}
-    {complete && <Link className="button" href="/login">Нэвтрэх</Link>}
-  </section></main>;
+  return (
+    <main className="auth-shell">
+      <section className="auth-card" aria-labelledby="reset-title">
+        <Link className="auth-back" href="/login">← Нэвтрэх</Link>
+        <div className="auth-brand">
+          <div className="brandmark auth-mark"><TreeDeciduous /></div>
+          <div><strong>ГУУЛИНГИЙНХАН</strong><span>Миний удам · Манай түүх</span></div>
+        </div>
+        <div className="auth-heading">
+          <h1 id="reset-title">Нууц үг сэргээх</h1>
+          <p>Баталгаажсан имэйлд хугацаатай, нэг удаагийн холбоос илгээнэ.</p>
+        </div>
+        {notice && <div className="auth-message success" role="status">{notice}</div>}
+        {error && <div className="auth-message error" role="alert">{error}</div>}
+        {!token && !complete && <form className="auth-form" onSubmit={request}>
+          <label htmlFor="reset-email">Имэйл</label>
+          <input id="reset-email" name="email" type="email" autoComplete="email" maxLength={320} required />
+          <button className="auth-primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Холбоос илгээх'}</button>
+          <span className="auth-help">Бүртгэлтэй эсэхийг харуулахгүй.</span>
+        </form>}
+        {token && !complete && <form className="auth-form" onSubmit={confirm}>
+          <label htmlFor="reset-password">Шинэ нууц үг</label>
+          <div className="password-field">
+            <input id="reset-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
+            <button type="button" className="password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>
+              {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+          <span className="auth-help">8-аас доошгүй тэмдэгт.</span>
+          <label htmlFor="reset-confirm">Нууц үгээ давтах</label>
+          <div className="password-field">
+            <input id="reset-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
+            <button type="button" className="password-toggle" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>
+              {showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+          <button className="auth-primary" disabled={busy}>{busy ? 'Шинэчилж байна…' : 'Нууц үг шинэчлэх'}</button>
+        </form>}
+        {complete && <Link className="auth-primary auth-link-button" href="/login">Нэвтрэх</Link>}
+      </section>
+    </main>
+  );
 }

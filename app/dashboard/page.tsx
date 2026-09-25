@@ -1296,7 +1296,30 @@ function DashboardContent() {
               </div>
             )}
 
-            {!tree.persons.length ? (
+            {error && !family ? (
+              <div className="treecanvas empty-tree">
+                <div className="empty-tree-card">
+                  <TreeDeciduous size={42} />
+                  <h2>Ургийн модыг ачаалж чадсангүй</h2>
+                  <p>Бодит ургийн мэдээллийг одоогоор ачаалж чадсангүй. Дахин оролдоно уу.</p>
+                  <button
+                    className="button"
+                    onClick={() => {
+                      const retryFamily =
+                        families.find((item) => item.id === familyIdFromUrl) ?? families[0];
+                      if (retryFamily) {
+                        void loadDashboard(
+                          retryFamily.id,
+                          selectedPersonIdRef.current ?? undefined,
+                        );
+                      }
+                    }}
+                  >
+                    Дахин ачаалах
+                  </button>
+                </div>
+              </div>
+            ) : !tree.persons.length ? (
               <div className="treecanvas empty-tree">
                 <div className="empty-tree-card">
                   <TreeDeciduous size={42} />
@@ -1346,6 +1369,20 @@ function DashboardContent() {
                             ? '–'
                             : '– ' + (person.death_date?.slice(0, 4) ?? '?')}
                         </span>
+                        {(person.lineage_name || person.branch_name) && (
+                          <em
+                            className="lineage-mark"
+                            title={
+                              person.branch_name
+                                ? person.lineage_name
+                                  ? person.lineage_name + ' · ' + person.branch_name
+                                  : person.branch_name
+                                : person.lineage_name ?? undefined
+                            }
+                          >
+                            {person.branch_name ?? person.lineage_name}
+                          </em>
+                        )}
                         <i>
                           {generationLabel(person.generation)}
                         </i>

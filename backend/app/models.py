@@ -27,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     display_name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -205,7 +205,7 @@ class PhoneOtpChallenge(Base):
     __tablename__ = "phone_otp_challenges"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('phone_link', 'phone_login', 'password_recovery')",
+            "purpose IN ('phone_link', 'phone_login', 'phone_registration', 'password_recovery')",
             name="ck_phone_otp_purpose",
         ),
         CheckConstraint(
