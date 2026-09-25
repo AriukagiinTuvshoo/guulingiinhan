@@ -494,6 +494,7 @@ def _user_output(db: Session, user: User) -> UserOutput:
 
 GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
 GENERIC_RESET_MESSAGE = "Хэрэв энэ имэйлд баталгаажсан account байвал нууц үг шинэчлэх холбоос илгээнэ."
+GENERIC_REGISTER_MESSAGE = "Бүртгэлийн хүсэлтийг хүлээн авлаа. Шаардлагатай бол баталгаажуулах холбоосыг имэйлээр илгээнэ."
 
 
 def _email_request_allowed(db: Session, request: Request, purpose: str, email: str) -> bool:
@@ -871,18 +872,19 @@ def google_callback(
     return response
 
 
-@router.post("/register", response_model=UserOutput, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=GenericEmailResponse, status_code=status.HTTP_201_CREATED)
 def register(
     body: RegisterInput,
     request: Request,
-    response: Response,
     background_tasks: BackgroundTasks,
     email_provider: EmailProvider = Depends(get_email_provider),
     db: Session = Depends(get_db),
 ):
     email = normalize_email(str(body.email))
     if email_is_registered(db, email):
-        raise HTTPException(status_code=409, detail="Энэ имэйлээр бүртгэл үүссэн байна.")
+        _password_matches("registration-enumeration-padding", _DUMMY_PASSWORD_HASH)
+        return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
+
     user = User(
         email=email,
         display_name=(body.display_name or email.partition("@")[0]).strip(),
@@ -911,15 +913,14 @@ def register(
         from sqlalchemy.exc import IntegrityError
 
         if isinstance(error, IntegrityError):
-            raise HTTPException(
-                status_code=409, detail="Энэ имэйлээр бүртгэл үүссэн байна."
-            ) from error
+            _password_matches("registration-enumeration-padding", _DUMMY_PASSWORD_HASH)
+            return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
         raise
     db.refresh(user)
     _verification_link_for_user(
         db, user, email_provider, background_tasks, getattr(request.state, "request_id", None)
     )
-    return _user_output(db, user)
+    return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
 
 
 @router.post(
