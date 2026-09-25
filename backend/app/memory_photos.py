@@ -581,11 +581,17 @@ def create_memory(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    member, _ = _member(db, family_id, user, {"owner", "editor"})
+    member, _ = _member(db, family_id, user)
     title, person_ids = _validate_memory_input(body)
+    people = []
     for person_id in person_ids:
         person = _person_in_family(db, family_id, person_id)
         _assert_person_visible(db, person, user)
+        people.append(person)
+
+    if member.role not in {"owner", "editor"}:
+        if not people or not all(is_minor(person.birth_date) is True for person in people):
+            raise HTTPException(status_code=403, detail="Энэ дурсамжийг үүсгэх эрхгүй.")
     _assert_memory_minor_scopes(db, family_id, user, person_ids)
     memory = Memory(
         family_id=family_id,
