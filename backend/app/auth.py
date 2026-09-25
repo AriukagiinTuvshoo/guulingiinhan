@@ -94,7 +94,7 @@ class GenericEmailResponse(BaseModel):
 
 class UserOutput(BaseModel):
     id: UUID
-    email: str
+    email: str | None
     display_name: str
     person_id: UUID | None = None
 
@@ -119,6 +119,18 @@ class PhoneOtpRequestInput(BaseModel):
             raise ValueError(str(error)) from error
 
 
+class PhoneRegisterInput(PhoneOtpRequestInput):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Нэр хоосон байж болохгүй.")
+        return value
+
+
 class PhoneOtpRequestOutput(BaseModel):
     challenge_id: UUID
     expires_in: int
@@ -128,6 +140,18 @@ class PhoneOtpRequestOutput(BaseModel):
 class PhoneOtpVerifyInput(PhoneOtpRequestInput):
     challenge_id: UUID
     code: str = Field(pattern=r"^[0-9]{6}$")
+
+
+class PhoneRegisterVerifyInput(PhoneOtpVerifyInput):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Нэр хоосон байж болохгүй.")
+        return value
 
 
 class PasswordRecoveryInput(PhoneOtpVerifyInput):
@@ -528,6 +552,8 @@ def _email_link(page: str, token: str) -> str:
 
 
 def _verified_email_identity(db: Session, user: User) -> LoginIdentity | None:
+    if not user.email:
+        return None
     identity = db.scalar(
         select(LoginIdentity).where(
             LoginIdentity.user_id == user.id,
