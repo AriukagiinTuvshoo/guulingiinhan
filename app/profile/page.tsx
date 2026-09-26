@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
@@ -61,8 +61,35 @@ export default function ProfilePage() {
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [biographyState, setBiographyState] = useState<'loading' | 'ready' | 'restricted'>('loading');
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const requestSequenceRef = useRef(0);
+  const mutationRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  async function load(fid: string, pid: string) {
+  function profileError(cause: unknown) {
+    if (cause instanceof ApiError) {
+      if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+      if (cause.status === 403) return 'Энэ хүний мэдээлэлд хандах эрхгүй байна.';
+      if (cause.status === 404) return 'Энэ хүний профайл олдсонгүй эсвэл харах боломжгүй байна.';
+      if (cause.status === 409) return 'Мэдээллийн төлөв өөрчлөгдсөн байна. Дахин оролдоно уу.';
+      if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+      if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
+      if (cause.status >= 500) return 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
+      if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+    }
+    return 'Профайлыг ачаалж чадсангүй. Дахин оролдоно уу.';
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestSequenceRef.current += 1;
+    };
+  }, []);
+
+  async function load(fid: string, pid: string, requestId: number) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
@@ -81,7 +108,9 @@ export default function ProfilePage() {
       throw unexpectedFailure.reason;
     }
 
+    if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
     setPerson(profile);
+    setBiographyState(bio.status === 'fulfilled' ? 'ready' : 'restricted');
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
     setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
@@ -90,46 +119,67 @@ export default function ProfilePage() {
   }
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
-    const pid = params.get('person') ?? '';
-    setFamily(fid);
-    setId(pid);
+    const syncRoute = () => {
+      const requestId = ++requestSequenceRef.current;
+      const params = new URLSearchParams(window.location.search);
+      const fid = params.get('family') ?? '';
+      const pid = params.get('person') ?? '';
 
-    if (!fid || !pid) {
-      router.replace('/people');
-      return;
-    }
+      setFamily(fid);
+      setId(pid);
+      setPerson(null);
+      setBiography('');
+      setBiographyState('loading');
+      setMarriages([]);
+      setEvents([]);
+      setStories(null);
+      setArchives(null);
+      setMemories([]);
+      setMemoryState('loading');
+      setMemoryError('');
+      setError('');
+      setNotice('');
+      setEditing(false);
 
-    setLoading(true);
-    setError('');
-    load(fid, pid)
-      .catch((cause) => {
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setError(
-          cause instanceof ApiError && [403, 404].includes(cause.status)
-            ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-            : cause instanceof Error
-              ? cause.message
-              : 'Профайлыг ачаалж чадсангүй.',
-        );
-      })
-      .finally(() => setLoading(false));
+      if (!fid || !pid) {
+        setLoading(false);
+        router.replace('/people');
+        return;
+      }
+
+      setLoading(true);
+      void load(fid, pid, requestId)
+        .catch((cause) => {
+          if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
+          if (cause instanceof ApiError && cause.status === 401) {
+            router.replace('/login');
+            return;
+          }
+          setError(profileError(cause));
+        })
+        .finally(() => {
+          if (mountedRef.current && requestId === requestSequenceRef.current) setLoading(false);
+        });
+
+      void loadMemories(fid, pid, requestId);
+    };
+
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
   }, [router]);
 
-  async function loadMemories(fid: string, pid: string) {
+
+  async function loadMemories(fid: string, pid: string, requestId = requestSequenceRef.current) {
     setMemoryState('loading');
     setMemoryError('');
     try {
-      const result = await api<MemoryListItem[]>(
-        `/families/${fid}/persons/${pid}/memories`,
-      );
+      const result = await api<MemoryListItem[]>(`/families/${fid}/persons/${pid}/memories`);
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
       setMemories(result);
       setMemoryState('ready');
     } catch (cause) {
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -141,62 +191,73 @@ export default function ProfilePage() {
         return;
       }
       setMemoryState('error');
-      setMemoryError(
-        cause instanceof Error
-          ? cause.message
-          : 'Дурсамжийг ачаалж чадсангүй.',
-      );
+      setMemoryError(profileError(cause));
     }
   }
 
+
   async function retry() {
-    if (!family || !id) return;
+    if (!family || !id || mutationRef.current) return;
+    const requestId = ++requestSequenceRef.current;
+    setPerson(null);
     setLoading(true);
     setError('');
+    setNotice('');
+    setBiographyState('loading');
     try {
-      await load(family, id);
+      await load(family, id, requestId);
+      await loadMemories(family, id, requestId);
     } catch (cause) {
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
-      setError(
-        cause instanceof ApiError && [403, 404].includes(cause.status)
-          ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-          : cause instanceof Error
-            ? cause.message
-            : 'Профайлыг ачаалж чадсангүй.',
-      );
+      setError(profileError(cause));
     } finally {
-      setLoading(false);
+      if (mountedRef.current && requestId === requestSequenceRef.current) setLoading(false);
     }
   }
 
-  useEffect(() => {
-    if (!family || !id) return;
-    void loadMemories(family, id);
-  }, [family, id]);
 
   async function saveBiography(event: FormEvent) {
     event.preventDefault();
+    if (mutationRef.current || biographyState === 'restricted' || !family || !id) return;
+    mutationRef.current = true;
+    setMutationBusy(true);
     setError('');
+    setNotice('');
+    const targetFamily = family;
+    const targetPerson = id;
     try {
-      await api(`/families/${family}/persons/${id}/biography`, {
+      await api(`/families/${encodeURIComponent(targetFamily)}/persons/${encodeURIComponent(targetPerson)}/biography`, {
         method: 'PUT',
         body: JSON.stringify({ content: biography }),
       });
+      if (!mountedRef.current) return;
       setNotice('Намтар хадгалагдлаа.');
+      setBiographyState('ready');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Намтрыг хадгалж чадсангүй.');
+      if (mountedRef.current) setError(profileError(cause));
+    } finally {
+      mutationRef.current = false;
+      if (mountedRef.current) setMutationBusy(false);
     }
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mutationRef.current || !family || !id) return;
+    mutationRef.current = true;
+    setMutationBusy(true);
     setError('');
+    setNotice('');
     const values = new FormData(event.currentTarget);
+    const targetFamily = family;
+    const targetPerson = id;
+    const requestId = ++requestSequenceRef.current;
     try {
-      await api(`/families/${family}/persons/${id}`, {
+      await api(`/families/${encodeURIComponent(targetFamily)}/persons/${encodeURIComponent(targetPerson)}`, {
         method: 'PATCH',
         body: JSON.stringify({
           first_name: values.get('first_name'),
@@ -210,21 +271,33 @@ export default function ProfilePage() {
           visibility: values.get('visibility'),
         }),
       });
-      await load(family, id);
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
+      await load(targetFamily, targetPerson, requestId);
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
       setEditing(false);
       setNotice('Профайл хадгалагдлаа.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Профайлыг хадгалж чадсангүй.');
+      if (mountedRef.current && requestId === requestSequenceRef.current) setError(profileError(cause));
+    } finally {
+      mutationRef.current = false;
+      if (mountedRef.current) setMutationBusy(false);
     }
   }
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mutationRef.current || !family || !id) return;
+    mutationRef.current = true;
+    setMutationBusy(true);
     setError('');
+    setNotice('');
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const targetFamily = family;
+    const targetPerson = id;
+    const requestId = ++requestSequenceRef.current;
     try {
-      await api(`/families/${family}/persons/${id}/events`, {
+      await api(`/families/${encodeURIComponent(targetFamily)}/persons/${encodeURIComponent(targetPerson)}/events`, {
         method: 'POST',
         body: JSON.stringify({
           event_type: form.get('event_type'),
@@ -233,11 +306,16 @@ export default function ProfilePage() {
           description: form.get('description') || null,
         }),
       });
-      await load(family, id);
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
+      await load(targetFamily, targetPerson, requestId);
+      if (!mountedRef.current || requestId !== requestSequenceRef.current) return;
       formElement.reset();
       setNotice('Үйл явдал нэмэгдлээ.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Үйл явдал нэмж чадсангүй.');
+      if (mountedRef.current && requestId === requestSequenceRef.current) setError(profileError(cause));
+    } finally {
+      mutationRef.current = false;
+      if (mountedRef.current) setMutationBusy(false);
     }
   }
 
@@ -466,11 +544,11 @@ export default function ProfilePage() {
 
           <section className="card profile-card">
             <div className="profile-card-heading"><div><p className="eyebrow">LIFE HISTORY</p><h2>Намтар</h2></div></div>
-            <p className="profile-text">{biography || 'Намтар оруулаагүй байна.'}</p>
-            <form onSubmit={saveBiography}>
+            <p className="profile-text">{biographyState === 'restricted' ? 'Энэ хүний намтрыг харах эрхгүй байна.' : biography || 'Намтар оруулаагүй байна.'}</p>
+            {biographyState === 'restricted' ? null : <form onSubmit={saveBiography}>
               <label>Намтар<textarea value={biography} onChange={(event) => setBiography(event.target.value)} maxLength={50000} /></label>
-              <button className="primary" type="submit">Намтар хадгалах</button>
-            </form>
+              <button className="primary" type="submit" disabled={mutationBusy} aria-busy={mutationBusy}>{mutationBusy ? 'Хадгалж байна…' : 'Намтар хадгалах'}</button>
+            </form>}
           </section>
 
           <section className="card profile-card">
@@ -498,7 +576,7 @@ export default function ProfilePage() {
               <label>Гарчиг<input name="title" required maxLength={180} /></label>
               <label>Огноо<input name="event_date" type="date" /></label>
               <label>Тайлбар<textarea name="description" maxLength={10000} /></label>
-              <button className="primary" type="submit">Үйл явдал нэмэх</button>
+              <button className="primary" type="submit" disabled={mutationBusy} aria-busy={mutationBusy}>{mutationBusy ? 'Хадгалж байна…' : 'Үйл явдал нэмэх'}</button>
             </form>
           </section>
         </div>
@@ -518,7 +596,7 @@ export default function ProfilePage() {
                 <label>Нас барсан газар<input name="death_place" defaultValue={person.death_place ?? ''} maxLength={240} /></label>
                 <label>Нууцлал<select name="visibility" defaultValue={person.visibility}><option value="private">Зөвхөн би</option><option value="family">Гэр бүлийнхэн</option><option value="public">Нийтийн</option></select></label>
               </div>
-              <button className="primary" type="submit">Профайл хадгалах</button>
+              <button className="primary" type="submit" disabled={mutationBusy} aria-busy={mutationBusy}>{mutationBusy ? 'Хадгалж байна…' : 'Профайл хадгалах'}</button>
             </form>
           </section>
         )}
