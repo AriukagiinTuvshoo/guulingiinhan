@@ -1,59 +1,120 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ApiError, api, Archive, Family } from '../../../lib/api';
 
+function formatDate(value: string | null) {
+  if (!value) return 'Огноогүй';
+  const parts = value.split('-');
+  return parts.length === 3 ? `${parts[0]}.${parts[1]}.${parts[2]}` : value;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('mn-MN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+}
+
+function visibilityLabel(value: string) {
+  if (value === 'private') return 'Зөвхөн би';
+  if (value === 'public') return 'Нийтийн';
+  return 'Гэр бүлийнхэн';
+}
+
 export default function ArchiveDetailPage() {
+  const router = useRouter();
   const [familyId, setFamilyId] = useState('');
-  const [archive, setArchive] = useState<Archive | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
+  const [archive, setArchive] = useState<Archive | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [notice, setNotice] = useState('');
+  const familyRequestRef = useRef(0);
+  const archiveRequestRef = useRef(0);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
 
-  async function load(fid: string, archiveId: string) {
+  const loadArchive = useCallback(async (fid: string, archiveId: string) => {
+    const requestId = ++archiveRequestRef.current;
     setLoading(true);
     setError('');
     try {
-      setArchive(await api<Archive>('/families/' + fid + '/archives/' + archiveId));
+      const result = await api<Archive>(`/families/${fid}/archives/${archiveId}`);
+      if (requestId !== archiveRequestRef.current) return;
+      setArchive(result);
     } catch (cause) {
+      if (requestId !== archiveRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
-        window.location.href = '/login';
+        router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Архивийг ачаалж чадсангүй.');
+      setArchive(null);
+      setError('Архивийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
     } finally {
-      setLoading(false);
+      if (requestId === archiveRequestRef.current) setLoading(false);
     }
-  }
+  }, [router]);
+
+  const loadFamilyContext = useCallback(async () => {
+    const requestId = ++familyRequestRef.current;
+    setLoading(true);
+    setError('');
+    try {
+      const items = await api<Family[]>('/families');
+      if (requestId !== familyRequestRef.current) return;
+      archiveRequestRef.current += 1;
+      const archiveId = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
+      setFamilyId(new URLSearchParams(window.location.search).get('family') ?? '');
+      if (!items.length) {
+        setFamily(null);
+        setArchive(null);
+        setFamilyId('');
+        setLoading(false);
+        setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
+        return;
+      }
+      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
+      const selected = items.find((item) => item.id === requested) ?? items[0];
+      setFamily(selected);
+      setFamilyId(selected.id);
+      if (!archiveId) {
+        setLoading(false);
+        setError('Архивийн хаяг буруу байна.');
+        return;
+      }
+      if (selected.id !== requested) {
+        router.replace(`/archives/${archiveId}?family=${encodeURIComponent(selected.id)}`);
+      }
+      const saved = new URLSearchParams(window.location.search).get('saved');
+      if (saved === '1') {
+        setNotice('Архив хадгалагдлаа.');
+        router.replace(`/archives/${archiveId}?family=${encodeURIComponent(selected.id)}`);
+      }
+      await loadArchive(selected.id, archiveId);
+    } catch (cause) {
+      if (requestId !== familyRequestRef.current) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setArchive(null);
+      setLoading(false);
+      setError('Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+    }
+  }, [loadArchive, router]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
-    const archiveId = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
-    setFamilyId(fid);
-    if (new URLSearchParams(window.location.search).get('saved') === '1') {
-      setNotice('Архив хадгалагдлаа.');
-      window.history.replaceState(
-        null,
-        '',
-        '/archives/' + archiveId + '?family=' + encodeURIComponent(fid),
-      );
-    }
-    if (!fid || !archiveId) {
-      setLoading(false);
-      setError('Архивийн хаяг буруу байна.');
-      return;
-    }
-    api<Family>('/families/' + fid).then(setFamily).catch(() => undefined);
-    void load(fid, archiveId);
-  }, []);
+    void loadFamilyContext();
+  }, [loadFamilyContext]);
 
   useEffect(() => {
     if (showDeleteDialog) cancelRef.current?.focus();
@@ -64,14 +125,14 @@ export default function ArchiveDetailPage() {
     setBusy(true);
     setError('');
     try {
-      await api<void>('/families/' + familyId + '/archives/' + archive.id, { method: 'DELETE' });
-      window.location.href = '/archives?family=' + encodeURIComponent(familyId);
+      await api<void>(`/families/${familyId}/archives/${archive.id}`, { method: 'DELETE' });
+      router.replace(`/archives?family=${encodeURIComponent(familyId)}`);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
-        window.location.href = '/login';
+        router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Архивийг устгаж чадсангүй.');
+      setError('Архивийг устгах үед алдаа гарлаа. Дахин оролдоно уу.');
       setBusy(false);
       setShowDeleteDialog(false);
     }
@@ -79,78 +140,110 @@ export default function ArchiveDetailPage() {
 
   if (loading) {
     return (
-      <main className="stories-page">
-        <section className="stories-shell stories-state" aria-live="polite">
-          <span className="people-spinner" aria-hidden="true" />
-          <p>Архивийг ачаалж байна…</p>
+      <main className="archive-page">
+        <section className="archive-shell archive-detail-state" aria-live="polite">
+          <span className="archive-state-mark" aria-hidden="true" />
+          <p className="archive-eyebrow">FAMILY ARCHIVE · LOADING</p>
+          <h1>Баримтыг нээж байна…</h1>
         </section>
       </main>
     );
   }
 
-  if (!archive) {
+  if (error && !archive) {
     return (
-      <main className="stories-page">
-        <section className="stories-shell">
-          <div className="error stories-error" role="alert">{error || 'Архив олдсонгүй.'}</div>
-          <Link className="button" href={'/archives?family=' + encodeURIComponent(familyId)}>← Архив</Link>
+      <main className="archive-page">
+        <section className="archive-shell">
+          <div className="archive-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => void loadFamilyContext()}>Дахин оролдох</button>
+          </div>
+          <Link className="archive-secondary archive-link-button" href={familyId ? `/archives?family=${encodeURIComponent(familyId)}` : '/archives'}>← Бүх архив</Link>
         </section>
       </main>
     );
   }
+
+  if (!archive) return null;
 
   return (
-    <main className="stories-page">
-      <article className="stories-shell story-detail">
-        <nav className="story-breadcrumb" aria-label="Байршил">
-          <Link href={'/archives?family=' + encodeURIComponent(familyId)}>← Архив</Link>
-          {family && <span>{family.name}</span>}
+    <main className="archive-page">
+      <article className="archive-shell archive-detail">
+        <nav className="archive-breadcrumb" aria-label="Замын мөр">
+          <Link href={`/archives?family=${encodeURIComponent(familyId)}`}>← Бүх архив</Link>
+          <span>{family?.name ?? 'Гэр бүл'}</span>
         </nav>
 
-        {error && <div className="error stories-error" role="alert">{error}</div>}
+        {error && (
+          <div className="archive-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => void loadArchive(familyId, archive.id)}>Дахин оролдох</button>
+          </div>
+        )}
 
-        <header className="story-detail-header">
-          <p className="eyebrow">FAMILY ARCHIVE</p>
-          <h1>{archive.title}</h1>
-          <div className="story-detail-meta">
-            <span>{archive.document_date ?? 'Огноогүй'}</span>
-            {archive.place && <span>· {archive.place}</span>}
-            <span>· {archive.author_name}</span>
-            <span>· {archive.visibility === 'private' ? 'Зөвхөн би' : archive.visibility === 'public' ? 'Нийтийн' : 'Гэр бүлийнхэн'}</span>
+        {notice && (
+          <div className="archive-notice" role="status" aria-live="polite">
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах">×</button>
+          </div>
+        )}
+
+        <header className="archive-detail-header">
+          <div className="archive-detail-intro">
+            <p className="archive-eyebrow">FAMILY ARCHIVE · {family?.name ?? 'Гэр бүл'}</p>
+            <p className="archive-detail-date">{formatDate(archive.document_date)}</p>
+            <h1>{archive.title}</h1>
+            <div className="archive-detail-meta">
+              <span>{visibilityLabel(archive.visibility)}</span>
+              <span>· Хадгалсан {archive.author_name}</span>
+              <span>· Шинэчилсэн {formatDateTime(archive.updated_at)}</span>
+            </div>
           </div>
           {canMutate && (
-            <div className="story-detail-actions">
-              <Link
-                className="button primary"
-                href={'/archives/' + archive.id + '/edit?family=' + encodeURIComponent(familyId)}
-              >
-                Засах
-              </Link>
-              <button type="button" onClick={() => setShowDeleteDialog(true)} disabled={busy}>
-                Архив устгах
-              </button>
+            <div className="archive-detail-actions">
+              <Link className="archive-secondary" href={`/archives/${archive.id}/edit?family=${encodeURIComponent(familyId)}`}>Засах</Link>
+              <button type="button" className="archive-danger" onClick={() => setShowDeleteDialog(true)} disabled={busy}>Архив устгах</button>
             </div>
           )}
         </header>
 
-        <section className="story-body" aria-label="Архивийн тайлбар">
-          <p>{archive.description || 'Тайлбар оруулаагүй байна.'}</p>
+        <section className="archive-record" aria-labelledby="archive-record-heading">
+          <div>
+            <p className="archive-eyebrow">RECORD</p>
+            <h2 id="archive-record-heading">Баримтын бүртгэл</h2>
+          </div>
+          <dl className="archive-detail-facts">
+            <div><dt>Огноо</dt><dd>{formatDate(archive.document_date)}</dd></div>
+            <div><dt>Байршил</dt><dd>{archive.place || 'Бүртгэгдээгүй'}</dd></div>
+            <div><dt>Харагдах байдал</dt><dd>{visibilityLabel(archive.visibility)}</dd></div>
+            <div><dt>Үүсгэсэн</dt><dd>{formatDateTime(archive.created_at)}</dd></div>
+            <div><dt>Шинэчилсэн</dt><dd>{formatDateTime(archive.updated_at)}</dd></div>
+          </dl>
         </section>
 
-        <section className="card story-related">
-          <div className="story-section-heading">
-            <div><p className="eyebrow">RELATED PEOPLE</p><h2>Холбоотой хүмүүс</h2></div>
+        <section className="archive-description" aria-labelledby="archive-description-heading">
+          <p className="archive-eyebrow">DESCRIPTION</p>
+          <h2 id="archive-description-heading">Тайлбар</h2>
+          {archive.description ? <p>{archive.description}</p> : <p className="archive-muted">Энэ архивт тайлбар хадгалагдаагүй байна.</p>}
+        </section>
+
+        <section className="archive-related" aria-labelledby="archive-related-heading">
+          <div className="archive-related-heading">
+            <div>
+              <p className="archive-eyebrow">RELATED PEOPLE</p>
+              <h2 id="archive-related-heading">Холбоотой хүмүүс</h2>
+            </div>
             <span>{archive.related_people_count}</span>
           </div>
           {archive.related_people.length ? (
-            <div className="story-related-grid">
+            <div className="archive-related-grid">
               {archive.related_people.map((person) => (
                 <Link
-                  className="story-related-person"
                   key={person.id}
-                  href={'/profile?family=' + encodeURIComponent(familyId) + '&person=' + encodeURIComponent(person.id)}
+                  className="archive-person-link"
+                  href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(person.id)}`}
                 >
-                  <span className="personavatar small" aria-hidden="true">
+                  <span className="archive-person-mark" aria-hidden="true">
                     {[person.last_name, person.first_name].filter(Boolean).map((value) => value.slice(0, 1)).join('').toUpperCase() || '?'}
                   </span>
                   <span>{[person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ') || 'Нэргүй хүн'}</span>
@@ -158,45 +251,39 @@ export default function ArchiveDetailPage() {
               ))}
             </div>
           ) : (
-            <p className="profile-empty">Холбоотой хүн бүртгэгдээгүй байна.</p>
+            <p className="archive-muted">Холбоотой хүн бүртгэгдээгүй байна.</p>
           )}
         </section>
 
-        <section className="card story-related">
-          <div className="story-section-heading">
-            <div><p className="eyebrow">SOURCE</p><h2>Баримтын эх сурвалж</h2></div>
-          </div>
-          <p className="profile-note">Энэ foundation дээр баримтын metadata болон холбоосууд хадгалагдана. Файл upload, OCR болон document viewer дараагийн тусдаа feature байна.</p>
+        <section className="archive-source-note" aria-labelledby="archive-source-heading">
+          <p className="archive-eyebrow">SOURCE MATERIAL</p>
+          <h2 id="archive-source-heading">Эх материал</h2>
+          <p>Одоогийн Archive API нь баримтын metadata-г дэмждэг бөгөөд файл, attachment эсвэл document viewer-ийн талбар expose хийхгүй байна. Тиймээс энэ дэлгэц хадгалагдсан record-ийг л харуулна.</p>
         </section>
 
-        {notice && (
-          <div className="archive-success" role="status" aria-live="polite">
-            <span>{notice}</span>
-            <button type="button" onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах">
-              ×
-            </button>
-          </div>
-        )}
-
-        <footer className="profile-footer">
-          <Link href={'/archives?family=' + encodeURIComponent(familyId)}>← Бүх архив</Link>
+        <footer className="archive-detail-footer">
+          <Link href={`/archives?family=${encodeURIComponent(familyId)}`}>← Архивын сан</Link>
           {archive.related_people[0] && (
-            <Link href={'/profile?family=' + encodeURIComponent(familyId) + '&person=' + encodeURIComponent(archive.related_people[0].id)}>
-              Хүний профайл →
-            </Link>
+            <Link href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(archive.related_people[0].id)}`}>Хүний профайл →</Link>
           )}
         </footer>
       </article>
 
       {showDeleteDialog && (
-        <div className="story-dialog-backdrop" role="presentation">
-          <section className="story-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="archive-delete-title">
-            <p className="eyebrow">DELETE ARCHIVE</p>
+        <div className="archive-dialog-backdrop" role="presentation">
+          <section
+            className="archive-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-delete-title"
+            aria-describedby="archive-delete-description"
+          >
+            <p className="archive-eyebrow">DELETE ARCHIVE</p>
             <h2 id="archive-delete-title">Энэ архивийг устгах уу?</h2>
-            <p>“{archive.title}” архивийн record болон холбоотой хүмүүсийн relation устна. Ургийн мод, гэрлэлт, удам, салаанд өөрчлөлт орохгүй.</p>
-            <div className="story-dialog-actions">
-              <button ref={cancelRef} type="button" onClick={() => setShowDeleteDialog(false)} disabled={busy}>Буцах</button>
-              <button type="button" className="primary" onClick={() => void remove()} disabled={busy}>{busy ? 'Устгаж байна…' : 'Устгах'}</button>
+            <p id="archive-delete-description">“{archive.title}” record болон түүний холбоотой хүмүүсийн холбоос backend-ийн existing delete contract-ийн дагуу устна.</p>
+            <div className="archive-dialog-actions">
+              <button ref={cancelRef} type="button" className="archive-secondary" onClick={() => setShowDeleteDialog(false)} disabled={busy}>Буцах</button>
+              <button type="button" className="archive-danger" onClick={() => void remove()} disabled={busy}>{busy ? 'Устгаж байна…' : 'Устгах'}</button>
             </div>
           </section>
         </div>

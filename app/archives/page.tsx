@@ -1,23 +1,58 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { ApiError, api, ArchiveListPage, Family } from '../../lib/api';
 
 const PAGE_SIZE = 12;
 
+function formatDate(value: string | null) {
+  if (!value) return 'Огноогүй';
+  const parts = value.split('-');
+  if (parts.length !== 3) return value;
+  return `${parts[0]}.${parts[1]}.${parts[2]}`;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('mn-MN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function visibilityLabel(value: string) {
+  if (value === 'private') return 'Зөвхөн би';
+  if (value === 'public') return 'Нийтийн';
+  return 'Гэр бүлийнхэн';
+}
+
 export default function ArchivesPage() {
+  const router = useRouter();
   const [family, setFamily] = useState<Family | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [query, setQuery] = useState('');
+  const [documentDate, setDocumentDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const familyRequestRef = useRef(0);
+  const archiveRequestRef = useRef(0);
 
-  const loadArchives = useCallback(async (fid: string, page = 1, q = query) => {
+  const loadArchives = useCallback(async (
+    fid: string,
+    page = 1,
+    q = query,
+    dateValue = documentDate,
+  ) => {
     if (!fid) return;
+    const requestId = ++archiveRequestRef.current;
     setBusy(true);
     setError('');
     try {
@@ -25,157 +60,230 @@ export default function ArchivesPage() {
         page: String(page),
         page_size: String(PAGE_SIZE),
       });
-      if (q.trim()) params.set('q', q.trim());
-      setArchives(await api<ArchiveListPage>('/families/' + fid + '/archives?' + params.toString()));
+      const safeQuery = q.replace(/\s+/g, ' ').trim();
+      if (safeQuery) params.set('q', safeQuery);
+      if (dateValue) params.set('document_date', dateValue);
+      const result = await api<ArchiveListPage>(`/families/${fid}/archives?${params.toString()}`);
+      if (requestId !== archiveRequestRef.current) return;
+      setArchives(result);
     } catch (cause) {
+      if (requestId !== archiveRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
-        window.location.href = '/login';
+        router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Архивийг ачаалж чадсангүй.');
+      setError('Архивийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
     } finally {
-      setLoading(false);
-      setBusy(false);
-    }
-  }, [query]);
-
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get('family') ?? '';
-    api<Family[]>('/families')
-      .then((items) => {
-        setFamilies(items);
-        const selected = items.find((item) => item.id === requested) ?? items[0] ?? null;
-        setFamily(selected);
-        setFamilyId(selected?.id ?? '');
-        if (selected && selected.id !== requested) {
-          window.history.replaceState(null, '', '/archives?family=' + encodeURIComponent(selected.id));
-        }
-        if (!selected) setLoading(false);
-      })
-      .catch((cause) => {
-        if (cause instanceof ApiError && cause.status === 401) {
-          window.location.href = '/login';
-          return;
-        }
+      if (requestId === archiveRequestRef.current) {
         setLoading(false);
-        setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
-      });
-  }, []);
+        setBusy(false);
+      }
+    }
+  }, [documentDate, query, router]);
+
+  const loadFamilies = useCallback(async () => {
+    const requestId = ++familyRequestRef.current;
+    setLoading(true);
+    setError('');
+    try {
+      const items = await api<Family[]>('/families');
+      if (requestId !== familyRequestRef.current) return;
+      setFamilies(items);
+      archiveRequestRef.current += 1;
+      if (!items.length) {
+        setFamily(null);
+        setFamilyId('');
+        setArchives(null);
+        setLoading(false);
+        return;
+      }
+      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
+      const selected = items.find((item) => item.id === requested) ?? items[0];
+      setFamily(selected);
+      setFamilyId(selected.id);
+      setArchives(null);
+      if (selected.id !== requested) {
+        router.replace(`/archives?family=${encodeURIComponent(selected.id)}`);
+      }
+    } catch {
+      if (requestId !== familyRequestRef.current) return;
+      setLoading(false);
+      setError('Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+    }
+  }, [router]);
 
   useEffect(() => {
-    if (familyId) void loadArchives(familyId, 1);
+    void loadFamilies();
+  }, [loadFamilies]);
+
+  useEffect(() => {
+    if (!familyId) return;
+    void loadArchives(familyId, 1);
   }, [familyId, loadArchives]);
 
   function chooseFamily(next: string) {
+    archiveRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
     setFamily(selected);
     setFamilyId(next);
     setArchives(null);
-    window.history.replaceState(null, '', '/archives?family=' + encodeURIComponent(next));
+    setError('');
+    router.replace(`/archives?family=${encodeURIComponent(next)}`);
+  }
+
+  function search(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!familyId) return;
+    void loadArchives(familyId, 1, query, documentDate);
+  }
+
+  function resetFilters() {
+    setQuery('');
+    setDocumentDate('');
+    if (familyId) void loadArchives(familyId, 1, '', '');
   }
 
   const page = archives?.page ?? 1;
+  const pageCount = archives ? Math.max(1, Math.ceil(archives.total / PAGE_SIZE)) : 1;
+  const canCreate = family?.role === 'owner' || family?.role === 'editor';
 
   return (
-    <main className="stories-page">
-      <section className="stories-shell">
-        <header className="stories-heading">
+    <main className="archive-page">
+      <section className="archive-shell">
+        <nav className="archive-breadcrumb" aria-label="Замын мөр">
+          <Link href={family ? `/dashboard?family=${encodeURIComponent(family.id)}` : '/dashboard'}>← Dashboard</Link>
+          <span>Архив</span>
+        </nav>
+
+        <header className="archive-hero">
           <div>
-            <Link href={family ? '/dashboard?family=' + encodeURIComponent(family.id) : '/dashboard'}>← Dashboard</Link>
-            <p className="eyebrow">ГУУЛИНГИЙНХАН · FAMILY ARCHIVE</p>
+            <p className="archive-eyebrow">ГУУЛИНГИЙНХАН · FAMILY ARCHIVE</p>
             <h1>Гэр бүлийн архив</h1>
-            <p className="stories-lede">
-              Танай гэр бүлийн хадгалсан баримт, эх сурвалж, түүхэн материал энд нэг дор байна.
-            </p>
+            <p>Гэр бүлийн түүхийг баталгаажуулах баримт, эх сурвалж, албан ёсны тэмдэглэлүүдийг нэгэн тайван архивт төвлөрүүлнэ.</p>
           </div>
-          <div className="stories-actions">
+          <div className="archive-hero-actions">
             {families.length > 1 && (
-              <label className="stories-family">
+              <label className="archive-family-picker">
                 <span>Гэр бүл</span>
                 <select value={familyId} onChange={(event) => chooseFamily(event.target.value)} aria-label="Гэр бүл сонгох">
                   {families.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               </label>
             )}
-            {family && (family.role === 'owner' || family.role === 'editor') && (
+            {familyId && canCreate && (
               <Link
-                className="button primary"
-                href={'/archives/new?family=' + encodeURIComponent(familyId)}
+                className="archive-primary"
+                href={`/archives/new?family=${encodeURIComponent(familyId)}`}
               >
-                + Шинэ архив
+                + Баримт нэмэх
               </Link>
             )}
           </div>
         </header>
 
         {error && (
-          <div className="error stories-error" role="alert">
+          <div className="archive-alert" role="alert">
             <span>{error}</span>
-            <button type="button" onClick={() => void loadArchives(familyId, page)}>Дахин оролдох</button>
+            <div className="archive-alert-actions">
+              <button type="button" onClick={() => void loadFamilies()}>Гэр бүлийн орчныг дахин ачаалах</button>
+              {familyId && <button type="button" onClick={() => void loadArchives(familyId, page)} disabled={busy}>Архивийг дахин ачаалах</button>}
+            </div>
           </div>
         )}
 
-        <section className="stories-toolbar card" aria-label="Архив хайх">
+        <form className="archive-filters" onSubmit={search} aria-label="Архив хайх">
           <label>
-            Архив хайх
+            <span>Гарчиг эсвэл тайлбар</span>
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') void loadArchives(familyId, 1); }}
-              placeholder="Гарчиг эсвэл тайлбараар хайх…"
+              placeholder="Жишээ нь: гэрчилгээ, захидал, 1978…"
             />
           </label>
-          <button type="button" onClick={() => void loadArchives(familyId, 1)} disabled={busy}>Хайх</button>
-        </section>
+          <label>
+            <span>Баримтын огноо</span>
+            <input
+              type="date"
+              value={documentDate}
+              onChange={(event) => setDocumentDate(event.target.value)}
+            />
+          </label>
+          <div className="archive-filter-actions">
+            <button type="submit" className="archive-primary" disabled={!familyId || busy}>Хайх</button>
+            {(query || documentDate) && (
+              <button type="button" className="archive-secondary" onClick={resetFilters} disabled={busy}>Цэвэрлэх</button>
+            )}
+          </div>
+        </form>
 
         {loading && !archives ? (
-          <section className="stories-state card" aria-live="polite">
-            <span className="people-spinner" aria-hidden="true" />
-            <p>Гэр бүлийн архивийг ачаалж байна…</p>
+          <section className="archive-state" aria-live="polite">
+            <span className="archive-state-mark" aria-hidden="true" />
+            <p className="archive-eyebrow">FAMILY ARCHIVE</p>
+            <h2>Баримтуудыг нээж байна…</h2>
+            <p>Таны одоогийн гэр бүлийн орчинд хандах боломжтой материалуудыг ачаалж байна.</p>
           </section>
         ) : !families.length ? (
-          <section className="stories-state card">
-            <h2>Гэр бүл олдсонгүй.</h2>
-            <p>Танд одоогоор хандах боломжтой гэр бүл алга.</p>
-            <Link className="button" href="/families">Гэр бүлүүд</Link>
+          <section className="archive-state">
+            <p className="archive-eyebrow">ГЭР БҮЛИЙН ОРОН ЗАЙ</p>
+            <h2>Хандах боломжтой гэр бүл алга.</h2>
+            <p>Архив харахын өмнө гэр бүлийн орчинд гишүүнээрээ хандах шаардлагатай.</p>
+            <Link className="archive-secondary archive-link-button" href="/families">Гэр бүлүүд рүү очих</Link>
           </section>
         ) : archives && archives.items.length === 0 ? (
-          <section className="stories-state card">
-            <h2>Одоогоор архивын материал хадгалагдаагүй байна.</h2>
-            <p>Гэр бүлийн чухал баримт, эх сурвалжуудаа энд төвлөрүүлж болно.</p>
+          <section className="archive-state">
+            <p className="archive-eyebrow">ARCHIVE · ХООСОН</p>
+            <h2>Одоогоор архивын материал олдсонгүй.</h2>
+            <p>{query || documentDate ? 'Таны хайлтын нөхцөлд тохирох материал байхгүй байна.' : 'Гэр бүлийн баримт, эх сурвалжаа энд бүртгэж эхлээрэй.'}</p>
+            {query || documentDate ? (
+              <button type="button" className="archive-secondary" onClick={resetFilters}>Бүх материалыг харах</button>
+            ) : canCreate ? (
+              <Link className="archive-primary archive-link-button" href={`/archives/new?family=${encodeURIComponent(familyId)}`}>Анхны баримт нэмэх</Link>
+            ) : null}
           </section>
         ) : (
           <>
-            <div className="stories-results-head">
-              <strong>{archives?.total ?? 0} архив</strong>
-              {busy && <span role="status">Шинэчилж байна…</span>}
+            <div className="archive-results-heading">
+              <div>
+                <p className="archive-eyebrow">ОДООГИЙН ОРЧИН · {family?.name ?? 'Гэр бүл'}</p>
+                <h2>Баримт, эх сурвалж</h2>
+              </div>
+              <span>{archives?.total ?? 0} материал{busy ? ' · шинэчилж байна…' : ''}</span>
             </div>
-            <div className="story-grid" aria-busy={busy}>
+
+            <section className="archive-grid" aria-busy={busy} aria-label="Архивын материалууд">
               {archives?.items.map((archive) => (
-                <article className="card story-card" key={archive.id}>
-                  <div className="story-card-meta">
-                    <span>{archive.document_date ?? 'Огноогүй'}</span>
-                    {archive.place && <span>· {archive.place}</span>}
+                <article className="archive-card" key={archive.id}>
+                  <div className="archive-paper">
+                    <span className="archive-paper-label">ARCHIVE</span>
+                    <span className="archive-paper-rule" aria-hidden="true" />
+                    <strong>{archive.title.slice(0, 1).toUpperCase()}</strong>
                   </div>
-                  <h2>{archive.title}</h2>
-                  <p>{archive.description || 'Тайлбар оруулаагүй байна.'}</p>
-                  <div className="story-card-footer">
-                    <span>{archive.author_name}</span>
-                    <span>{archive.related_people_count} холбоотой хүн</span>
+                  <div className="archive-card-body">
+                    <div className="archive-card-meta">
+                      <time dateTime={archive.document_date ?? undefined}>{formatDate(archive.document_date)}</time>
+                      <span>{visibilityLabel(archive.visibility)}</span>
+                    </div>
+                    <h3>{archive.title}</h3>
+                    <p>{archive.description || 'Тайлбар оруулаагүй байна.'}</p>
+                    <dl className="archive-card-facts">
+                      <div><dt>Байршил</dt><dd>{archive.place || 'Бүртгэгдээгүй'}</dd></div>
+                      <div><dt>Хадгалсан</dt><dd>{archive.author_name}</dd></div>
+                      <div><dt>Холбоотой хүн</dt><dd>{archive.related_people_count}</dd></div>
+                    </dl>
+                    <div className="archive-card-footer">
+                      <small>Шинэчилсэн {formatDateTime(archive.updated_at)}</small>
+                      <Link href={`/archives/${archive.id}?family=${encodeURIComponent(familyId)}`}>Дэлгэрэнгүй →</Link>
+                    </div>
                   </div>
-                  <Link
-                    className="button story-open"
-                    href={'/archives/' + archive.id + '?family=' + encodeURIComponent(familyId)}
-                  >
-                    Баримтыг үзэх →
-                  </Link>
                 </article>
               ))}
-            </div>
+            </section>
+
             {archives && archives.total > PAGE_SIZE && (
-              <nav className="stories-pagination" aria-label="Архивын хуудаслалт">
+              <nav className="archive-pagination" aria-label="Архивын хуудаслалт">
                 <button type="button" disabled={page <= 1 || busy} onClick={() => void loadArchives(familyId, page - 1)}>← Өмнөх</button>
-                <span>{page} / {Math.max(1, Math.ceil(archives.total / PAGE_SIZE))}</span>
+                <span>{page} / {pageCount}</span>
                 <button type="button" disabled={!archives.has_next || busy} onClick={() => void loadArchives(familyId, page + 1)}>Дараагийн →</button>
               </nav>
             )}
