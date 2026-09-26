@@ -1,12 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api } from '../../../lib/api';
 
 type Identity = { id: string; provider: string; display_identifier: string | null; verified: boolean; created_at: string };
 type Challenge = { challenge_id: string; expires_in: number; resend_after: number };
+
+function friendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү.';
+    if (cause.status === 403) return 'Энэ үйлдлийг хийх эрхгүй байна.';
+    if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.';
+    if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+  }
+  return fallback;
+}
 
 export default function AccountSecurityPage() {
   const router = useRouter();
@@ -17,6 +29,7 @@ export default function AccountSecurityPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const refreshSequence = useRef(0);
 
   async function refresh() {
     setIdentities(await api<Identity[]>('/auth/me/identities'));
@@ -26,7 +39,7 @@ export default function AccountSecurityPage() {
     api<{ enabled: boolean }>('/auth/google/config').then((value) => setGoogleEnabled(value.enabled)).catch(() => {});
     refresh().catch((cause) => {
       if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
-      else setError(cause instanceof Error ? cause.message : 'Мэдээлэл ачаалж чадсангүй.');
+      else setError(friendlyError(cause, 'Мэдээлэл ачаалж чадсангүй.'));
     });
   }, [router]);
 
@@ -45,7 +58,7 @@ export default function AccountSecurityPage() {
       setChallenge(result);
       setNotice('Баталгаажуулах код илгээгдлээ.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Хүсэлт илгээж чадсангүй.');
+      setError(friendlyError(cause, 'Хүсэлт илгээж чадсангүй.'));
     } finally { setBusy(false); }
   }
 
@@ -64,7 +77,7 @@ export default function AccountSecurityPage() {
       setNotice('Утасны дугаар баталгаажиж, энэ account-той холбогдлоо.');
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Дугаар баталгаажуулж чадсангүй.');
+      setError(friendlyError(cause, 'Дугаар баталгаажуулж чадсангүй.'));
     } finally { setBusy(false); }
   }
 
@@ -77,7 +90,7 @@ export default function AccountSecurityPage() {
         method: 'POST', body: JSON.stringify({email}),
       });
       setNotice(result.message);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Хүсэлт илгээж чадсангүй.'); }
+    } catch (cause) { setError(friendlyError(cause, 'Хүсэлт илгээж чадсангүй.')); }
     finally { setBusy(false); }
   }
 
