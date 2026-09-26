@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
   api,
+  Family,
   ArchiveListPage,
   Marriage,
   MemoryListItem,
@@ -61,8 +62,19 @@ export default function ProfilePage() {
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const profileRequestRef = useRef(0);
+  const memoryRequestRef = useRef(0);
 
-  async function load(fid: string, pid: string) {
+  function profileErrorMessage(cause: unknown) {
+    if (cause instanceof ApiError) {
+      if (cause.status === 403) return 'Энэ хүний мэдээллийг харах эрхгүй байна.';
+      if (cause.status === 404) return 'Хүн олдсонгүй.';
+      if (cause.status === 0) return 'Энэ хүний мэдээллийг ачаалж чадсангүй. Холболтоо шалгаад дахин оролдоно уу.';
+    }
+    return 'Энэ хүний мэдээллийг ачаалж чадсангүй.';
+  }
+
+  async function load(fid: string, pid: string, requestId: number) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
@@ -81,6 +93,7 @@ export default function ProfilePage() {
       throw unexpectedFailure.reason;
     }
 
+    if (requestId !== profileRequestRef.current) return;
     setPerson(profile);
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
@@ -90,92 +103,138 @@ export default function ProfilePage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    const requestId = ++profileRequestRef.current;
     const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
+    const requestedFamily = params.get('family') ?? '';
     const pid = params.get('person') ?? '';
-    setFamily(fid);
-    setId(pid);
 
-    if (!fid || !pid) {
-      router.replace('/people');
-      return;
-    }
-
-    setLoading(true);
+    setPerson(null);
+    setBiography('');
+    setMarriages([]);
+    setEvents([]);
+    setStories(null);
+    setArchives(null);
     setError('');
-    load(fid, pid)
-      .catch((cause) => {
+    setNotice('');
+    setEditing(false);
+    setLoading(true);
+
+    async function resolveFamilyAndLoad() {
+      let fid = requestedFamily;
+      if (!fid) {
+        const families = await api<Family[]>('/families');
+        if (!families.length) {
+          if (!cancelled) {
+            setFamily('');
+            setId(pid);
+            setError('Танд хандах боломжтой гэр бүл алга.');
+            setLoading(false);
+          }
+          return;
+        }
+        fid = families[0].id;
+        if (!cancelled) {
+          router.replace(`/profile?family=${encodeURIComponent(fid)}&person=${encodeURIComponent(pid)}`);
+        }
+      }
+
+      if (!pid) {
+        if (!cancelled) {
+          setFamily(fid);
+          setId('');
+          setError('Хүн олдсонгүй.');
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (cancelled || requestId !== profileRequestRef.current) return;
+      setFamily(fid);
+      setId(pid);
+      try {
+        await load(fid, pid, requestId);
+      } catch (cause) {
+        if (cancelled || requestId !== profileRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) {
           router.replace('/login');
           return;
         }
-        setError(
-          cause instanceof ApiError && [403, 404].includes(cause.status)
-            ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-            : cause instanceof Error
-              ? cause.message
-              : 'Профайлыг ачаалж чадсангүй.',
-        );
-      })
-      .finally(() => setLoading(false));
+        setError(profileErrorMessage(cause));
+      } finally {
+        if (!cancelled && requestId === profileRequestRef.current) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void resolveFamilyAndLoad();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  async function loadMemories(fid: string, pid: string) {
+  useEffect(() => {
+    if (!family || !id) return;
+    const requestId = ++memoryRequestRef.current;
+    void loadMemories(family, id, requestId);
+    return () => {
+      memoryRequestRef.current += 1;
+    };
+  }, [family, id]);
+
+  async function loadMemories(fid: string, pid: string, requestId: number) {
+    if (requestId !== memoryRequestRef.current) return;
     setMemoryState('loading');
     setMemoryError('');
     try {
       const result = await api<MemoryListItem[]>(
         `/families/${fid}/persons/${pid}/memories`,
       );
+      if (requestId !== memoryRequestRef.current) return;
       setMemories(result);
       setMemoryState('ready');
     } catch (cause) {
+      if (requestId !== memoryRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
-      if (cause instanceof ApiError && [403, 404].includes(cause.status)) {
+      if (cause instanceof ApiError && cause.status === 403) {
         setMemories([]);
         setMemoryState('restricted');
-        setMemoryError('Энэ хүний дурсамжийн мэдээлэл одоогоор харагдахгүй байна.');
+        setMemoryError('Энэ хүний дурсамжийн мэдээллийг харах эрхгүй байна.');
+        return;
+      }
+      if (cause instanceof ApiError && cause.status === 404) {
+        setMemories([]);
+        setMemoryState('ready');
         return;
       }
       setMemoryState('error');
-      setMemoryError(
-        cause instanceof Error
-          ? cause.message
-          : 'Дурсамжийг ачаалж чадсангүй.',
-      );
+      setMemoryError('Энэ хүний дурсамжийг ачаалж чадсангүй.');
     }
   }
 
   async function retry() {
     if (!family || !id) return;
+    const requestId = ++profileRequestRef.current;
+    setPerson(null);
     setLoading(true);
     setError('');
     try {
-      await load(family, id);
+      await load(family, id, requestId);
     } catch (cause) {
+      if (requestId !== profileRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
-      setError(
-        cause instanceof ApiError && [403, 404].includes(cause.status)
-          ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-          : cause instanceof Error
-            ? cause.message
-            : 'Профайлыг ачаалж чадсангүй.',
-      );
+      setError(profileErrorMessage(cause));
     } finally {
-      setLoading(false);
+      if (requestId === profileRequestRef.current) setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (!family || !id) return;
-    void loadMemories(family, id);
-  }, [family, id]);
 
   async function saveBiography(event: FormEvent) {
     event.preventDefault();
@@ -210,7 +269,8 @@ export default function ProfilePage() {
           visibility: values.get('visibility'),
         }),
       });
-      await load(family, id);
+      const requestId = ++profileRequestRef.current;
+      await load(family, id, requestId);
       setEditing(false);
       setNotice('Профайл хадгалагдлаа.');
     } catch (cause) {
@@ -233,7 +293,8 @@ export default function ProfilePage() {
           description: form.get('description') || null,
         }),
       });
-      await load(family, id);
+      const requestId = ++profileRequestRef.current;
+      await load(family, id, requestId);
       formElement.reset();
       setNotice('Үйл явдал нэмэгдлээ.');
     } catch (cause) {
@@ -428,7 +489,10 @@ export default function ProfilePage() {
             {memoryState === 'restricted' && (
               <div>
                 <p className="profile-empty">{memoryError}</p>
-                <button type="button" onClick={() => void loadMemories(family, id)}>
+                <button type="button" onClick={() => {
+  const requestId = ++memoryRequestRef.current;
+  void loadMemories(family, id, requestId);
+}}>
                   Дахин оролдох
                 </button>
               </div>
@@ -437,7 +501,10 @@ export default function ProfilePage() {
             {memoryState === 'error' && (
               <div>
                 <p className="profile-empty" role="alert">{memoryError}</p>
-                <button type="button" onClick={() => void loadMemories(family, id)}>
+                <button type="button" onClick={() => {
+  const requestId = ++memoryRequestRef.current;
+  void loadMemories(family, id, requestId);
+}}>
                   Дахин оролдох
                 </button>
               </div>
