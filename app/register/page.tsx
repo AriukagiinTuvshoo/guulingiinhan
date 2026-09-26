@@ -22,7 +22,6 @@ function registerError(cause: unknown) {
   }
   return 'Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.';
 }
-}
 
 export default function RegisterPage() {
   const router = useRouter();
