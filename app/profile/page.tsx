@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
@@ -45,7 +45,7 @@ function initials(person: Pick<ProfileRelationPerson, 'first_name' | 'last_name'
     .toUpperCase() || '?';
 }
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [family, setFamily] = useState('');
@@ -596,5 +596,24 @@ export default function ProfilePage() {
         </footer>
       </section>
     </main>
+  );
+}
+
+function ProfileLoadingFallback() {
+  return (
+    <main className="profile-page">
+      <section className="profile-shell profile-state" aria-live="polite">
+        <span className="people-spinner" aria-hidden="true" />
+        <p>Профайлыг ачаалж байна…</p>
+      </section>
+    </main>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<ProfileLoadingFallback />}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }
