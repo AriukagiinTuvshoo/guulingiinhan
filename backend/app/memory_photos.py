@@ -161,6 +161,31 @@ def _image_payload(filename: str, content_type: str, data: bytes) -> tuple[str, 
         raise HTTPException(status_code=415, detail="Зургийн файл гэмтсэн эсвэл дэмжигдэхгүй байна.") from error
 
 
+def _sanitize_original_image(data: bytes, mime_type: str) -> bytes:
+    """Return a metadata-free original while preserving the validated image format."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as image:
+                image = ImageOps.exif_transpose(image)
+                image.info.clear()
+                output = io.BytesIO()
+                if mime_type == "image/jpeg":
+                    image.save(output, format="JPEG", quality=95, optimize=True, exif=b"")
+                elif mime_type == "image/png":
+                    image.save(output, format="PNG", optimize=True)
+                elif mime_type == "image/webp":
+                    image.save(output, format="WEBP", quality=95, method=6)
+                else:
+                    raise HTTPException(status_code=415, detail="Зургийн төрөл дэмжигдэхгүй байна.")
+                return output.getvalue()
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError,
+            Image.DecompressionBombWarning) as error:
+        raise HTTPException(status_code=415, detail="Зургийн файл гэмтсэн эсвэл дэмжигдэхгүй байна.") from error
+
+
 def _delete_objects(storage: ObjectStorage, keys: list[str]) -> None:
     started = time.perf_counter()
     for key in keys:
@@ -534,6 +559,7 @@ async def upload_photo(
     mime_type, width, height, thumbnail = _image_payload(
         filename, request.headers.get("content-type", ""), bytes(data)
     )
+    sanitized_original = _sanitize_original_image(bytes(data), mime_type)
     safe_filename = re.sub(
         r"[^\w.\- ]", "_", PurePath(filename.replace("\\", "/")).name
     )[:255] or "photo"
@@ -562,7 +588,7 @@ async def upload_photo(
         raise HTTPException(status_code=503, detail="Зургийг бүртгэж чадсангүй.") from error
     storage_started = time.perf_counter()
     try:
-        storage.put(original_key, bytes(data), mime_type)
+        storage.put(original_key, sanitized_original, mime_type)
         storage.put(thumbnail_key, thumbnail, "image/jpeg")
         storage_duration_ms = round((time.perf_counter() - storage_started) * 1000, 2)
         photo = db.get(Photo, photo_id)
