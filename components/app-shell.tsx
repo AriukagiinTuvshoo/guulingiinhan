@@ -96,6 +96,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [contextLoading, setContextLoading] = useState(false);
+  const [contextLoaded, setContextLoaded] = useState(false);
   const [contextError, setContextError] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -112,6 +113,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const retryContext = useCallback(async () => {
     setContextLoading(true);
+    setContextLoaded(false);
     setContextError('');
     try {
       const [me, familyData] = await Promise.all([
@@ -120,6 +122,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       ]);
       setUser(me);
       setFamilies(familyData);
+      setContextLoaded(true);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
@@ -128,6 +131,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextError(
         cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
       );
+      setContextLoaded(true);
     } finally {
       setContextLoading(false);
     }
@@ -136,6 +140,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!shouldRenderShell) {
       setContextLoading(false);
+      setContextLoaded(false);
       setContextError('');
       setUser(null);
       setFamilies([]);
@@ -145,9 +150,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (user && families.length) return;
+    if (contextLoaded || contextLoading) return;
     void retryContext();
-  }, [families.length, retryContext, shouldRenderShell, user]);
+  }, [contextLoaded, contextLoading, retryContext, shouldRenderShell]);
 
   useEffect(() => {
     if (!shouldRenderShell || contextLoading) return;
