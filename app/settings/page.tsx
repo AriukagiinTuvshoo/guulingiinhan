@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Check, Globe2, LogOut, Mail, Phone, RefreshCw, ShieldCheck, TreeDeciduous, UserRound, UsersRound } from 'lucide-react';
 import { ApiError, api, Family, User } from '../../lib/api';
@@ -38,7 +38,7 @@ function friendlyError(cause: unknown, fallback: string) {
     if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
   }
-  return cause instanceof Error ? cause.message : fallback;
+  return fallback;
 }
 
 export default function SettingsPage() {
@@ -56,9 +56,11 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState('');
   const [resendSeconds, setResendSeconds] = useState(0);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const loadSequence = useRef(0);
+  const identitySequence = useRef(0);
 
   const selectedFamily = useMemo(
-    () => families.find((family) => family.id === familyId) ?? families[0] ?? null,
+    () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
 
