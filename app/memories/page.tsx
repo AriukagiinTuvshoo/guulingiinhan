@@ -1,10 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { API_BASE, ApiError, api, Family, MemoryListItem, PersonSearchPage } from '../../lib/api';
+
+function friendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+    if (cause.status === 403) return 'Энэ гэр бүлийн дурсамжид хандах эрхгүй байна.';
+    if (cause.status === 404) return 'Дурсамж олдсонгүй.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+  }
+  return fallback;
+}
 
 const PAGE_SIZE = 18;
 
@@ -59,13 +69,13 @@ function initials(title: string) {
     .toUpperCase() || 'Д';
 }
 
-export default function MemoriesPage() {
+function MemoriesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [families, setFamilies] = useState<Family[]>([]);
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState('');
   const [memories, setMemories] = useState<MemoryListPage | null>(null);
-  const [query, setQuery] = useState('');
   const [personQuery, setPersonQuery] = useState('');
   const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
   const [personPage, setPersonPage] = useState(1);
@@ -95,11 +105,11 @@ export default function MemoriesPage() {
         router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Дурсамжийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Дурсамжийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     } finally {
       if (requestId === memoryRequestRef.current) setLoading(false);
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -117,12 +127,20 @@ export default function MemoriesPage() {
         setLoading(false);
         return;
       }
-      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = items.find((item) => item.id === requested) ?? items[0];
+      const requested = searchParams.get('family') ?? '';
+      const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
+      if (!selected) {
+        setFamily(null);
+        setFamilyId('');
+        setMemories(null);
+        setLoading(false);
+        setError('Энэ гэр бүлийн дурсамжийг харах боломжгүй байна.');
+        return;
+      }
       setFamily(selected);
       setFamilyId(selected.id);
       setMemories(null);
-      if (selected.id !== requested) {
+      if (!requested) {
         router.replace(`/memories?family=${encodeURIComponent(selected.id)}`);
       }
     } catch (cause) {
@@ -132,7 +150,7 @@ export default function MemoriesPage() {
         return;
       }
       setLoading(false);
-      setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     }
   }, [router]);
 
@@ -162,7 +180,7 @@ export default function MemoriesPage() {
         })
         .catch((cause) => {
           if (requestId !== personRequestRef.current) return;
-          setComposerError(cause instanceof Error ? cause.message : 'Хайлт хийхэд алдаа гарлаа. Дахин оролдоно уу.');
+          setComposerError(friendlyError(cause, 'Хайлт хийхэд алдаа гарлаа. Дахин оролдоно уу.'));
         });
     }, 250);
     return () => window.clearTimeout(timer);
@@ -171,6 +189,7 @@ export default function MemoriesPage() {
   function chooseFamily(next: string) {
     memoryRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
+    if (!selected) return;
     setFamily(selected);
     setFamilyId(next);
     setMemories(null);
@@ -196,7 +215,7 @@ export default function MemoriesPage() {
       setPersonPage(nextPage);
     } catch (cause) {
       if (requestId !== personRequestRef.current) return;
-      setComposerError(cause instanceof Error ? cause.message : 'Үр дүнг ачаалж чадсангүй. Дахин оролдоно уу.');
+      setComposerError(friendlyError(cause, 'Үр дүнг ачаалж чадсангүй. Дахин оролдоно уу.'));
     }
   }
 
@@ -246,7 +265,7 @@ export default function MemoriesPage() {
       setUploadStatus('');
       await loadMemories(familyId, 1);
     } catch (cause) {
-      setComposerError(cause instanceof Error ? cause.message : 'Дурсамж хадгалж чадсангүй. Дахин оролдоно уу.');
+      setComposerError(friendlyError(cause, 'Дурсамж хадгалж чадсангүй. Дахин оролдоно уу.'));
     } finally {
       setBusy(false);
     }
@@ -420,7 +439,7 @@ export default function MemoriesPage() {
                   {memory.photos?.length ? (
                     <div className={`memory-card-gallery memory-card-gallery--${Math.min(memory.photos.length, 3)}`} aria-label={`${memory.photos.length} зураг`}>
                       {memory.photos.slice(0, 3).map((photo) => (
-                        <img key={photo.id} src={photoUrl(photo.thumbnail_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" />
+                        <img key={photo.id} src={photoUrl(photo.thumbnail_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" onError={(event) => { const image = event.currentTarget; image.alt = 'Зураг ачааллах боломжгүй байна.'; image.style.display = 'none'; image.parentElement?.classList.add('memory-photo-fallback'); }} />
                       ))}
                       {memory.photos.length > 3 && <span className="memory-photo-count">+{memory.photos.length - 3}</span>}
                     </div>
@@ -438,7 +457,11 @@ export default function MemoriesPage() {
                     <h3>{memory.title}</h3>
                     {memory.description && <p>{memory.description}</p>}
                     <div className="memory-card-footer">
-                      <span>{memory.person_names?.length ? memory.person_names.join(' · ') : 'Холбоотой хүнгүй'}</span>
+                      <span>{memory.person_names?.length ? memory.person_ids.map((personId, index) => (
+                        <Link key={personId} href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(personId)}`} className="memory-person-link">
+                          {memory.person_names?.[index] ?? 'Холбоотой хүн'}
+                        </Link>
+                      )) : 'Холбоотой хүнгүй'}</span>
                       <small>Хадгалсан {formatCreatedAt(memory.created_at)}</small>
                     </div>
                     <Link className="memory-card-link" href={`/memories/${memory.id}?family=${encodeURIComponent(familyId)}`}>Дурсамжийг үзэх →</Link>
@@ -458,5 +481,14 @@ export default function MemoriesPage() {
         )}
       </section>
     </main>
+  );
+}
+
+
+export default function MemoriesPage() {
+  return (
+    <Suspense fallback={<main className="memories-page"><section className="memories-shell memory-state" aria-live="polite"><span className="memory-state-mark" aria-hidden="true" /><p className="memories-eyebrow">MEMORIES</p><h1>Дурсамжийг ачаалж байна…</h1></section></main>}>
+      <MemoriesPageContent />
+    </Suspense>
   );
 }

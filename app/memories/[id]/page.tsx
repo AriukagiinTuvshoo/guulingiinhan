@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { API_BASE, ApiError, api, Family, MemoryListItem } from '../../../lib/api';
 
 type MemoryPhoto = NonNullable<MemoryListItem['photos']>[number];
@@ -34,8 +34,20 @@ function photoUrl(path: string) {
   return `${API_BASE.replace(/\/$/, '')}${path}`;
 }
 
-export default function MemoryDetailPage() {
+function friendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+    if (cause.status === 403) return 'Энэ дурсамжид хандах эрхгүй байна.';
+    if (cause.status === 404) return 'Дурсамж олдсонгүй.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+  }
+  return fallback;
+}
+
+function MemoryDetailPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const params = useParams<{ id: string }>();
   const [families, setFamilies] = useState<Family[]>([]);
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState('');
@@ -64,7 +76,7 @@ export default function MemoryDetailPage() {
         return;
       }
       setMemory(null);
-      setError(cause instanceof Error ? cause.message : 'Дурсамжийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Дурсамжийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     } finally {
       if (requestId === memoryRequestRef.current) setLoading(false);
     }
@@ -78,7 +90,7 @@ export default function MemoryDetailPage() {
       const items = await api<Family[]>('/families');
       if (requestId !== familyRequestRef.current) return;
       memoryRequestRef.current += 1;
-      const mid = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
+      const mid = params.id ?? '';
       setMemoryId(mid);
       if (!items.length) {
         setFamily(null);
@@ -88,8 +100,16 @@ export default function MemoryDetailPage() {
         setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
         return;
       }
-      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = items.find((item) => item.id === requested) ?? items[0];
+      const requested = searchParams.get('family') ?? '';
+      const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
+      if (!selected) {
+        setFamily(null);
+        setFamilyId('');
+        setMemory(null);
+        setLoading(false);
+        setError('Энэ гэр бүлийн дурсамжийг харах боломжгүй байна.');
+        return;
+      }
       setFamilies(items);
       setFamily(selected);
       setFamilyId(selected.id);
@@ -98,7 +118,7 @@ export default function MemoryDetailPage() {
         setError('Дурсамжийн хаяг буруу байна.');
         return;
       }
-      if (selected.id !== requested) {
+      if (!requested) {
         router.replace(`/memories/${mid}?family=${encodeURIComponent(selected.id)}`);
       }
       await loadMemory(selected.id, mid);
@@ -110,9 +130,9 @@ export default function MemoryDetailPage() {
       }
       setMemory(null);
       setLoading(false);
-      setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     }
-  }, [loadMemory, router]);
+  }, [loadMemory, params.id, router, searchParams]);
 
   useEffect(() => {
     void loadFamilyContext();
@@ -134,7 +154,7 @@ export default function MemoryDetailPage() {
         router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Дурсамжийг устгах үед алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Дурсамжийг устгах үед алдаа гарлаа. Дахин оролдоно уу.'));
       setShowDelete(false);
       setBusy(false);
     }
@@ -206,7 +226,7 @@ export default function MemoryDetailPage() {
             <div className="memory-detail-gallery">
               {memory.photos.map((photo) => (
                 <figure key={photo.id}>
-                  <img src={photoUrl(photo.content_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" />
+                  <img src={photoUrl(photo.content_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" onError={(event) => { const image = event.currentTarget; image.alt = 'Зураг ачааллах боломжгүй байна.'; image.style.display = 'none'; image.parentElement?.classList.add('memory-photo-fallback'); }} />
                   {photo.title && <figcaption>{photo.title}</figcaption>}
                 </figure>
               ))}
@@ -216,7 +236,21 @@ export default function MemoryDetailPage() {
           )}
         </section>
 
+        <section className="memory-detail-people" aria-labelledby="memory-detail-people-heading">
+          <h2 id="memory-detail-people-heading">Холбоотой хүмүүс</h2>
+          {memory.person_ids.length ? (
+            <div className="memory-related-people">
+              {memory.person_ids.map((personId) => (
+                <Link key={personId} href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(personId)}`}>
+                  Хүний профайлыг үзэх
+                </Link>
+              ))}
+            </div>
+          ) : <p className="memory-muted">Холбоотой хүн бүртгэгдээгүй байна.</p>}
+        </section>
+
         <footer className="memory-detail-footer">
+          <Link href={`/tree?family=${encodeURIComponent(familyId)}`}>← Удмын мод руу буцах</Link>
           <Link href={`/memories?family=${encodeURIComponent(familyId)}`}>← Дурсамжийн архив</Link>
           <span>Бүх өгөгдөл одоогийн family context болон backend authorization-аар шүүгдэнэ.</span>
         </footer>
@@ -236,5 +270,14 @@ export default function MemoryDetailPage() {
         </div>
       )}
     </main>
+  );
+}
+
+
+export default function MemoryDetailPage() {
+  return (
+    <Suspense fallback={<main className="memories-page"><section className="memories-shell memory-detail-state" aria-live="polite"><span className="memory-state-mark" aria-hidden="true" /><p className="memories-eyebrow">MEMORY · LOADING</p><h1>Дурсамжийг нээж байна…</h1></section></main>}>
+      <MemoryDetailPageContent />
+    </Suspense>
   );
 }
