@@ -23,7 +23,6 @@ function authError(cause: unknown) {
   }
   return 'Нэвтэрч чадсангүй. Дахин оролдоно уу.';
 }
-}
 
 export default function LoginPage() {
   const router = useRouter();
