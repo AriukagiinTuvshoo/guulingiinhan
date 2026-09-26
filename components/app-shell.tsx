@@ -41,6 +41,8 @@ const NAV_ITEMS: NavItem[] = [
 
 function isShellRoute(pathname: string) {
   return (
+    pathname === '/dashboard' ||
+    pathname.startsWith('/dashboard/') ||
     pathname === '/people' ||
     pathname.startsWith('/people/') ||
     pathname === '/tree' ||
@@ -107,7 +109,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const accountRef = useRef<HTMLDivElement | null>(null);
 
   const currentFamily = useMemo(
-    () => families.find((family) => family.id === familyId) ?? families[0] ?? null,
+    () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
 
@@ -162,21 +164,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const requested =
-      families.find((family) => family.id === requestedFamilyId)?.id ?? families[0].id;
+    const requestedFamily = requestedFamilyId
+      ? families.find((family) => family.id === requestedFamilyId) ?? null
+      : null;
 
+    if (requestedFamilyId && !requestedFamily) {
+      setFamilyId('');
+      return;
+    }
+
+    const requested = requestedFamily?.id ?? families[0]?.id ?? '';
     setFamilyId((current) => (current === requested ? current : requested));
 
-    if (
-      requested &&
-      requestedFamilyId !== requested &&
-      pathname !== '/profile' &&
-      !pathname.startsWith('/profile/')
-    ) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('family', requested);
-      router.replace(pathname + '?' + params.toString());
-    } else if (requested && requestedFamilyId !== requested && pathname.startsWith('/profile')) {
+    if (!requestedFamilyId && requested) {
       const params = new URLSearchParams(searchParams.toString());
       params.set('family', requested);
       router.replace(pathname + '?' + params.toString());
@@ -285,6 +285,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="app-shell__context" aria-label="Одоогийн гэр бүлийн орчин">
           {contextLoading ? (
             <span className="app-shell__context-skeleton" aria-hidden="true" />
+          ) : requestedFamilyId && !currentFamily ? (
+            <span className="app-shell__context-invalid" role="status">
+              Сонгосон гэр бүл олдсонгүй
+            </span>
           ) : families.length > 1 ? (
             <>
               <label htmlFor="app-shell-family">Гэр бүл</label>
@@ -455,6 +459,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Users size={18} aria-hidden="true" />
               <span>Танд одоогоор харагдах family context алга.</span>
               <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
+            </div>
+          ) : requestedFamilyId && !currentFamily && !contextLoading ? (
+            <div className="app-shell__no-family" role="alert">
+              <Users size={18} aria-hidden="true" />
+              <span>Сонгосон гэр бүл таны хандах боломжтой жагсаалтад алга.</span>
+              <Link href="/families">Гэр бүл сонгох →</Link>
             </div>
           ) : null}
           {children}

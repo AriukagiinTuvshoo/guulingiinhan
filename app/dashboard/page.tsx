@@ -7,11 +7,7 @@ import {
   BookOpen,
   GitFork,
   Heart,
-  Home,
-  Menu,
-  Network,
   Search,
-  Settings,
   TreeDeciduous,
   Users,
   X,
@@ -53,16 +49,6 @@ type ActivityItem =
   | { kind: 'story'; id: string; title: string; date: string; meta: string }
   | { kind: 'memory'; id: string; title: string; date: string; meta: string }
   | { kind: 'archive'; id: string; title: string; date: string; meta: string };
-
-const navItems = [
-  ['Нүүр', Home, (familyId: string) => '/dashboard?family=' + encodeURIComponent(familyId)],
-  ['Удмын мод', GitFork, (familyId: string) => '/tree?family=' + encodeURIComponent(familyId)],
-  ['Хүмүүс', Network, (familyId: string) => '/people?family=' + encodeURIComponent(familyId)],
-  ['Манай түүх', BookOpen, (familyId: string) => '/stories?family=' + encodeURIComponent(familyId)],
-  ['Дурсамж', Heart, (familyId: string) => '/memories?family=' + encodeURIComponent(familyId)],
-  ['Архив', Archive, (familyId: string) => '/archives?family=' + encodeURIComponent(familyId)],
-  ['Тохиргоо', Settings, () => '/account/security'],
-] as const;
 
 const previewSlots = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'] as const;
 
@@ -452,8 +438,6 @@ function DashboardContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [mobileNav, setMobileNav] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const loadDashboard = useCallback(
     async (familyId: string, currentUser: User) => {
@@ -516,17 +500,31 @@ function DashboardContent() {
 
         setUser(me);
         setFamilies(familyList);
+        setFamily(null);
+        setPeople([]);
+        setTree({ persons: [], parent_child_relationships: [], marriages: [] });
+        setMemories([]);
+        setMemoryCount(0);
+        setStories(null);
+        setArchives(null);
 
         if (!familyList.length) {
-          setFamily(null);
           return;
         }
 
-        const requestedFamily = familyList.find((item) => item.id === familyIdFromUrl);
+        const requestedFamily = familyIdFromUrl
+          ? familyList.find((item) => item.id === familyIdFromUrl) ?? null
+          : null;
+
+        if (familyIdFromUrl && !requestedFamily) {
+          setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
+          return;
+        }
+
         const nextFamily = requestedFamily ?? familyList[0];
         await loadDashboard(nextFamily.id, me);
 
-        if (active && (!familyIdFromUrl || !requestedFamily)) {
+        if (active && !familyIdFromUrl) {
           window.history.replaceState(
             null,
             '',
@@ -630,21 +628,6 @@ function DashboardContent() {
     router.push('/profile?family=' + encodeURIComponent(family.id) + '&person=' + encodeURIComponent(personId));
   }
 
-  function go(pathFactory: (familyId: string) => string) {
-    if (!family) return;
-    setMobileNav(false);
-    router.push(pathFactory(family.id));
-  }
-
-  async function logout() {
-    try {
-      await api<void>('/auth/logout', { method: 'POST' });
-      router.replace('/login');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Гарах үед алдаа гарлаа.');
-    }
-  }
-
   if (loading) {
     return (
       <main className="homev2-shell">
@@ -662,7 +645,7 @@ function DashboardContent() {
     );
   }
 
-  if (error && !families.length) {
+  if (error && (!families.length || !family)) {
     return (
       <main className="homev2-shell">
         <section className="homev2-state homev2-state--error" role="alert">
@@ -694,118 +677,7 @@ function DashboardContent() {
   }
 
   return (
-    <div className="homev2-app">
-      <header className="homev2-topbar">
-        <button
-          className="homev2-menu-button"
-          onClick={() => setMobileNav((value) => !value)}
-          aria-label="Навигаци нээх"
-          aria-expanded={mobileNav}
-        >
-          <Menu size={20} />
-        </button>
-
-        <Link className="homev2-brand" href={'/dashboard?family=' + encodeURIComponent(family?.id ?? '')}>
-          <span className="homev2-brand-mark"><TreeDeciduous size={23} /></span>
-          <span>
-            <strong>ГУУЛИНГИЙНХАН</strong>
-            <small>Миний удам · Манай түүх</small>
-          </span>
-        </Link>
-
-        <div className="homev2-search">
-          <Search size={17} aria-hidden="true" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Гэр бүлийн хүн хайх…"
-            aria-label="Гэр бүлийн хүн хайх"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} aria-label="Хайлтыг арилгах">
-              <X size={15} />
-            </button>
-          )}
-          {search && (
-            <div className="homev2-search-results">
-              {searchBusy ? (
-                <span>Хайж байна…</span>
-              ) : searchResults?.items.length ? (
-                searchResults.items.map((result) => (
-                  <button
-                    key={result.id}
-                    onClick={() => openProfile(result.id)}
-                  >
-                    <span className="homev2-search-avatar">{result.name.slice(0, 2).toUpperCase()}</span>
-                    <span>
-                      <strong>{result.name}</strong>
-                      <small>{result.birth_year ?? '—'}</small>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <span>{searchResults ? 'Хүн олдсонгүй.' : 'Нэрээр хайж байна…'}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <Link className="homev2-family-link" href="/families">
-          Гэр бүлүүд
-        </Link>
-
-        <div className="homev2-user-wrap">
-          <button
-            className="homev2-user-button"
-            onClick={() => setMenuOpen((value) => !value)}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-          >
-            <span className="homev2-user-avatar">{user ? initials({ first_name: user.display_name, last_name: '' }) : '?'}</span>
-            <span>{user?.display_name ?? 'Хэрэглэгч'}</span>
-          </button>
-          {menuOpen && (
-            <div className="homev2-user-menu" role="menu">
-              <strong>{user?.display_name ?? 'Хэрэглэгч'}</strong>
-              {user?.person_id && family && (
-                <button role="menuitem" onClick={() => openProfile(user.person_id!)}>
-                  Миний профайл
-                </button>
-              )}
-              <Link role="menuitem" href="/families">Гэр бүлүүд</Link>
-              <button role="menuitem" onClick={() => void logout()}>Гарах</button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="homev2-layout">
-        <aside className={'homev2-sidebar ' + (mobileNav ? 'homev2-sidebar--open' : '')}>
-          <nav aria-label="Үндсэн навигаци">
-            {navItems.map(([label, Icon, getHref]) => {
-              const href = getHref(family?.id ?? '');
-              return (
-                <Link
-                  key={label}
-                  className={'homev2-nav-item ' + (label === 'Нүүр' ? 'homev2-nav-item--active' : '')}
-                  href={href}
-                  onClick={() => setMobileNav(false)}
-                >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="homev2-sidebar-quote">
-            Өнгөрсөн түүхээ<br />
-            танин мэдэж,<br />
-            өнөөдрийн дурсамжаа<br />
-            ирээдүйд өвлүүлэн үлдээе.
-          </div>
-        </aside>
-
-        <main className="homev2-main">
+    <main className="homev2-main homev2-main--shell">
           {error && (
             <div className="homev2-inline-alert" role="alert">
               <span>{error}</span>
@@ -814,6 +686,41 @@ function DashboardContent() {
           )}
 
           <section className="homev2-hero">
+            <div className="homev2-dashboard-search">
+              <div className="homev2-search">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Гэр бүлийн хүн хайх…"
+                  aria-label="Гэр бүлийн хүн хайх"
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch('')} aria-label="Хайлтыг арилгах">
+                    <X size={15} />
+                  </button>
+                )}
+                {search && (
+                  <div className="homev2-search-results">
+                    {searchBusy ? (
+                      <span>Хайж байна…</span>
+                    ) : searchResults?.items.length ? (
+                      searchResults.items.map((result) => (
+                        <button type="button" key={result.id} onClick={() => openProfile(result.id)}>
+                          <span className="homev2-search-avatar">{result.name.slice(0, 2).toUpperCase()}</span>
+                          <span>
+                            <strong>{result.name}</strong>
+                            <small>{result.birth_year ?? '—'}</small>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <span>{searchResults ? 'Хүн олдсонгүй.' : 'Нэрээр хайж байна…'}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
             <div>
               <p className="homev2-eyebrow">МАНАЙ ГЭР БҮЛ</p>
               <h1>{family?.name}</h1>
@@ -988,9 +895,7 @@ function DashboardContent() {
           )}
 
           {refreshing && <div className="homev2-refresh" role="status">Шинэчилж байна…</div>}
-        </main>
-      </div>
-    </div>
+    </main>
   );
 }
 
