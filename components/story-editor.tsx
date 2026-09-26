@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api, Family, PersonSearchPage, Story } from '../lib/api';
+import { useParams, useSearchParams } from 'next/navigation';
 
 type Props = {
   mode: 'create' | 'edit';
@@ -33,7 +34,7 @@ function friendlyError(cause: unknown, fallback: string) {
   return fallback;
 }
 
-export default function StoryEditor({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
+function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState(requestedFamilyId);
   const [story, setStory] = useState<Story | null>(null);
@@ -49,6 +50,10 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [initialSnapshot, setInitialSnapshot] = useState('');
+  const searchParams = useSearchParams();
+  const routeParams = useParams<{ id?: string }>();
+  const loadRequestRef = useRef(0);
+  const personSearchRequestRef = useRef(0);
 
   const snapshot = useMemo(
     () => JSON.stringify({ title, body, eventDate, place, visibility, people: selectedPeople.map((person) => person.id) }),
@@ -69,19 +74,26 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
 
   useEffect(() => {
     let cancelled = false;
+    const requestId = ++loadRequestRef.current;
 
     async function load() {
-      const params = new URLSearchParams(window.location.search);
-      const effectiveFamilyId = requestedFamilyId || params.get('family') || '';
-      const effectiveStoryId = requestedStoryId || window.location.pathname.split('/').filter(Boolean).at(-2) || '';
+      const effectiveFamilyId = requestedFamilyId || searchParams.get('family') || '';
+      const effectiveStoryId = requestedStoryId || routeParams.id || '';
+      if (loadRequestRef.current !== requestId) return;
       setLoading(true);
       setError('');
       try {
         if (mode === 'create') {
           const items = await api<Family[]>('/families');
-          if (cancelled) return;
+          if (cancelled || requestId !== loadRequestRef.current) return;
           const requested = effectiveFamilyId;
-          const selected = items.find((item) => item.id === requested) ?? items[0] ?? null;
+          const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0] ?? null;
+          if (!selected) {
+            setFamily(null);
+            setFamilyId('');
+            setError('Энэ гэр бүлийн түүхийг засах эрхгүй байна.');
+            return;
+          }
           setFamily(selected);
           setFamilyId(selected?.id ?? '');
           setInitialSnapshot(JSON.stringify({ title: '', body: '', eventDate: '', place: '', visibility: 'family', people: [] }));
@@ -96,7 +108,7 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
           api<Family>('/families/' + effectiveFamilyId),
           api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId),
         ]);
-        if (cancelled) return;
+        if (cancelled || requestId !== loadRequestRef.current) return;
         setFamily(familyResult);
         setFamilyId(effectiveFamilyId);
         setStory(storyResult);
@@ -119,27 +131,35 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
           window.location.href = '/login';
           return;
         }
-        if (!cancelled) setError(friendlyError(cause, 'Түүхийг ачаалж чадсангүй.'));
+        if (!cancelled && requestId === loadRequestRef.current) setError(friendlyError(cause, 'Түүхийг ачаалж чадсангүй.'));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && requestId === loadRequestRef.current) setLoading(false);
       }
     }
 
     void load();
     return () => { cancelled = true; };
-  }, [mode, requestedFamilyId, requestedStoryId]);
+  }, [mode, requestedFamilyId, requestedStoryId, routeParams.id, searchParams]);
 
   useEffect(() => {
+    const requestId = ++personSearchRequestRef.current;
     if (!familyId || !personQuery.trim()) {
       setPersonResults(null);
       return;
     }
     const timer = window.setTimeout(() => {
-      api<PersonSearchPage>(
+      void api<PersonSearchPage>(
         '/families/' + familyId + '/persons/search?q=' + encodeURIComponent(personQuery.trim()) + '&page=1&page_size=20',
-      ).then(setPersonResults).catch(() => setPersonResults(null));
+      ).then((result) => {
+        if (requestId === personSearchRequestRef.current) setPersonResults(result);
+      }).catch(() => {
+        if (requestId === personSearchRequestRef.current) setPersonResults(null);
+      });
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      personSearchRequestRef.current += 1;
+    };
   }, [familyId, personQuery]);
 
   function cancel() {
@@ -315,5 +335,14 @@ export default function StoryEditor({ mode, familyId: requestedFamilyId = '', st
         </form>
       </section>
     </main>
+  );
+}
+
+
+export default function StoryEditor(props: Props) {
+  return (
+    <Suspense fallback={<main className="stories-page"><section className="stories-shell stories-state" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Editor ачаалж байна…</p></section></main>}>
+      <StoryEditorContent {...props} />
+    </Suspense>
   );
 }

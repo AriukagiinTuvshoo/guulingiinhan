@@ -1,13 +1,23 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, StoryListPage } from '../../lib/api';
+
+function friendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+    if (cause.status === 403) return 'Энэ гэр бүлийн түүхийг харах эрхгүй байна.';
+    if (cause.status === 404) return 'Гэр бүлийн түүх олдсонгүй.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Холболтоо шалгаад дахин оролдоно уу.';
+  }
+  return fallback;
+}
 
 const PAGE_SIZE = 12;
 
-export default function StoriesPage() {
+function StoriesPageContent() {
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState('');
   const [families, setFamilies] = useState<Family[]>([]);
@@ -19,6 +29,7 @@ export default function StoriesPage() {
   const familyRequestRef = useRef(0);
   const storyRequestRef = useRef(0);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const loadStories = useCallback(async (fid: string, page = 1, q = query) => {
     if (!fid) return;
@@ -38,7 +49,7 @@ export default function StoriesPage() {
         router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Түүхийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Түүхийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     } finally {
       if (requestId === storyRequestRef.current) {
         setLoading(false);
@@ -63,12 +74,20 @@ export default function StoriesPage() {
         setLoading(false);
         return;
       }
-      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = items.find((item) => item.id === requested) ?? items[0];
+      const requested = searchParams.get('family') ?? '';
+      const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
+      if (!selected) {
+        setFamily(null);
+        setFamilyId('');
+        setStories(null);
+        setLoading(false);
+        setError('Энэ гэр бүлийн түүхийг харах боломжгүй байна.');
+        return;
+      }
       setFamily(selected);
       setFamilyId(selected.id);
       setStories(null);
-      if (selected.id !== requested) {
+      if (!requested) {
         router.replace('/stories?family=' + encodeURIComponent(selected.id));
       }
     } catch (cause) {
@@ -78,11 +97,16 @@ export default function StoriesPage() {
         return;
       }
       setLoading(false);
-      setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
+    setFamily(null);
+    setFamilyId('');
+    setStories(null);
+    setError('');
+    storyRequestRef.current += 1;
     void loadFamilies();
   }, [loadFamilies]);
 
@@ -110,10 +134,10 @@ export default function StoriesPage() {
       <section className="stories-shell">
         <header className="stories-heading">
           <div>
-            <Link href={family ? '/dashboard?family=' + encodeURIComponent(family.id) : '/dashboard'}>← Dashboard</Link>
+            <Link href={family ? '/tree?family=' + encodeURIComponent(family.id) : '/tree'}>← Удмын мод руу буцах</Link>
             <p className="eyebrow">ГУУЛИНГИЙНХАН · FAMILY STORY</p>
             <h1>Манай түүх</h1>
-            <p className="stories-lede">Гэр бүлийн үйл явдал, дурсамжит өгүүлэмж, огноо, газар болон холбоотой хүмүүсийг тусдаа түүхийн сан болгон хадгална.</p>
+            <p className="stories-lede">Гэр бүлийн үйл явдал, дурсамжит өгүүлэмж, огноо, газар болон холбоотой хүмүүсийг гэр бүлийн түүхийн санд хадгална.</p>
           </div>
           <div className="stories-actions">
             {families.length > 1 && (
@@ -184,5 +208,14 @@ export default function StoriesPage() {
         )}
       </section>
     </main>
+  );
+}
+
+
+export default function StoriesPage() {
+  return (
+    <Suspense fallback={<main className="stories-page"><section className="stories-shell stories-state" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Гэр бүлийн түүхийг ачаалж байна…</p></section></main>}>
+      <StoriesPageContent />
+    </Suspense>
   );
 }

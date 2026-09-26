@@ -1,11 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, Story } from '../../../lib/api';
 
-export default function StoryDetailPage() {
+function friendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+    if (cause.status === 403) return 'Энэ түүхийг харах эрхгүй байна.';
+    if (cause.status === 404) return 'Түүх олдсонгүй.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Холболтоо шалгаад дахин оролдоно уу.';
+  }
+  return fallback;
+}
+
+function StoryDetailPageContent() {
   const [familyId, setFamilyId] = useState('');
   const [storyId, setStoryId] = useState('');
   const [family, setFamily] = useState<Family | null>(null);
@@ -17,6 +27,8 @@ export default function StoryDetailPage() {
   const familyRequestRef = useRef(0);
   const storyRequestRef = useRef(0);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const params = useParams<{ id: string }>();
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
 
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
@@ -36,7 +48,7 @@ export default function StoryDetailPage() {
         return;
       }
       setStory(null);
-      setError(cause instanceof Error ? cause.message : 'Түүхийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Түүхийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     } finally {
       if (requestId === storyRequestRef.current) setLoading(false);
     }
@@ -50,7 +62,7 @@ export default function StoryDetailPage() {
       const items = await api<Family[]>('/families');
       if (requestId !== familyRequestRef.current) return;
       storyRequestRef.current += 1;
-      const sid = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
+      const sid = params.id ?? '';
       setStoryId(sid);
       if (!items.length) {
         setFamily(null);
@@ -60,8 +72,16 @@ export default function StoryDetailPage() {
         setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
         return;
       }
-      const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = items.find((item) => item.id === requestedFamily) ?? items[0];
+      const requestedFamily = searchParams.get('family') ?? '';
+      const selected = requestedFamily ? items.find((item) => item.id === requestedFamily) ?? null : items[0];
+      if (!selected) {
+        setFamily(null);
+        setFamilyId('');
+        setStory(null);
+        setLoading(false);
+        setError('Энэ гэр бүлийн түүхийг харах боломжгүй байна.');
+        return;
+      }
       setFamily(selected);
       setFamilyId(selected.id);
       if (!sid) {
@@ -69,7 +89,7 @@ export default function StoryDetailPage() {
         setError('Түүхийн хаяг буруу байна.');
         return;
       }
-      if (selected.id !== requestedFamily) {
+      if (!requestedFamily) {
         router.replace('/stories/' + sid + '?family=' + encodeURIComponent(selected.id));
       }
       await load(selected.id, sid);
@@ -81,11 +101,16 @@ export default function StoryDetailPage() {
       }
       setStory(null);
       setLoading(false);
-      setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     }
-  }, [load, router]);
+  }, [load, params.id, router, searchParams]);
 
   useEffect(() => {
+    setFamily(null);
+    setFamilyId('');
+    setStory(null);
+    setError('');
+    storyRequestRef.current += 1;
     void loadFamilyContext();
   }, [loadFamilyContext]);
 
@@ -105,7 +130,7 @@ export default function StoryDetailPage() {
         window.location.href = '/login';
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Түүхийг устгах үед алдаа гарлаа. Дахин оролдоно уу.');
+      setError(friendlyError(cause, 'Түүхийг устгах үед алдаа гарлаа. Дахин оролдоно уу.'));
       setBusy(false);
       setShowDeleteDialog(false);
     }
@@ -178,6 +203,7 @@ export default function StoryDetailPage() {
         </section>
 
         <footer className="story-detail-footer">
+          <Link href={'/tree?family=' + encodeURIComponent(familyId)}>← Удмын мод руу буцах</Link>
           <Link href={'/stories?family=' + encodeURIComponent(familyId)}>← Бүх түүх</Link>
           {story.related_people[0] && <Link href={'/profile?family=' + encodeURIComponent(familyId) + '&person=' + encodeURIComponent(story.related_people[0].id)}>Хүний профайл →</Link>}
         </footer>
@@ -197,5 +223,14 @@ export default function StoryDetailPage() {
         </div>
       )}
     </main>
+  );
+}
+
+
+export default function StoryDetailPage() {
+  return (
+    <Suspense fallback={<main className="stories-page"><section className="stories-shell stories-state" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Түүхийг ачаалж байна…</p></section></main>}>
+      <StoryDetailPageContent />
+    </Suspense>
   );
 }
