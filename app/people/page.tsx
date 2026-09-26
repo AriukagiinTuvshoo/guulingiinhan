@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
@@ -45,8 +45,9 @@ function activeFilterCount(query: string, lineageId: string, branchId: string) {
   return Number(Boolean(query.trim())) + Number(Boolean(lineageId)) + Number(Boolean(branchId));
 }
 
-export default function PeoplePage() {
+function PeoplePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [lineages, setLineages] = useState<LineageSummary[]>([]);
@@ -60,6 +61,7 @@ export default function PeoplePage() {
   const [metaError, setMetaError] = useState('');
   const [error, setError] = useState('');
   const [metaBusy, setMetaBusy] = useState(false);
+  const [invalidFamily, setInvalidFamily] = useState(false);
   const peopleRequestRef = useRef(0);
   const familyRequestRef = useRef(0);
   const metadataRequestRef = useRef(0);
@@ -71,7 +73,7 @@ export default function PeoplePage() {
     nextBranchId: string,
     nextPage: number,
   ) => {
-    if (!fid) return;
+    if (!fid || invalidFamily) return;
     const requestId = ++peopleRequestRef.current;
     setBusy(true);
     setError('');
@@ -102,7 +104,7 @@ export default function PeoplePage() {
         setBusy(false);
       }
     }
-  }, [router]);
+  }, [invalidFamily, router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -119,12 +121,29 @@ export default function PeoplePage() {
         setLoading(false);
         return;
       }
-      const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
-      setFamilyId(selected.id);
+      const requestedFamily = searchParams.get('family') ?? '';
+      const selected = list.find((item) => item.id === requestedFamily) ?? null;
+      if (requestedFamily && !selected) {
+        setInvalidFamily(true);
+        setFamilyId('');
+        setPeople(null);
+        setLoading(false);
+        setError('Сонгосон гэр бүл олдсонгүй эсвэл танд хандах эрхгүй байна.');
+        return;
+      }
+      const nextFamily = selected ?? list[0];
+      if (!nextFamily) {
+        setInvalidFamily(false);
+        setFamilyId('');
+        setPeople(null);
+        setLoading(false);
+        return;
+      }
+      setInvalidFamily(false);
+      setFamilyId(nextFamily.id);
       setPeople(null);
-      if (selected.id !== requestedFamily) {
-        router.replace('/people?family=' + encodeURIComponent(selected.id));
+      if (!requestedFamily) {
+        router.replace('/people?family=' + encodeURIComponent(nextFamily.id));
       }
     } catch (cause) {
       if (requestId !== familyRequestRef.current) return;
@@ -223,6 +242,7 @@ export default function PeoplePage() {
 
   function chooseFamily(nextFamilyId: string) {
     peopleRequestRef.current += 1;
+    setInvalidFamily(false);
     metadataRequestRef.current += 1;
     setFamilyId(nextFamilyId);
     setLineages([]);
@@ -360,7 +380,17 @@ export default function PeoplePage() {
           </div>
         )}
 
-        {loading && !people ? (
+        {invalidFamily ? (
+          <section className="people-state card" role="alert">
+            <div className="people-empty-avatar personavatar" aria-hidden="true">!</div>
+            <h2>Гэр бүлийн орчин олдсонгүй.</h2>
+            <p>Энэ холбоос дахь гэр бүл танд байхгүй эсвэл хандах боломжгүй болсон байна.</p>
+            <div className="profile-actions">
+              <Link className="button" href="/families">Гэр бүлүүд</Link>
+              <Link className="button" href="/people">Хүмүүс</Link>
+            </div>
+          </section>
+        ) : loading && !people ? (
           <section className="people-state card" aria-live="polite">
             <span className="people-spinner" aria-hidden="true" />
             <p>Хүмүүсийг ачаалж байна…</p>
@@ -455,5 +485,22 @@ export default function PeoplePage() {
         )}
       </section>
     </main>
+  );
+}
+
+export default function PeoplePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="people-page">
+          <section className="people-shell people-state card" aria-live="polite">
+            <span className="people-spinner" aria-hidden="true" />
+            <p>Хүмүүсийг ачаалж байна…</p>
+          </section>
+        </main>
+      }
+    >
+      <PeoplePageContent />
+    </Suspense>
   );
 }

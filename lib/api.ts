@@ -43,7 +43,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status === 409 ? 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.' :
         response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
         response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
-        payload.detail ?? message;
+        message;
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
