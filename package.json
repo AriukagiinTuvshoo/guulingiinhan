@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "build": "next build",
+    "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "tsc --noEmit",
     "start": "next start --hostname 0.0.0.0"
   },
