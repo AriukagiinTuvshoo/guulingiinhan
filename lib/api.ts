@@ -2,7 +2,12 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public code: string | null = null,
+    public requestId: string | null = null,
+  ) {
     super(message);
   }
 }
@@ -24,8 +29,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!response.ok) {
     let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
+    let code: string | null = null;
+    let requestId = response.headers.get('X-Request-ID');
     try {
       const payload = await response.json();
+      code = typeof payload.error_code === 'string' ? payload.error_code : null;
+      requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
       message =
         response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
         response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
@@ -37,7 +46,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, code, requestId);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
