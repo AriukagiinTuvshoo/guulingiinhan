@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, ArchiveListPage, Family } from '../../lib/api';
+import { ApiError, api, ArchiveListPage, Family, Person } from '../../lib/api';
 
 const PAGE_SIZE = 12;
 

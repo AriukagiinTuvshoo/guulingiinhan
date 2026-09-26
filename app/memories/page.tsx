@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { API_BASE, ApiError, api, Family, MemoryListItem, PersonSearchPage } from '../../lib/api';
+import { API_BASE, ApiError, api, Family, MemoryListItem, Person, PersonSearchPage } from '../../lib/api';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
