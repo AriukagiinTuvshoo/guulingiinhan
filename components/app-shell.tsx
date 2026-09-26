@@ -125,6 +125,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextLoaded(true);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
+        setContextLoaded(true);
         router.replace('/login');
         return;
       }
