@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
@@ -47,6 +47,7 @@ function initials(person: Pick<ProfileRelationPerson, 'first_name' | 'last_name'
 
 export default function ProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [family, setFamily] = useState('');
   const [id, setId] = useState('');
   const [person, setPerson] = useState<PersonProfile | null>(null);
@@ -105,9 +106,8 @@ export default function ProfilePage() {
   useEffect(() => {
     let cancelled = false;
     const requestId = ++profileRequestRef.current;
-    const params = new URLSearchParams(window.location.search);
-    const requestedFamily = params.get('family') ?? '';
-    const pid = params.get('person') ?? '';
+    const requestedFamily = searchParams.get('family') ?? '';
+    const pid = searchParams.get('person') ?? '';
 
     setPerson(null);
     setBiography('');
@@ -172,7 +172,7 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (!family || !id) return;
