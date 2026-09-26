@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ApiError,
@@ -61,8 +61,36 @@ export default function ProfilePage() {
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [eventState, setEventState] = useState<'ready' | 'restricted'>('ready');
+  const [marriageState, setMarriageState] = useState<'ready' | 'restricted'>('ready');
+  const [mutationBusy, setMutationBusy] = useState(false);
+  const requestSequence = useRef(0);
+  const mutationBusyRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  async function load(fid: string, pid: string) {
+  function safeFlowError(cause: unknown, fallback: string) {
+    if (cause instanceof ApiError) {
+      if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+      if (cause.status === 403) return 'Энэ мэдээлэлд хандах эрхгүй байна.';
+      if (cause.status === 404) return 'Мэдээлэл олдсонгүй эсвэл харах боломжгүй байна.';
+      if (cause.status === 409) return 'Мэдээллийн төлөв өөрчлөгдсөн байна. Дахин оролдоно уу.';
+      if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+      if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
+      if (cause.status >= 500) return 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
+      if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+    }
+    return fallback;
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestSequence.current += 1;
+    };
+  }, []);
+
+  async function load(fid: string, pid: string, sequence = requestSequence.current) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
@@ -71,6 +99,8 @@ export default function ProfilePage() {
       api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
       api<ArchiveListPage>(`/families/${fid}/persons/${pid}/archives?page=1&page_size=5`),
     ]);
+
+    if (!mountedRef.current || sequence !== requestSequence.current) return;
 
     const unexpectedFailure = [bio, eventList, marriageList, storyPage, archivePage].find(
       (result) =>
@@ -83,6 +113,8 @@ export default function ProfilePage() {
 
     setPerson(profile);
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
+    setEventState(eventList.status === 'fulfilled' ? 'ready' : 'restricted');
+    setMarriageState(marriageList.status === 'fulfilled' ? 'ready' : 'restricted');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
     setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
     setArchives(archivePage.status === 'fulfilled' ? archivePage.value : null);
@@ -90,43 +122,60 @@ export default function ProfilePage() {
   }
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
-    const pid = params.get('person') ?? '';
-    setFamily(fid);
-    setId(pid);
+    const syncRoute = () => {
+      const sequence = ++requestSequence.current;
+      const params = new URLSearchParams(window.location.search);
+      const fid = params.get('family') ?? '';
+      const pid = params.get('person') ?? '';
 
-    if (!fid || !pid) {
-      router.replace('/people');
-      return;
-    }
+      setFamily(fid);
+      setId(pid);
+      setPerson(null);
+      setBiography('');
+      setEvents([]);
+      setMarriages([]);
+      setStories(null);
+      setArchives(null);
+      setError('');
+      setNotice('');
+      setEventState('ready');
+      setMarriageState('ready');
+      setEditing(false);
 
-    setLoading(true);
-    setError('');
-    load(fid, pid)
-      .catch((cause) => {
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setError(
-          cause instanceof ApiError && [403, 404].includes(cause.status)
-            ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-            : cause instanceof Error
-              ? cause.message
-              : 'Профайлыг ачаалж чадсангүй.',
-        );
-      })
-      .finally(() => setLoading(false));
+      if (!fid || !pid) {
+        setLoading(false);
+        router.replace('/people');
+        return;
+      }
+
+      setLoading(true);
+      void load(fid, pid, sequence)
+        .catch((cause) => {
+          if (!mountedRef.current || sequence !== requestSequence.current) return;
+          if (cause instanceof ApiError && cause.status === 401) {
+            router.replace('/login');
+            return;
+          }
+          setError(safeFlowError(cause, 'Профайлыг ачаалж чадсангүй.'));
+        })
+        .finally(() => {
+          if (mountedRef.current && sequence === requestSequence.current) setLoading(false);
+        });
+    };
+
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
   }, [router]);
 
-  async function loadMemories(fid: string, pid: string) {
+  async function loadMemories(fid: string, pid: string, sequence = requestSequence.current) {
     setMemoryState('loading');
     setMemoryError('');
     try {
       const result = await api<MemoryListItem[]>(
         `/families/${fid}/persons/${pid}/memories`,
       );
+      if (!mountedRef.current || sequence !== requestSequence.current) return;
       setMemories(result);
       setMemoryState('ready');
     } catch (cause) {
@@ -141,40 +190,38 @@ export default function ProfilePage() {
         return;
       }
       setMemoryState('error');
-      setMemoryError(
-        cause instanceof Error
-          ? cause.message
-          : 'Дурсамжийг ачаалж чадсангүй.',
-      );
+      if (!mountedRef.current || sequence !== requestSequence.current) return;
+      setMemoryError(safeFlowError(cause, 'Дурсамжийг ачаалж чадсангүй.'));
     }
   }
 
   async function retry() {
-    if (!family || !id) return;
-    setLoading(true);
+    if (!family || !id || mutationBusyRef.current) return;
+    const sequence = ++requestSequence.current;
+    setPerson(null);
+    setEvents([]);
+    setMarriages([]);
     setError('');
+    setNotice('');
+    setLoading(true);
     try {
-      await load(family, id);
+      await load(family, id, sequence);
     } catch (cause) {
+      if (!mountedRef.current || sequence !== requestSequence.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
-      setError(
-        cause instanceof ApiError && [403, 404].includes(cause.status)
-          ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-          : cause instanceof Error
-            ? cause.message
-            : 'Профайлыг ачаалж чадсангүй.',
-      );
+      setError(safeFlowError(cause, 'Профайлыг ачаалж чадсангүй.'));
     } finally {
-      setLoading(false);
+      if (mountedRef.current && sequence === requestSequence.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     if (!family || !id) return;
-    void loadMemories(family, id);
+    const sequence = requestSequence.current;
+    void loadMemories(family, id, sequence);
   }, [family, id]);
 
   async function saveBiography(event: FormEvent) {
@@ -220,11 +267,18 @@ export default function ProfilePage() {
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (mutationBusyRef.current || eventState === 'restricted' || !family || !id) return;
+    mutationBusyRef.current = true;
+    setMutationBusy(true);
     setError('');
+    setNotice('');
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const targetFamily = family;
+    const targetPerson = id;
+    const sequence = ++requestSequence.current;
     try {
-      await api(`/families/${family}/persons/${id}/events`, {
+      await api(`/families/${encodeURIComponent(targetFamily)}/persons/${encodeURIComponent(targetPerson)}/events`, {
         method: 'POST',
         body: JSON.stringify({
           event_type: form.get('event_type'),
@@ -233,11 +287,18 @@ export default function ProfilePage() {
           description: form.get('description') || null,
         }),
       });
-      await load(family, id);
+      if (!mountedRef.current || sequence !== requestSequence.current) return;
+      await load(targetFamily, targetPerson, sequence);
+      if (!mountedRef.current || sequence !== requestSequence.current) return;
       formElement.reset();
       setNotice('Үйл явдал нэмэгдлээ.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Үйл явдал нэмж чадсангүй.');
+      if (mountedRef.current && sequence === requestSequence.current) {
+        setError(safeFlowError(cause, 'Үйл явдал нэмж чадсангүй.'));
+      }
+    } finally {
+      mutationBusyRef.current = false;
+      if (mountedRef.current) setMutationBusy(false);
     }
   }
 
@@ -498,7 +559,7 @@ export default function ProfilePage() {
               <label>Гарчиг<input name="title" required maxLength={180} /></label>
               <label>Огноо<input name="event_date" type="date" /></label>
               <label>Тайлбар<textarea name="description" maxLength={10000} /></label>
-              <button className="primary" type="submit">Үйл явдал нэмэх</button>
+              <button className="primary" type="submit" disabled={mutationBusy || eventState === 'restricted'} aria-busy={mutationBusy}>{mutationBusy ? 'Хадгалж байна…' : 'Үйл явдал нэмэх'}</button>
             </form>
           </section>
         </div>

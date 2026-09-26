@@ -217,6 +217,9 @@ function TreePageContent() {
   const [searchPageNumber, setSearchPageNumber] = useState(1);
   const [relation, setRelation] = useState<RelationKind | null>(null);
   const [relationError, setRelationError] = useState('');
+  const [relationBusy, setRelationBusy] = useState(false);
+  const relationBusyRef = useRef(false);
+  const pendingRelationRef = useRef<{ familyId: string; selectedId: string; relation: RelationKind; relatedId: string } | null>(null);
 
   const loadSequence = useRef(0);
   const loadAbort = useRef<AbortController | null>(null);
@@ -539,24 +542,52 @@ function TreePageContent() {
     await loadTree(familyId, personId, depth);
   }
 
+  function relationshipErrorMessage(cause: unknown) {
+    if (cause instanceof ApiError) {
+      if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+      if (cause.status === 403) return 'Энэ гэр бүлийн холбоог өөрчлөх эрхгүй байна.';
+      if (cause.status === 404) return 'Хүн эсвэл гэрлэлтийн мэдээлэл олдсонгүй.';
+      if (cause.status === 409) return 'Гэр бүлийн холбооны төлөв өөрчлөгдсөн байна. Модыг шинэчилж шалгана уу.';
+      if (cause.status === 422) return 'Оруулсан холбооны мэдээллээ шалгана уу.';
+      if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
+      if (cause.status >= 500) return 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
+      if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+    }
+    return 'Гэр бүлийн холбоог хадгалж чадсангүй.';
+  }
+
   async function addRelation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!relation || !selectedId || !familyId) return;
+    if (relationBusyRef.current || !relation || !selectedId || !familyId) return;
 
+    relationBusyRef.current = true;
+    setRelationBusy(true);
     setRelationError('');
     setError('');
     const form = new FormData(event.currentTarget);
+    const currentRelation = relation;
+    const currentSelectedId = selectedId;
+    const currentFamilyId = familyId;
     const existingId = String(form.get('existing') ?? '');
+    let relatedId = existingId;
+    const pending = pendingRelationRef.current;
+    if (
+      pending &&
+      pending.familyId === currentFamilyId &&
+      pending.selectedId === currentSelectedId &&
+      pending.relation === currentRelation
+    ) {
+      relatedId = pending.relatedId;
+    }
 
     try {
-      let relatedId = existingId;
       if (!relatedId) {
         const fullName = String(form.get('name') ?? '')
           .trim()
           .split(/\s+/)
           .filter(Boolean);
         const created = await api<Person>(
-          '/families/' + encodeURIComponent(familyId) + '/persons',
+          '/families/' + encodeURIComponent(currentFamilyId) + '/persons',
           {
             method: 'POST',
             body: JSON.stringify({
@@ -568,15 +599,21 @@ function TreePageContent() {
           },
         );
         relatedId = created.id;
+        pendingRelationRef.current = {
+          familyId: currentFamilyId,
+          selectedId: currentSelectedId,
+          relation: currentRelation,
+          relatedId,
+        };
       }
 
-      if (relation === 'spouse') {
+      if (currentRelation === 'spouse') {
         await api(
-          '/families/' + encodeURIComponent(familyId) + '/marriages',
+          '/families/' + encodeURIComponent(currentFamilyId) + '/marriages',
           {
             method: 'POST',
             body: JSON.stringify({
-              person_1_id: selectedId,
+              person_1_id: currentSelectedId,
               person_2_id: relatedId,
               status: 'married',
               start_date: form.get('start_date') || null,
@@ -586,42 +623,53 @@ function TreePageContent() {
       } else {
         await api(
           '/families/' +
-            encodeURIComponent(familyId) +
+            encodeURIComponent(currentFamilyId) +
             '/relationships/parent-child',
           {
             method: 'POST',
             body: JSON.stringify({
-              parent_id: relation === 'parent' ? relatedId : selectedId,
-              child_id: relation === 'parent' ? selectedId : relatedId,
+              parent_id: currentRelation === 'parent' ? relatedId : currentSelectedId,
+              child_id: currentRelation === 'parent' ? currentSelectedId : relatedId,
               relationship_type: form.get('relationship_type'),
             }),
           },
         );
       }
 
+      pendingRelationRef.current = null;
       setRelation(null);
       setNotice('Гэр бүлийн холбоо хадгалагдлаа.');
-      await loadTree(familyId, selectedId, depth);
+      await loadTree(currentFamilyId, currentSelectedId, depth);
     } catch (cause) {
-      setRelationError(
-        cause instanceof Error
-          ? cause.message
-          : 'Холбоог хадгалж чадсангүй.',
-      );
+      if (cause instanceof ApiError && cause.status === 409 && currentRelation === 'spouse') {
+        pendingRelationRef.current = null;
+        setNotice('Гэрлэлтийн төлөв өөрчлөгдсөн байна. Модыг шинэчилж шалгалаа.');
+        await loadTree(currentFamilyId, currentSelectedId, depth);
+      } else {
+        setRelationError(relationshipErrorMessage(cause));
+      }
+    } finally {
+      relationBusyRef.current = false;
+      setRelationBusy(false);
     }
   }
 
   async function divorce(marriageId: string) {
-    if (!familyId || !selectedId) return;
+    if (relationBusyRef.current || !familyId || !selectedId) return;
     const endDate = window.prompt(
       'Салсан огноо (YYYY-MM-DD). Мэдэхгүй бол хоосон үлдээнэ үү.',
     );
     if (endDate === null) return;
 
+    relationBusyRef.current = true;
+    setRelationBusy(true);
+    setError('');
+    const currentFamilyId = familyId;
+    const currentSelectedId = selectedId;
     try {
       await api(
         '/families/' +
-          encodeURIComponent(familyId) +
+          encodeURIComponent(currentFamilyId) +
           '/marriages/' +
           encodeURIComponent(marriageId),
         {
@@ -633,13 +681,12 @@ function TreePageContent() {
         },
       );
       setNotice('Гэрлэлтийн мэдээлэл шинэчлэгдлээ.');
-      await loadTree(familyId, selectedId, depth);
+      await loadTree(currentFamilyId, currentSelectedId, depth);
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Гэрлэлтийн мэдээллийг шинэчилж чадсангүй.',
-      );
+      setError(relationshipErrorMessage(cause));
+    } finally {
+      relationBusyRef.current = false;
+      setRelationBusy(false);
     }
   }
 
