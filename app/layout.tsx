@@ -1,6 +1,8 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import './mvp.css';
+import AppShell from '../components/app-shell';
 
 export const metadata: Metadata = {
   title: 'ГУУЛИНГИЙНХАН — Ургийн мод',
@@ -10,7 +12,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="mn">
-      <body>{children}</body>
+      <body>
+        <Suspense fallback={children}>
+          <AppShell>{children}</AppShell>
+        </Suspense>
+      </body>
     </html>
   );
 }
