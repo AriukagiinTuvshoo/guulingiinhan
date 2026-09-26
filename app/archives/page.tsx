@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, ArchiveListPage, Family } from '../../lib/api';
 
 const PAGE_SIZE = 12;
@@ -31,7 +31,9 @@ function visibilityLabel(value: string) {
   return 'Гэр бүлийнхэн';
 }
 
-export default function ArchivesPage() {
+function ArchivesPageContent() {
+  const searchParams = useSearchParams();
+  const requestedFamilyId = searchParams.get('family') ?? '';
   const router = useRouter();
   const [family, setFamily] = useState<Family | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
@@ -79,38 +81,49 @@ export default function ArchivesPage() {
         setBusy(false);
       }
     }
-  }, [documentDate, query, router]);
+  }, [router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    archiveRequestRef.current += 1;
     setLoading(true);
     setError('');
+    setFamily(null);
+    setFamilyId('');
+    setArchives(null);
     try {
       const items = await api<Family[]>('/families');
       if (requestId !== familyRequestRef.current) return;
       setFamilies(items);
-      archiveRequestRef.current += 1;
       if (!items.length) {
-        setFamily(null);
-        setFamilyId('');
-        setArchives(null);
         setLoading(false);
         return;
       }
-      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = items.find((item) => item.id === requested) ?? items[0];
+      if (requestedFamilyId) {
+        const selected = items.find((item) => item.id === requestedFamilyId);
+        if (!selected) {
+          setLoading(false);
+          setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
+          return;
+        }
+        setFamily(selected);
+        setFamilyId(selected.id);
+        return;
+      }
+      const selected = items[0];
       setFamily(selected);
       setFamilyId(selected.id);
-      setArchives(null);
-      if (selected.id !== requested) {
-        router.replace(`/archives?family=${encodeURIComponent(selected.id)}`);
-      }
-    } catch {
+      router.replace(`/archives?family=${encodeURIComponent(selected.id)}`);
+    } catch (cause) {
       if (requestId !== familyRequestRef.current) return;
       setLoading(false);
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
       setError('Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
     }
-  }, [router]);
+  }, [requestedFamilyId, router]);
 
   useEffect(() => {
     void loadFamilies();
@@ -186,7 +199,7 @@ export default function ArchivesPage() {
             <span>{error}</span>
             <div className="archive-alert-actions">
               <button type="button" onClick={() => void loadFamilies()}>Гэр бүлийн орчныг дахин ачаалах</button>
-              {familyId && <button type="button" onClick={() => void loadArchives(familyId, page)} disabled={busy}>Архивийг дахин ачаалах</button>}
+              {familyId && <button type="button" onClick={() => void loadArchives(familyId, page, query, documentDate)} disabled={busy}>Архивийг дахин ачаалах</button>}
             </div>
           </div>
         )}
@@ -282,14 +295,23 @@ export default function ArchivesPage() {
 
             {archives && archives.total > PAGE_SIZE && (
               <nav className="archive-pagination" aria-label="Архивын хуудаслалт">
-                <button type="button" disabled={page <= 1 || busy} onClick={() => void loadArchives(familyId, page - 1)}>← Өмнөх</button>
+                <button type="button" disabled={page <= 1 || busy} onClick={() => void loadArchives(familyId, page - 1, query, documentDate)}>← Өмнөх</button>
                 <span>{page} / {pageCount}</span>
-                <button type="button" disabled={!archives.has_next || busy} onClick={() => void loadArchives(familyId, page + 1)}>Дараагийн →</button>
+                <button type="button" disabled={!archives.has_next || busy} onClick={() => void loadArchives(familyId, page + 1, query, documentDate)}>Дараагийн →</button>
               </nav>
             )}
           </>
         )}
       </section>
     </main>
+  );
+}
+
+
+export default function ArchivesPage() {
+  return (
+    <Suspense fallback={<main className="archive-page"><section className="archive-shell archive-state" aria-live="polite"><p className="archive-eyebrow">FAMILY ARCHIVE</p><h1>Архивийг нээж байна…</h1></section></main>}>
+      <ArchivesPageContent />
+    </Suspense>
   );
 }
