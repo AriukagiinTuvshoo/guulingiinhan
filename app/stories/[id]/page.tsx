@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ApiError, api, Family, Story } from '../../../lib/api';
 
 export default function StoryDetailPage() {
@@ -13,41 +14,80 @@ export default function StoryDetailPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const familyRequestRef = useRef(0);
+  const storyRequestRef = useRef(0);
+  const router = useRouter();
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
 
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
 
-  async function load(fid: string, sid: string) {
+  const load = useCallback(async (fid: string, sid: string) => {
+    const requestId = ++storyRequestRef.current;
     setLoading(true);
     setError('');
     try {
       const result = await api<Story>('/families/' + fid + '/stories/' + sid);
+      if (requestId !== storyRequestRef.current) return;
       setStory(result);
     } catch (cause) {
+      if (requestId !== storyRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
-        window.location.href = '/login';
+        router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Түүхийг ачаалж чадсангүй.');
+      setStory(null);
+      setError(cause instanceof Error ? cause.message : 'Түүхийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
     } finally {
-      setLoading(false);
+      if (requestId === storyRequestRef.current) setLoading(false);
     }
-  }
+  }, [router]);
+
+  const loadFamilyContext = useCallback(async () => {
+    const requestId = ++familyRequestRef.current;
+    setLoading(true);
+    setError('');
+    try {
+      const items = await api<Family[]>('/families');
+      if (requestId !== familyRequestRef.current) return;
+      storyRequestRef.current += 1;
+      const sid = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
+      setStoryId(sid);
+      if (!items.length) {
+        setFamily(null);
+        setFamilyId('');
+        setStory(null);
+        setLoading(false);
+        setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
+        return;
+      }
+      const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
+      const selected = items.find((item) => item.id === requestedFamily) ?? items[0];
+      setFamily(selected);
+      setFamilyId(selected.id);
+      if (!sid) {
+        setLoading(false);
+        setError('Түүхийн хаяг буруу байна.');
+        return;
+      }
+      if (selected.id !== requestedFamily) {
+        router.replace('/stories/' + sid + '?family=' + encodeURIComponent(selected.id));
+      }
+      await load(selected.id, sid);
+    } catch (cause) {
+      if (requestId !== familyRequestRef.current) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setStory(null);
+      setLoading(false);
+      setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+    }
+  }, [load, router]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
-    const sid = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
-    setFamilyId(fid);
-    setStoryId(sid);
-    if (!fid || !sid) {
-      setLoading(false);
-      setError('Түүхийн хаяг буруу байна.');
-      return;
-    }
-    api<Family>('/families/' + fid).then(setFamily).catch(() => undefined);
-    void load(fid, sid);
-  }, []);
+    void loadFamilyContext();
+  }, [loadFamilyContext]);
 
   useEffect(() => {
     if (showDeleteDialog) deleteCancelRef.current?.focus();
@@ -59,7 +99,7 @@ export default function StoryDetailPage() {
     setError('');
     try {
       await api<void>('/families/' + familyId + '/stories/' + story.id, { method: 'DELETE' });
-      window.location.href = '/stories?family=' + encodeURIComponent(familyId);
+      router.replace('/stories?family=' + encodeURIComponent(familyId));
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         window.location.href = '/login';
@@ -80,7 +120,7 @@ export default function StoryDetailPage() {
       <main className="stories-page">
         <section className="stories-shell">
           <div className="error" role="alert">{error}</div>
-          <Link className="button" href={'/stories?family=' + encodeURIComponent(familyId)}>← Түүхүүд</Link>
+          <div className="story-error-actions"><button type="button" onClick={() => void loadFamilyContext()}>Дахин оролдох</button><Link className="button" href={familyId ? '/stories?family=' + encodeURIComponent(familyId) : '/stories'}>← Манай түүх</Link></div>
         </section>
       </main>
     );
@@ -99,7 +139,8 @@ export default function StoryDetailPage() {
         {error && <div className="error stories-error" role="alert">{error}</div>}
 
         <header className="story-detail-header">
-          <p className="eyebrow">FAMILY STORY</p>
+          <p className="story-detail-year" aria-hidden="true">{story.event_date ? story.event_date.slice(0, 4) : '—'}</p>
+          <p className="eyebrow">FAMILY STORY · {family?.name ?? 'Гэр бүл'}</p>
           <h1>{story.title}</h1>
           <div className="story-detail-meta">
             <span>{story.event_date ?? 'Огноогүй'}</span>
@@ -115,13 +156,13 @@ export default function StoryDetailPage() {
           )}
         </header>
 
-        <section className="story-body" aria-label="Түүхийн агуулга">
+        <section className="story-reading" aria-labelledby="story-content-heading"><h2 id="story-content-heading" className="sr-only">Түүхийн агуулга</h2>
           {story.body.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
         </section>
 
-        <section className="card story-related">
+        <section className="card story-related" aria-labelledby="story-related-heading">
           <div className="story-section-heading">
-            <div><p className="eyebrow">RELATED PEOPLE</p><h2>Холбоотой хүмүүс</h2></div>
+            <div><p className="eyebrow">RELATED PEOPLE</p><h2 id="story-related-heading">Холбоотой хүмүүс</h2></div>
             <span>{story.related_people_count}</span>
           </div>
           {story.related_people.length ? (
@@ -136,7 +177,7 @@ export default function StoryDetailPage() {
           ) : <p className="profile-empty">Холбоотой хүн бүртгэгдээгүй байна.</p>}
         </section>
 
-        <footer className="profile-footer">
+        <footer className="story-detail-footer">
           <Link href={'/stories?family=' + encodeURIComponent(familyId)}>← Бүх түүх</Link>
           {story.related_people[0] && <Link href={'/profile?family=' + encodeURIComponent(familyId) + '&person=' + encodeURIComponent(story.related_people[0].id)}>Хүний профайл →</Link>}
         </footer>
