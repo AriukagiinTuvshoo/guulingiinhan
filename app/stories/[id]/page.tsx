@@ -9,6 +9,9 @@ function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
     if (cause.status === 403) return 'Энэ түүхийг харах эрхгүй байна.';
+    if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.';
+    if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 404) return 'Түүх олдсонгүй.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Холболтоо шалгаад дахин оролдоно уу.';
   }
@@ -18,6 +21,7 @@ function friendlyError(cause: unknown, fallback: string) {
 function StoryDetailPageContent() {
   const [familyId, setFamilyId] = useState('');
   const [storyId, setStoryId] = useState('');
+  const [personId, setPersonId] = useState('');
   const [family, setFamily] = useState<Family | null>(null);
   const [story, setStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,6 +67,8 @@ function StoryDetailPageContent() {
       if (requestId !== familyRequestRef.current) return;
       storyRequestRef.current += 1;
       const sid = params.id ?? '';
+      const requestedPerson = searchParams.get('person') ?? '';
+      setPersonId(requestedPerson);
       setStoryId(sid);
       if (!items.length) {
         setFamily(null);
@@ -157,7 +163,7 @@ function StoryDetailPageContent() {
     <main className="stories-page">
       <article className="stories-shell story-detail">
         <nav className="story-breadcrumb" aria-label="Байршил">
-          <Link href={'/stories?family=' + encodeURIComponent(familyId)}>← Манай түүх</Link>
+          <Link href={'/stories?family=' + encodeURIComponent(familyId) + (personId ? '&person=' + encodeURIComponent(personId) : '')}>← Манай түүх</Link>
           {family && <span>{family.name}</span>}
         </nav>
 

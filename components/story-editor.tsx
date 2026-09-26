@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, Family, PersonSearchPage, Story } from '../lib/api';
+import { ApiError, api, Family, Person, PersonSearchPage, Story, StoryListPage } from '../lib/api';
 import { useParams, useSearchParams } from 'next/navigation';
 
 type Props = {
@@ -27,6 +27,9 @@ function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
     if (cause.status === 403) return 'Энэ үйлдлийг хийх эрхгүй.';
+    if (cause.status === 409) return 'Энэ мэдээлэл давхар бүртгэгдэхээс хамгаалагдсан. Дахин оролдоно уу.';
+    if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 404) return 'Мэдээлэл олдсонгүй.';
     if (cause.status === 422) return 'Гарчиг, агуулга болон бусад мэдээллээ шалгана уу.';
     if (cause.status === 409) return 'Энэ мэдээлэл давхар бүртгэгдэхээс хамгаалагдсан. Дахин оролдоно уу.';
@@ -95,8 +98,14 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
             return;
           }
           setFamily(selected);
-          setFamilyId(selected?.id ?? '');
-          setInitialSnapshot(JSON.stringify({ title: '', body: '', eventDate: '', place: '', visibility: 'family', people: [] }));
+          setFamilyId(selected.id);
+          const requestedPersonId = searchParams.get('person') ?? '';
+          if (requestedPersonId) {
+            const requestedPerson = await api<Person>('/families/' + selected.id + '/persons/' + requestedPersonId);
+            if (cancelled || requestId !== loadRequestRef.current) return;
+            setSelectedPeople([{ id: requestedPerson.id, name: personName(requestedPerson) }]);
+          }
+          setInitialSnapshot(JSON.stringify({ title: '', body: '', eventDate: '', place: '', visibility: 'family', people: requestedPersonId ? [requestedPersonId] : [] }));
           return;
         }
 
@@ -219,7 +228,34 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
         window.location.href = '/login';
         return;
       }
-      setError(friendlyError(cause, mode === 'create' ? 'Түүхийг хадгалах үед алдаа гарлаа. Дахин оролдоно уу.' : 'Түүхийг шинэчлэх үед алдаа гарлаа. Дахин оролдоно уу.'));
+      if (cause instanceof ApiError && cause.status === 0) {
+        if (mode === 'edit' && (story?.id || requestedStoryId)) {
+          try {
+            const reconciled = await api<Story>('/families/' + familyId + '/stories/' + (story?.id || requestedStoryId));
+            setStory(reconciled);
+            setTitle(reconciled.title);
+            setBody(reconciled.body);
+            setEventDate(reconciled.event_date ?? '');
+            setPlace(reconciled.place ?? '');
+            setVisibility(reconciled.visibility);
+            setSelectedPeople(reconciled.related_people.map((person) => ({ id: person.id, name: personName(person) })));
+            setError('Хадгалалтын хариу тодорхойгүй байсан тул серверийн баталгаатай хувилбарыг дахин ачааллаа.');
+          } catch (reconcileCause) {
+            setError(friendlyError(reconcileCause, 'Хадгалалтын хариу тодорхойгүй байна. Дахин хадгалахаасаа өмнө түүхийн хуудсаас шалгана уу.'));
+          }
+        } else {
+          const personQuery = selectedPeople.length === 1 ? '&person=' + encodeURIComponent(selectedPeople[0].id) : '';
+          try {
+            await api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=12' + (selectedPeople.length === 1 ? '&person_id=' + encodeURIComponent(selectedPeople[0].id) : ''));
+          } catch {
+            // The reload is best-effort; never retry the POST after an uncertain response.
+          }
+          setError('Хадгалалтын хариу тодорхойгүй байна. Дахин хадгалахаасаа өмнө түүхийн жагсаалтаас шалгана уу.');
+          window.location.href = '/stories?family=' + encodeURIComponent(familyId) + personQuery;
+        }
+      } else {
+        setError(friendlyError(cause, mode === 'create' ? 'Түүхийг хадгалах үед алдаа гарлаа. Дахин оролдоно уу.' : 'Түүхийг шинэчлэх үед алдаа гарлаа. Дахин оролдоно уу.'));
+      }
     } finally {
       setSaving(false);
     }
@@ -269,7 +305,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
 
         {error && <div className="error stories-error" role="alert" id="story-editor-error">{error}</div>}
 
-        <form className="card story-editor-form" onSubmit={save} aria-describedby={error ? 'story-editor-error' : undefined}>
+        <form className="card story-editor-form" onSubmit={save} aria-busy={saving} aria-describedby={error ? 'story-editor-error' : undefined}>
           <div className="story-form-grid">
             <label>
               Гарчиг *
@@ -328,7 +364,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
 
           <div className="story-editor-actions">
             <button type="button" onClick={cancel} disabled={saving}>Болих</button>
-            <button className="primary" type="submit" disabled={saving || !familyId} aria-disabled={saving || !familyId}>
+            <button className="primary" type="submit" disabled={saving || !familyId} aria-disabled={saving || !familyId} aria-busy={saving}>
               {saving ? 'Хадгалж байна…' : mode === 'create' ? 'Түүх хадгалах' : 'Өөрчлөлтийг хадгалах'}
             </button>
           </div>

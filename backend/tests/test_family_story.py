@@ -256,3 +256,33 @@ def test_story_wrong_family_update_and_delete_are_denied(client):
         json={"title": "Wrong", "body": "Wrong"},
     ).status_code == 404
     assert client.delete(f"/api/v1/families/{family_b}/stories/{story['id']}").status_code == 404
+
+
+def test_person_story_filter_respects_private_person_visibility(client, database):
+    register_verified(client, "story-person-private-owner@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Private person story"}).json()["id"]
+    person = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={"first_name": "Нууц", "last_name": "Хүн", "visibility": "private"},
+    ).json()
+    client.post(
+        f"/api/v1/families/{family_id}/stories",
+        json={
+            "title": "Нууц хүний түүх",
+            "body": "Зөвхөн зөвшөөрөгдсөн хэрэглэгчид",
+            "person_ids": [person["id"]],
+            "visibility": "family",
+        },
+    ).raise_for_status()
+
+    register_verified(client, "story-person-private-member@example.com")
+    with database() as db:
+        member_user = db.query(User).filter(User.email == "story-person-private-member@example.com").one()
+        db.add(FamilyMember(family_id=UUID(family_id), user_id=member_user.id, role="member"))
+        db.commit()
+
+    filtered = client.get(
+        f"/api/v1/families/{family_id}/stories?page=1&page_size=12&person_id={person['id']}"
+    )
+    assert filtered.status_code == 404
+    assert filtered.json().get("detail") == "Хүн олдсонгүй."

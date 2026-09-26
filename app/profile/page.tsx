@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
@@ -22,6 +22,19 @@ type EventItem = {
   event_date: string | null;
   description: string | null;
 };
+
+function friendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+    if (cause.status === 403) return 'Энэ мэдээллийг харах эрхгүй байна.';
+    if (cause.status === 404) return 'Мэдээлэл олдсонгүй.';
+    if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.';
+    if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+  }
+  return fallback;
+}
 
 function relationName(person: ProfileRelationPerson) {
   return personName(person) || 'Нэргүй хүн';
@@ -44,8 +57,10 @@ function initials(person: Pick<ProfileRelationPerson, 'first_name' | 'last_name'
     .toUpperCase() || '?';
 }
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const loadRequestRef = useRef(0);
   const [family, setFamily] = useState('');
   const [id, setId] = useState('');
   const [person, setPerson] = useState<PersonProfile | null>(null);
@@ -53,6 +68,8 @@ export default function ProfilePage() {
   const [marriages, setMarriages] = useState<Marriage[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
+  const [storyState, setStoryState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [storyError, setStoryError] = useState('');
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [memories, setMemories] = useState<MemoryListItem[]>([]);
   const [memoryState, setMemoryState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
@@ -62,7 +79,10 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  async function load(fid: string, pid: string) {
+  async function load(fid: string, pid: string, requestId = ++loadRequestRef.current) {
+    setStoryState('loading');
+    setStoryError('');
+    setStories(null);
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
@@ -71,6 +91,8 @@ export default function ProfilePage() {
       api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
       api<ArchiveListPage>(`/families/${fid}/persons/${pid}/archives?page=1&page_size=5`),
     ]);
+
+    if (requestId !== loadRequestRef.current) return;
 
     const unexpectedFailure = [bio, eventList, marriageList, storyPage, archivePage].find(
       (result) =>
@@ -84,17 +106,37 @@ export default function ProfilePage() {
     setPerson(profile);
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
-    setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
     setArchives(archivePage.status === 'fulfilled' ? archivePage.value : null);
     setMarriages(marriageList.status === 'fulfilled' ? marriageList.value : []);
+    if (storyPage.status === 'fulfilled') {
+      setStories(storyPage.value);
+      setStoryState('ready');
+    } else {
+      setStories(null);
+      setStoryState('restricted');
+      setStoryError('Энэ хүний түүх одоогоор харагдахгүй байна.');
+    }
   }
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
-    const pid = params.get('person') ?? '';
+    const fid = searchParams.get('family') ?? '';
+    const pid = searchParams.get('person') ?? '';
+    const requestId = ++loadRequestRef.current;
+
     setFamily(fid);
     setId(pid);
+    setPerson(null);
+    setBiography('');
+    setMarriages([]);
+    setEvents([]);
+    setStories(null);
+    setArchives(null);
+    setStoryState('loading');
+    setStoryError('');
+    setMemoryState('loading');
+    setMemories([]);
+    setMemoryError('');
+    setError('');
 
     if (!fid || !pid) {
       router.replace('/people');
@@ -102,9 +144,9 @@ export default function ProfilePage() {
     }
 
     setLoading(true);
-    setError('');
-    load(fid, pid)
+    load(fid, pid, requestId)
       .catch((cause) => {
+        if (requestId !== loadRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) {
           router.replace('/login');
           return;
@@ -112,13 +154,13 @@ export default function ProfilePage() {
         setError(
           cause instanceof ApiError && [403, 404].includes(cause.status)
             ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-            : cause instanceof Error
-              ? cause.message
-              : 'Профайлыг ачаалж чадсангүй.',
+            : friendlyError(cause, 'Профайлыг ачаалж чадсангүй.'),
         );
       })
-      .finally(() => setLoading(false));
-  }, [router]);
+      .finally(() => {
+        if (requestId === loadRequestRef.current) setLoading(false);
+      });
+  }, [router, searchParams]);
 
   async function loadMemories(fid: string, pid: string) {
     setMemoryState('loading');
@@ -398,19 +440,37 @@ export default function ProfilePage() {
 
           <section className="card profile-card">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">FAMILY STORY</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
-              <Link href={`/stories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+              <div><p className="eyebrow">PERSON STORY</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
+              <Link href={`/stories?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>Бүгд →</Link>
             </div>
-            {stories?.items.length ? (
+            {storyState === 'loading' && (
+              <p className="profile-empty" role="status" aria-live="polite">Түүхийг ачаалж байна…</p>
+            )}
+            {storyState === 'restricted' && (
+              <div>
+                <p className="profile-empty">{storyError}</p>
+                <button type="button" onClick={() => void retry()}>Дахин оролдох</button>
+              </div>
+            )}
+            {storyState === 'error' && (
+              <div>
+                <p className="profile-empty" role="alert">{storyError}</p>
+                <button type="button" onClick={() => void retry()}>Дахин оролдох</button>
+              </div>
+            )}
+            {storyState === 'ready' && stories?.items.length ? (
               <div className="history-list">
                 {stories.items.slice(0, 5).map((story) => (
-                  <Link className="history-item" key={story.id} href={`/stories/${story.id}?family=${encodeURIComponent(family)}`}>
+                  <Link className="history-item" key={story.id} href={`/stories/${story.id}?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>
                     <strong>{story.title}</strong>
                     <span>{story.event_date ?? 'Огноогүй'}{story.place ? ` · ${story.place}` : ''}</span>
                   </Link>
                 ))}
               </div>
-            ) : <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>}
+            ) : null}
+            {storyState === 'ready' && !stories?.items.length && (
+              <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>
+            )}
           </section>
 
           <section className="card profile-card">
@@ -529,5 +589,15 @@ export default function ProfilePage() {
         </footer>
       </section>
     </main>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={
+      <main className="profile-page"><section className="profile-shell profile-state" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Профайлыг ачаалж байна…</p></section></main>
+    }>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

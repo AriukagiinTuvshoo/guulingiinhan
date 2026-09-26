@@ -9,6 +9,9 @@ function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
     if (cause.status === 403) return 'Энэ гэр бүлийн түүхийг харах эрхгүй байна.';
+    if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.';
+    if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 404) return 'Гэр бүлийн түүх олдсонгүй.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Холболтоо шалгаад дахин оролдоно уу.';
   }
@@ -20,6 +23,7 @@ const PAGE_SIZE = 12;
 function StoriesPageContent() {
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState('');
+  const [personId, setPersonId] = useState('');
   const [families, setFamilies] = useState<Family[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [query, setQuery] = useState('');
@@ -40,6 +44,7 @@ function StoriesPageContent() {
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
+      if (personId) params.set('person_id', personId);
       const result = await api<StoryListPage>('/families/' + fid + '/stories?' + params.toString());
       if (requestId !== storyRequestRef.current) return;
       setStories(result);
@@ -56,7 +61,7 @@ function StoriesPageContent() {
         setBusy(false);
       }
     }
-  }, [query, router]);
+  }, [personId, query, router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -70,11 +75,14 @@ function StoriesPageContent() {
       if (!items.length) {
         setFamily(null);
         setFamilyId('');
+        setPersonId('');
         setStories(null);
         setLoading(false);
         return;
       }
       const requested = searchParams.get('family') ?? '';
+      const requestedPerson = searchParams.get('person') ?? '';
+      setPersonId(requestedPerson);
       const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
       if (!selected) {
         setFamily(null);
@@ -119,11 +127,13 @@ function StoriesPageContent() {
   function chooseFamily(next: string) {
     storyRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
+    if (!selected) return;
     setFamily(selected);
     setFamilyId(next);
     setStories(null);
     setError('');
-    router.replace('/stories?family=' + encodeURIComponent(next));
+    const personQuery = personId ? '&person=' + encodeURIComponent(personId) : '';
+    router.replace('/stories?family=' + encodeURIComponent(next) + personQuery);
   }
 
   const page = stories?.page ?? 1;
@@ -135,8 +145,8 @@ function StoriesPageContent() {
         <header className="stories-heading">
           <div>
             <Link href={family ? '/tree?family=' + encodeURIComponent(family.id) : '/tree'}>← Удмын мод руу буцах</Link>
-            <p className="eyebrow">ГУУЛИНГИЙНХАН · FAMILY STORY</p>
-            <h1>Манай түүх</h1>
+            <p className="eyebrow">ГУУЛИНГИЙНХАН · {personId ? 'PERSON STORY' : 'FAMILY STORY'}</p>
+            <h1>{personId ? 'Энэ хүний түүхүүд' : 'Манай түүх'}</h1>
             <p className="stories-lede">Гэр бүлийн үйл явдал, дурсамжит өгүүлэмж, огноо, газар болон холбоотой хүмүүсийг гэр бүлийн түүхийн санд хадгална.</p>
           </div>
           <div className="stories-actions">
@@ -149,7 +159,7 @@ function StoriesPageContent() {
               </label>
             )}
             {familyId && canCreate && (
-              <Link className="button primary" href={'/stories/new?family=' + encodeURIComponent(familyId)}>+ Түүх нэмэх</Link>
+              <Link className="button primary" href={'/stories/new?family=' + encodeURIComponent(familyId) + (personId ? '&person=' + encodeURIComponent(personId) : '')}>+ Түүх нэмэх</Link>
             )}
           </div>
         </header>
@@ -193,7 +203,7 @@ function StoriesPageContent() {
                   <h2>{story.title}</h2>
                   <p>{story.excerpt}</p>
                   <div className="story-card-footer"><span>{story.author_name}</span><span>{story.related_people_count} холбоотой хүн</span></div>
-                  <Link className="button story-open" href={'/stories/' + story.id + '?family=' + encodeURIComponent(familyId)}>Түүхийг унших →</Link>
+                  <Link className="button story-open" href={'/stories/' + story.id + '?family=' + encodeURIComponent(familyId) + (personId ? '&person=' + encodeURIComponent(personId) : '')}>Түүхийг унших →</Link>
                 </article>
               ))}
             </div>
