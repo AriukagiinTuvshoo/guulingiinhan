@@ -360,6 +360,14 @@ export default function SettingsPage() {
                     <span>Энд зөвхөн таны membership-тэй гэр бүлүүд харагдана.</span>
                     <Link className="settings-button settings-button--light" href="/onboarding">Гэр бүл үүсгэх</Link>
                   </div>
+                ) : families.length === 1 ? (
+                  <div className="settings-family-single">
+                    <span className="settings-family-single__name">{families[0].name}</span>
+                    <span className="settings-family-badge">{families[0].role}</span>
+                    <p className="settings-help">
+                      Танд одоогоор нэг л authorized family context байна.
+                    </p>
+                  </div>
                 ) : (
                   <div className="settings-family-form">
                     <label htmlFor="settings-family-select">Одоогийн гэр бүл</label>
