@@ -431,6 +431,8 @@ function DashboardContent() {
   const [memoryCount, setMemoryCount] = useState(0);
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
+  const [storiesError, setStoriesError] = useState('');
+  const [archivesError, setArchivesError] = useState('');
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<PersonSearchPage | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -459,8 +461,14 @@ function DashboardContent() {
         setMemories(memoryData.slice(0, 6));
 
         const [storiesResult, archivesResult] = await Promise.all([
-          api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4').catch(() => null),
-          api<ArchiveListPage>('/families/' + familyId + '/archives?page=1&page_size=4').catch(() => null),
+          api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4').catch((cause) => {
+            setStoriesError(cause instanceof Error ? cause.message : 'Түүхийг ачаалж чадсангүй.');
+            return null;
+          }),
+          api<ArchiveListPage>('/families/' + familyId + '/archives?page=1&page_size=4').catch((cause) => {
+            setArchivesError(cause instanceof Error ? cause.message : 'Архивыг ачаалж чадсангүй.');
+            return null;
+          }),
         ]);
         setStories(storiesResult);
         setArchives(archivesResult);
@@ -507,6 +515,9 @@ function DashboardContent() {
         setMemoryCount(0);
         setStories(null);
         setArchives(null);
+        setStoriesError('');
+        setArchivesError('');
+        setSearchResults(null);
 
         if (!familyList.length) {
           return;
@@ -721,11 +732,32 @@ function DashboardContent() {
                 )}
               </div>
             </div>
+            <div className="homev2-family-context">
+              {families.length > 1 && (
+                <label className="homev2-family-select">
+                  <span>Гэр бүл сонгох</span>
+                  <select
+                    value={family?.id ?? ''}
+                    onChange={(event) => {
+                      const nextId = event.target.value;
+                      if (!families.some((item) => item.id === nextId)) return;
+                      setSearch('');
+                      router.replace('/dashboard?family=' + encodeURIComponent(nextId));
+                    }}
+                    aria-label="Гэр бүл сонгох"
+                  >
+                    {families.map((item) => (
+                      <option value={item.id} key={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
             <div>
               <p className="homev2-eyebrow">МАНАЙ ГЭР БҮЛ</p>
               <h1>{family?.name}</h1>
               <p className="homev2-hero-copy">
-                Түүх, хүмүүс, дурсамж, өвийг нэг дороос хараарай.
+                {family?.description || 'Түүх, хүмүүс, дурсамж, өвөө нэг дороос хадгалж, үргэлжлүүлээрэй.'}
               </p>
               {user?.display_name && <p className="homev2-welcome">Тавтай морил, {user.display_name}.</p>}
             </div>
@@ -753,8 +785,35 @@ function DashboardContent() {
             <div className="homev2-panel">
               <div className="homev2-section-header homev2-section-header--compact">
                 <div>
-                  <p className="homev2-eyebrow">БҮХИЙ Л ЗҮЙЛ НЭГ ДОР</p>
-                  <h2>Хурдан үйлдлүүд</h2>
+                  <p className="homev2-eyebrow">ГЭР БҮЛИЙН ХҮМҮҮС</p>
+                  <h2>Хүмүүс</h2>
+                  <p>Модонд харагдаж буй бодит хүмүүсээс профайлаа үргэлжлүүлээрэй.</p>
+                </div>
+                <Link className="homev2-text-link" href={'/people?family=' + encodeURIComponent(family?.id ?? '')}>Бүгдийг харах <ArrowRight size={14} /></Link>
+              </div>
+              {previewTree.rootId ? (
+                <div className="homev2-people-preview">
+                  {pickPreviewPeople(previewTree, 5).map((node) => (
+                    <Link className="homev2-person-row" href={'/profile?family=' + encodeURIComponent(family?.id ?? '') + '&person=' + encodeURIComponent(node.id)} key={node.id}>
+                      <span className="homev2-list-icon" aria-hidden="true">{initials(node.person)}</span>
+                      <span><strong>{fullName(node.person)}</strong><small>{generationLabel(node.generation)}</small></span>
+                      <ArrowRight size={14} aria-hidden="true" />
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="homev2-empty-content homev2-empty-content--small">
+                  <strong>Одоогоор гэр бүлийн хүн бүртгэгдээгүй байна.</strong>
+                  <Link className="homev2-text-link" href={'/people?family=' + encodeURIComponent(family?.id ?? '')}>Хүн нэмэх орчныг нээх</Link>
+                </div>
+              )}
+            </div>
+
+            <div className="homev2-panel">
+              <div className="homev2-section-header homev2-section-header--compact">
+                <div>
+                  <p className="homev2-eyebrow">ДАРААГИЙН АЛХАМ</p>
+                  <h2>Хаашаа үргэлжлүүлэх вэ?</h2>
                 </div>
               </div>
               <div className="homev2-actions">
@@ -763,21 +822,6 @@ function DashboardContent() {
                 <QuickAction icon={BookOpen} label="Манай түүх" description="Түүх, үйл явдлууд" href={'/stories?family=' + encodeURIComponent(family?.id ?? '')} />
                 <QuickAction icon={Heart} label="Дурсамж" description="Гэр бүлийн дурсамж" href={'/memories?family=' + encodeURIComponent(family?.id ?? '')} />
                 <QuickAction icon={Archive} label="Архив" description="Баримтын metadata" href={'/archives?family=' + encodeURIComponent(family?.id ?? '')} />
-              </div>
-            </div>
-
-            <div className="homev2-panel homev2-panel--snapshot">
-              <div className="homev2-section-header homev2-section-header--compact">
-                <div>
-                  <p className="homev2-eyebrow">FAMILY SNAPSHOT</p>
-                  <h2>Манай гэр бүл</h2>
-                </div>
-              </div>
-              <div className="homev2-stats">
-                <div><strong>{people.length}</strong><span>Хүн</span></div>
-                <div><strong>{stories?.total ?? '—'}</strong><span>Түүх</span></div>
-                <div><strong>{memoryCount}</strong><span>Дурсамж</span></div>
-                <div><strong>{archives?.total ?? '—'}</strong><span>Архив</span></div>
               </div>
             </div>
           </section>
@@ -796,6 +840,12 @@ function DashboardContent() {
               </div>
             </div>
 
+            {(storiesError || archivesError) && (
+              <div className="homev2-section-errors" role="alert">
+                {storiesError && <span>Түүх: {storiesError}</span>}
+                {archivesError && <span>Архив: {archivesError}</span>}
+              </div>
+            )}
             {activity.length ? (
               <div className="homev2-activity">
                 {activity.map((item) => {
