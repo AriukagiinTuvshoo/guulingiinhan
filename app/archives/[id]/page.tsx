@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Archive, Family } from '../../../lib/api';
 
 function formatDate(value: string | null) {
@@ -10,25 +10,24 @@ function formatDate(value: string | null) {
   const parts = value.split('-');
   return parts.length === 3 ? `${parts[0]}.${parts[1]}.${parts[2]}` : value;
 }
-
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('mn-MN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(date);
+  return new Intl.DateTimeFormat('mn-MN', { year: 'numeric', month: 'long', day: 'numeric' }).format(date);
 }
-
 function visibilityLabel(value: string) {
   if (value === 'private') return 'Зөвхөн би';
   if (value === 'public') return 'Нийтийн';
   return 'Гэр бүлийнхэн';
 }
 
-export default function ArchiveDetailPage() {
+function ArchiveDetailContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const params = useParams<{ id: string }>();
+  const archiveId = params.id ?? '';
+  const requestedFamilyId = searchParams.get('family') ?? '';
+  const saved = searchParams.get('saved') === '1';
   const [familyId, setFamilyId] = useState('');
   const [family, setFamily] = useState<Family | null>(null);
   const [archive, setArchive] = useState<Archive | null>(null);
@@ -40,25 +39,25 @@ export default function ArchiveDetailPage() {
   const familyRequestRef = useRef(0);
   const archiveRequestRef = useRef(0);
   const cancelRef = useRef<HTMLButtonElement>(null);
-
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
 
-  const loadArchive = useCallback(async (fid: string, archiveId: string) => {
+  const loadArchive = useCallback(async (fid: string, id: string) => {
     const requestId = ++archiveRequestRef.current;
     setLoading(true);
     setError('');
+    setArchive(null);
     try {
-      const result = await api<Archive>(`/families/${fid}/archives/${archiveId}`);
+      const result = await api<Archive>(`/families/${fid}/archives/${id}`);
       if (requestId !== archiveRequestRef.current) return;
       setArchive(result);
     } catch (cause) {
       if (requestId !== archiveRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setArchive(null);
-      setError('Архивийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
+      setError(cause instanceof ApiError && cause.status === 404
+        ? 'Энэ архивын материал олдсонгүй.'
+        : cause instanceof ApiError && cause.status === 403
+          ? 'Энэ архивын материалд хандах эрхгүй байна.'
+          : 'Архивийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
     } finally {
       if (requestId === archiveRequestRef.current) setLoading(false);
     }
@@ -66,73 +65,50 @@ export default function ArchiveDetailPage() {
 
   const loadFamilyContext = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    archiveRequestRef.current += 1;
     setLoading(true);
     setError('');
+    setFamily(null);
+    setFamilyId('');
+    setArchive(null);
+    if (!archiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
     try {
       const items = await api<Family[]>('/families');
       if (requestId !== familyRequestRef.current) return;
-      archiveRequestRef.current += 1;
-      const archiveId = window.location.pathname.split('/').filter(Boolean).at(-1) ?? '';
-      setFamilyId(new URLSearchParams(window.location.search).get('family') ?? '');
-      if (!items.length) {
-        setFamily(null);
-        setArchive(null);
-        setFamilyId('');
-        setLoading(false);
-        setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
-        return;
-      }
-      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = items.find((item) => item.id === requested) ?? items[0];
+      if (!items.length) { setLoading(false); setError('Танд одоогоор хандах боломжтой гэр бүл алга.'); return; }
+      const selected = requestedFamilyId ? items.find((item) => item.id === requestedFamilyId) : items[0];
+      if (!selected) { setLoading(false); setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.'); return; }
       setFamily(selected);
       setFamilyId(selected.id);
-      if (!archiveId) {
-        setLoading(false);
-        setError('Архивийн хаяг буруу байна.');
-        return;
-      }
-      if (selected.id !== requested) {
-        router.replace(`/archives/${archiveId}?family=${encodeURIComponent(selected.id)}`);
-      }
-      const saved = new URLSearchParams(window.location.search).get('saved');
-      if (saved === '1') {
-        setNotice('Архив хадгалагдлаа.');
-        router.replace(`/archives/${archiveId}?family=${encodeURIComponent(selected.id)}`);
-      }
+      if (!requestedFamilyId || saved) router.replace(`/archives/${archiveId}?family=${encodeURIComponent(selected.id)}`);
+      if (saved) setNotice('Архив хадгалагдлаа.');
       await loadArchive(selected.id, archiveId);
     } catch (cause) {
       if (requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
+      if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
       setArchive(null);
       setLoading(false);
       setError('Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
     }
-  }, [loadArchive, router]);
+  }, [archiveId, loadArchive, requestedFamilyId, router, saved]);
 
-  useEffect(() => {
-    void loadFamilyContext();
-  }, [loadFamilyContext]);
-
-  useEffect(() => {
-    if (showDeleteDialog) cancelRef.current?.focus();
-  }, [showDeleteDialog]);
+  useEffect(() => { void loadFamilyContext(); }, [loadFamilyContext]);
+  useEffect(() => { if (showDeleteDialog) cancelRef.current?.focus(); }, [showDeleteDialog]);
 
   async function remove() {
-    if (!archive || busy) return;
+    if (!archive || busy || !familyId) return;
     setBusy(true);
     setError('');
     try {
       await api<void>(`/families/${familyId}/archives/${archive.id}`, { method: 'DELETE' });
       router.replace(`/archives?family=${encodeURIComponent(familyId)}`);
     } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setError('Архивийг устгах үед алдаа гарлаа. Дахин оролдоно уу.');
+      if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
+      setError(cause instanceof ApiError && cause.status === 403
+        ? 'Энэ архивыг устгах эрхгүй байна.'
+        : cause instanceof ApiError && cause.status === 404
+          ? 'Архивын материал аль хэдийн устсан эсвэл олдсонгүй.'
+          : 'Архивийг устгах үед алдаа гарлаа. Дахин оролдоно уу.');
       setBusy(false);
       setShowDeleteDialog(false);
     }
@@ -289,5 +265,13 @@ export default function ArchiveDetailPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function ArchiveDetailPage() {
+  return (
+    <Suspense fallback={<main className="archive-page"><section className="archive-shell archive-detail-state" aria-live="polite"><span className="archive-state-mark" aria-hidden="true" /><p className="archive-eyebrow">FAMILY ARCHIVE · LOADING</p><h1>Баримтыг нээж байна…</h1></section></main>}>
+      <ArchiveDetailContent />
+    </Suspense>
   );
 }
