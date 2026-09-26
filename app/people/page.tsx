@@ -120,10 +120,19 @@ export default function PeoplePage() {
         return;
       }
       const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
-      const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
+      const selected = requestedFamily
+        ? list.find((item) => item.id === requestedFamily) ?? null
+        : list[0];
+      if (!selected) {
+        setFamilyId('');
+        setPeople(null);
+        setLoading(false);
+        setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
+        return;
+      }
       setFamilyId(selected.id);
       setPeople(null);
-      if (selected.id !== requestedFamily) {
+      if (!requestedFamily) {
         router.replace('/people?family=' + encodeURIComponent(selected.id));
       }
     } catch (cause) {

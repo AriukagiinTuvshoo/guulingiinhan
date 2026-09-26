@@ -86,14 +86,19 @@ export default function SettingsPage() {
       setFamilies(familyData);
       setGoogleEnabled(googleConfig.enabled);
 
-      const requestedFamily = new URLSearchParams(window.location.search).get('family');
-      const resolvedFamily =
-        familyData.find((family) => family.id === requestedFamily)?.id ??
-        familyData[0]?.id ??
-        '';
+      const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
+      const resolvedFamily = requestedFamily
+        ? familyData.find((family) => family.id === requestedFamily)?.id ?? ''
+        : familyData[0]?.id ?? '';
+
+      if (requestedFamily && !resolvedFamily) {
+        setFamilyId('');
+        setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
+        return;
+      }
 
       setFamilyId(resolvedFamily);
-      if (resolvedFamily && requestedFamily !== resolvedFamily) {
+      if (resolvedFamily && !requestedFamily) {
         router.replace('/settings?family=' + encodeURIComponent(resolvedFamily));
       }
     } catch (cause) {

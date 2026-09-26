@@ -107,7 +107,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const accountRef = useRef<HTMLDivElement | null>(null);
 
   const currentFamily = useMemo(
-    () => families.find((family) => family.id === familyId) ?? families[0] ?? null,
+    () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
 
@@ -162,25 +162,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const requested =
-      families.find((family) => family.id === requestedFamilyId)?.id ?? families[0].id;
-
-    setFamilyId((current) => (current === requested ? current : requested));
-
-    if (
-      requested &&
-      requestedFamilyId !== requested &&
-      pathname !== '/profile' &&
-      !pathname.startsWith('/profile/')
-    ) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('family', requested);
-      router.replace(pathname + '?' + params.toString());
-    } else if (requested && requestedFamilyId !== requested && pathname.startsWith('/profile')) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('family', requested);
-      router.replace(pathname + '?' + params.toString());
+    if (requestedFamilyId) {
+      const requested = families.find((family) => family.id === requestedFamilyId);
+      if (!requested) {
+        setFamilyId('');
+        setContextError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
+        return;
+      }
+      setContextError('');
+      setFamilyId((current) => (current === requested.id ? current : requested.id));
+      return;
     }
+
+    const requested = families[0];
+    setContextError('');
+    setFamilyId((current) => (current === requested.id ? current : requested.id));
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('family', requested.id);
+    router.replace(pathname + '?' + params.toString());
   }, [contextLoading, families, pathname, requestedFamilyId, router, searchParams, shouldRenderShell]);
 
   useEffect(() => {

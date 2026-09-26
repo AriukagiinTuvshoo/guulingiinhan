@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
@@ -44,8 +44,11 @@ function initials(person: Pick<ProfileRelationPerson, 'first_name' | 'last_name'
     .toUpperCase() || '?';
 }
 
-export default function ProfilePage() {
+function ProfilePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const loadSequence = useRef(0);
+  const memorySequence = useRef(0);
   const [family, setFamily] = useState('');
   const [id, setId] = useState('');
   const [person, setPerson] = useState<PersonProfile | null>(null);
@@ -62,7 +65,7 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  async function load(fid: string, pid: string) {
+  async function load(fid: string, pid: string, sequence = loadSequence.current) {
     const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
       api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
@@ -81,6 +84,7 @@ export default function ProfilePage() {
       throw unexpectedFailure.reason;
     }
 
+    if (sequence !== loadSequence.current) return;
     setPerson(profile);
     setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
     setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
@@ -90,21 +94,33 @@ export default function ProfilePage() {
   }
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const fid = params.get('family') ?? '';
-    const pid = params.get('person') ?? '';
+    const fid = searchParams.get('family') ?? '';
+    const pid = searchParams.get('person') ?? '';
+    const sequence = ++loadSequence.current;
+    memorySequence.current += 1;
     setFamily(fid);
     setId(pid);
+    setPerson(null);
+    setBiography('');
+    setEvents([]);
+    setMarriages([]);
+    setStories(null);
+    setArchives(null);
+    setMemories([]);
+    setMemoryState('loading');
+    setMemoryError('');
 
     if (!fid || !pid) {
+      setLoading(false);
       router.replace('/people');
       return;
     }
 
     setLoading(true);
     setError('');
-    load(fid, pid)
+    void load(fid, pid, sequence)
       .catch((cause) => {
+        if (sequence !== loadSequence.current) return;
         if (cause instanceof ApiError && cause.status === 401) {
           router.replace('/login');
           return;
@@ -117,19 +133,24 @@ export default function ProfilePage() {
               : 'Профайлыг ачаалж чадсангүй.',
         );
       })
-      .finally(() => setLoading(false));
-  }, [router]);
+      .finally(() => {
+        if (sequence === loadSequence.current) setLoading(false);
+      });
+  }, [router, searchParams]);
 
   async function loadMemories(fid: string, pid: string) {
+    const sequence = ++memorySequence.current;
     setMemoryState('loading');
     setMemoryError('');
     try {
       const result = await api<MemoryListItem[]>(
         `/families/${fid}/persons/${pid}/memories`,
       );
+      if (sequence !== memorySequence.current) return;
       setMemories(result);
       setMemoryState('ready');
     } catch (cause) {
+      if (sequence !== memorySequence.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -529,5 +550,14 @@ export default function ProfilePage() {
         </footer>
       </section>
     </main>
+  );
+}
+
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<main className="profile-page"><section className="profile-shell" aria-live="polite"><p>Профайлыг ачаалж байна…</p></section></main>}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

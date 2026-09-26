@@ -522,11 +522,19 @@ function DashboardContent() {
           return;
         }
 
-        const requestedFamily = familyList.find((item) => item.id === familyIdFromUrl);
+        const requestedFamily = familyIdFromUrl
+          ? familyList.find((item) => item.id === familyIdFromUrl) ?? null
+          : null;
+        if (familyIdFromUrl && !requestedFamily) {
+          setFamily(null);
+          setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
+          return;
+        }
+
         const nextFamily = requestedFamily ?? familyList[0];
         await loadDashboard(nextFamily.id, me);
 
-        if (active && (!familyIdFromUrl || !requestedFamily)) {
+        if (active && !familyIdFromUrl) {
           window.history.replaceState(
             null,
             '',
