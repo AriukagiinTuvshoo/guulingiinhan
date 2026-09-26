@@ -14,6 +14,10 @@ function registerError(cause: unknown) {
     if (cause.status === 409) return 'Энэ бүртгэлийг одоогоор үүсгэх боломжгүй байна. Мэдээллээ шалгаад дахин оролдоно уу.';
     if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
     if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
+    if (cause.status === 503 || cause.code === 'DATABASE_UNAVAILABLE') {
+      return 'Бүртгэлийн үйлчилгээ түр хугацаанд боломжгүй байна. Дахин оролдоно уу.';
+    }
+    if (cause.status >= 500) return 'Бүртгэлийн серверийн алдаа гарлаа. Дахин оролдоно уу.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
   }
   return 'Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.';
@@ -192,10 +196,13 @@ export default function RegisterPage() {
           </div>
 
           {phoneEnabled && (
-            <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
-              <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
-              <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
-            </div>
+            <>
+              <div className="authv2-method-heading">Утасны дугаар ашиглах уу?</div>
+              <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
+                <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
+                <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
+              </div>
+            </>
           )}
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
