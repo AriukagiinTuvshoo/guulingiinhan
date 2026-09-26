@@ -1,81 +1,181 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { API_BASE, ApiError, api, PersonSearchPage } from '../../lib/api';
+import { API_BASE, ApiError, api, Family, MemoryListItem, PersonSearchPage } from '../../lib/api';
 
-type Photo = { id: string; title: string | null; thumbnail_url: string; content_url: string; };
+const PAGE_SIZE = 18;
 
-type Memory = {
-  id: string;
-  title: string;
-  description: string | null;
-  memory_date: string | null;
-  visibility: string;
-  person_ids: string[];
-  person_names?: string[];
-  created_at: string;
-  photos?: Photo[];
+type MemoryPhoto = NonNullable<MemoryListItem['photos']>[number];
+type MemoryListPage = {
+  items: MemoryListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
 };
 type SelectedPerson = { id: string; name: string };
 
+const monthNames = ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар'];
+
+function formatMemoryDate(value: string | null) {
+  if (!value) return 'Огноогүй';
+  const parts = value.split('-');
+  if (parts.length !== 3) return value;
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  return month >= 1 && month <= 12 && day ? `${parts[0]} оны ${monthNames[month - 1]} ${day}` : value;
+}
+
+function formatCreatedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('mn-MN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function visibilityLabel(value: string) {
+  if (value === 'private') return 'Зөвхөн би';
+  if (value === 'public') return 'Нийтийн';
+  return 'Гэр бүлийнхэн';
+}
+
+function photoUrl(path: string) {
+  return `${API_BASE.replace(/\/$/, '')}${path}`;
+}
+
+function initials(title: string) {
+  return title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.slice(0, 1))
+    .join('')
+    .toUpperCase() || 'Д';
+}
+
 export default function MemoriesPage() {
   const router = useRouter();
-  const [family, setFamily] = useState('');
-  const [memories, setMemories] = useState<Memory[]>([]);
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [family, setFamily] = useState<Family | null>(null);
+  const [familyId, setFamilyId] = useState('');
+  const [memories, setMemories] = useState<MemoryListPage | null>(null);
+  const [query, setQuery] = useState('');
   const [personQuery, setPersonQuery] = useState('');
   const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
   const [personPage, setPersonPage] = useState(1);
   const [selectedPeople, setSelectedPeople] = useState<SelectedPerson[]>([]);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState('');
+  const [showComposer, setShowComposer] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [composerError, setComposerError] = useState('');
+  const [uploadStatus, setUploadStatus] = useState('');
+  const familyRequestRef = useRef(0);
+  const memoryRequestRef = useRef(0);
+  const personRequestRef = useRef(0);
 
-  async function load(id: string) {
+  const loadMemories = useCallback(async (fid: string, page = 1) => {
+    if (!fid) return;
+    const requestId = ++memoryRequestRef.current;
     setLoading(true);
+    setError('');
     try {
-      const result = await api<Memory[]>(`/families/${id}/memories`);
+      const result = await api<MemoryListPage>(`/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`);
+      if (requestId !== memoryRequestRef.current) return;
       setMemories(result);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('family') ?? '';
-    setFamily(id);
-    if (!id) { router.replace('/families'); return; }
-    void load(id).catch((cause) => {
+    } catch (cause) {
+      if (requestId !== memoryRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
-      setError(cause instanceof Error ? cause.message : 'Дурсамжийг ачаалж чадсангүй.');
-    });
+      setError(cause instanceof Error ? cause.message : 'Дурсамжийг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+    } finally {
+      if (requestId === memoryRequestRef.current) setLoading(false);
+    }
+  }, [router]);
+
+  const loadFamilies = useCallback(async () => {
+    const requestId = ++familyRequestRef.current;
+    setLoading(true);
+    setError('');
+    try {
+      const items = await api<Family[]>('/families');
+      if (requestId !== familyRequestRef.current) return;
+      setFamilies(items);
+      memoryRequestRef.current += 1;
+      if (!items.length) {
+        setFamily(null);
+        setFamilyId('');
+        setMemories(null);
+        setLoading(false);
+        return;
+      }
+      const requested = new URLSearchParams(window.location.search).get('family') ?? '';
+      const selected = items.find((item) => item.id === requested) ?? items[0];
+      setFamily(selected);
+      setFamilyId(selected.id);
+      setMemories(null);
+      if (selected.id !== requested) {
+        router.replace(`/memories?family=${encodeURIComponent(selected.id)}`);
+      }
+    } catch (cause) {
+      if (requestId !== familyRequestRef.current) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setLoading(false);
+      setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+    }
   }, [router]);
 
   useEffect(() => {
-    const query = personQuery.trim();
-    if (!family || !query) { setPersonResults(null); return; }
-    let active = true;
-    const timer = window.setTimeout(() => {
-      api<PersonSearchPage>(`/families/${family}/persons/search?q=${encodeURIComponent(query)}&page=1&page_size=20`)
-        .then((result) => { if (active) { setPersonResults(result); setPersonPage(1); } })
-        .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'Хайлт хийхэд алдаа гарлаа.'); });
-    }, 300);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [family, personQuery]);
+    void loadFamilies();
+  }, [loadFamilies]);
 
-  async function loadMorePeople() {
-    if (!personResults?.has_next) return;
-    const nextPage = personPage + 1;
-    try {
-      const next = await api<PersonSearchPage>(`/families/${family}/persons/search?q=${encodeURIComponent(personQuery.trim())}&page=${nextPage}&page_size=20`);
-      setPersonResults((current) => current ? { ...next, items: [...current.items, ...next.items] } : next);
-      setPersonPage(nextPage);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Үр дүнг ачаалж чадсангүй.'); }
+  useEffect(() => {
+    if (!familyId) return;
+    void loadMemories(familyId, 1);
+  }, [familyId, loadMemories]);
+
+  useEffect(() => {
+    const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
+    if (!familyId || !safeQuery) {
+      personRequestRef.current += 1;
+      setPersonResults(null);
+      return;
+    }
+    const requestId = ++personRequestRef.current;
+    const timer = window.setTimeout(() => {
+      void api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=1&page_size=20`)
+        .then((result) => {
+          if (requestId !== personRequestRef.current) return;
+          setPersonResults(result);
+          setPersonPage(1);
+        })
+        .catch((cause) => {
+          if (requestId !== personRequestRef.current) return;
+          setComposerError(cause instanceof Error ? cause.message : 'Хайлт хийхэд алдаа гарлаа. Дахин оролдоно уу.');
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [familyId, personQuery]);
+
+  function chooseFamily(next: string) {
+    memoryRequestRef.current += 1;
+    const selected = families.find((item) => item.id === next) ?? null;
+    setFamily(selected);
+    setFamilyId(next);
+    setMemories(null);
+    setError('');
+    router.replace(`/memories?family=${encodeURIComponent(next)}`);
   }
 
   function togglePerson(person: SelectedPerson) {
@@ -84,25 +184,57 @@ export default function MemoriesPage() {
       : current.length >= 100 ? current : [...current, person]);
   }
 
-  async function create(event: FormEvent<HTMLFormElement>) {
+  async function loadMorePeople() {
+    if (!familyId || !personResults?.has_next) return;
+    const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
+    const nextPage = personPage + 1;
+    const requestId = ++personRequestRef.current;
+    try {
+      const next = await api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=${nextPage}&page_size=20`);
+      if (requestId !== personRequestRef.current) return;
+      setPersonResults((current) => current ? { ...next, items: [...current.items, ...next.items] } : next);
+      setPersonPage(nextPage);
+    } catch (cause) {
+      if (requestId !== personRequestRef.current) return;
+      setComposerError(cause instanceof Error ? cause.message : 'Үр дүнг ачаалж чадсангүй. Дахин оролдоно уу.');
+    }
+  }
+
+  async function createMemory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!familyId) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setBusy(true);
-    setError('');
+    setComposerError('');
+    setUploadStatus('');
     try {
-      const created = await api<{ id: string }>(`/families/${family}/memories`, { method: 'POST', body: JSON.stringify({ title: form.get('title'), description: form.get('description') || null, memory_date: form.get('memory_date') || null, visibility: form.get('visibility'), person_ids: selectedPeople.map((person) => person.id) }) });
+      const created = await api<{ id: string }>(`/families/${familyId}/memories`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: String(form.get('title') ?? ''),
+          description: String(form.get('description') ?? '').trim() || null,
+          memory_date: String(form.get('memory_date') ?? '') || null,
+          visibility: String(form.get('visibility') ?? 'family'),
+          person_ids: selectedPeople.map((person) => person.id),
+        }),
+      });
       const files = form.getAll('photos').filter((value): value is File => value instanceof File && value.size > 0);
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         setUploadStatus(`Зураг хадгалж байна… ${index + 1}/${files.length}`);
-        const saved = await api<Photo>(`/families/${family}/memories/${created.id}/photos`, {
-          method: 'POST', body: file,
-          headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
+        const saved = await api<MemoryPhoto>(`/families/${familyId}/memories/${created.id}/photos`, {
+          method: 'POST',
+          body: file,
+          headers: {
+            'Content-Type': file.type,
+            'X-File-Name': encodeURIComponent(file.name),
+          },
         });
         if (selectedPeople.length) {
-          await api(`/families/${family}/photos/${saved.id}/tags`, {
-            method: 'PUT', body: JSON.stringify({ person_ids: selectedPeople.map((person) => person.id) }),
+          await api(`/families/${familyId}/photos/${saved.id}/tags`, {
+            method: 'PUT',
+            body: JSON.stringify({ person_ids: selectedPeople.map((person) => person.id) }),
           });
         }
       }
@@ -110,20 +242,221 @@ export default function MemoriesPage() {
       setSelectedPeople([]);
       setPersonQuery('');
       setPersonResults(null);
-      await load(family);
+      setShowComposer(false);
       setUploadStatus('');
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Дурсамж хадгалж чадсангүй.'); }
-    finally { setBusy(false); }
+      await loadMemories(familyId, 1);
+    } catch (cause) {
+      setComposerError(cause instanceof Error ? cause.message : 'Дурсамж хадгалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function remove(id: string) {
-    if (!window.confirm('Энэ дурсамжийг устгах уу?')) return;
-    try { await api(`/families/${family}/memories/${id}`, { method: 'DELETE' }); await load(family); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Устгаж чадсангүй.'); }
-  }
+  const currentPage = memories?.page ?? 1;
+  const pageCount = memories ? Math.max(1, Math.ceil(memories.total / PAGE_SIZE)) : 1;
 
-  return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 980 }}><Link href={`/tree?family=${family}`}>← Ургийн мод</Link><h1 style={{ marginTop: 22 }}>Гэр бүлийн дурсамж</h1>{error && <div className="error" role="alert"><span>{error}</span><button type="button" onClick={() => void load(family).catch((cause) => { if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; } setError(cause instanceof Error ? cause.message : 'Дурсамжийг ачаалж чадсангүй.'); })}>Дахин оролдох</button></div>}
-    <div className="cards"><section className="card"><h2>Дурсамж нэмэх</h2><form onSubmit={create}><label>Гарчиг<input name="title" maxLength={180} required /></label><label>Огноо<input name="memory_date" type="date" /></label><label>Тайлбар<textarea name="description" maxLength={20000} /></label><label>Зураг оруулах<input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple /></label><label>Холбоотой хүн хайх<input value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} placeholder="Нэрээр хайх…" /></label><div className="row" aria-label="Сонгосон хүмүүс">{selectedPeople.map((person) => <button type="button" key={person.id} onClick={() => togglePerson(person)}>{person.name} ×</button>)}</div>{personQuery.trim() && personResults && <div className="card" aria-label="Хайлтын үр дүн">{personResults.items.length ? personResults.items.map((person) => { const selected = selectedPeople.some((item) => item.id === person.id); return <button type="button" key={person.id} aria-pressed={selected} style={{ margin: 4 }} onClick={() => togglePerson({ id: person.id, name: person.name })}>{selected ? '✓ ' : '+ '}{person.name}{person.birth_year ? ` · ${person.birth_year}` : ''}</button>; }) : <p>Тохирох хүн олдсонгүй.</p>}{personResults.has_next && <button type="button" onClick={() => void loadMorePeople()}>Дараагийн үр дүн</button>}</div>}{personQuery.trim() && !personResults && <p className="muted" role="status">Хайж байна…</p>}<label>Харагдах байдал<select name="visibility"><option value="family">Гэр бүлийнхэн</option><option value="private">Зөвхөн би</option><option value="public">Нийтийн</option></select></label><button className="primary" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Дурсамж хадгалах'}</button></form>{uploadStatus && <p role="status">{uploadStatus}</p>}</section>
-    <section className="card"><h2>Хадгалсан дурсамж</h2>{loading ? <p role="status">Дурсамжийг ачаалж байна…</p> : memories.length === 0 ? <p>Дурсамж одоогоор алга.</p> : memories.map((memory) => <article key={memory.id} style={{ padding: '14px 0', borderBottom: '1px solid #285847' }}><span className="tag">{memory.memory_date ?? 'Огноогүй'}</span><h3>{memory.title}</h3>{memory.description && <p>{memory.description}</p>}<p className="muted">{memory.person_names?.join(' · ') ?? `${memory.person_ids.length} холбоотой хүн`}</p>{memory.photos?.length ? <div className="row">{memory.photos.map((photo) => <figure key={photo.id}><a href={`${API_BASE}${photo.content_url}`} target="_blank" rel="noreferrer"><img crossOrigin="use-credentials" src={`${API_BASE}${photo.thumbnail_url}`} alt={photo.title ?? 'Дурсамжийн зураг'} width={120} height={100} style={{ objectFit: 'cover', borderRadius: 8 }} /></a><button type="button" onClick={async () => { try { await api(`/families/${family}/photos/${photo.id}`, { method: 'DELETE' }); await load(family); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Зураг устгаж чадсангүй.'); } }}>Зураг устгах</button></figure>)}</div> : null}<button onClick={() => void remove(memory.id)}>Устгах</button></article>)}</section></div>
-  </section></main>;
+  return (
+    <main className="memories-page">
+      <section className="memories-shell">
+        <nav className="memories-breadcrumb" aria-label="Замын мөр">
+          <Link href={family ? `/dashboard?family=${encodeURIComponent(family.id)}` : '/dashboard'}>← Dashboard</Link>
+          <span>Дурсамж</span>
+        </nav>
+
+        <header className="memories-hero">
+          <div>
+            <p className="memories-eyebrow">ГУУЛИНГИЙНХАН · MEMORY ARCHIVE</p>
+            <h1>Гэр бүлийн дурсамж</h1>
+            <p>Өдөр тутмын жижиг мөчөөс эхлээд үе дамжин үлдэх гэрэл зураг, тэмдэглэлүүдээ гэр бүлийнхээ орчинд цэгцтэй хадгал.</p>
+          </div>
+          <div className="memories-hero-actions">
+            {families.length > 1 && (
+              <label className="memories-family-picker">
+                <span>Гэр бүл</span>
+                <select value={familyId} onChange={(event) => chooseFamily(event.target.value)} aria-label="Гэр бүл сонгох">
+                  {families.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+            )}
+            {familyId && (
+              <button
+                type="button"
+                className="memories-primary"
+                onClick={() => setShowComposer((value) => !value)}
+                aria-expanded={showComposer}
+                aria-controls="memory-composer"
+              >
+                {showComposer ? 'Нэмэх хэсгийг хаах' : '+ Дурсамж нэмэх'}
+              </button>
+            )}
+          </div>
+        </header>
+
+        {error && (
+          <div className="memories-alert" role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={() => void loadMemories(familyId, currentPage)} disabled={loading}>Дахин оролдох</button>
+          </div>
+        )}
+
+        {composerError && (
+          <div className="memories-alert memories-alert--composer" role="alert">
+            <span>{composerError}</span>
+            <button type="button" onClick={() => setComposerError('')}>Хаах</button>
+          </div>
+        )}
+
+        {showComposer && familyId && (
+          <section id="memory-composer" className="memory-composer" aria-labelledby="memory-composer-heading">
+            <div className="memory-composer-heading">
+              <div>
+                <p className="memories-eyebrow">НОМЫН ХУУДАС · НЭМЭХ</p>
+                <h2 id="memory-composer-heading">Шинэ дурсамж</h2>
+              </div>
+              <span>Зөвхөн одоогийн гэр бүлийн орчинд хадгалагдана.</span>
+            </div>
+            <form className="memory-composer-form" onSubmit={createMemory}>
+              <label>
+                <span>Гарчиг</span>
+                <input name="title" maxLength={180} required placeholder="Жишээ нь: Зуны наадмын өдөр" />
+              </label>
+              <label>
+                <span>Огноо</span>
+                <input name="memory_date" type="date" />
+              </label>
+              <label className="memory-composer-wide">
+                <span>Тайлбар</span>
+                <textarea name="description" maxLength={20000} rows={5} placeholder="Энэ мөчийн тухай санаанд үлдсэн зүйлс…" />
+              </label>
+              <label>
+                <span>Зураг</span>
+                <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+                <small>Одоо байгаа authorized memory photo API-г ашиглана.</small>
+              </label>
+              <label>
+                <span>Харагдах байдал</span>
+                <select name="visibility" defaultValue="family">
+                  <option value="family">Гэр бүлийнхэн</option>
+                  <option value="private">Зөвхөн би</option>
+                  <option value="public">Нийтийн</option>
+                </select>
+              </label>
+              <label className="memory-composer-wide">
+                <span>Холбоотой хүн</span>
+                <input
+                  value={personQuery}
+                  onChange={(event) => setPersonQuery(event.target.value)}
+                  placeholder="Нэрээр хайх…"
+                  aria-describedby="memory-person-help"
+                />
+                <small id="memory-person-help">Харагдах боломжтой хүмүүсийг backend-ийн existing search contract-аар сонгоно.</small>
+              </label>
+              {selectedPeople.length > 0 && (
+                <div className="memory-selected-people" aria-label="Сонгосон хүмүүс">
+                  {selectedPeople.map((person) => (
+                    <button key={person.id} type="button" onClick={() => togglePerson(person)} aria-label={`${person.name} холбоосыг хасах`}>
+                      {person.name} ×
+                    </button>
+                  ))}
+                </div>
+              )}
+              {personQuery.trim() && personResults && (
+                <div className="memory-person-results" aria-label="Хайлтын үр дүн">
+                  {personResults.items.length ? personResults.items.map((person) => {
+                    const selected = selectedPeople.some((item) => item.id === person.id);
+                    return (
+                      <button key={person.id} type="button" aria-pressed={selected} onClick={() => togglePerson({ id: person.id, name: person.name })}>
+                        {selected ? '✓ ' : '+ '}{person.name}{person.birth_year ? ` · ${person.birth_year}` : ''}
+                      </button>
+                    );
+                  }) : <p>Тохирох хүн олдсонгүй.</p>}
+                  {personResults.has_next && <button type="button" className="memory-person-more" onClick={() => void loadMorePeople()}>Дараагийн үр дүн</button>}
+                </div>
+              )}
+              {personQuery.trim() && !personResults && <p className="memory-search-status" role="status">Хайж байна…</p>}
+              <div className="memory-composer-actions">
+                <button type="button" className="memories-secondary" onClick={() => setShowComposer(false)} disabled={busy}>Буцах</button>
+                <button type="submit" className="memories-primary" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Дурсамж хадгалах'}</button>
+              </div>
+            </form>
+            {uploadStatus && <p className="memory-upload-status" role="status" aria-live="polite">{uploadStatus}</p>}
+          </section>
+        )}
+
+        {loading && !memories ? (
+          <section className="memory-state" aria-live="polite">
+            <span className="memory-state-mark" aria-hidden="true" />
+            <p className="memories-eyebrow">MEMORIES</p>
+            <h2>Дурсамжийн хуудсыг нээж байна…</h2>
+            <p>Гэр бүлийн тань хадгалсан мөчүүдийг аюулгүйгээр ачаалж байна.</p>
+          </section>
+        ) : !families.length ? (
+          <section className="memory-state">
+            <p className="memories-eyebrow">ГЭР БҮЛИЙН ОРОН ЗАЙ</p>
+            <h2>Хандах боломжтой гэр бүл алга.</h2>
+            <p>Дурсамж харахын өмнө гэр бүлийн орчинд гишүүнээрээ хандах шаардлагатай.</p>
+            <Link className="memories-secondary memories-link-button" href="/families">Гэр бүлүүд рүү очих</Link>
+          </section>
+        ) : memories && memories.items.length === 0 ? (
+          <section className="memory-state">
+            <p className="memories-eyebrow">MEMORY ARCHIVE · ХООСОН</p>
+            <h2>Одоогоор дурсамж хадгалагдаагүй байна.</h2>
+            <p>Эхний дурсамжаа нэмээд гэр бүлийн тань өдөр тутмын мөчүүдийг энэ архивт үлдээгээрэй.</p>
+            <button type="button" className="memories-primary" onClick={() => setShowComposer(true)} aria-controls="memory-composer">Анхны дурсамж нэмэх</button>
+          </section>
+        ) : (
+          <>
+            <div className="memories-results-heading">
+              <div>
+                <p className="memories-eyebrow">ОДООГИЙН ОРЧИН · {family?.name ?? 'Гэр бүл'}</p>
+                <h2>Хадгалсан мөчүүд</h2>
+              </div>
+              <span>{memories?.total ?? 0} дурсамж</span>
+            </div>
+
+            <section className="memory-grid" aria-busy={loading}>
+              {memories?.items.map((memory) => (
+                <article className="memory-card" key={memory.id}>
+                  {memory.photos?.length ? (
+                    <div className={`memory-card-gallery memory-card-gallery--${Math.min(memory.photos.length, 3)}`} aria-label={`${memory.photos.length} зураг`}>
+                      {memory.photos.slice(0, 3).map((photo) => (
+                        <img key={photo.id} src={photoUrl(photo.thumbnail_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" />
+                      ))}
+                      {memory.photos.length > 3 && <span className="memory-photo-count">+{memory.photos.length - 3}</span>}
+                    </div>
+                  ) : (
+                    <div className="memory-card-paper" aria-hidden="true">
+                      <span>{initials(memory.title)}</span>
+                    </div>
+                  )}
+
+                  <div className="memory-card-body">
+                    <div className="memory-card-meta">
+                      <time dateTime={memory.memory_date ?? undefined}>{formatMemoryDate(memory.memory_date)}</time>
+                      <span>{visibilityLabel(memory.visibility)}</span>
+                    </div>
+                    <h3>{memory.title}</h3>
+                    {memory.description && <p>{memory.description}</p>}
+                    <div className="memory-card-footer">
+                      <span>{memory.person_names?.length ? memory.person_names.join(' · ') : 'Холбоотой хүнгүй'}</span>
+                      <small>Хадгалсан {formatCreatedAt(memory.created_at)}</small>
+                    </div>
+                    <Link className="memory-card-link" href={`/memories/${memory.id}?family=${encodeURIComponent(familyId)}`}>Дурсамжийг үзэх →</Link>
+                  </div>
+                </article>
+              ))}
+            </section>
+
+            {memories && memories.total > PAGE_SIZE && (
+              <nav className="memory-pagination" aria-label="Дурсамжийн хуудаслалт">
+                <button type="button" disabled={currentPage <= 1 || loading} onClick={() => void loadMemories(familyId, currentPage - 1)}>← Өмнөх</button>
+                <span>{currentPage} / {pageCount}</span>
+                <button type="button" disabled={!memories.has_next || loading} onClick={() => void loadMemories(familyId, currentPage + 1)}>Дараагийн →</button>
+              </nav>
+            )}
+          </>
+        )}
+      </section>
+    </main>
+  );
 }
