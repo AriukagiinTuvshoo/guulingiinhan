@@ -1,11 +1,5 @@
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
 
-if (process.env.NODE_ENV === 'production' && !configuredApiBase) {
-  throw new Error(
-    'NEXT_PUBLIC_API_BASE_URL is required for production. Configure the frontend Vercel project before deploying.',
-  );
-}
-
 export const API_BASE = configuredApiBase || 'http://localhost:8000/api/v1';
 
 export class ApiError extends Error {
