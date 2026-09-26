@@ -43,3 +43,24 @@ SMTP, SMS болон Google OIDC timeout 8 секунд; S3 connection/read time
 Restore runbook: (1) managed PostgreSQL snapshot-ийг тусгаарласан instance руу сэргээ; (2) `alembic current` болон `alembic upgrade head`-ээр schema-г шалга; (3) object storage-ийн versioned backup-ийг тусгаарласан bucket руу сэргээ; (4) DB-ийн `photos.object_key` болон `thumbnail_object_key`-г сэргэсэн объектуудтай тулган, алга болсон/илүү object-ийг тайлагна; (5) `/health/ready`, нэвтрэлт, family access, private photo upload/read smoke test ажиллуул; (6) үр дүн, хугацаа, зөрүүг бүртгэ. Энэ runbook нь одоогоор төлөвлөгөө бөгөөд бодит restore туршигдаагүй.
 
 Auth cookie production-д `Secure; HttpOnly; SameSite=None` тул HTTPS frontend/backend болон зөв CORS origin шаардлагатай. Vercel-ийн бодит deployment энэ phase-д хийгдээгүй; provider project/environment variables шалгах эрх ба тохиргоо баталгаажаагүй.
+
+## Production auth deployment gate
+
+Frontend and backend are separate Vercel projects in this repository's current GitHub integration:
+- frontend project: `guulingiinhan-jy19`
+- backend project: `guulingiinhan` with root directory `backend`
+
+Before a production frontend deployment, `NEXT_PUBLIC_API_BASE_URL` is mandatory. The frontend now fails the production build when it is missing instead of silently defaulting browser auth requests to `localhost:8000`.
+
+The frontend's `NEXT_PUBLIC_API_BASE_URL` must point to the deployed backend API base ending in `/api/v1`. The backend `CORS_ORIGINS` must explicitly include the actual HTTPS frontend origin. Backend production settings must also satisfy the existing PostgreSQL, OTP/Twilio, SMTP, HTTPS email-base, and S3-compatible storage validation.
+
+After configuration, verify:
+1. frontend build succeeds without a localhost fallback;
+2. `GET /health` returns 200;
+3. `GET /health/ready` returns 200 with `database=ok`;
+4. email registration returns 201 and sends verification mail;
+5. verified email login returns 200 and `GET /api/v1/auth/me` remains authenticated after refresh;
+6. phone registration/login returns 200 after OTP and persists the session;
+7. logout returns 204 and protected routes return 401 afterward.
+
+Do not put API secrets, SMTP credentials, Twilio credentials, database credentials, or auth secrets in `NEXT_PUBLIC_*` variables.
