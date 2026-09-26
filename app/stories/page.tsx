@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Family, StoryListPage } from '../../lib/api';
+import { ApiError, api, Family, Person, PersonSearchPage, StoryListPage } from '../../lib/api';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -23,6 +23,11 @@ function StoriesPageContent() {
   const [families, setFamilies] = useState<Family[]>([]);
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [query, setQuery] = useState('');
+  const [personId, setPersonId] = useState('');
+  const [person, setPerson] = useState<Person | null>(null);
+  const [personQuery, setPersonQuery] = useState('');
+  const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
+  const personRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -31,7 +36,7 @@ function StoriesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const loadStories = useCallback(async (fid: string, page = 1, q = query) => {
+  const loadStories = useCallback(async (fid: string, page = 1, q = query, pid = personId) => {
     if (!fid) return;
     const requestId = ++storyRequestRef.current;
     setBusy(true);
@@ -40,6 +45,7 @@ function StoriesPageContent() {
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
+      if (pid) params.set('person_id', pid);
       const result = await api<StoryListPage>('/families/' + fid + '/stories?' + params.toString());
       if (requestId !== storyRequestRef.current) return;
       setStories(result);
@@ -56,7 +62,7 @@ function StoriesPageContent() {
         setBusy(false);
       }
     }
-  }, [query, router]);
+  }, [personId, query, router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -75,6 +81,8 @@ function StoriesPageContent() {
         return;
       }
       const requested = searchParams.get('family') ?? '';
+      const requestedPerson = searchParams.get('person') ?? '';
+      setPersonId(requestedPerson);
       const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
       if (!selected) {
         setFamily(null);
@@ -112,9 +120,29 @@ function StoriesPageContent() {
 
   useEffect(() => {
     if (!familyId) return;
-    const timer = window.setTimeout(() => void loadStories(familyId, 1), 120);
+    const timer = window.setTimeout(() => void loadStories(familyId, 1, query, personId), 120);
     return () => window.clearTimeout(timer);
-  }, [familyId, loadStories]);
+  }, [familyId, loadStories, personId]);
+
+  useEffect(() => {
+    if (!familyId || !personId) { setPerson(null); return; }
+    const requestId = ++personRequestRef.current;
+    void api<Person>(`/families/${familyId}/persons/${personId}`).then((result) => { if (requestId === personRequestRef.current) setPerson(result); }).catch(() => { if (requestId === personRequestRef.current) setPerson(null); });
+  }, [familyId, personId]);
+
+  useEffect(() => {
+    const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
+    if (!familyId || !safeQuery) { personRequestRef.current += 1; setPersonResults(null); return; }
+    const requestId = ++personRequestRef.current;
+    const timer = window.setTimeout(() => { void api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=1&page_size=20`).then((result) => { if (requestId === personRequestRef.current) setPersonResults(result); }).catch(() => { if (requestId === personRequestRef.current) setPersonResults(null); }); }, 250);
+    return () => window.clearTimeout(timer);
+  }, [familyId, personQuery]);
+
+  function choosePerson(next: string) {
+    const params = new URLSearchParams({ family: familyId });
+    if (next) params.set('person', next);
+    router.replace('/stories?' + params.toString());
+  }
 
   function chooseFamily(next: string) {
     storyRequestRef.current += 1;
@@ -123,7 +151,9 @@ function StoriesPageContent() {
     setFamilyId(next);
     setStories(null);
     setError('');
-    router.replace('/stories?family=' + encodeURIComponent(next));
+    const params = new URLSearchParams({ family: next });
+    if (personId) params.set('person', personId);
+    router.replace('/stories?' + params.toString());
   }
 
   const page = stories?.page ?? 1;
@@ -159,12 +189,15 @@ function StoriesPageContent() {
             <span>{error}</span>
             <div className="stories-error-actions">
               <button type="button" onClick={() => void loadFamilies()}>Дахин оролдох</button>
-              {familyId && <button type="button" onClick={() => void loadStories(familyId, page)} disabled={busy}>Түүх дахин ачаалах</button>}
+              {familyId && <button type="button" onClick={() => void loadStories(familyId, page, query, personId)} disabled={busy}>Түүх дахин ачаалах</button>}
             </div>
           </div>
         )}
 
-        <form className="stories-toolbar card" aria-label="Түүх хайх" onSubmit={(event) => { event.preventDefault(); void loadStories(familyId, 1); }}>
+        {personId && person && <div className="stories-context card" role="status"><span>Хүний түүх:</span> <strong>{[person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ')}</strong> <button type="button" onClick={() => choosePerson('')}>Шүүлтүүрийг арилгах</button></div>}
+        <div className="stories-person-filter card"><label htmlFor="story-person-search">Хүнээр шүүх</label><input id="story-person-search" value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} placeholder="Хүний нэрээр хайх…" autoComplete="off" />{personResults && <div className="story-person-results" aria-live="polite">{personResults.items.length ? personResults.items.slice(0, 8).map((item) => <button type="button" key={item.id} onClick={() => choosePerson(item.id)}>{item.name}</button>) : <span>Хүн олдсонгүй.</span>}</div>}</div>
+
+        <form className="stories-toolbar card" aria-label="Түүх хайх" onSubmit={(event) => { event.preventDefault(); void loadStories(familyId, 1, query, personId); }}>
           <label htmlFor="story-search">
             Түүх хайх
             <input
@@ -199,9 +232,9 @@ function StoriesPageContent() {
             </div>
             {stories && stories.total > PAGE_SIZE && (
               <nav className="stories-pagination" aria-label="Түүхийн хуудаслалт">
-                <button type="button" disabled={page <= 1 || busy} onClick={() => void loadStories(familyId, page - 1)}>← Өмнөх</button>
+                <button type="button" disabled={page <= 1 || busy} onClick={() => void loadStories(familyId, page - 1, query, personId)}>← Өмнөх</button>
                 <span>{page} / {Math.max(1, Math.ceil(stories.total / PAGE_SIZE))}</span>
-                <button type="button" disabled={!stories.has_next || busy} onClick={() => void loadStories(familyId, page + 1)}>Дараагийн →</button>
+                <button type="button" disabled={!stories.has_next || busy} onClick={() => void loadStories(familyId, page + 1, query, personId)}>Дараагийн →</button>
               </nav>
             )}
           </>

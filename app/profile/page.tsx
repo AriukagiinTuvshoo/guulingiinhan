@@ -380,7 +380,7 @@ export default function ProfilePage() {
           <section className="card profile-card">
             <div className="profile-card-heading">
               <div><p className="eyebrow">FAMILY ARCHIVE</p><h2>Энэ хүнтэй холбоотой архив</h2></div>
-              <Link href={`/archives?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+              <Link href={`/archives?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`>Бүгд →</Link>
             </div>
             {archives?.items.length ? (
               <div className="history-list">
@@ -399,7 +399,7 @@ export default function ProfilePage() {
           <section className="card profile-card">
             <div className="profile-card-heading">
               <div><p className="eyebrow">FAMILY STORY</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
-              <Link href={`/stories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+              <Link href={`/stories?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`>Бүгд →</Link>
             </div>
             {stories?.items.length ? (
               <div className="history-list">
@@ -416,7 +416,7 @@ export default function ProfilePage() {
           <section className="card profile-card">
             <div className="profile-card-heading">
               <div><p className="eyebrow">FAMILY MEMORIES</p><h2>Энэ хүнтэй холбоотой дурсамж</h2></div>
-              <Link href={`/memories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
+              <Link href={`/memories?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`>Бүгд →</Link>
             </div>
 
             {memoryState === 'loading' && (

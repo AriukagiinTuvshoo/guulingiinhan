@@ -239,6 +239,7 @@ function ArchiveDetailContent() {
 
         <footer className="archive-detail-footer">
           <Link href={`/archives?family=${encodeURIComponent(familyId)}`}>← Архивын сан</Link>
+          <Link href={`/tree?family=${encodeURIComponent(familyId)}`}>← Удмын мод руу буцах</Link>
           {archive.related_people[0] && (
             <Link href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(archive.related_people[0].id)}`}>Хүний профайл →</Link>
           )}

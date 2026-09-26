@@ -34,10 +34,13 @@ function visibilityLabel(value: string) {
 function ArchivesPageContent() {
   const searchParams = useSearchParams();
   const requestedFamilyId = searchParams.get('family') ?? '';
+  const requestedPersonId = searchParams.get('person') ?? '';
   const router = useRouter();
   const [family, setFamily] = useState<Family | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
+  const [personId, setPersonId] = useState('');
+  const [person, setPerson] = useState<Person | null>(null);
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [query, setQuery] = useState('');
   const [documentDate, setDocumentDate] = useState('');
@@ -65,7 +68,7 @@ function ArchivesPageContent() {
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
       if (dateValue) params.set('document_date', dateValue);
-      const result = await api<ArchiveListPage>(`/families/${fid}/archives?${params.toString()}`);
+      const result = personId && !q && !dateValue ? await api<ArchiveListPage>(`/families/${fid}/persons/${personId}/archives?page=${page}&page_size=${PAGE_SIZE}`) : await api<ArchiveListPage>(`/families/${fid}/archives?${params.toString()}`);
       if (requestId !== archiveRequestRef.current) return;
       setArchives(result);
     } catch (cause) {
@@ -81,7 +84,7 @@ function ArchivesPageContent() {
         setBusy(false);
       }
     }
-  }, [router]);
+  }, [personId, router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -108,6 +111,7 @@ function ArchivesPageContent() {
         }
         setFamily(selected);
         setFamilyId(selected.id);
+        setPersonId(requestedPersonId);
         return;
       }
       const selected = items[0];
@@ -132,7 +136,7 @@ function ArchivesPageContent() {
   useEffect(() => {
     if (!familyId) return;
     void loadArchives(familyId, 1);
-  }, [familyId, loadArchives]);
+  }, [familyId, loadArchives, personId]);
 
   function chooseFamily(next: string) {
     archiveRequestRef.current += 1;
@@ -141,8 +145,14 @@ function ArchivesPageContent() {
     setFamilyId(next);
     setArchives(null);
     setError('');
-    router.replace(`/archives?family=${encodeURIComponent(next)}`);
+    const params = new URLSearchParams({ family: next }); if (personId) params.set('person', personId); router.replace(`/archives?${params.toString()}`);
   }
+
+  useEffect(() => {
+    if (!familyId || !personId) { setPerson(null); return; }
+    const requestId = ++familyRequestRef.current;
+    void api<Person>(`/families/${familyId}/persons/${personId}`).then((result) => { if (requestId === familyRequestRef.current) setPerson(result); }).catch(() => { if (requestId === familyRequestRef.current) setPerson(null); });
+  }, [familyId, personId]);
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -193,6 +203,8 @@ function ArchivesPageContent() {
             )}
           </div>
         </header>
+
+        {personId && person && <div className="archive-alert" role="status"><span>Хүний архив: <strong>{[person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ')}</strong></span><button type="button" onClick={() => { setPersonId(''); router.replace(`/archives?family=${encodeURIComponent(familyId)}`); }}>Шүүлтүүрийг арилгах</button></div>}
 
         {error && (
           <div className="archive-alert" role="alert">

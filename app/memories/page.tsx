@@ -75,6 +75,8 @@ function MemoriesPageContent() {
   const [families, setFamilies] = useState<Family[]>([]);
   const [family, setFamily] = useState<Family | null>(null);
   const [familyId, setFamilyId] = useState('');
+  const [personId, setPersonId] = useState('');
+  const [person, setPerson] = useState<Person | null>(null);
   const [memories, setMemories] = useState<MemoryListPage | null>(null);
   const [personQuery, setPersonQuery] = useState('');
   const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
@@ -96,7 +98,7 @@ function MemoriesPageContent() {
     setLoading(true);
     setError('');
     try {
-      const result = await api<MemoryListPage>(`/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`);
+      const result = await api<MemoryListPage>(personId ? `/families/${fid}/persons/${personId}/memories?page=${page}&page_size=${PAGE_SIZE}` : `/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`);
       if (requestId !== memoryRequestRef.current) return;
       setMemories(result);
     } catch (cause) {
@@ -109,7 +111,7 @@ function MemoriesPageContent() {
     } finally {
       if (requestId === memoryRequestRef.current) setLoading(false);
     }
-  }, [router, searchParams]);
+  }, [personId, router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -128,6 +130,7 @@ function MemoriesPageContent() {
         return;
       }
       const requested = searchParams.get('family') ?? '';
+      setPersonId(searchParams.get('person') ?? '');
       const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
       if (!selected) {
         setFamily(null);
@@ -152,7 +155,7 @@ function MemoriesPageContent() {
       setLoading(false);
       setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     void loadFamilies();
@@ -161,7 +164,7 @@ function MemoriesPageContent() {
   useEffect(() => {
     if (!familyId) return;
     void loadMemories(familyId, 1);
-  }, [familyId, loadMemories]);
+  }, [familyId, loadMemories, personId]);
 
   useEffect(() => {
     const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
@@ -186,6 +189,12 @@ function MemoriesPageContent() {
     return () => window.clearTimeout(timer);
   }, [familyId, personQuery]);
 
+  useEffect(() => {
+    if (!familyId || !personId) { setPerson(null); return; }
+    const requestId = ++familyRequestRef.current;
+    void api<Person>(`/families/${familyId}/persons/${personId}`).then((result) => { if (requestId === familyRequestRef.current) setPerson(result); }).catch(() => { if (requestId === familyRequestRef.current) setPerson(null); });
+  }, [familyId, personId]);
+
   function chooseFamily(next: string) {
     memoryRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
@@ -194,7 +203,7 @@ function MemoriesPageContent() {
     setFamilyId(next);
     setMemories(null);
     setError('');
-    router.replace(`/memories?family=${encodeURIComponent(next)}`);
+    const params = new URLSearchParams({ family: next }); if (personId) params.set('person', personId); router.replace(`/memories?${params.toString()}`);
   }
 
   function togglePerson(person: SelectedPerson) {
@@ -310,6 +319,8 @@ function MemoriesPageContent() {
             )}
           </div>
         </header>
+
+        {personId && person && <div className="memories-alert" role="status"><span>Хүний дурсамж: <strong>{[person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ')}</strong></span><button type="button" onClick={() => { setPersonId(''); router.replace(`/memories?family=${encodeURIComponent(familyId)}`); }}>Шүүлтүүрийг арилгах</button></div>}
 
         {error && (
           <div className="memories-alert" role="alert">

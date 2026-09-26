@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { API_BASE, ApiError, api, Family, MemoryListItem } from '../../../lib/api';
 
@@ -57,6 +57,12 @@ function MemoryDetailPageContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showDelete, setShowDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editVisibility, setEditVisibility] = useState('family');
   const familyRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -142,6 +148,16 @@ function MemoryDetailPageContent() {
     if (showDelete) cancelRef.current?.focus();
   }, [showDelete]);
 
+  async function saveMemory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!familyId || !memoryId || saving || !memory) return;
+    setSaving(true); setError('');
+    try {
+      await api(`/families/${familyId}/memories/${memoryId}`, { method: 'PATCH', body: JSON.stringify({ title: editTitle.trim(), description: editDescription.trim() || null, memory_date: editDate || null, visibility: editVisibility, person_ids: memory.person_ids }) });
+      setEditing(false); await loadMemory(familyId, memoryId);
+    } catch (cause) { if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; } setError(friendlyError(cause, 'Дурсамжийг шинэчлэх үед алдаа гарлаа. Дахин оролдоно уу.')); }
+    finally { setSaving(false); }
+  }
+
   async function removeMemory() {
     if (!familyId || !memoryId || busy) return;
     setBusy(true);
@@ -206,8 +222,10 @@ function MemoryDetailPageContent() {
               <span>· {memory.person_ids.length} холбоотой хүн</span>
             </div>
           </div>
-          <button type="button" className="memories-danger" onClick={() => setShowDelete(true)} disabled={busy}>Дурсамж устгах</button>
+          <div className="memory-detail-actions"><button type="button" className="memories-secondary" onClick={() => setEditing((value) => !value)} disabled={busy || saving}>{editing ? 'Засахыг болих' : 'Засах'}</button><button type="button" className="memories-danger" onClick={() => setShowDelete(true)} disabled={busy || saving}>Дурсамж устгах</button></div>
         </header>
+
+        {editing && <form className="memory-composer-form card" onSubmit={saveMemory} aria-label="Дурсамж засах"><label><span>Гарчиг</span><input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} maxLength={180} required /></label><label><span>Огноо</span><input type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} /></label><label><span>Тайлбар</span><textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} maxLength={20000} rows={6} /></label><label><span>Харагдах байдал</span><select value={editVisibility} onChange={(event) => setEditVisibility(event.target.value)}><option value="family">Гэр бүлийнхэн</option><option value="private">Зөвхөн би</option><option value="public">Нийтийн</option></select></label><p className="memory-muted">Холбоотой хүмүүс болон хамгаалагдсан зургууд existing backend contract-аар хэвээр хадгалагдана.</p><div className="memory-composer-actions"><button type="button" className="memories-secondary" onClick={() => setEditing(false)} disabled={saving}>Болих</button><button type="submit" className="memories-primary" disabled={saving}>{saving ? 'Хадгалж байна…' : 'Өөрчлөлт хадгалах'}</button></div></form>}
 
         <section className="memory-detail-body" aria-labelledby="memory-detail-content">
           <h2 id="memory-detail-content">Энэ мөчийн тухай</h2>
