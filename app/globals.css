@@ -448,3 +448,8 @@
 @media(max-width:640px){.settings-page{padding:15px 10px 50px}.settings-header{grid-template-columns:1fr;gap:14px;padding-top:12px}.settings-mark{width:65px;height:65px}.settings-layout{margin-top:20px}.settings-section{padding:24px 0 28px}.settings-section__head{grid-template-columns:32px minmax(0,1fr);gap:9px}.settings-section__icon{width:32px;height:32px}.settings-section h2{font-size:24px}.settings-account-card{grid-template-columns:1fr;padding:16px}.settings-profile-mark{width:56px;height:56px;font-size:23px}.settings-facts{grid-template-columns:1fr}.settings-action-card,.settings-logout-card{display:grid;grid-template-columns:1fr}.settings-action-card>.settings-button,.settings-action-card>form,.settings-logout-card>.settings-button{width:100%}.settings-button{min-height:40px}}
 @media(max-width:375px){.settings-page{padding-left:7px;padding-right:7px}.settings-header h1{font-size:40px}.settings-intro{font-size:11px}.settings-section h2{font-size:22px}.settings-card{border-radius:8px}}
 @media(max-width:320px){.settings-page{padding-left:5px;padding-right:5px}.settings-action-title strong{font-size:10px}.settings-action-title span{font-size:8px}.settings-button{padding-left:9px;padding-right:9px}}
+
+.settings-family-single{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:20px}
+.settings-family-single__name{color:#385147;font:400 20px/1.25 Georgia,"Times New Roman",serif;min-width:0;overflow-wrap:anywhere}
+.settings-family-single .settings-help{grid-column:1/-1}
+@media(max-width:640px){.settings-family-single{grid-template-columns:1fr}.settings-family-single .settings-family-badge{justify-self:start}}
