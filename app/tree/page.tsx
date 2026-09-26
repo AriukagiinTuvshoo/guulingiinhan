@@ -25,6 +25,20 @@ import {
 
 type RelationKind = 'parent' | 'child' | 'spouse';
 
+type RelationshipRecovery = { familyId: string; selectedId: string; relatedId: string; relation: RelationKind; relationshipType: string | null; startDate: string | null };
+
+function treeErrorMessage(cause: unknown, fallback: string) {
+  if (!(cause instanceof ApiError)) return fallback;
+  if (cause.status === 0) return cause.message;
+  if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
+  if (cause.status === 403) return 'Энэ мэдээлэлд хандах эрхгүй.';
+  if (cause.status === 404) return 'Мэдээлэл олдсонгүй.';
+  if (cause.status === 409) return 'Энэ үйлдэл одоогоор боломжгүй байна. Удмын модны шинэ төлөвийг шалгаад дахин оролдоно уу.';
+  if (cause.status === 422) return 'Оруулсан мэдээллээ шалгана уу.';
+  if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
+  return fallback;
+}
+
 type LayoutNode = {
   id: string;
   person: TreePerson;
@@ -217,12 +231,18 @@ function TreePageContent() {
   const [searchPageNumber, setSearchPageNumber] = useState(1);
   const [relation, setRelation] = useState<RelationKind | null>(null);
   const [relationError, setRelationError] = useState('');
+  const [relationBusy, setRelationBusy] = useState(false);
+  const [relationshipRecovery, setRelationshipRecovery] = useState<RelationshipRecovery | null>(null);
 
   const loadSequence = useRef(0);
+  const mutationSequence = useRef(0);
   const loadAbort = useRef<AbortController | null>(null);
   const searchSequence = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const treeContextRef = useRef({ familyId: '', selectedId: '' });
+
+  treeContextRef.current = { familyId, selectedId };
 
   const persistSelected = useCallback(
     (personId: string) => {
@@ -297,11 +317,7 @@ function TreePageContent() {
           router.replace('/login');
           return;
         }
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Удмын модыг ачаалж чадсангүй.',
-        );
+        setError(treeErrorMessage(cause, 'Удмын модыг ачаалж чадсангүй.'));
       } finally {
         if (sequence === loadSequence.current) setLoading(false);
       }
@@ -344,11 +360,7 @@ function TreePageContent() {
           router.replace('/login');
           return;
         }
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
-        );
+        setError(treeErrorMessage(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
         setLoading(false);
       });
 
@@ -400,11 +412,7 @@ function TreePageContent() {
             router.replace('/login');
             return;
           }
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : 'Хайлт хийхэд алдаа гарлаа.',
-          );
+          setError(treeErrorMessage(cause, 'Хайлт хийхэд алдаа гарлаа.'));
         })
         .finally(() => {
           if (sequence === searchSequence.current) setSearchBusy(false);
@@ -522,11 +530,7 @@ function TreePageContent() {
       setSearchPageNumber(nextPage);
     } catch (cause) {
       if (sequence !== searchSequence.current || controller.signal.aborted) return;
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Хайлтын үр дүнг ачаалж чадсангүй.',
-      );
+      setError(treeErrorMessage(cause, 'Хайлтын үр дүнг ачаалж чадсангүй.'));
     } finally {
       if (sequence === searchSequence.current) setSearchBusy(false);
     }
@@ -541,22 +545,37 @@ function TreePageContent() {
 
   async function addRelation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!relation || !selectedId || !familyId) return;
+    if (!relation || !selectedId || !familyId || relationBusy) return;
+
+    const mutationFamilyId = familyId;
+    const mutationSelectedId = selectedId;
+    const mutationDepth = depth;
+    const mutationRelation = relation;
+    const mutationSequenceId = ++mutationSequence.current;
+    const form = new FormData(event.currentTarget);
+    const existingId = String(form.get('existing') ?? '');
+    const relationshipType = relation === 'spouse' ? null : String(form.get('relationship_type') ?? 'biological');
+    const startDate = relation === 'spouse' ? String(form.get('start_date') ?? '') || null : null;
+    const recoveryMatches =
+      !existingId &&
+      relationshipRecovery?.familyId === mutationFamilyId &&
+      relationshipRecovery.selectedId === mutationSelectedId &&
+      relationshipRecovery.relation === mutationRelation;
+    let createdPersonId: string | null = null;
 
     setRelationError('');
     setError('');
-    const form = new FormData(event.currentTarget);
-    const existingId = String(form.get('existing') ?? '');
+    setRelationBusy(true);
 
     try {
-      let relatedId = existingId;
+      let relatedId = existingId || (recoveryMatches ? relationshipRecovery.relatedId : '');
       if (!relatedId) {
         const fullName = String(form.get('name') ?? '')
           .trim()
           .split(/\s+/)
           .filter(Boolean);
         const created = await api<Person>(
-          '/families/' + encodeURIComponent(familyId) + '/persons',
+          '/families/' + encodeURIComponent(mutationFamilyId) + '/persons',
           {
             method: 'POST',
             body: JSON.stringify({
@@ -568,60 +587,83 @@ function TreePageContent() {
           },
         );
         relatedId = created.id;
+        createdPersonId = created.id;
       }
 
-      if (relation === 'spouse') {
+      if (mutationRelation === 'spouse') {
         await api(
-          '/families/' + encodeURIComponent(familyId) + '/marriages',
+          '/families/' + encodeURIComponent(mutationFamilyId) + '/marriages',
           {
             method: 'POST',
             body: JSON.stringify({
-              person_1_id: selectedId,
+              person_1_id: mutationSelectedId,
               person_2_id: relatedId,
               status: 'married',
-              start_date: form.get('start_date') || null,
+              start_date: startDate,
             }),
           },
         );
       } else {
         await api(
           '/families/' +
-            encodeURIComponent(familyId) +
+            encodeURIComponent(mutationFamilyId) +
             '/relationships/parent-child',
           {
             method: 'POST',
             body: JSON.stringify({
-              parent_id: relation === 'parent' ? relatedId : selectedId,
-              child_id: relation === 'parent' ? selectedId : relatedId,
-              relationship_type: form.get('relationship_type'),
+              parent_id: mutationRelation === 'parent' ? relatedId : mutationSelectedId,
+              child_id: mutationRelation === 'parent' ? mutationSelectedId : relatedId,
+              relationship_type: relationshipType,
             }),
           },
         );
       }
 
+      if (mutationSequenceId !== mutationSequence.current) return;
+      setRelationshipRecovery(null);
       setRelation(null);
       setNotice('Гэр бүлийн холбоо хадгалагдлаа.');
-      await loadTree(familyId, selectedId, depth);
+      if (
+        treeContextRef.current.familyId === mutationFamilyId &&
+        treeContextRef.current.selectedId === mutationSelectedId
+      ) {
+        await loadTree(mutationFamilyId, mutationSelectedId, mutationDepth);
+      }
     } catch (cause) {
-      setRelationError(
-        cause instanceof Error
-          ? cause.message
-          : 'Холбоог хадгалж чадсангүй.',
-      );
+      if (createdPersonId) {
+        setRelationshipRecovery({
+          familyId: mutationFamilyId,
+          selectedId: mutationSelectedId,
+          relatedId: createdPersonId,
+          relation: mutationRelation,
+          relationshipType,
+          startDate,
+        });
+        setRelationError('Хүн амжилттай үүссэн боловч холбоог хадгалж чадсангүй. Шинэ хүн дахин үүсгэхгүйгээр холбоог дахин оролдож болно.');
+      } else {
+        setRelationError(treeErrorMessage(cause, 'Холбоог хадгалж чадсангүй.'));
+      }
+    } finally {
+      if (mutationSequenceId === mutationSequence.current) setRelationBusy(false);
     }
   }
 
   async function divorce(marriageId: string) {
-    if (!familyId || !selectedId) return;
+    if (!familyId || !selectedId || relationBusy) return;
+    const mutationFamilyId = familyId;
+    const mutationSelectedId = selectedId;
+    const mutationDepth = depth;
+    const mutationSequenceId = ++mutationSequence.current;
     const endDate = window.prompt(
       'Салсан огноо (YYYY-MM-DD). Мэдэхгүй бол хоосон үлдээнэ үү.',
     );
     if (endDate === null) return;
 
+    setRelationBusy(true);
     try {
       await api(
         '/families/' +
-          encodeURIComponent(familyId) +
+          encodeURIComponent(mutationFamilyId) +
           '/marriages/' +
           encodeURIComponent(marriageId),
         {
@@ -632,14 +674,20 @@ function TreePageContent() {
           }),
         },
       );
+      if (mutationSequenceId !== mutationSequence.current) return;
       setNotice('Гэрлэлтийн мэдээлэл шинэчлэгдлээ.');
-      await loadTree(familyId, selectedId, depth);
+      if (
+        treeContextRef.current.familyId === mutationFamilyId &&
+        treeContextRef.current.selectedId === mutationSelectedId
+      ) {
+        await loadTree(mutationFamilyId, mutationSelectedId, mutationDepth);
+      }
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Гэрлэлтийн мэдээллийг шинэчилж чадсангүй.',
-      );
+      if (mutationSequenceId === mutationSequence.current) {
+        setError(treeErrorMessage(cause, 'Гэрлэлтийн мэдээллийг шинэчилж чадсангүй.'));
+      }
+    } finally {
+      if (mutationSequenceId === mutationSequence.current) setRelationBusy(false);
     }
   }
 
@@ -709,7 +757,7 @@ function TreePageContent() {
                   router.replace('/tree?family=' + encodeURIComponent(nextFamilyId));
                 })
                 .catch((cause) => {
-                  setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.');
+                  setError(treeErrorMessage(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
                 });
             }}
           >
@@ -1076,13 +1124,13 @@ function TreePageContent() {
                       <Link className="tree-button tree-button--primary" href={profileHref(selectedPerson.id)}>
                         Профайл үзэх
                       </Link>
-                      <button type="button" className="tree-button tree-button--secondary" onClick={() => setRelation('parent')}>
+                      <button type="button" className="tree-button tree-button--secondary" onClick={() => { setRelationError(''); setRelation('parent'); }} disabled={relationBusy}>
                         + Эцэг/эх
                       </button>
-                      <button type="button" className="tree-button tree-button--secondary" onClick={() => setRelation('child')}>
+                      <button type="button" className="tree-button tree-button--secondary" onClick={() => { setRelationError(''); setRelation('child'); }} disabled={relationBusy}>
                         + Хүүхэд
                       </button>
-                      <button type="button" className="tree-button tree-button--secondary" onClick={() => setRelation('spouse')}>
+                      <button type="button" className="tree-button tree-button--secondary" onClick={() => { setRelationError(''); setRelation('spouse'); }} disabled={relationBusy}>
                         + Гэрлэлт
                       </button>
                     </div>
@@ -1114,8 +1162,8 @@ function TreePageContent() {
                                   </span>
                                 </div>
                                 {marriage.status === 'married' && (
-                                  <button type="button" onClick={() => void divorce(marriage.id)}>
-                                    Салалтыг бүртгэх
+                                  <button type="button" onClick={() => void divorce(marriage.id)} disabled={relationBusy} aria-busy={relationBusy}>
+                                    {relationBusy ? 'Хадгалж байна…' : 'Салалтыг бүртгэх'}
                                   </button>
                                 )}
                               </div>
@@ -1172,7 +1220,7 @@ function TreePageContent() {
 
             {relationError && <div className="tree-alert tree-alert--error" role="alert">{relationError}</div>}
 
-            <form onSubmit={addRelation} className="tree-modal-form">
+            <form onSubmit={addRelation} className="tree-modal-form" aria-busy={relationBusy}>
               <label>
                 <span>Одоо байгаа хүнээс сонгох</span>
                 <select name="existing" defaultValue="">
@@ -1218,11 +1266,11 @@ function TreePageContent() {
               )}
 
               <div className="tree-modal-actions">
-                <button type="button" className="tree-button tree-button--secondary" onClick={() => setRelation(null)}>
+                <button type="button" className="tree-button tree-button--secondary" onClick={() => setRelation(null)} disabled={relationBusy}>
                   Болих
                 </button>
-                <button type="submit" className="tree-button tree-button--primary">
-                  Холбоог хадгалах
+                <button type="submit" className="tree-button tree-button--primary" disabled={relationBusy}>
+                  {relationBusy ? 'Хадгалж байна…' : relationshipRecovery?.familyId === familyId && relationshipRecovery.selectedId === selectedId && relationshipRecovery.relation === relation ? 'Холбоог дахин оролдох' : 'Холбоог хадгалах'}
                 </button>
               </div>
             </form>
