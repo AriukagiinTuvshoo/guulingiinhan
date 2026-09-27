@@ -28,19 +28,23 @@ function StoriesPageContent() {
   const [error, setError] = useState('');
   const familyRequestRef = useRef(0);
   const storyRequestRef = useRef(0);
+  const storyAbortRef = useRef<AbortController | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const loadStories = useCallback(async (fid: string, page = 1, q = query) => {
     if (!fid) return;
     const requestId = ++storyRequestRef.current;
+    storyAbortRef.current?.abort();
+    const controller = new AbortController();
+    storyAbortRef.current = controller;
     setBusy(true);
     setError('');
     try {
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
-      const result = await api<StoryListPage>('/families/' + fid + '/stories?' + params.toString());
+      const result = await api<StoryListPage>('/families/' + fid + '/stories?' + params.toString(), { signal: controller.signal });
       if (requestId !== storyRequestRef.current) return;
       setStories(result);
     } catch (cause) {
@@ -102,6 +106,7 @@ function StoriesPageContent() {
   }, [router, searchParams]);
 
   useEffect(() => {
+    storyAbortRef.current?.abort();
     setFamily(null);
     setFamilyId('');
     setStories(null);
@@ -117,6 +122,7 @@ function StoriesPageContent() {
   }, [familyId, loadStories]);
 
   function chooseFamily(next: string) {
+    storyAbortRef.current?.abort();
     storyRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
     setFamily(selected);
@@ -125,6 +131,8 @@ function StoriesPageContent() {
     setError('');
     router.replace('/stories?family=' + encodeURIComponent(next));
   }
+
+  useEffect(() => () => storyAbortRef.current?.abort(), []);
 
   const page = stories?.page ?? 1;
   const canCreate = family?.role === 'owner' || family?.role === 'editor';

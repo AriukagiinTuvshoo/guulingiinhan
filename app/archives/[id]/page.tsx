@@ -38,20 +38,26 @@ function ArchiveDetailContent() {
   const [notice, setNotice] = useState('');
   const familyRequestRef = useRef(0);
   const archiveRequestRef = useRef(0);
+  const familyAbortRef = useRef<AbortController | null>(null);
+  const archiveAbortRef = useRef<AbortController | null>(null);
+  const mutationRequestRef = useRef(0);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
 
   const loadArchive = useCallback(async (fid: string, id: string) => {
     const requestId = ++archiveRequestRef.current;
+    archiveAbortRef.current?.abort();
+    const controller = new AbortController();
+    archiveAbortRef.current = controller;
     setLoading(true);
     setError('');
     setArchive(null);
     try {
-      const result = await api<Archive>(`/families/${fid}/archives/${id}`);
+      const result = await api<Archive>(`/families/${fid}/archives/${id}`, { signal: controller.signal });
       if (requestId !== archiveRequestRef.current) return;
       setArchive(result);
     } catch (cause) {
-      if (requestId !== archiveRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== archiveRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
       setError(cause instanceof ApiError && cause.status === 404
         ? 'Энэ архивын материал олдсонгүй.'
@@ -65,6 +71,10 @@ function ArchiveDetailContent() {
 
   const loadFamilyContext = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    familyAbortRef.current?.abort();
+    archiveAbortRef.current?.abort();
+    const controller = new AbortController();
+    familyAbortRef.current = controller;
     archiveRequestRef.current += 1;
     setLoading(true);
     setError('');
@@ -73,7 +83,7 @@ function ArchiveDetailContent() {
     setArchive(null);
     if (!archiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
     try {
-      const items = await api<Family[]>('/families');
+      const items = await api<Family[]>('/families', { signal: controller.signal });
       if (requestId !== familyRequestRef.current) return;
       if (!items.length) { setLoading(false); setError('Танд одоогоор хандах боломжтой гэр бүл алга.'); return; }
       const selected = requestedFamilyId ? items.find((item) => item.id === requestedFamilyId) : items[0];
@@ -84,7 +94,7 @@ function ArchiveDetailContent() {
       if (saved) setNotice('Архив хадгалагдлаа.');
       await loadArchive(selected.id, archiveId);
     } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
       setArchive(null);
       setLoading(false);
@@ -92,17 +102,27 @@ function ArchiveDetailContent() {
     }
   }, [archiveId, loadArchive, requestedFamilyId, router, saved]);
 
-  useEffect(() => { void loadFamilyContext(); }, [loadFamilyContext]);
+  useEffect(() => {
+    void loadFamilyContext();
+    return () => {
+      familyAbortRef.current?.abort();
+      archiveAbortRef.current?.abort();
+      mutationRequestRef.current += 1;
+    };
+  }, [loadFamilyContext]);
   useEffect(() => { if (showDeleteDialog) cancelRef.current?.focus(); }, [showDeleteDialog]);
 
   async function remove() {
     if (!archive || busy || !familyId) return;
+    const mutationId = ++mutationRequestRef.current;
     setBusy(true);
     setError('');
     try {
       await api<void>(`/families/${familyId}/archives/${archive.id}`, { method: 'DELETE' });
+      if (mutationId !== mutationRequestRef.current) return;
       router.replace(`/archives?family=${encodeURIComponent(familyId)}`);
     } catch (cause) {
+      if (mutationId !== mutationRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
       setError(cause instanceof ApiError && cause.status === 403
         ? 'Энэ архивыг устгах эрхгүй байна.'
