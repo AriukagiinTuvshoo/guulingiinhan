@@ -188,3 +188,45 @@ def test_people_directory_redacts_minor_profile_fields_without_guardian_scope(cl
     assert item["birth_place"] is None
     assert item["death_date"] is None
     assert item["short_description"] is None
+
+
+def test_person_profile_family_privacy_and_minor_fields_are_authoritative(client):
+    from datetime import UTC, datetime
+
+    register_verified(client, "profile-scope@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Profile A"}).json()["id"]
+    family_b = client.post("/api/v1/families", json={"name": "Profile B"}).json()["id"]
+    person_a = client.post(
+        f"/api/v1/families/{family_a}/persons",
+        json={"first_name": "А", "last_name": "Профайл"},
+    ).json()
+    person_b = client.post(
+        f"/api/v1/families/{family_b}/persons",
+        json={"first_name": "Б", "last_name": "Өөр"},
+    ).json()
+
+    assert client.get(f"/api/v1/families/{family_a}/persons/{person_a['id']}").status_code == 200
+    assert client.get(f"/api/v1/families/{family_a}/persons/{person_b['id']}").status_code == 404
+    assert client.patch(
+        f"/api/v1/families/{family_a}/persons/{person_b['id']}",
+        json={"first_name": "Хөндлөн"},
+    ).status_code == 404
+    assert client.put(
+        f"/api/v1/families/{family_a}/persons/{person_b['id']}/biography",
+        json={"content": "cross-family"},
+    ).status_code == 404
+
+    minor_date = datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 10).isoformat()
+    minor = client.post(
+        f"/api/v1/families/{family_a}/persons",
+        json={"first_name": "Хүүхэд", "birth_date": minor_date, "birth_place": "Нууц газар", "short_description": "Нууц тайлбар"},
+    ).json()
+    payload = client.get(f"/api/v1/families/{family_a}/persons/{minor['id']}").json()
+    assert payload["birth_date"] is None
+    assert payload["birth_place"] is None
+    assert payload["short_description"] is None
+    assert payload["profile_photo_url"] is None
+    assert client.patch(
+        f"/api/v1/families/{family_a}/persons/{minor['id']}",
+        json={"first_name": "Хамгаалагдсан"},
+    ).status_code == 403

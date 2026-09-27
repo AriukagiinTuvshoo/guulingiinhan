@@ -49,6 +49,8 @@ function ProfilePageContent() {
   const searchParams = useSearchParams();
   const profileRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
+  const mutationRequestRef = useRef(0);
+  const [mutationBusy, setMutationBusy] = useState(false);
   const [family, setFamily] = useState('');
   const [id, setId] = useState('');
   const [person, setPerson] = useState<PersonProfile | null>(null);
@@ -98,6 +100,7 @@ function ProfilePageContent() {
     const pid = searchParams.get('person') ?? '';
     const requestId = ++profileRequestRef.current;
     memoryRequestRef.current += 1;
+    mutationRequestRef.current += 1;
     setFamily(fid);
     setId(pid);
     setPerson(null);
@@ -172,10 +175,13 @@ function ProfilePageContent() {
 
   async function retry() {
     if (!family || !id) return;
+    const requestId = ++profileRequestRef.current;
+    mutationRequestRef.current += 1;
     setLoading(true);
     setError('');
+    setPerson(null);
     try {
-      await load(family, id);
+      await load(family, id, requestId);
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
@@ -200,20 +206,33 @@ function ProfilePageContent() {
 
   async function saveBiography(event: FormEvent) {
     event.preventDefault();
+    if (!family || !id || mutationBusy) return;
+    const requestId = profileRequestRef.current;
+    const mutationId = ++mutationRequestRef.current;
+    setMutationBusy(true);
     setError('');
     try {
       await api(`/families/${family}/persons/${id}/biography`, {
         method: 'PUT',
         body: JSON.stringify({ content: biography }),
       });
-      setNotice('Намтар хадгалагдлаа.');
+      if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
+      const refreshId = ++profileRequestRef.current;
+      await load(family, id, refreshId);
+      if (refreshId === profileRequestRef.current && mutationId === mutationRequestRef.current) setNotice('Намтар хадгалагдлаа.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Намтрыг хадгалж чадсангүй.');
+      if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) setError(cause instanceof ApiError && [401,403,404,409,422].includes(cause.status) ? cause.message : 'Намтрыг хадгалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (mutationId === mutationRequestRef.current) setMutationBusy(false);
     }
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!family || !id || mutationBusy) return;
+    const requestId = profileRequestRef.current;
+    const mutationId = ++mutationRequestRef.current;
+    setMutationBusy(true);
     setError('');
     const values = new FormData(event.currentTarget);
     try {
@@ -231,18 +250,25 @@ function ProfilePageContent() {
           visibility: values.get('visibility'),
         }),
       });
-      const requestId = ++profileRequestRef.current;
-      await load(family, id, requestId);
-      if (requestId !== profileRequestRef.current) return;
+      if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
+      const refreshId = ++profileRequestRef.current;
+      await load(family, id, refreshId);
+      if (refreshId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
       setEditing(false);
       setNotice('Профайл хадгалагдлаа.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Профайлыг хадгалж чадсангүй.');
+      if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) setError(cause instanceof ApiError && [401,403,404,409,422].includes(cause.status) ? cause.message : 'Профайлыг хадгалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (mutationId === mutationRequestRef.current) setMutationBusy(false);
     }
   }
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!family || !id || mutationBusy) return;
+    const requestId = profileRequestRef.current;
+    const mutationId = ++mutationRequestRef.current;
+    setMutationBusy(true);
     setError('');
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
@@ -256,13 +282,16 @@ function ProfilePageContent() {
           description: form.get('description') || null,
         }),
       });
-      const requestId = ++profileRequestRef.current;
-      await load(family, id, requestId);
-      if (requestId !== profileRequestRef.current) return;
+      if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
+      const refreshId = ++profileRequestRef.current;
+      await load(family, id, refreshId);
+      if (refreshId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
       formElement.reset();
       setNotice('Үйл явдал нэмэгдлээ.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Үйл явдал нэмж чадсангүй.');
+      if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) setError(cause instanceof ApiError && [401,403,404,409,422].includes(cause.status) ? cause.message : 'Үйл явдал нэмж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (mutationId === mutationRequestRef.current) setMutationBusy(false);
     }
   }
 
@@ -494,7 +523,7 @@ function ProfilePageContent() {
             <p className="profile-text">{biography || 'Намтар оруулаагүй байна.'}</p>
             <form onSubmit={saveBiography}>
               <label>Намтар<textarea value={biography} onChange={(event) => setBiography(event.target.value)} maxLength={50000} /></label>
-              <button className="primary" type="submit">Намтар хадгалах</button>
+              <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Намтар хадгалах"}</button>
             </form>
           </section>
 
@@ -523,7 +552,7 @@ function ProfilePageContent() {
               <label>Гарчиг<input name="title" required maxLength={180} /></label>
               <label>Огноо<input name="event_date" type="date" /></label>
               <label>Тайлбар<textarea name="description" maxLength={10000} /></label>
-              <button className="primary" type="submit">Үйл явдал нэмэх</button>
+              <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Үйл явдал нэмэх"}</button>
             </form>
           </section>
         </div>
@@ -543,7 +572,7 @@ function ProfilePageContent() {
                 <label>Нас барсан газар<input name="death_place" defaultValue={person.death_place ?? ''} maxLength={240} /></label>
                 <label>Нууцлал<select name="visibility" defaultValue={person.visibility}><option value="private">Зөвхөн би</option><option value="family">Гэр бүлийнхэн</option><option value="public">Нийтийн</option></select></label>
               </div>
-              <button className="primary" type="submit">Профайл хадгалах</button>
+              <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Профайл хадгалах"}</button>
             </form>
           </section>
         )}
