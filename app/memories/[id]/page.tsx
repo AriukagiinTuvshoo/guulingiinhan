@@ -36,6 +36,7 @@ function photoUrl(path: string) {
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
+    if (cause.status === 400) return 'Оруулсан мэдээллээ шалгана уу.';
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
     if (cause.status === 403) return 'Энэ дурсамжид хандах эрхгүй байна.';
     if (cause.status === 404) return 'Дурсамж олдсонгүй.';
@@ -61,13 +62,29 @@ function MemoryDetailPageContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showDelete, setShowDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editVisibility, setEditVisibility] = useState('family');
+  const [editPeople, setEditPeople] = useState<{ id: string; name: string }[]>([]);
+  const [personQuery, setPersonQuery] = useState('');
+  const [personResults, setPersonResults] = useState<{ items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean } | null>(null);
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+  const [editDirty, setEditDirty] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
   const [failedPhotoIds, setFailedPhotoIds] = useState<Set<string>>(() => new Set());
   const familyRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
   const mutationRequestRef = useRef(0);
+  const editRequestRef = useRef(0);
+  const personRequestRef = useRef(0);
+  const personAbortRef = useRef<AbortController | null>(null);
   const familyAbortRef = useRef<AbortController | null>(null);
   const memoryAbortRef = useRef<AbortController | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const editTitleRef = useRef<HTMLInputElement>(null);
 
   const loadMemory = useCallback(async (fid: string, mid: string) => {
     const requestId = ++memoryRequestRef.current;
@@ -156,7 +173,130 @@ function MemoryDetailPageContent() {
   useEffect(() => () => {
     familyAbortRef.current?.abort();
     memoryAbortRef.current?.abort();
+    personAbortRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    if (!editing) return;
+    editTitleRef.current?.focus();
+  }, [editing]);
+
+  useEffect(() => {
+    if (!editing || !editDirty || editSaving) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [editing, editDirty, editSaving]);
+
+  useEffect(() => {
+    const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
+    personAbortRef.current?.abort();
+    if (!editing || !familyId || !safeQuery) {
+      personRequestRef.current += 1;
+      setPersonResults(null);
+      return;
+    }
+    const requestId = ++personRequestRef.current;
+    const controller = new AbortController();
+    personAbortRef.current = controller;
+    const timer = window.setTimeout(() => {
+      void api<{ items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean }>(
+        `/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=1&page_size=20`,
+        { signal: controller.signal },
+      ).then((result) => {
+        if (requestId !== personRequestRef.current) return;
+        setPersonResults(result);
+      }).catch((cause) => {
+        if (controller.signal.aborted || requestId !== personRequestRef.current) return;
+        setEditError(friendlyError(cause, 'Хүн хайхад алдаа гарлаа. Дахин оролдоно уу.'));
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      if (personAbortRef.current === controller) personAbortRef.current = null;
+    };
+  }, [editing, familyId, personQuery]);
+
+  function beginEdit() {
+    if (!memory || editSaving) return;
+    setEditTitle(memory.title);
+    setEditDescription(memory.description ?? '');
+    setEditDate(memory.memory_date ?? '');
+    setEditVisibility(memory.visibility);
+    setEditPeople(memory.person_ids.map((id) => ({ id, name: `Person ID: ${id.slice(0, 8)}…` })));
+    setPersonQuery('');
+    setPersonResults(null);
+    setEditError('');
+    setEditSuccess('');
+    setEditDirty(false);
+    setEditing(true);
+  }
+
+  function toggleEditPerson(person: { id: string; name: string }) {
+    setEditPeople((current) => current.some((item) => item.id === person.id)
+      ? current.filter((item) => item.id !== person.id)
+      : current.length >= 100 ? current : [...current, person]);
+    setEditDirty(true);
+  }
+
+  function cancelEdit() {
+    if (editDirty && !window.confirm('Хадгалаагүй өөрчлөлт байна. Гарах уу?')) return;
+    personAbortRef.current?.abort();
+    personRequestRef.current += 1;
+    setEditing(false);
+    setEditError('');
+    setEditSuccess('');
+    setPersonQuery('');
+    setPersonResults(null);
+    setEditDirty(false);
+  }
+
+  async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!familyId || !memoryId || editSaving) return;
+    if (!editTitle.trim()) {
+      setEditError('Гарчиг хоосон байж болохгүй.');
+      return;
+    }
+    const requestId = ++editRequestRef.current;
+    const operationFamilyId = familyId;
+    const operationMemoryId = memoryId;
+    const operationFamilyRequestId = familyRequestRef.current;
+    setEditSaving(true);
+    setEditError('');
+    setEditSuccess('');
+    try {
+      await api<MemoryDetail>(`/families/${operationFamilyId}/memories/${operationMemoryId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDescription.trim() || null,
+          memory_date: editDate || null,
+          visibility: editVisibility,
+          person_ids: editPeople.map((person) => person.id),
+        }),
+      });
+      if (requestId !== editRequestRef.current || operationFamilyRequestId !== familyRequestRef.current || operationFamilyId !== familyId) return;
+      await loadMemory(operationFamilyId, operationMemoryId);
+      if (requestId !== editRequestRef.current || operationFamilyRequestId !== familyRequestRef.current || operationFamilyId !== familyId) return;
+      setEditing(false);
+      setEditDirty(false);
+      setEditSuccess('Дурсамж амжилттай шинэчлэгдлээ.');
+    } catch (cause) {
+      if (requestId !== editRequestRef.current || operationFamilyRequestId !== familyRequestRef.current) return;
+      if (cause instanceof ApiError && cause.status === 401) {
+        router.replace('/login');
+        return;
+      }
+      setEditError(friendlyError(cause, 'Дурсамжийг хадгалж чадсангүй. Дахин оролдоно уу.'));
+    } finally {
+      if (requestId === editRequestRef.current) setEditSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (showDelete) cancelRef.current?.focus();
@@ -232,8 +372,82 @@ function MemoryDetailPageContent() {
               <span>· {memory.person_ids.length} холбоотой хүн</span>
             </div>
           </div>
-          <button type="button" className="memories-danger" onClick={() => setShowDelete(true)} disabled={busy}>Дурсамж устгах</button>
+          <div className="memory-detail-header-actions">
+            <button type="button" className="memories-secondary" onClick={beginEdit} disabled={busy || editSaving}>Засах</button>
+            <button type="button" className="memories-danger" onClick={() => setShowDelete(true)} disabled={busy || editSaving}>Дурсамж устгах</button>
+          </div>
         </header>
+
+        {editSuccess && <div className="memories-success" role="status" aria-live="polite">{editSuccess}</div>}
+
+        {editing && (
+          <section className="memory-composer memory-edit-form-shell" aria-labelledby="memory-edit-heading">
+            <div className="memory-composer-heading">
+              <div>
+                <p className="memories-eyebrow">FAMILY MEMORIES · EDIT</p>
+                <h2 id="memory-edit-heading">Дурсамжийг засах</h2>
+              </div>
+              <span>Өөрчлөлтийг серверийн existing Memory authorization болон privacy rules шалгана.</span>
+            </div>
+            {editError && <div className="memories-alert" role="alert" id="memory-edit-error"><span>{editError}</span></div>}
+            <form className="memory-composer-form" onSubmit={saveEdit} aria-describedby={editError ? 'memory-edit-error' : undefined}>
+              <label>
+                <span>Гарчиг *</span>
+                <input ref={editTitleRef} value={editTitle} onChange={(event) => { setEditTitle(event.target.value); setEditDirty(true); }} maxLength={180} required />
+              </label>
+              <label>
+                <span>Огноо</span>
+                <input type="date" value={editDate} onChange={(event) => { setEditDate(event.target.value); setEditDirty(true); }} />
+              </label>
+              <label>
+                <span>Харагдац</span>
+                <select value={editVisibility} onChange={(event) => { setEditVisibility(event.target.value); setEditDirty(true); }}>
+                  <option value="private">Зөвхөн би</option>
+                  <option value="family">Гэр бүлийнхэн</option>
+                  <option value="public">Нийтийн</option>
+                </select>
+              </label>
+              <label className="memory-composer-wide">
+                <span>Тайлбар</span>
+                <textarea value={editDescription} onChange={(event) => { setEditDescription(event.target.value); setEditDirty(true); }} maxLength={20000} rows={8} />
+              </label>
+              <fieldset className="memory-composer-wide memory-edit-people">
+                <legend>Холбоотой хүмүүс</legend>
+                <label>
+                  <span>Хүн хайх</span>
+                  <input value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} placeholder="Нэрээр хайх…" autoComplete="off" />
+                </label>
+                {editPeople.length > 0 && (
+                  <div className="memory-selected-people" aria-label="Сонгосон холбоотой хүмүүс">
+                    {editPeople.map((person) => (
+                      <button type="button" key={person.id} onClick={() => toggleEditPerson(person)} aria-label={`${person.name} холбоосыг хасах`}>
+                        {person.name} ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {personResults && (
+                  <div className="memory-person-results" aria-live="polite">
+                    {personResults.items.length ? personResults.items.map((person) => {
+                      const selected = editPeople.some((item) => item.id === person.id);
+                      return (
+                        <button type="button" key={person.id} aria-pressed={selected} onClick={() => toggleEditPerson({ id: person.id, name: person.name })}>
+                          {selected ? '✓ ' : '+ '}{person.name}
+                        </button>
+                      );
+                    }) : <p>Хүн олдсонгүй.</p>}
+                  </div>
+                )}
+              </fieldset>
+              <div className="memory-composer-actions">
+                <button type="button" className="memories-secondary" onClick={cancelEdit} disabled={editSaving}>Болих</button>
+                <button type="submit" className="memories-primary" disabled={editSaving} aria-busy={editSaving}>
+                  {editSaving ? 'Хадгалж байна…' : 'Хадгалах'}
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
 
         <section className="memory-detail-body" aria-labelledby="memory-detail-content">
           <h2 id="memory-detail-content">Энэ мөчийн тухай</h2>
