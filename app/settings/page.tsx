@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Check, Globe2, LogOut, Mail, Phone, RefreshCw, ShieldCheck, TreeDeciduous, UserRound, UsersRound } from 'lucide-react';
 import { ApiError, api, Family, User } from '../../lib/api';
 
@@ -41,8 +41,10 @@ function friendlyError(cause: unknown, fallback: string) {
   return fallback;
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedFamilyId = searchParams.get('family')?.trim() ?? '';
   const [user, setUser] = useState<User | null>(null);
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [families, setFamilies] = useState<Family[]>([]);
@@ -86,14 +88,15 @@ export default function SettingsPage() {
       setFamilies(familyData);
       setGoogleEnabled(googleConfig.enabled);
 
-      const requestedFamily = new URLSearchParams(window.location.search).get('family');
-      const resolvedFamily =
-        familyData.find((family) => family.id === requestedFamily)?.id ??
-        familyData[0]?.id ??
-        '';
-
+      const requestedFamily = requestedFamilyId;
+      const resolvedFamily = familyData.find((family) => family.id === requestedFamily)?.id ?? '';
       setFamilyId(resolvedFamily);
-      if (resolvedFamily && requestedFamily !== resolvedFamily) {
+      if (requestedFamily && !resolvedFamily) {
+        setError('Энэ Family ID таны authorized family context-д байхгүй байна.');
+        return;
+      }
+      if (!requestedFamily && resolvedFamily) {
+        setFamilyId(resolvedFamily);
         router.replace('/settings?family=' + encodeURIComponent(resolvedFamily));
       }
     } catch (cause) {
@@ -105,7 +108,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [requestedFamilyId, router]);
 
   useEffect(() => {
     void load();
@@ -263,6 +266,10 @@ export default function SettingsPage() {
         </section>
       </main>
     );
+  }
+
+  if (!familyId && families.length > 0 && requestedFamilyId) {
+    return <main className="settings-page"><section className="settings-shell settings-state-wrap"><div className="settings-state" role="alert"><AlertCircle size={24} /><p className="settings-eyebrow">FAMILY CONTEXT</p><h1>Гэр бүл олдсонгүй</h1><p>Энэ Family ID таны эрхтэй гэр бүлүүдийн жагсаалтад байхгүй байна.</p><button className="settings-button settings-button--dark" type="button" onClick={() => router.replace('/settings')}>Гэр бүлийн тохиргоо руу буцах</button></div></section></main>;
   }
 
   return (
@@ -520,4 +527,9 @@ export default function SettingsPage() {
       </div>
     </main>
   );
+}
+
+
+export default function SettingsPage() {
+  return <Suspense fallback={<main className="settings-page"><div className="settings-shell settings-loading"><div className="settings-skeleton" aria-busy="true"><small>Тохиргоог ачаалж байна…</small></div></div></main>}><SettingsContent /></Suspense>;
 }

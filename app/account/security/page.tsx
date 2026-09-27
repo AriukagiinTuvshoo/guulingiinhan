@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api } from '../../../lib/api';
 
 type Identity = { id: string; provider: string; display_identifier: string | null; verified: boolean; created_at: string };
@@ -20,8 +20,10 @@ function friendlyError(cause: unknown, fallback: string) {
   return fallback;
 }
 
-export default function AccountSecurityPage() {
+function AccountSecurityContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const familyId = searchParams.get('family')?.trim() ?? '';
   const [identities, setIdentities] = useState<Identity[]>([]);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [phone, setPhone] = useState('');
@@ -29,18 +31,18 @@ export default function AccountSecurityPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
   const refreshSequence = useRef(0);
 
-  async function refresh() {
-    setIdentities(await api<Identity[]>('/auth/me/identities'));
-  }
+  async function refresh() { setIdentities(await api<Identity[]>('/auth/me/identities')); }
 
   useEffect(() => {
+    setLoading(true);
     api<{ enabled: boolean }>('/auth/google/config').then((value) => setGoogleEnabled(value.enabled)).catch(() => {});
     refresh().catch((cause) => {
       if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
       else setError(friendlyError(cause, 'Мэдээлэл ачаалж чадсангүй.'));
-    });
+    }).finally(() => setLoading(false));
   }, [router]);
 
   async function requestPhone(event: FormEvent<HTMLFormElement>) {
@@ -95,8 +97,9 @@ export default function AccountSecurityPage() {
   }
 
   const linkedPhone = identities.some((item) => item.provider === 'phone' && item.verified);
+  if (loading) return <main className="mvp" aria-busy="true"><section className="mvpbox" style={{ maxWidth: 680 }}><p role="status">Аюулгүй байдлын тохиргоог ачаалж байна…</p></section></main>;
   return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 680 }}>
-    <Link href="/families">← Гэр бүлүүд</Link>
+    <Link href={familyId ? '/settings?family=' + encodeURIComponent(familyId) : '/families'}>← Тохиргоо</Link>
     <h1 style={{ marginTop: 24 }}>Нэвтрэх ба аюулгүй байдал</h1>
     <p>Утасны дугаараа баталгаажуулж холбосноор кодоор нэвтрэх болон нууц үг сэргээх боломжтой.</p>
     {error && <div className="error" role="alert">{error}</div>}
@@ -127,4 +130,8 @@ export default function AccountSecurityPage() {
     </div>
     <p className="muted">Утасны дугаарыг салгах боломжгүй; account-д нэвтрэх өөр баталгаажсан арга хадгалагдах ёстой.</p>
   </section></main>;
+}
+
+export default function AccountSecurityPage() {
+  return <Suspense fallback={<main className="mvp"><section className="mvpbox"><p role="status">Ачаалж байна…</p></section></main>}><AccountSecurityContent /></Suspense>;
 }
