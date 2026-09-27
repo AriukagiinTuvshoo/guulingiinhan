@@ -89,7 +89,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const shouldRenderShell = isShellRoute(pathname);
+  const shouldRenderShell = isDashboardRoute(pathname) || isShellRoute(pathname);
   const requestedFamilyId = searchParams.get('family') ?? '';
 
   const [user, setUser] = useState<User | null>(null);
@@ -105,21 +105,27 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstNavRef = useRef<HTMLAnchorElement | null>(null);
   const accountRef = useRef<HTMLDivElement | null>(null);
+  const contextRequestRef = useRef(0);
 
   const currentFamily = useMemo(
-    () => families.find((family) => family.id === familyId) ?? families[0] ?? null,
+    () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
 
   const retryContext = useCallback(async () => {
+    const requestId = ++contextRequestRef.current;
     setContextLoading(true);
     setContextLoaded(false);
     setContextError('');
+    setUser(null);
+    setFamilies([]);
+    setFamilyId('');
     try {
       const [me, familyData] = await Promise.all([
         api<User>('/auth/me'),
         api<Family[]>('/families'),
       ]);
+      if (requestId !== contextRequestRef.current) return;
       setUser(me);
       setFamilies(familyData);
       setContextLoaded(true);
@@ -129,12 +135,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
         router.replace('/login');
         return;
       }
+      if (requestId !== contextRequestRef.current) return;
       setContextError(
         cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
       );
       setContextLoaded(true);
     } finally {
-      setContextLoading(false);
+      if (requestId === contextRequestRef.current) setContextLoading(false);
     }
   }, [router]);
 
@@ -162,23 +169,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const requested =
-      families.find((family) => family.id === requestedFamilyId)?.id ?? families[0].id;
+    const requested = families.find((family) => family.id === requestedFamilyId)?.id ?? null;
 
-    setFamilyId((current) => (current === requested ? current : requested));
+    if (requestedFamilyId && !requested) {
+      setFamilyId('');
+      setContextError('Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.');
+      return;
+    }
+
+    const nextFamily = requested ?? families[0].id;
+    setFamilyId((current) => (current === nextFamily ? current : nextFamily));
 
     if (
-      requested &&
-      requestedFamilyId !== requested &&
+      nextFamily &&
+      requestedFamilyId !== nextFamily &&
       pathname !== '/profile' &&
       !pathname.startsWith('/profile/')
     ) {
       const params = new URLSearchParams(searchParams.toString());
-      params.set('family', requested);
+      params.set('family', nextFamily);
       router.replace(pathname + '?' + params.toString());
-    } else if (requested && requestedFamilyId !== requested && pathname.startsWith('/profile')) {
+    } else if (nextFamily && requestedFamilyId !== nextFamily && pathname.startsWith('/profile')) {
       const params = new URLSearchParams(searchParams.toString());
-      params.set('family', requested);
+      params.set('family', nextFamily);
       router.replace(pathname + '?' + params.toString());
     }
   }, [contextLoading, families, pathname, requestedFamilyId, router, searchParams, shouldRenderShell]);
@@ -234,6 +247,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setContextError('');
     try {
       await api<void>('/auth/logout', { method: 'POST' });
+      contextRequestRef.current += 1;
+      setUser(null);
+      setFamilies([]);
+      setFamilyId('');
+      setContextLoaded(false);
+      setContextError('');
+      setMobileOpen(false);
+      setAccountOpen(false);
       router.replace('/login');
     } catch (cause) {
       setLogoutBusy(false);
@@ -245,6 +266,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   function switchFamily(nextId: string) {
     if (!families.some((family) => family.id === nextId)) return;
+    contextRequestRef.current += 1;
+    setContextError('');
     setFamilyId(nextId);
     const params = new URLSearchParams(searchParams.toString());
     params.set('family', nextId);

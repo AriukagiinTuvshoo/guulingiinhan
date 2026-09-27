@@ -355,6 +355,58 @@ def test_biography_timeline_and_memory_round_trip(client):
     assert detail.json()["person_ids"] == [person_id]
 
 
+def test_memory_cross_family_access_mutation_and_person_reference_are_blocked(client, database):
+    register(client, "memory-cross-family@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Memory A"}).json()["id"]
+    family_b = client.post("/api/v1/families", json={"name": "Memory B"}).json()["id"]
+    person_a = client.post(
+        f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}
+    ).json()
+    person_b = client.post(
+        f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}
+    ).json()
+    memory_a = client.post(
+        f"/api/v1/families/{family_a}/memories",
+        json={"title": "A memory", "person_ids": [person_a["id"]]},
+    ).json()
+    memory_b = client.post(
+        f"/api/v1/families/{family_b}/memories",
+        json={"title": "B memory", "person_ids": [person_b["id"]]},
+    ).json()
+
+    family_a_list = client.get(f"/api/v1/families/{family_a}/memories?page=1&page_size=10")
+    assert family_a_list.status_code == 200
+    assert family_a_list.json()["total"] == 1
+    assert {item["id"] for item in family_a_list.json()["items"]} == {memory_a["id"]}
+    assert family_a_list.json()["items"][0]["person_ids"] == [person_a["id"]]
+    assert client.get(f"/api/v1/families/{family_a}/memories/{memory_b['id']}").status_code == 404
+    assert client.patch(
+        f"/api/v1/families/{family_a}/memories/{memory_b['id']}",
+        json={"title": "Cross-family", "person_ids": [person_a["id"]]},
+    ).status_code == 404
+    assert client.delete(f"/api/v1/families/{family_a}/memories/{memory_b['id']}").status_code == 404
+    assert client.post(
+        f"/api/v1/families/{family_a}/memories",
+        json={"title": "Invalid person reference", "person_ids": [person_b["id"]]},
+    ).status_code == 404
+    assert client.patch(
+        f"/api/v1/families/{family_a}/memories/{memory_a['id']}",
+        json={"title": "Invalid retag", "person_ids": [person_b["id"]]},
+    ).status_code == 404
+
+    assert client.get(f"/api/v1/families/{family_b}/memories/{memory_b['id']}").status_code == 200
+    assert client.get(f"/api/v1/families/{family_b}/memories/{memory_b['id']}").json()["person_ids"] == [person_b["id"]]
+
+    client.post("/api/v1/auth/logout")
+    register(client, "memory-non-member@example.com")
+    with database() as db:
+        member = db.scalar(select(User).where(User.email == "memory-non-member@example.com"))
+        db.add(FamilyMember(family_id=UUID(family_a), user_id=member.id, role="member"))
+        db.commit()
+    assert client.get(f"/api/v1/families/{family_b}/memories").status_code == 403
+    assert client.get(f"/api/v1/families/{family_b}/memories/{memory_b['id']}").status_code == 403
+
+
 def test_login_rate_limit_and_audit_records(client):
     register(client, "limit@example.com")
     client.post("/api/v1/auth/logout")

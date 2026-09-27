@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
@@ -45,8 +45,9 @@ function activeFilterCount(query: string, lineageId: string, branchId: string) {
   return Number(Boolean(query.trim())) + Number(Boolean(lineageId)) + Number(Boolean(branchId));
 }
 
-export default function PeoplePage() {
+function PeoplePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [lineages, setLineages] = useState<LineageSummary[]>([]);
@@ -119,7 +120,20 @@ export default function PeoplePage() {
         setLoading(false);
         return;
       }
-      const requestedFamily = new URLSearchParams(window.location.search).get('family') ?? '';
+      const requestedFamily = searchParams.get('family') ?? '';
+      if (requestedFamily && !list.some((item) => item.id === requestedFamily)) {
+        peopleRequestRef.current += 1;
+        metadataRequestRef.current += 1;
+        setFamilyId('');
+        setPeople(null);
+        setLineages([]);
+        setBranches([]);
+        setLineageId('');
+        setBranchId('');
+        setLoading(false);
+        setError('Сонгосон гэр бүл олдсонгүй эсвэл танд хандах эрхгүй байна.');
+        return;
+      }
       const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
       setFamilyId(selected.id);
       setPeople(null);
@@ -135,7 +149,7 @@ export default function PeoplePage() {
       setLoading(false);
       setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     void loadFamilies();
@@ -455,5 +469,23 @@ export default function PeoplePage() {
         )}
       </section>
     </main>
+  );
+}
+
+
+export default function PeoplePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="people-page">
+          <section className="people-shell people-state card" aria-live="polite">
+            <span className="people-spinner" aria-hidden="true" />
+            <p>Хүмүүсийг ачаалж байна…</p>
+          </section>
+        </main>
+      }
+    >
+      <PeoplePageContent />
+    </Suspense>
   );
 }
