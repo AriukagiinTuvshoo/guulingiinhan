@@ -89,7 +89,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const shouldRenderShell = isShellRoute(pathname);
+  const shouldRenderShell = isDashboardRoute(pathname) || isShellRoute(pathname);
   const requestedFamilyId = searchParams.get('family') ?? '';
 
   const [user, setUser] = useState<User | null>(null);
@@ -247,6 +247,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setContextError('');
     try {
       await api<void>('/auth/logout', { method: 'POST' });
+      contextRequestRef.current += 1;
+      setUser(null);
+      setFamilies([]);
+      setFamilyId('');
+      setContextLoaded(false);
+      setContextError('');
+      setMobileOpen(false);
+      setAccountOpen(false);
       router.replace('/login');
     } catch (cause) {
       setLogoutBusy(false);
