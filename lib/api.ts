@@ -1,6 +1,7 @@
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
+const developmentApiBase = 'http://localhost:8000/api/v1';
 
-export const API_BASE = configuredApiBase || 'http://localhost:8000/api/v1';
+export const API_BASE = configuredApiBase || (process.env.NODE_ENV === 'development' ? developmentApiBase : '');
 
 export class ApiError extends Error {
   constructor(
@@ -14,6 +15,9 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!API_BASE) {
+    throw new ApiError(0, 'API тохиргоо олдсонгүй. Дахин оролдоно уу.', 'API_CONFIGURATION_MISSING');
+  }
   let response: Response;
   const isRawBody = init.body instanceof FormData || init.body instanceof Blob;
   try {
