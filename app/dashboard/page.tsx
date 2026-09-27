@@ -444,7 +444,7 @@ function DashboardContent() {
 
   const loadDashboard = useCallback(
     async (familyId: string, currentUser: User) => {
-      const requestId = ++dashboardRequestRef.current;
+      const requestId = dashboardRequestRef.current;
       setRefreshing(true);
       setError('');
       setFamily(null);
@@ -532,7 +532,6 @@ function DashboardContent() {
           ? familyList.find((item) => item.id === familyIdFromUrl) ?? null
           : null;
         if (familyIdFromUrl && !requestedFamily) {
-          dashboardRequestRef.current += 1;
           setFamily(null);
           setPeople([]);
           setTree({ persons: [], parent_child_relationships: [], marriages: [] });
