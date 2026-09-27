@@ -11,6 +11,10 @@ function friendlyError(cause: unknown, fallback: string) {
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
     if (cause.status === 403) return 'Энэ гэр бүлийн дурсамжид хандах эрхгүй байна.';
     if (cause.status === 404) return 'Дурсамж олдсонгүй.';
+    if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна. Дахин оролдоно уу.';
+    if (cause.status === 413) return 'Зургийн хэмжээ серверийн зөвшөөрсөн хязгаараас хэтэрсэн байна.';
+    if (cause.status === 422) return 'Оруулсан мэдээлэл эсвэл зурагны төрлийг шалгана уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
   }
   return fallback;
@@ -87,23 +91,30 @@ function MemoriesPageContent() {
   const [composerError, setComposerError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
   const [memoryPage, setMemoryPage] = useState(1);
+  const [failedPhotoIds, setFailedPhotoIds] = useState<Set<string>>(() => new Set());
   const familyRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
   const personRequestRef = useRef(0);
   const mutationRequestRef = useRef(0);
+  const familyAbortRef = useRef<AbortController | null>(null);
+  const memoryAbortRef = useRef<AbortController | null>(null);
+  const personAbortRef = useRef<AbortController | null>(null);
 
   const loadMemories = useCallback(async (fid: string, page = 1) => {
     if (!fid) return;
     const requestId = ++memoryRequestRef.current;
+    memoryAbortRef.current?.abort();
+    const controller = new AbortController();
+    memoryAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const result = await api<MemoryListPage>(`/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`);
+      const result = await api<MemoryListPage>(`/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`, { signal: controller.signal });
       if (requestId !== memoryRequestRef.current) return;
       setMemoryPage(result.page);
       setMemories(result);
     } catch (cause) {
-      if (requestId !== memoryRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== memoryRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -116,13 +127,19 @@ function MemoriesPageContent() {
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    familyAbortRef.current?.abort();
+    const controller = new AbortController();
+    familyAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const items = await api<Family[]>('/families');
+      const items = await api<Family[]>('/families', { signal: controller.signal });
       if (requestId !== familyRequestRef.current) return;
       setFamilies(items);
       memoryRequestRef.current += 1;
+      memoryAbortRef.current?.abort();
+      personRequestRef.current += 1;
+      personAbortRef.current?.abort();
       if (!items.length) {
         setFamily(null);
         setFamilyId('');
@@ -148,7 +165,7 @@ function MemoriesPageContent() {
         router.replace(`/memories?family=${encodeURIComponent(selected.id)}`);
       }
     } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -167,33 +184,49 @@ function MemoriesPageContent() {
     void loadMemories(familyId, 1);
   }, [familyId, loadMemories]);
 
+  useEffect(() => () => {
+    familyAbortRef.current?.abort();
+    memoryAbortRef.current?.abort();
+    personAbortRef.current?.abort();
+  }, []);
+
   useEffect(() => {
     const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
+    personAbortRef.current?.abort();
     if (!familyId || !safeQuery) {
       personRequestRef.current += 1;
       setPersonResults(null);
       return;
     }
     const requestId = ++personRequestRef.current;
+    const controller = new AbortController();
+    personAbortRef.current = controller;
     const timer = window.setTimeout(() => {
-      void api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=1&page_size=20`)
+      void api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=1&page_size=20`, { signal: controller.signal })
         .then((result) => {
           if (requestId !== personRequestRef.current) return;
           setPersonResults(result);
           setPersonPage(1);
         })
         .catch((cause) => {
-          if (requestId !== personRequestRef.current) return;
+          if (controller.signal.aborted || requestId !== personRequestRef.current) return;
           setComposerError(friendlyError(cause, 'Хайлт хийхэд алдаа гарлаа. Дахин оролдоно уу.'));
         });
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      if (personAbortRef.current === controller) personAbortRef.current = null;
+    };
   }, [familyId, personQuery]);
 
   function chooseFamily(next: string) {
     familyRequestRef.current += 1;
     memoryRequestRef.current += 1;
     personRequestRef.current += 1;
+    familyAbortRef.current?.abort();
+    memoryAbortRef.current?.abort();
+    personAbortRef.current?.abort();
     const selected = families.find((item) => item.id === next) ?? null;
     if (!selected) return;
     setFamily(selected);
@@ -205,6 +238,7 @@ function MemoriesPageContent() {
     setPersonResults(null);
     setPersonPage(1);
     setShowComposer(false);
+    setFailedPhotoIds(new Set());
     setError('');
     setComposerError('');
     router.replace(`/memories?family=${encodeURIComponent(next)}`);
@@ -221,13 +255,16 @@ function MemoriesPageContent() {
     const safeQuery = personQuery.replace(/\s+/g, ' ').trim();
     const nextPage = personPage + 1;
     const requestId = ++personRequestRef.current;
+    personAbortRef.current?.abort();
+    const controller = new AbortController();
+    personAbortRef.current = controller;
     try {
-      const next = await api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=${nextPage}&page_size=20`);
+      const next = await api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(safeQuery)}&page=${nextPage}&page_size=20`, { signal: controller.signal });
       if (requestId !== personRequestRef.current) return;
       setPersonResults((current) => current ? { ...next, items: [...current.items, ...next.items] } : next);
       setPersonPage(nextPage);
     } catch (cause) {
-      if (requestId !== personRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== personRequestRef.current) return;
       setComposerError(friendlyError(cause, 'Үр дүнг ачаалж чадсангүй. Дахин оролдоно уу.'));
     }
   }
@@ -243,6 +280,13 @@ function MemoriesPageContent() {
     setBusy(true);
     setComposerError('');
     setUploadStatus('');
+    const files = form.getAll('photos').filter((value): value is File => value instanceof File && value.size > 0);
+    const unsupportedFile = files.find((file) => file.type && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type));
+    if (unsupportedFile) {
+      setComposerError('Зөвхөн JPEG, PNG эсвэл WebP зураг сонгоно уу.');
+      setBusy(false);
+      return;
+    }
     try {
       const created = await api<{ id: string }>(`/families/${familyId}/memories`, {
         method: 'POST',
@@ -254,7 +298,6 @@ function MemoriesPageContent() {
           person_ids: selectedPeople.map((person) => person.id),
         }),
       });
-      const files = form.getAll('photos').filter((value): value is File => value instanceof File && value.size > 0);
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         setUploadStatus(`Зураг хадгалж байна… ${index + 1}/${files.length}`);
@@ -368,8 +411,8 @@ function MemoriesPageContent() {
               </label>
               <label>
                 <span>Зураг</span>
-                <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple />
-                <small>Одоо байгаа authorized memory photo API-г ашиглана.</small>
+                <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="memory-photo-help" />
+                <small id="memory-photo-help">JPEG, PNG, WebP. Серверийн upload/security validation нь эцсийн эрх мэдэлтэй.</small>
               </label>
               <label>
                 <span>Харагдах байдал</span>
@@ -452,13 +495,26 @@ function MemoriesPageContent() {
               <span>{memories?.total ?? 0} дурсамж</span>
             </div>
 
-            <section className="memory-grid" aria-busy={loading}>
+            <section className="memory-grid" aria-busy={loading} aria-label="Гэр бүлийн дурсамжууд">
               {memories?.items.map((memory) => (
                 <article className="memory-card" key={memory.id}>
                   {memory.photos?.length ? (
                     <div className={`memory-card-gallery memory-card-gallery--${Math.min(memory.photos.length, 3)}`} aria-label={`${memory.photos.length} зураг`}>
-                      {memory.photos.slice(0, 3).map((photo) => (
-                        <img key={photo.id} src={photoUrl(photo.thumbnail_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" onError={(event) => { const image = event.currentTarget; image.alt = 'Зураг ачааллах боломжгүй байна.'; image.style.display = 'none'; image.parentElement?.classList.add('memory-photo-fallback'); }} />
+                      {memory.photos.slice(0, 3).map((photo) => failedPhotoIds.has(photo.id) ? (
+                        <span key={photo.id} className="memory-photo-fallback" role="status">Зураг ачааллах боломжгүй байна.</span>
+                      ) : (
+                        <img
+                          key={photo.id}
+                          src={photoUrl(photo.thumbnail_url)}
+                          alt={photo.title ?? `${memory.title} дурсамжийн зураг`}
+                          loading="lazy"
+                          crossOrigin="use-credentials"
+                          onError={() => setFailedPhotoIds((current) => {
+                            const next = new Set(current);
+                            next.add(photo.id);
+                            return next;
+                          })}
+                        />
                       ))}
                       {memory.photos.length > 3 && <span className="memory-photo-count">+{memory.photos.length - 3}</span>}
                     </div>

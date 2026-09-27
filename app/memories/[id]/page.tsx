@@ -39,6 +39,10 @@ function friendlyError(cause: unknown, fallback: string) {
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай.';
     if (cause.status === 403) return 'Энэ дурсамжид хандах эрхгүй байна.';
     if (cause.status === 404) return 'Дурсамж олдсонгүй.';
+    if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна. Дахин оролдоно уу.';
+    if (cause.status === 413) return 'Зургийн хэмжээ серверийн зөвшөөрсөн хязгаараас хэтэрсэн байна.';
+    if (cause.status === 422) return 'Оруулсан мэдээлэл эсвэл зурагны төрлийг шалгана уу.';
+    if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
   }
   return fallback;
@@ -57,20 +61,27 @@ function MemoryDetailPageContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showDelete, setShowDelete] = useState(false);
+  const [failedPhotoIds, setFailedPhotoIds] = useState<Set<string>>(() => new Set());
   const familyRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
+  const mutationRequestRef = useRef(0);
+  const familyAbortRef = useRef<AbortController | null>(null);
+  const memoryAbortRef = useRef<AbortController | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   const loadMemory = useCallback(async (fid: string, mid: string) => {
     const requestId = ++memoryRequestRef.current;
+    memoryAbortRef.current?.abort();
+    const controller = new AbortController();
+    memoryAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const result = await api<MemoryDetail>(`/families/${fid}/memories/${mid}`);
+      const result = await api<MemoryDetail>(`/families/${fid}/memories/${mid}`, { signal: controller.signal });
       if (requestId !== memoryRequestRef.current) return;
       setMemory(result);
     } catch (cause) {
-      if (requestId !== memoryRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== memoryRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -84,12 +95,16 @@ function MemoryDetailPageContent() {
 
   const loadFamilyContext = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    familyAbortRef.current?.abort();
+    const controller = new AbortController();
+    familyAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const items = await api<Family[]>('/families');
+      const items = await api<Family[]>('/families', { signal: controller.signal });
       if (requestId !== familyRequestRef.current) return;
       memoryRequestRef.current += 1;
+      memoryAbortRef.current?.abort();
       const mid = params.id ?? '';
       setMemoryId(mid);
       if (!items.length) {
@@ -123,7 +138,7 @@ function MemoryDetailPageContent() {
       }
       await loadMemory(selected.id, mid);
     } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -138,20 +153,31 @@ function MemoryDetailPageContent() {
     void loadFamilyContext();
   }, [loadFamilyContext]);
 
+  useEffect(() => () => {
+    familyAbortRef.current?.abort();
+    memoryAbortRef.current?.abort();
+  }, []);
+
   useEffect(() => {
     if (showDelete) cancelRef.current?.focus();
   }, [showDelete]);
 
   async function removeMemory() {
     if (!familyId || !memoryId || busy) return;
+    const requestId = ++mutationRequestRef.current;
+    const operationFamilyId = familyId;
+    const operationFamilyRequestId = familyRequestRef.current;
     setBusy(true);
     setError('');
     try {
-      await api<void>(`/families/${familyId}/memories/${memoryId}`, { method: 'DELETE' });
-      router.replace(`/memories?family=${encodeURIComponent(familyId)}`);
+      await api<void>(`/families/${operationFamilyId}/memories/${memoryId}`, { method: 'DELETE' });
+      if (requestId !== mutationRequestRef.current || operationFamilyRequestId !== familyRequestRef.current || operationFamilyId !== familyId) return;
+      router.replace(`/memories?family=${encodeURIComponent(operationFamilyId)}`);
     } catch (cause) {
+      if (requestId !== mutationRequestRef.current || operationFamilyRequestId !== familyRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
+        setBusy(false);
         return;
       }
       setError(friendlyError(cause, 'Дурсамжийг устгах үед алдаа гарлаа. Дахин оролдоно уу.'));
