@@ -1261,29 +1261,6 @@
   .homev2-continue{grid-template-columns:auto 1fr}
   .homev2-continue .homev2-button{grid-column:1 / -1}
 }
-    pathname === '/dashboard' ||
-    pathname.startsWith('/dashboard/') ||
-    () => families.find((family) => family.id === familyId) ?? null,
-    const requestedFamily = requestedFamilyId
-      ? families.find((family) => family.id === requestedFamilyId) ?? null
-      : null;
-    if (requestedFamilyId && !requestedFamily) {
-      setFamilyId('');
-      return;
-    }
-
-    const requested = requestedFamily?.id ?? families[0]?.id ?? '';
-    if (!requestedFamilyId && requested) {
-          ) : requestedFamilyId && !currentFamily ? (
-            <span className="app-shell__context-invalid" role="status">
-              Сонгосон гэр бүл олдсонгүй
-            </span>
-          ) : requestedFamilyId && !currentFamily && !contextLoading ? (
-            <div className="app-shell__no-family" role="alert">
-              <Users size={18} aria-hidden="true" />
-              <span>Сонгосон гэр бүл таны хандах боломжтой жагсаалтад алга.</span>
-              <Link href="/families">Гэр бүл сонгох →</Link>
-            </div>
 
 /* Final readability pass — public Home + authenticated Dashboard */
 .public-home__hero-lede{font-size:15px;line-height:1.9;color:#d6e0d9}
