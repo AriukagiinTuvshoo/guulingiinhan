@@ -440,6 +440,15 @@ class InvitationCreate(BaseModel):
     role: str = Field(pattern="^(editor|member)$")
 
 
+class InvitationOut(BaseModel):
+    id: UUID
+    email: str
+    role: str
+    expires_at: datetime
+    created_at: datetime
+    status: str = "pending"
+
+
 class InvitationAccept(BaseModel):
     token: str = Field(min_length=32, max_length=128)
 
@@ -3007,6 +3016,37 @@ def family_audit(
     ]
 
 
+@router.get("/{family_id}/invitations", response_model=list[InvitationOut])
+def list_pending_invitations(
+    family_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return only pending invitations for an authorized family owner without exposing token material."""
+    _member(db, family_id, user, {"owner"})
+    now = datetime.now(UTC)
+    invitations = db.scalars(
+        select(Invitation)
+        .where(
+            Invitation.family_id == family_id,
+            Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
+            Invitation.expires_at > now,
+        )
+        .order_by(Invitation.created_at.desc(), Invitation.id)
+    ).all()
+    return [
+        InvitationOut(
+            id=invitation.id,
+            email=invitation.invited_email,
+            role=invitation.role,
+            expires_at=invitation.expires_at,
+            created_at=invitation.created_at,
+        )
+        for invitation in invitations
+    ]
+
+
 @router.post("/{family_id}/invitations", status_code=201)
 def create_invitation(
     family_id: UUID,
@@ -3030,6 +3070,20 @@ def create_invitation(
         raise HTTPException(
             status_code=429, detail="Хэт олон урилга илгээлээ. Түр хүлээгээд дахин оролдоно уу."
         )
+    now = datetime.now(UTC)
+    pending = db.scalar(
+        select(Invitation.id)
+        .where(
+            Invitation.family_id == family_id,
+            Invitation.invited_email == email,
+            Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
+            Invitation.expires_at > now,
+        )
+    )
+    if pending is not None:
+        raise HTTPException(status_code=409, detail="Энэ хаяг руу идэвхтэй урилга аль хэдийн байна.")
+
     existing_user = db.scalar(select(User).where(User.email == email))
     if existing_user and db.scalar(
         select(FamilyMember.id).where(
@@ -3044,7 +3098,7 @@ def create_invitation(
         role=body.role,
         token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
         invited_by=user.id,
-        expires_at=datetime.now(UTC) + timedelta(days=7),
+        expires_at=now + timedelta(days=7),
     )
     db.add(invitation)
     db.flush()
