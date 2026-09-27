@@ -30,15 +30,24 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
   const familyRequestRef = useRef(0);
   const archiveRequestRef = useRef(0);
   const peopleRequestRef = useRef(0);
+  const familyAbortRef = useRef<AbortController | null>(null);
+  const archiveAbortRef = useRef<AbortController | null>(null);
+  const peopleAbortRef = useRef<AbortController | null>(null);
+  const mutationRequestRef = useRef(0);
 
   useEffect(() => {
     const requestId = ++familyRequestRef.current;
+    familyAbortRef.current?.abort();
+    archiveAbortRef.current?.abort();
+    peopleAbortRef.current?.abort();
+    const controller = new AbortController();
+    familyAbortRef.current = controller;
     archiveRequestRef.current += 1;
     setLoading(true); setReady(false); setFamily(null); setFamilyId(''); setArchiveId(''); setResults(null); setError('');
     const requestedArchiveId = mode === 'edit' ? window.location.pathname.split('/').filter(Boolean).at(-2) ?? '' : '';
     async function load() {
       try {
-        const families = await api<Family[]>('/families');
+        const families = await api<Family[]>('/families', { signal: controller.signal });
         if (requestId !== familyRequestRef.current) return;
         if (!families.length) { setLoading(false); setError('Танд хандах боломжтой гэр бүл олдсонгүй.'); return; }
         const currentFamily = requestedFamilyId ? families.find((item) => item.id === requestedFamilyId) : families[0];
@@ -49,15 +58,18 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
         if (mode === 'edit') {
           if (!requestedArchiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
           const archiveRequestId = ++archiveRequestRef.current;
+          archiveAbortRef.current?.abort();
+          const archiveController = new AbortController();
+          archiveAbortRef.current = archiveController;
           setArchiveId(requestedArchiveId);
-          const archive = await api<Archive>(`/families/${currentFamily.id}/archives/${requestedArchiveId}`);
+          const archive = await api<Archive>(`/families/${currentFamily.id}/archives/${requestedArchiveId}`, { signal: archiveController.signal });
           if (requestId !== familyRequestRef.current || archiveRequestId !== archiveRequestRef.current) return;
           setTitle(archive.title); setDescription(archive.description ?? ''); setDocumentDate(archive.document_date ?? ''); setPlace(archive.place ?? ''); setVisibility(archive.visibility);
           setSelected(archive.related_people.map((person) => ({ id: person.id, name: [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ') })));
         }
         if (requestId === familyRequestRef.current) setReady(true);
       } catch (cause) {
-        if (requestId !== familyRequestRef.current) return;
+        if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
         setLoading(false);
         setError(cause instanceof ApiError && cause.status === 403 ? 'Энэ архивын үйлдлийг хийх эрхгүй байна.' : cause instanceof ApiError && cause.status === 404 ? 'Архивын материал олдсонгүй.' : 'Архивийн editor-ийг ачаалж чадсангүй. Дахин оролдоно уу.');
@@ -66,19 +78,27 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
       }
     }
     void load();
-    return () => { archiveRequestRef.current += 1; };
+    return () => {
+      familyAbortRef.current?.abort();
+      archiveAbortRef.current?.abort();
+      peopleAbortRef.current?.abort();
+      archiveRequestRef.current += 1;
+    };
   }, [mode, requestedFamilyId, router]);
 
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed || !familyId) { setResults(null); return; }
     const requestId = ++peopleRequestRef.current;
+    peopleAbortRef.current?.abort();
+    const controller = new AbortController();
+    peopleAbortRef.current = controller;
     const timer = window.setTimeout(() => {
-      api<PersonSearchPage>('/families/' + familyId + '/persons/search?q=' + encodeURIComponent(trimmed) + '&page=1&page_size=10')
+      api<PersonSearchPage>('/families/' + familyId + '/persons/search?q=' + encodeURIComponent(trimmed) + '&page=1&page_size=10', { signal: controller.signal })
         .then((result) => { if (requestId === peopleRequestRef.current) setResults(result); })
-        .catch(() => { if (requestId === peopleRequestRef.current) setResults(null); });
+        .catch(() => { if (!controller.signal.aborted && requestId === peopleRequestRef.current) setResults(null); });
     }, 250);
-    return () => { window.clearTimeout(timer); peopleRequestRef.current += 1; };
+    return () => { window.clearTimeout(timer); controller.abort(); peopleRequestRef.current += 1; };
   }, [query, familyId]);
 
   useEffect(() => {
@@ -123,6 +143,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
       return;
     }
 
+    const mutationId = ++mutationRequestRef.current;
     setSaving(true);
     setError('');
     try {
@@ -145,10 +166,12 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
               body: JSON.stringify(payload),
             });
 
+      if (mutationId !== mutationRequestRef.current) return;
       setDirty(false);
       window.location.href =
         '/archives/' + result.id + '?family=' + encodeURIComponent(familyId) + '&saved=1';
     } catch (cause) {
+      if (mutationId !== mutationRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
