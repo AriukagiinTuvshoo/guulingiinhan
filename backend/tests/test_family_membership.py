@@ -37,7 +37,10 @@ def test_invitation_pending_lifecycle_is_family_scoped(client, database):
     assert client.get(f"/api/v1/families/{family_id}/invitations").status_code == 403
 
     client.post("/api/v1/auth/logout")
-    assert register_verified(client, "membership-owner@example.com").status_code == 201
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "membership-owner@example.com", "password": "strong-passphrase-123"},
+    ).status_code == 200
     revoked = client.delete(
         f"/api/v1/families/{family_id}/invitations/{invitation['id']}"
     )
@@ -53,16 +56,16 @@ def test_invitation_acceptance_preserves_role_and_prevents_cross_family_access(c
     client.post("/api/v1/auth/logout")
     assert register_verified(client, "accept-member@example.com").status_code == 201
     invitee = client.get("/api/v1/auth/me").json()
-
     raw_token = "a" * 48
     with database() as db:
+        owner_id = db.query(User).filter(User.email == "accept-owner@example.com").one().id
         db.add(
             Invitation(
                 family_id=UUID(family_a["id"]),
                 invited_email="accept-member@example.com",
                 role="editor",
                 token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
-                invited_by=UUID(family_a["created_by"]) if "created_by" in family_a else db.query(User).filter(User.email == "accept-owner@example.com").one().id,
+                invited_by=owner_id,
                 expires_at=datetime.now(UTC) + timedelta(days=7),
             )
         )
