@@ -53,7 +53,9 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   const searchParams = useSearchParams();
   const routeParams = useParams<{ id?: string }>();
   const loadRequestRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
   const personSearchRequestRef = useRef(0);
+  const personSearchAbortRef = useRef<AbortController | null>(null);
 
   const snapshot = useMemo(
     () => JSON.stringify({ title, body, eventDate, place, visibility, people: selectedPeople.map((person) => person.id) }),
@@ -75,6 +77,9 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   useEffect(() => {
     let cancelled = false;
     const requestId = ++loadRequestRef.current;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
 
     async function load() {
       const effectiveFamilyId = requestedFamilyId || searchParams.get('family') || '';
@@ -84,7 +89,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
       setError('');
       try {
         if (mode === 'create') {
-          const items = await api<Family[]>('/families');
+          const items = await api<Family[]>('/families', { signal: controller.signal });
           if (cancelled || requestId !== loadRequestRef.current) return;
           const requested = effectiveFamilyId;
           const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0] ?? null;
@@ -105,8 +110,8 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
           return;
         }
         const [familyResult, storyResult] = await Promise.all([
-          api<Family>('/families/' + effectiveFamilyId),
-          api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId),
+          api<Family>('/families/' + effectiveFamilyId, { signal: controller.signal }),
+          api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId, { signal: controller.signal }),
         ]);
         if (cancelled || requestId !== loadRequestRef.current) return;
         setFamily(familyResult);
@@ -147,9 +152,13 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
       setPersonResults(null);
       return;
     }
+    personSearchAbortRef.current?.abort();
+    const controller = new AbortController();
+    personSearchAbortRef.current = controller;
     const timer = window.setTimeout(() => {
       void api<PersonSearchPage>(
         '/families/' + familyId + '/persons/search?q=' + encodeURIComponent(personQuery.trim()) + '&page=1&page_size=20',
+        { signal: controller.signal },
       ).then((result) => {
         if (requestId === personSearchRequestRef.current) setPersonResults(result);
       }).catch(() => {
@@ -158,9 +167,15 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     }, 250);
     return () => {
       window.clearTimeout(timer);
+      controller.abort();
       personSearchRequestRef.current += 1;
     };
   }, [familyId, personQuery]);
+
+  useEffect(() => () => {
+    loadAbortRef.current?.abort();
+    personSearchAbortRef.current?.abort();
+  }, []);
 
   function cancel() {
     if (dirty && !window.confirm('Хадгалаагүй өөрчлөлт байна. Энэ хуудсыг орхих уу?')) return;
