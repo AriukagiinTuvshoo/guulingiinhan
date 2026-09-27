@@ -228,7 +228,7 @@ function MemoryDetailPageContent() {
     setEditDescription(memory.description ?? '');
     setEditDate(memory.memory_date ?? '');
     setEditVisibility(memory.visibility);
-    setEditPeople(memory.person_ids.map((id) => ({ id, name: `Person ID: ${id.slice(0, 8)}…` })));
+    setEditPeople(memory.person_ids.map((id, index) => ({ id, name: memory.person_names?.[index] ?? `Person ID: ${id.slice(0, 8)}…` })));
     setPersonQuery('');
     setPersonResults(null);
     setEditError('');
