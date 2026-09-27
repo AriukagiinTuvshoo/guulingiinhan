@@ -233,7 +233,7 @@ function FamiliesContent() {
 
           <div style={{ flex: '1 1 560px' }}>
             {notice && <div className="success" role="status" aria-live="polite">{notice}</div>}
-            {detailError && <div className="error" role="alert"><p>{detailError}</p>{selectedFamily && <button type="button" onClick={() => void loadMembers(selectedFamily.id)}>Дахин оролдох</button>}</div>}
+            {detailError && <div className="error" role="alert"><p>{detailError}</p>{selectedFamily && <button type="button" onClick={() => void loadDetails(selectedFamily.id)}>Дахин оролдох</button>}</div>}
             {selectedFamily && <section className="card" aria-labelledby="family-detail-title">
               <div className="row space">
                 <div><span className="tag">{selectedFamily.role}</span><h2 id="family-detail-title">{selectedFamily.name}</h2><p>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</p></div>
