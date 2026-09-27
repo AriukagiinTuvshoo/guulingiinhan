@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { API_BASE, ApiError, api, Family, MemoryListItem } from '../../../lib/api';
 
@@ -255,7 +256,7 @@ function MemoryDetailPageContent() {
     setEditDirty(false);
   }
 
-  async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!familyId || !memoryId || editSaving) return;
     if (!editTitle.trim()) {
@@ -281,8 +282,9 @@ function MemoryDetailPageContent() {
         }),
       });
       if (requestId !== editRequestRef.current || operationFamilyRequestId !== familyRequestRef.current || operationFamilyId !== familyId) return;
-      await loadMemory(operationFamilyId, operationMemoryId);
+      const refreshed = await api<MemoryDetail>(`/families/${operationFamilyId}/memories/${operationMemoryId}`);
       if (requestId !== editRequestRef.current || operationFamilyRequestId !== familyRequestRef.current || operationFamilyId !== familyId) return;
+      setMemory(refreshed);
       setEditing(false);
       setEditDirty(false);
       setEditSuccess('Дурсамж амжилттай шинэчлэгдлээ.');
