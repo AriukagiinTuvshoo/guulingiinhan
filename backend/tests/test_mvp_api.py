@@ -355,6 +355,74 @@ def test_biography_timeline_and_memory_round_trip(client):
     assert detail.json()["person_ids"] == [person_id]
 
 
+def test_story_and_archive_cross_family_access_mutation_and_person_reference_are_blocked(client):
+    register(client, "story-archive-cross-family@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Story Archive A"}).json()["id"]
+    family_b = client.post("/api/v1/families", json={"name": "Story Archive B"}).json()["id"]
+
+    person_a = client.post(
+        f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}
+    ).json()
+    person_b = client.post(
+        f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}
+    ).json()
+
+    story_a = client.post(
+        f"/api/v1/families/{family_a}/stories",
+        json={"title": "A story", "body": "A body", "person_ids": [person_a["id"]]},
+    )
+    assert story_a.status_code == 201
+    story_b = client.post(
+        f"/api/v1/families/{family_b}/stories",
+        json={"title": "B story", "body": "B body", "person_ids": [person_b["id"]]},
+    )
+    assert story_b.status_code == 201
+
+    archive_a = client.post(
+        f"/api/v1/families/{family_a}/archives",
+        json={"title": "A archive", "description": "A source", "person_ids": [person_a["id"]]},
+    )
+    assert archive_a.status_code == 201
+    archive_b = client.post(
+        f"/api/v1/families/{family_b}/archives",
+        json={"title": "B archive", "description": "B source", "person_ids": [person_b["id"]]},
+    )
+    assert archive_b.status_code == 201
+
+    assert client.get(f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}").status_code == 404
+    assert client.put(
+        f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}",
+        json={"title": "Cross-family", "body": "Should fail", "person_ids": [person_a["id"]]},
+    ).status_code == 404
+    assert client.delete(
+        f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}"
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/families/{family_a}/stories",
+        json={"title": "Invalid person", "body": "Should fail", "person_ids": [person_b["id"]]},
+    ).status_code == 404
+
+    assert client.get(f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}").status_code == 404
+    assert client.put(
+        f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}",
+        json={
+            "title": "Cross-family",
+            "description": "Should fail",
+            "person_ids": [person_a["id"]],
+        },
+    ).status_code == 404
+    assert client.delete(
+        f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}"
+    ).status_code == 404
+    assert client.post(
+        f"/api/v1/families/{family_a}/archives",
+        json={"title": "Invalid person", "person_ids": [person_b["id"]]},
+    ).status_code == 404
+
+    assert client.get(f"/api/v1/families/{family_b}/stories/{story_b.json()['id']}").status_code == 200
+    assert client.get(f"/api/v1/families/{family_b}/archives/{archive_b.json()['id']}").status_code == 200
+
+
 def test_memory_cross_family_access_mutation_and_person_reference_are_blocked(client, database):
     register(client, "memory-cross-family@example.com")
     family_a = client.post("/api/v1/families", json={"name": "Memory A"}).json()["id"]
