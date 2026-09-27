@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family } from '../../lib/api';
 
 type Member = { user_id: string; display_name: string; role: string };
+type Invitation = { id: string; email: string; role: 'member' | 'editor'; expires_at: string; created_at: string; status: 'pending' };
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -26,6 +27,7 @@ function FamiliesContent() {
   const explicitFamilyId = searchParams.get('family')?.trim() ?? '';
   const [families, setFamilies] = useState<Family[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [selectedFamilyId, setSelectedFamilyId] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -37,7 +39,7 @@ function FamiliesContent() {
   const [description, setDescription] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'member' | 'editor'>('member');
-  const [mutation, setMutation] = useState<'edit' | 'archive' | 'invite' | ''>('');
+  const [mutation, setMutation] = useState<'edit' | 'archive' | 'invite' | 'revoke' | ''>('');
   const sequence = useRef(0);
   const detailSequence = useRef(0);
 
@@ -76,15 +78,24 @@ function FamiliesContent() {
     }
   }, [explicitFamilyId, router]);
 
-  const loadMembers = useCallback(async (familyId: string) => {
+  const loadDetails = useCallback(async (familyId: string) => {
     const current = ++detailSequence.current;
     setDetailLoading(true);
     setDetailError('');
+    setMembers([]);
+    setInvitations([]);
     try {
-      const data = await api<Member[]>(`/families/${familyId}/members`);
-      if (current === detailSequence.current) setMembers(data);
+      const [memberData, invitationData] = await Promise.all([
+        api<Member[]>(`/families/${familyId}/members`),
+        api<Invitation[]>(`/families/${familyId}/invitations`),
+      ]);
+      if (current !== detailSequence.current) return;
+      setMembers(memberData);
+      setInvitations(invitationData);
     } catch (cause) {
-      if (current === detailSequence.current) setDetailError(friendlyError(cause, 'Гишүүдийг ачаалж чадсангүй.'));
+      if (current === detailSequence.current) {
+        setDetailError(friendlyError(cause, 'Гишүүд болон урилгуудыг ачаалж чадсангүй.'));
+      }
     } finally {
       if (current === detailSequence.current) setDetailLoading(false);
     }
@@ -98,14 +109,15 @@ function FamiliesContent() {
   useEffect(() => {
     if (!selectedFamily) {
       setMembers([]);
+      setInvitations([]);
       setEditing(false);
       return;
     }
     setName(selectedFamily.name);
     setDescription(selectedFamily.description ?? '');
     setEditing(false);
-    void loadMembers(selectedFamily.id);
-  }, [selectedFamily, loadMembers]);
+    void loadDetails(selectedFamily.id);
+  }, [selectedFamily, loadDetails]);
 
   function selectFamily(id: string) {
     if (!families.some((family) => family.id === id) || mutation) return;
@@ -170,8 +182,22 @@ function FamiliesContent() {
       });
       setInviteEmail('');
       setNotice(`${email} хаяг руу урилга илгээгдлээ.`);
+      await loadDetails(selectedFamily.id);
     } catch (cause) {
       setDetailError(friendlyError(cause, 'Урилга илгээж чадсангүй.'));
+    } finally { setMutation(''); }
+  }
+
+  async function revokeInvitation(invitationId: string, email: string) {
+    if (!selectedFamily || selectedFamily.role !== 'owner' || mutation) return;
+    if (!window.confirm(`“${email}” хаягийн урилгыг цуцлах уу?`)) return;
+    setMutation('revoke'); setDetailError(''); setNotice('');
+    try {
+      await api<void>(`/families/${selectedFamily.id}/invitations/${invitationId}`, { method: 'DELETE' });
+      setNotice('Урилгыг цуцаллаа.');
+      await loadDetails(selectedFamily.id);
+    } catch (cause) {
+      setDetailError(friendlyError(cause, 'Урилгыг цуцалж чадсангүй.'));
     } finally { setMutation(''); }
   }
 
@@ -228,7 +254,31 @@ function FamiliesContent() {
 
               <hr style={{ margin: '24px 0' }} />
               <h3>Гишүүд</h3>
-              {detailLoading ? <p role="status">Гишүүдийг ачаалж байна…</p> : members.length ? <ul>{members.map((member) => <li key={member.user_id}>{member.display_name} · <strong>{member.role}</strong></li>)}</ul> : <p>Гишүүний мэдээлэл одоогоор алга.</p>}
+              {detailLoading ? <p role="status" aria-live="polite">Гишүүд болон урилгуудыг ачаалж байна…</p> : members.length ? <ul>{members.map((member) => <li key={member.user_id}>{member.display_name} · <strong>{member.role}</strong></li>)}</ul> : <p>Гишүүний мэдээлэл одоогоор алга.</p>}
+
+              <section aria-labelledby="pending-invitations-title" style={{ marginTop: 24 }}>
+                <h3 id="pending-invitations-title">Хүлээгдэж буй урилгууд</h3>
+                {detailLoading ? null : invitations.length ? (
+                  <ul>
+                    {invitations.map((invitation) => (
+                      <li key={invitation.id} style={{ marginBottom: 10 }}>
+                        <span>{invitation.email}</span> · <strong>{invitation.role}</strong>
+                        <span> · {new Date(invitation.expires_at).toLocaleDateString('mn-MN')}</span>
+                        {selectedFamily.role === 'owner' && (
+                          <button
+                            type="button"
+                            disabled={Boolean(mutation)}
+                            onClick={() => void revokeInvitation(invitation.id, invitation.email)}
+                            style={{ marginLeft: 8 }}
+                          >
+                            {mutation === 'revoke' ? 'Цуцалж байна…' : 'Цуцлах'}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p>Хүлээгдэж буй урилга алга.</p>}
+              </section>
 
               {selectedFamily.role === 'owner' && <form onSubmit={invite} style={{ marginTop: 20 }}>
                 <h3>Гишүүн урих</h3>
