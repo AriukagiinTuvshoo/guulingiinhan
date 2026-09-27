@@ -693,6 +693,15 @@
 .memory-pagination span{color:#7b847d;font-size:10px}
 .memory-detail{padding-bottom:30px}
 .memory-detail-header{display:flex;justify-content:space-between;gap:26px;align-items:flex-end;padding:12px 0 28px;border-bottom:1px solid #ddd4c2}
+.memory-detail-header-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.memory-detail-header-actions>*{min-width:110px}
+.memory-edit-form-shell{margin:24px 0 30px}
+.memory-edit-people{margin:0;padding:14px;border:1px solid #d3cab7;background:#fffdf8}
+.memory-edit-people legend{padding:0 6px;color:#52675d;font-size:10px;font-weight:600}
+.memory-edit-people>label{margin-top:4px}
+.memory-edit-form-shell .memory-composer-form fieldset{min-width:0}
+.memories-success{margin:16px 0;padding:11px 13px;border:1px solid #bfcdbd;background:#f4f8f1;color:#385846;font-size:11px}
+.memory-detail-header-actions button:focus-visible,.memory-edit-form-shell button:focus-visible{outline:2px solid #aa8c4d;outline-offset:2px}
 .memory-detail-date{margin:0 0 6px;color:#98763a;font:400 28px/1 Georgia,"Times New Roman",serif}
 .memory-detail-header h1{margin:0;color:#203f34;font:400 clamp(38px,5vw,60px)/1.06 Georgia,"Times New Roman",serif;letter-spacing:-.02em}
 .memory-detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px;color:#7e897f;font-size:10px}
@@ -749,7 +758,7 @@
   .memory-pagination button{width:100%}
   .memory-detail-header{align-items:flex-start;flex-direction:column}
   .memory-detail-header h1{font-size:40px}
-  .memory-detail-header .memories-danger{width:100%}
+  .memory-detail-header-actions{width:100%;justify-content:stretch}.memory-detail-header-actions>*{flex:1}.memory-detail-header .memories-danger{width:auto}
   .memory-detail-body{padding:0 3px}
   .memory-detail-body p{font-size:17px}
   .memory-detail-photos{padding:14px}
