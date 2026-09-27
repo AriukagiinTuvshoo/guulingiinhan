@@ -58,6 +58,11 @@
 .profile-state{min-height:65vh;display:grid;place-items:center;align-content:center;gap:10px;text-align:center;color:#61756c}
 .profile-state h1{font:500 28px Georgia,serif;color:#17372b;margin:0}
 .profile-state p{max-width:520px;line-height:1.7;margin:0}
+.profile-private{font-size:11px;line-height:1.7;color:#7b7462;background:#f8f3e7;border:1px solid #ded3b8;border-radius:9px;padding:10px 12px;margin:0}
+.profile-inline-error{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0}
+.profile-inline-error p{font-size:11px;line-height:1.6;color:#7b665f;margin:0}
+.profile-inline-error button{flex:0 0 auto}
+.profile-card a:focus-visible,.profile-card button:focus-visible,.profile-card input:focus-visible,.profile-card select:focus-visible,.profile-card textarea:focus-visible,.profile-nav a:focus-visible,.profile-footer a:focus-visible{outline:2px solid #9a7a34;outline-offset:2px}
 @media(max-width:760px){
   .profile-page{padding:14px 9px 35px}
   .profile-hero{grid-template-columns:1fr;padding:20px;justify-items:center;text-align:center}
@@ -1163,6 +1168,21 @@
 @media(max-width:1020px){.tree-map-layout{grid-template-columns:minmax(0,1fr)}.tree-selected-panel{display:grid;grid-template-columns:1.2fr .8fr;column-gap:16px}.tree-selected-heading{grid-column:1}.tree-selected-context{grid-column:1}.tree-selected-actions{grid-column:1}.tree-selected-relations{grid-column:2;grid-row:1 / span 3;margin-top:0}}
 @media(max-width:760px){.tree-page{padding:18px 9px 28px}.tree-page-header{align-items:flex-start;flex-direction:column;padding-bottom:13px}.tree-header-actions{justify-content:flex-start}.tree-workspace-top{align-items:flex-start;flex-direction:column}.tree-map-layout{padding:9px}.tree-map-scroll{min-height:480px}.tree-selected-panel{display:block}.tree-selected-relations{margin-top:14px}.tree-footer-note{flex-direction:column}.tree-footer-note span:last-child{text-align:left}}
 @media(max-width:620px){.tree-page-header h1{font-size:34px}.tree-lede{font-size:10px}.tree-controls{width:100%;justify-content:space-between}.tree-search-wrap{padding-inline:10px}.tree-search{max-width:none}.tree-search-results{left:10px;width:calc(100% - 20px)}}
+@media(max-width:320px){
+  .profile-page{padding:9px 5px 28px}
+  .profile-nav{font-size:10px;gap:6px;overflow:hidden;white-space:nowrap}
+  .profile-hero{padding:13px;border-radius:12px}
+  .profile-photo,.profile-hero .personavatar.large{width:92px;height:92px}
+  .profile-identity h1{font-size:31px}
+  .profile-actions{width:100%;display:grid;grid-template-columns:1fr}
+  .profile-actions .button,.profile-actions button{width:100%;min-height:42px}
+  .profile-card{padding:13px}
+  .profile-card-heading h2{font-size:19px}
+  .profile-facts>div{grid-template-columns:92px minmax(0,1fr);gap:8px}
+  .relationship-item{padding:7px}
+  .profile-inline-error{align-items:stretch;flex-direction:column}
+  .profile-inline-error button{width:100%}
+}
 @media(max-width:480px){.tree-page{padding-inline:6px}.tree-workspace{border-radius:10px}.tree-workspace-top{padding:10px}.tree-stats{font-size:8px}.tree-controls{gap:5px}.tree-controls label span{display:none}.tree-zoom button:last-child{min-width:50px}.tree-header-actions{width:100%}.tree-header-actions .tree-button{flex:1}.tree-map-scroll{min-height:450px}.tree-selected-panel{padding:11px}.tree-state{min-height:350px;padding-inline:14px}.tree-loading-scene{min-height:450px}}
 @media(max-width:375px){.tree-page{padding-inline:4px}.tree-page-header h1{font-size:31px}.tree-person-card{width:160px}}
 @media(max-width:320px){.tree-page{padding-inline:3px}.tree-page-header h1{font-size:29px}.tree-map-scroll{min-height:430px}.tree-map-layout{padding:7px}}

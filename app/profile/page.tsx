@@ -50,6 +50,7 @@ function ProfilePageContent() {
   const profileRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
   const mutationRequestRef = useRef(0);
+  const profileAbortRef = useRef<AbortController | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
   const [family, setFamily] = useState('');
   const [id, setId] = useState('');
@@ -62,37 +63,93 @@ function ProfilePageContent() {
   const [memories, setMemories] = useState<MemoryListItem[]>([]);
   const [memoryState, setMemoryState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
   const [memoryError, setMemoryError] = useState('');
+  const [biographyState, setBiographyState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [eventState, setEventState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [marriageState, setMarriageState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [storyState, setStoryState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
+  const [archiveState, setArchiveState] = useState<'loading' | 'ready' | 'restricted' | 'error'>('loading');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
 
   async function load(fid: string, pid: string, requestId?: number) {
-    const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`);
+    profileAbortRef.current?.abort();
+    const controller = new AbortController();
+    profileAbortRef.current = controller;
+    const signal = controller.signal;
+
+    setBiographyState('loading');
+    setEventState('loading');
+    setMarriageState('loading');
+    setStoryState('loading');
+    setArchiveState('loading');
+
+    const profile = await api<PersonProfile>(`/families/${fid}/persons/${pid}`, { signal });
+    if (requestId !== undefined && requestId !== profileRequestRef.current) return;
+
+    setPerson(profile);
+    setLoading(false);
+
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
-      api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`),
-      api<EventItem[]>(`/families/${fid}/persons/${pid}/events`),
-      api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`),
-      api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`),
-      api<ArchiveListPage>(`/families/${fid}/persons/${pid}/archives?page=1&page_size=5`),
+      api<{ content: string }>(`/families/${fid}/persons/${pid}/biography`, { signal }),
+      api<EventItem[]>(`/families/${fid}/persons/${pid}/events`, { signal }),
+      api<Marriage[]>(`/families/${fid}/persons/${pid}/marriages`, { signal }),
+      api<StoryListPage>(`/families/${fid}/stories?page=1&page_size=5&person_id=${encodeURIComponent(pid)}`, { signal }),
+      api<ArchiveListPage>(`/families/${fid}/persons/${pid}/archives?page=1&page_size=5`, { signal }),
     ]);
 
-    const unexpectedFailure = [bio, eventList, marriageList, storyPage, archivePage].find(
-      (result) =>
-        result.status === 'rejected' &&
-        !(result.reason instanceof ApiError && [403, 404].includes(result.reason.status)),
-    );
-    if (unexpectedFailure?.status === 'rejected') {
-      throw unexpectedFailure.reason;
+    if (requestId !== undefined && requestId !== profileRequestRef.current) return;
+
+    if (bio.status === 'fulfilled') {
+      setBiography(bio.value.content);
+      setBiographyState('ready');
+    } else if (bio.reason instanceof ApiError && [403, 404].includes(bio.reason.status)) {
+      setBiography('');
+      setBiographyState('restricted');
+    } else {
+      setBiographyState('error');
     }
 
-    if (requestId !== undefined && requestId !== profileRequestRef.current) return;
-    setPerson(profile);
-    setBiography(bio.status === 'fulfilled' ? bio.value.content : '');
-    setEvents(eventList.status === 'fulfilled' ? eventList.value : []);
-    setStories(storyPage.status === 'fulfilled' ? storyPage.value : null);
-    setArchives(archivePage.status === 'fulfilled' ? archivePage.value : null);
-    setMarriages(marriageList.status === 'fulfilled' ? marriageList.value : []);
+    if (eventList.status === 'fulfilled') {
+      setEvents(eventList.value);
+      setEventState('ready');
+    } else if (eventList.reason instanceof ApiError && [403, 404].includes(eventList.reason.status)) {
+      setEvents([]);
+      setEventState('restricted');
+    } else {
+      setEventState('error');
+    }
+
+    if (marriageList.status === 'fulfilled') {
+      setMarriages(marriageList.value);
+      setMarriageState('ready');
+    } else if (marriageList.reason instanceof ApiError && [403, 404].includes(marriageList.reason.status)) {
+      setMarriages([]);
+      setMarriageState('restricted');
+    } else {
+      setMarriageState('error');
+    }
+
+    if (storyPage.status === 'fulfilled') {
+      setStories(storyPage.value);
+      setStoryState('ready');
+    } else if (storyPage.reason instanceof ApiError && [403, 404].includes(storyPage.reason.status)) {
+      setStories(null);
+      setStoryState('restricted');
+    } else {
+      setStoryState('error');
+    }
+
+    if (archivePage.status === 'fulfilled') {
+      setArchives(archivePage.value);
+      setArchiveState('ready');
+    } else if (archivePage.reason instanceof ApiError && [403, 404].includes(archivePage.reason.status)) {
+      setArchives(null);
+      setArchiveState('restricted');
+    } else {
+      setArchiveState('error');
+    }
   }
 
   useEffect(() => {
@@ -112,6 +169,14 @@ function ProfilePageContent() {
     setMemories([]);
     setMemoryState('loading');
     setMemoryError('');
+    setBiographyState('loading');
+    setEventState('loading');
+    setMarriageState('loading');
+    setStoryState('loading');
+    setArchiveState('loading');
+    setEditing(false);
+    setMutationBusy(false);
+    setNotice('');
 
     if (!fid || !pid) {
       setLoading(false);
@@ -131,15 +196,15 @@ function ProfilePageContent() {
         setError(
           cause instanceof ApiError && [403, 404].includes(cause.status)
             ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-            : cause instanceof Error
-              ? cause.message
-              : 'Профайлыг ачаалж чадсангүй.',
+            : 'Профайлыг ачаалж чадсангүй. Дахин оролдоно уу.',
         );
       })
       .finally(() => {
         if (requestId === profileRequestRef.current) setLoading(false);
       });
   }, [router, searchParams]);
+
+  useEffect(() => () => profileAbortRef.current?.abort(), []);
 
   async function loadMemories(fid: string, pid: string) {
     const requestId = ++memoryRequestRef.current;
@@ -165,11 +230,7 @@ function ProfilePageContent() {
         return;
       }
       setMemoryState('error');
-      setMemoryError(
-        cause instanceof Error
-          ? cause.message
-          : 'Дурсамжийг ачаалж чадсангүй.',
-      );
+      setMemoryError('Дурсамжийг ачаалж чадсангүй. Дахин оролдоно уу.');
     }
   }
 
@@ -190,9 +251,7 @@ function ProfilePageContent() {
       setError(
         cause instanceof ApiError && [403, 404].includes(cause.status)
           ? 'Энэ хүний профайл олдсонгүй эсвэл харах эрхгүй байна.'
-          : cause instanceof Error
-            ? cause.message
-            : 'Профайлыг ачаалж чадсангүй.',
+          : 'Профайлыг ачаалж чадсангүй. Дахин оролдоно уу.',
       );
     } finally {
       setLoading(false);
@@ -436,17 +495,18 @@ function ProfilePageContent() {
               <div><p className="eyebrow">FAMILY ARCHIVE</p><h2>Энэ хүнтэй холбоотой архив</h2></div>
               <Link href={`/archives?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
             </div>
-            {archives?.items.length ? (
-              <div className="history-list">
-                {archives.items.map((archive) => (
-                  <Link className="history-item" key={archive.id} href={`/archives/${archive.id}?family=${encodeURIComponent(family)}`}>
-                    <strong>{archive.title}</strong>
-                    <span>{archive.document_date ?? 'Огноогүй'}{archive.place ? ` · ${archive.place}` : ''}</span>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="profile-empty">Энэ хүнтэй холбоотой архив бүртгэгдээгүй байна.</p>
+            {archiveState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Архивыг ачаалж байна…</p>}
+            {archiveState === 'restricted' && <p className="profile-private" role="status">Энэ хүнтэй холбоотой архив одоогоор харагдахгүй байна.</p>}
+            {archiveState === 'error' && <div className="profile-inline-error" role="alert"><p>Архивыг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
+            {archiveState === 'ready' && (
+              archives?.items.length
+                ? <div className="history-list">{archives.items.map((archive) => (
+                    <Link className="history-item" key={archive.id} href={`/archives/${archive.id}?family=${encodeURIComponent(family)}`}>
+                      <strong>{archive.title}</strong>
+                      <span>{archive.document_date ?? 'Огноогүй'}{archive.place ? ` · ${archive.place}` : ''}</span>
+                    </Link>
+                  ))}</div>
+                : <p className="profile-empty">Энэ хүнтэй холбоотой архив бүртгэгдээгүй байна.</p>
             )}
           </section>
 
@@ -455,16 +515,19 @@ function ProfilePageContent() {
               <div><p className="eyebrow">FAMILY STORY</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
               <Link href={`/stories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
             </div>
-            {stories?.items.length ? (
-              <div className="history-list">
-                {stories.items.slice(0, 5).map((story) => (
-                  <Link className="history-item" key={story.id} href={`/stories/${story.id}?family=${encodeURIComponent(family)}`}>
-                    <strong>{story.title}</strong>
-                    <span>{story.event_date ?? 'Огноогүй'}{story.place ? ` · ${story.place}` : ''}</span>
-                  </Link>
-                ))}
-              </div>
-            ) : <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>}
+            {storyState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Түүхүүдийг ачаалж байна…</p>}
+            {storyState === 'restricted' && <p className="profile-private" role="status">Энэ хүнтэй холбоотой түүхүүд одоогоор харагдахгүй байна.</p>}
+            {storyState === 'error' && <div className="profile-inline-error" role="alert"><p>Түүхүүдийг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
+            {storyState === 'ready' && (
+              stories?.items.length
+                ? <div className="history-list">{stories.items.slice(0, 5).map((story) => (
+                    <Link className="history-item" key={story.id} href={`/stories/${story.id}?family=${encodeURIComponent(family)}`}>
+                      <strong>{story.title}</strong>
+                      <span>{story.event_date ?? 'Огноогүй'}{story.place ? ` · ${story.place}` : ''}</span>
+                    </Link>
+                  ))}</div>
+                : <p className="profile-empty">Энэ хүнтэй холбоотой түүх бүртгэгдээгүй байна.</p>
+            )}
           </section>
 
           <section className="card profile-card">
@@ -480,12 +543,7 @@ function ProfilePageContent() {
             )}
 
             {memoryState === 'restricted' && (
-              <div>
-                <p className="profile-empty">{memoryError}</p>
-                <button type="button" onClick={() => void loadMemories(family, id)}>
-                  Дахин оролдох
-                </button>
-              </div>
+              <p className="profile-private" role="status">{memoryError}</p>
             )}
 
             {memoryState === 'error' && (
@@ -520,40 +578,60 @@ function ProfilePageContent() {
 
           <section className="card profile-card">
             <div className="profile-card-heading"><div><p className="eyebrow">LIFE HISTORY</p><h2>Намтар</h2></div></div>
-            <p className="profile-text">{biography || 'Намтар оруулаагүй байна.'}</p>
-            <form onSubmit={saveBiography}>
-              <label>Намтар<textarea value={biography} onChange={(event) => setBiography(event.target.value)} maxLength={50000} /></label>
-              <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Намтар хадгалах"}</button>
-            </form>
+            {biographyState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Намтрыг ачаалж байна…</p>}
+            {biographyState === 'restricted' && <p className="profile-private" role="status">Энэ хүний намтар одоогоор харагдахгүй байна.</p>}
+            {biographyState === 'error' && <div className="profile-inline-error" role="alert"><p>Намтрыг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
+            {biographyState === 'ready' && (
+              <>
+                <p className="profile-text">{biography || 'Намтар оруулаагүй байна.'}</p>
+                <form onSubmit={saveBiography}>
+                  <label>Намтар<textarea value={biography} onChange={(event) => setBiography(event.target.value)} maxLength={50000} /></label>
+                  <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Намтар хадгалах"}</button>
+                </form>
+              </>
+            )}
           </section>
 
           <section className="card profile-card">
             <div className="profile-card-heading"><div><p className="eyebrow">MARRIAGE</p><h2>Гэрлэлтийн түүх</h2></div></div>
-            {marriages.length === 0 ? <p className="profile-empty">Гэрлэлтийн мэдээлэл бүртгээгүй байна.</p> : marriages.map((marriage) => (
-              <div className="history-item" key={marriage.id}>
-                <strong>{marriage.other_person ? personName(marriage.other_person) : 'Хань'}</strong>
-                <span>{marriage.status === 'married' ? 'Одоо хамт' : marriage.status === 'divorced' ? 'Салсан' : 'Бэлэвсэн'}</span>
-                <small>{marriage.start_date ?? 'Эхэлсэн огноо тодорхойгүй'} – {marriage.end_date ?? (marriage.status === 'married' ? 'Одоо' : 'Дууссан огноо тодорхойгүй')}</small>
-              </div>
-            ))}
+            {marriageState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Гэрлэлтийн түүхийг ачаалж байна…</p>}
+            {marriageState === 'restricted' && <p className="profile-private" role="status">Энэ хүний гэрлэлтийн мэдээлэл одоогоор харагдахгүй байна.</p>}
+            {marriageState === 'error' && <div className="profile-inline-error" role="alert"><p>Гэрлэлтийн мэдээллийг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
+            {marriageState === 'ready' && (marriages.length === 0
+              ? <p className="profile-empty">Гэрлэлтийн мэдээлэл бүртгээгүй байна.</p>
+              : marriages.map((marriage) => (
+                  <div className="history-item" key={marriage.id}>
+                    <strong>{marriage.other_person ? personName(marriage.other_person) : 'Хань'}</strong>
+                    <span>{marriage.status === 'married' ? 'Одоо хамт' : marriage.status === 'divorced' ? 'Салсан' : 'Бэлэвсэн'}</span>
+                    <small>{marriage.start_date ?? 'Эхэлсэн огноо тодорхойгүй'} – {marriage.end_date ?? (marriage.status === 'married' ? 'Одоо' : 'Дууссан огноо тодорхойгүй')}</small>
+                  </div>
+                ))
+            )}
           </section>
 
           <section className="card profile-card">
             <div className="profile-card-heading"><div><p className="eyebrow">TIMELINE</p><h2>Амьдралын үйл явдал</h2></div></div>
-            {events.length === 0 ? <p className="profile-empty">Үйл явдал бүртгээгүй байна.</p> : events.map((item) => (
-              <div className="history-item" key={item.id}>
-                <strong>{item.title}</strong>
-                <span>{item.event_date ?? 'Он тодорхойгүй'}</span>
-                {item.description && <small>{item.description}</small>}
-              </div>
-            ))}
-            <form onSubmit={addEvent}>
-              <label>Төрөл<select name="event_type" defaultValue="other"><option value="school">Сургууль</option><option value="work">Ажил</option><option value="move">Нүүх</option><option value="marriage">Гэрлэлт</option><option value="divorce">Салалт</option><option value="child_birth">Хүүхэд төрсөн</option><option value="other">Бусад</option></select></label>
-              <label>Гарчиг<input name="title" required maxLength={180} /></label>
-              <label>Огноо<input name="event_date" type="date" /></label>
-              <label>Тайлбар<textarea name="description" maxLength={10000} /></label>
-              <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Үйл явдал нэмэх"}</button>
-            </form>
+            {eventState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Амьдралын үйл явдлыг ачаалж байна…</p>}
+            {eventState === 'restricted' && <p className="profile-private" role="status">Энэ хүний амьдралын үйл явдал одоогоор харагдахгүй байна.</p>}
+            {eventState === 'error' && <div className="profile-inline-error" role="alert"><p>Амьдралын үйл явдлыг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
+            {eventState === 'ready' && (
+              <>
+                {events.length === 0 ? <p className="profile-empty">Үйл явдал бүртгээгүй байна.</p> : events.map((item) => (
+                  <div className="history-item" key={item.id}>
+                    <strong>{item.title}</strong>
+                    <span>{item.event_date ?? 'Он тодорхойгүй'}</span>
+                    {item.description && <small>{item.description}</small>}
+                  </div>
+                ))}
+                <form onSubmit={addEvent}>
+                  <label>Төрөл<select name="event_type" defaultValue="other"><option value="school">Сургууль</option><option value="work">Ажил</option><option value="move">Нүүх</option><option value="marriage">Гэрлэлт</option><option value="divorce">Салалт</option><option value="child_birth">Хүүхэд төрсөн</option><option value="other">Бусад</option></select></label>
+                  <label>Гарчиг<input name="title" required maxLength={180} /></label>
+                  <label>Огноо<input name="event_date" type="date" /></label>
+                  <label>Тайлбар<textarea name="description" maxLength={10000} /></label>
+                  <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Үйл явдал нэмэх"}</button>
+                </form>
+              </>
+            )}
           </section>
         </div>
 
