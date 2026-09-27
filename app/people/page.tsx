@@ -64,6 +64,9 @@ function PeoplePageContent() {
   const peopleRequestRef = useRef(0);
   const familyRequestRef = useRef(0);
   const metadataRequestRef = useRef(0);
+  const peopleAbortRef = useRef<AbortController | null>(null);
+  const familyAbortRef = useRef<AbortController | null>(null);
+  const metadataAbortRef = useRef<AbortController | null>(null);
 
   const loadPeople = useCallback(async (
     fid: string,
@@ -74,6 +77,9 @@ function PeoplePageContent() {
   ) => {
     if (!fid) return;
     const requestId = ++peopleRequestRef.current;
+    peopleAbortRef.current?.abort();
+    const controller = new AbortController();
+    peopleAbortRef.current = controller;
     setBusy(true);
     setError('');
     try {
@@ -87,11 +93,12 @@ function PeoplePageContent() {
       if (nextBranchId) params.set('branch_id', nextBranchId);
       const result = await api<PersonDirectoryPage>(
         `/families/${fid}/people?${params.toString()}`,
+        { signal: controller.signal },
       );
       if (requestId !== peopleRequestRef.current) return;
       setPeople(result);
     } catch (cause) {
-      if (requestId !== peopleRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== peopleRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -107,10 +114,22 @@ function PeoplePageContent() {
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    familyAbortRef.current?.abort();
+    peopleAbortRef.current?.abort();
+    metadataAbortRef.current?.abort();
+    peopleRequestRef.current += 1;
+    metadataRequestRef.current += 1;
+    const controller = new AbortController();
+    familyAbortRef.current = controller;
+    setPeople(null);
+    setLineages([]);
+    setBranches([]);
+    setLineageId('');
+    setBranchId('');
     setLoading(true);
     setError('');
     try {
-      const list = await api<Family[]>('/families');
+      const list = await api<Family[]>('/families', { signal: controller.signal });
       if (requestId !== familyRequestRef.current) return;
       setFamilies(list);
       peopleRequestRef.current += 1;
@@ -141,7 +160,7 @@ function PeoplePageContent() {
         router.replace('/people?family=' + encodeURIComponent(selected.id));
       }
     } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -157,14 +176,17 @@ function PeoplePageContent() {
 
   const loadLineages = useCallback(async (fid: string) => {
     const requestId = ++metadataRequestRef.current;
+    metadataAbortRef.current?.abort();
+    const controller = new AbortController();
+    metadataAbortRef.current = controller;
     setMetaBusy(true);
     setMetaError('');
     try {
-      const result = await api<LineageSummary[]>(`/families/${fid}/lineages`);
+      const result = await api<LineageSummary[]>(`/families/${fid}/lineages`, { signal: controller.signal });
       if (requestId !== metadataRequestRef.current) return;
       setLineages(result);
     } catch (cause) {
-      if (requestId !== metadataRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
       setLineages([]);
       setMetaError(
         cause instanceof Error
@@ -180,14 +202,17 @@ function PeoplePageContent() {
 
   const loadBranches = useCallback(async (fid: string, lid: string) => {
     const requestId = ++metadataRequestRef.current;
+    metadataAbortRef.current?.abort();
+    const controller = new AbortController();
+    metadataAbortRef.current = controller;
     setMetaBusy(true);
     setMetaError('');
     try {
-      const result = await api<BranchSummary[]>(`/lineages/${lid}/branches`);
+      const result = await api<BranchSummary[]>(`/lineages/${lid}/branches`, { signal: controller.signal });
       if (requestId !== metadataRequestRef.current) return;
       setBranches(result);
     } catch (cause) {
-      if (requestId !== metadataRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
       setBranches([]);
       setMetaError(
         cause instanceof Error
@@ -238,6 +263,8 @@ function PeoplePageContent() {
   function chooseFamily(nextFamilyId: string) {
     peopleRequestRef.current += 1;
     metadataRequestRef.current += 1;
+    peopleAbortRef.current?.abort();
+    metadataAbortRef.current?.abort();
     setFamilyId(nextFamilyId);
     setLineages([]);
     setBranches([]);
@@ -248,6 +275,12 @@ function PeoplePageContent() {
     setError('');
     router.replace('/people?family=' + encodeURIComponent(nextFamilyId));
   }
+
+  useEffect(() => () => {
+    familyAbortRef.current?.abort();
+    peopleAbortRef.current?.abort();
+    metadataAbortRef.current?.abort();
+  }, []);
 
   function clearFilters() {
     setQuery('');

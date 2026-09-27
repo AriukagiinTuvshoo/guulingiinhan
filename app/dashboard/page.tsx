@@ -432,6 +432,8 @@ function DashboardContent() {
   const [memoryCount, setMemoryCount] = useState(0);
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
+  const [storyError, setStoryError] = useState('');
+  const [archiveError, setArchiveError] = useState('');
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<PersonSearchPage | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -454,6 +456,8 @@ function DashboardContent() {
       setMemoryCount(0);
       setStories(null);
       setArchives(null);
+      setStoryError('');
+      setArchiveError('');
 
       try {
         const [familyData, peopleData, treeData, memoryData] = await Promise.all([
@@ -471,12 +475,18 @@ function DashboardContent() {
         setMemories(memoryData.slice(0, 6));
 
         const [storiesResult, archivesResult] = await Promise.all([
-          api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4').catch(() => null),
-          api<ArchiveListPage>('/families/' + familyId + '/archives?page=1&page_size=4').catch(() => null),
+          api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4')
+            .then((value) => ({ value, error: '' }))
+            .catch((cause) => ({ value: null, error: cause instanceof ApiError && cause.status === 403 ? 'Түүхийн мэдээлэлд хандах эрхгүй байна.' : 'Түүхийн мэдээллийг ачаалж чадсангүй.' })),
+          api<ArchiveListPage>('/families/' + familyId + '/archives?page=1&page_size=4')
+            .then((value) => ({ value, error: '' }))
+            .catch((cause) => ({ value: null, error: cause instanceof ApiError && cause.status === 403 ? 'Архивын мэдээлэлд хандах эрхгүй байна.' : 'Архивын мэдээллийг ачаалж чадсангүй.' })),
         ]);
         if (requestId !== dashboardRequestRef.current) return null;
-        setStories(storiesResult);
-        setArchives(archivesResult);
+        setStories(storiesResult.value);
+        setArchives(archivesResult.value);
+        setStoryError(storiesResult.error);
+        setArchiveError(archivesResult.error);
 
         if (currentUser.person_id && peopleData.some((person) => person.id === currentUser.person_id)) {
           return currentUser.person_id;
@@ -742,6 +752,13 @@ function DashboardContent() {
           {error && (
             <div className="homev2-inline-alert" role="alert">
               <span>{error}</span>
+              <button onClick={() => window.location.reload()}>Дахин ачаалах</button>
+            </div>
+          )}
+
+          {(storyError || archiveError) && (
+            <div className="homev2-inline-alert" role="alert">
+              <span>{[storyError, archiveError].filter(Boolean).join(' ')}</span>
               <button onClick={() => window.location.reload()}>Дахин ачаалах</button>
             </div>
           )}
