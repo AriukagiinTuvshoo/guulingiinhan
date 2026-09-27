@@ -86,9 +86,11 @@ function MemoriesPageContent() {
   const [error, setError] = useState('');
   const [composerError, setComposerError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
+  const [memoryPage, setMemoryPage] = useState(1);
   const familyRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
   const personRequestRef = useRef(0);
+  const mutationRequestRef = useRef(0);
 
   const loadMemories = useCallback(async (fid: string, page = 1) => {
     if (!fid) return;
@@ -98,6 +100,7 @@ function MemoriesPageContent() {
     try {
       const result = await api<MemoryListPage>(`/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`);
       if (requestId !== memoryRequestRef.current) return;
+      setMemoryPage(result.page);
       setMemories(result);
     } catch (cause) {
       if (requestId !== memoryRequestRef.current) return;
@@ -109,7 +112,7 @@ function MemoriesPageContent() {
     } finally {
       if (requestId === memoryRequestRef.current) setLoading(false);
     }
-  }, [router, searchParams]);
+  }, [router]);
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
@@ -140,6 +143,7 @@ function MemoriesPageContent() {
       setFamily(selected);
       setFamilyId(selected.id);
       setMemories(null);
+      setMemoryPage(1);
       if (!requested) {
         router.replace(`/memories?family=${encodeURIComponent(selected.id)}`);
       }
@@ -152,7 +156,7 @@ function MemoriesPageContent() {
       setLoading(false);
       setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
     }
-  }, [router]);
+  }, [router, searchParams]);
 
   useEffect(() => {
     void loadFamilies();
@@ -187,13 +191,22 @@ function MemoriesPageContent() {
   }, [familyId, personQuery]);
 
   function chooseFamily(next: string) {
+    familyRequestRef.current += 1;
     memoryRequestRef.current += 1;
+    personRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
     if (!selected) return;
     setFamily(selected);
     setFamilyId(next);
     setMemories(null);
+    setMemoryPage(1);
+    setSelectedPeople([]);
+    setPersonQuery('');
+    setPersonResults(null);
+    setPersonPage(1);
+    setShowComposer(false);
     setError('');
+    setComposerError('');
     router.replace(`/memories?family=${encodeURIComponent(next)}`);
   }
 
@@ -224,6 +237,9 @@ function MemoriesPageContent() {
     if (!familyId) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
+    const operationFamilyId = familyId;
+    const operationFamilyRequestId = familyRequestRef.current;
+    const mutationRequestId = ++mutationRequestRef.current;
     setBusy(true);
     setComposerError('');
     setUploadStatus('');
@@ -257,21 +273,24 @@ function MemoriesPageContent() {
           });
         }
       }
+      if (operationFamilyRequestId !== familyRequestRef.current) return;
       formElement.reset();
       setSelectedPeople([]);
       setPersonQuery('');
       setPersonResults(null);
       setShowComposer(false);
       setUploadStatus('');
-      await loadMemories(familyId, 1);
+      await loadMemories(operationFamilyId, 1);
     } catch (cause) {
-      setComposerError(friendlyError(cause, 'Дурсамж хадгалж чадсангүй. Дахин оролдоно уу.'));
+      if (operationFamilyRequestId === familyRequestRef.current) {
+        setComposerError(friendlyError(cause, 'Дурсамж хадгалж чадсангүй.'));
+      }
     } finally {
-      setBusy(false);
+      if (mutationRequestId === mutationRequestRef.current) setBusy(false);
     }
   }
 
-  const currentPage = memories?.page ?? 1;
+  const currentPage = memoryPage;
   const pageCount = memories ? Math.max(1, Math.ceil(memories.total / PAGE_SIZE)) : 1;
 
   return (
@@ -292,7 +311,7 @@ function MemoriesPageContent() {
             {families.length > 1 && (
               <label className="memories-family-picker">
                 <span>Гэр бүл</span>
-                <select value={familyId} onChange={(event) => chooseFamily(event.target.value)} aria-label="Гэр бүл сонгох">
+                <select value={familyId} onChange={(event) => chooseFamily(event.target.value)} aria-label="Гэр бүл сонгох" disabled={busy}>
                   {families.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               </label>
