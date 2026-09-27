@@ -26,6 +26,7 @@ function StoryDetailPageContent() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const familyRequestRef = useRef(0);
   const storyRequestRef = useRef(0);
+  const storyAbortRef = useRef<AbortController | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
@@ -35,10 +36,13 @@ function StoryDetailPageContent() {
 
   const load = useCallback(async (fid: string, sid: string) => {
     const requestId = ++storyRequestRef.current;
+    storyAbortRef.current?.abort();
+    const controller = new AbortController();
+    storyAbortRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const result = await api<Story>('/families/' + fid + '/stories/' + sid);
+      const result = await api<Story>('/families/' + fid + '/stories/' + sid, { signal: controller.signal });
       if (requestId !== storyRequestRef.current) return;
       setStory(result);
     } catch (cause) {
@@ -106,6 +110,7 @@ function StoryDetailPageContent() {
   }, [load, params.id, router, searchParams]);
 
   useEffect(() => {
+    storyAbortRef.current?.abort();
     setFamily(null);
     setFamilyId('');
     setStory(null);
@@ -113,6 +118,8 @@ function StoryDetailPageContent() {
     storyRequestRef.current += 1;
     void loadFamilyContext();
   }, [loadFamilyContext]);
+
+  useEffect(() => () => storyAbortRef.current?.abort(), []);
 
   useEffect(() => {
     if (showDeleteDialog) deleteCancelRef.current?.focus();

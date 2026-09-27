@@ -8,12 +8,22 @@ import { ApiError, api, Family } from '../../lib/api';
 type Member = { user_id: string; display_name: string; role: string };
 type Invitation = { id: string; email: string; role: 'member' | 'editor'; expires_at: string; created_at: string; status: 'pending' };
 
-function friendlyError(cause: unknown, fallback: string) {
+function roleLabel(role: string) {
+  if (role === 'owner') return 'Эзэмшигч';
+  if (role === 'editor') return 'Засварлагч';
+  return 'Гишүүн';
+}
+
+function friendlyError(
+  cause: unknown,
+  fallback: string,
+  conflictMessage = 'Энэ үйлдэл зөрчилтэй байна. Дахин оролдоно уу.',
+) {
   if (cause instanceof ApiError) {
     if (cause.status === 401) return 'Нэвтрэх шаардлагатай. Дахин нэвтэрнэ үү.';
     if (cause.status === 403) return 'Энэ үйлдлийг хийх эрхгүй байна.';
     if (cause.status === 404) return 'Гэр бүл олдсонгүй эсвэл танд хандах эрхгүй байна.';
-    if (cause.status === 409) return 'Энэ үйлдэл зөрчилтэй байна. Дахин оролдоно уу.';
+    if (cause.status === 409) return conflictMessage;
     if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
     if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status >= 500) return 'Серверийн алдаа гарлаа. Түр хүлээгээд дахин оролдоно уу.';
@@ -40,8 +50,10 @@ function FamiliesContent() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'member' | 'editor'>('member');
   const [mutation, setMutation] = useState<'edit' | 'archive' | 'invite' | 'revoke' | ''>('');
+  const [inviteOpen, setInviteOpen] = useState(false);
   const sequence = useRef(0);
   const detailSequence = useRef(0);
+  const selectedFamilyRef = useRef('');
 
   const selectedFamily = useMemo(
     () => families.find((family) => family.id === selectedFamilyId) ?? null,
@@ -89,15 +101,15 @@ function FamiliesContent() {
         api<Member[]>(`/families/${familyId}/members`),
         api<Invitation[]>(`/families/${familyId}/invitations`),
       ]);
-      if (current !== detailSequence.current) return;
+      if (current !== detailSequence.current || selectedFamilyRef.current !== familyId) return;
       setMembers(memberData);
       setInvitations(invitationData);
     } catch (cause) {
-      if (current === detailSequence.current) {
+      if (current === detailSequence.current && selectedFamilyRef.current === familyId) {
         setDetailError(friendlyError(cause, 'Гишүүд болон урилгуудыг ачаалж чадсангүй.'));
       }
     } finally {
-      if (current === detailSequence.current) setDetailLoading(false);
+      if (current === detailSequence.current && selectedFamilyRef.current === familyId) setDetailLoading(false);
     }
   }, []);
 
@@ -105,6 +117,10 @@ function FamiliesContent() {
     void loadFamilies();
     return () => { sequence.current += 1; };
   }, [loadFamilies]);
+
+  useEffect(() => {
+    selectedFamilyRef.current = selectedFamilyId;
+  }, [selectedFamilyId]);
 
   useEffect(() => {
     if (!selectedFamily) {
@@ -116,6 +132,7 @@ function FamiliesContent() {
     setName(selectedFamily.name);
     setDescription(selectedFamily.description ?? '');
     setEditing(false);
+    setInviteOpen(false);
     void loadDetails(selectedFamily.id);
   }, [selectedFamily, loadDetails]);
 
@@ -137,6 +154,7 @@ function FamiliesContent() {
         method: 'PATCH',
         body: JSON.stringify({ name: nextName, description: description.trim() || null }),
       });
+      if (selectedFamilyRef.current !== selectedFamily.id) return;
       setFamilies((current) => current.map((family) => family.id === updated.id ? updated : family));
       setEditing(false);
       setNotice('Гэр бүлийн мэдээлэл хадгалагдлаа.');
@@ -152,6 +170,7 @@ function FamiliesContent() {
     setMutation('archive'); setDetailError(''); setNotice('');
     try {
       await api<void>(`/families/${archivedId}`, { method: 'DELETE' });
+      if (selectedFamilyRef.current !== archivedId) return;
       const remaining = families.filter((family) => family.id !== archivedId);
       setFamilies(remaining);
       if (remaining.length) {
@@ -175,16 +194,21 @@ function FamiliesContent() {
     const email = inviteEmail.trim();
     if (!email) return;
     setMutation('invite'); setDetailError(''); setNotice('');
+    const familyId = selectedFamily.id;
     try {
-      await api(`/families/${selectedFamily.id}/invitations`, {
+      await api(`/families/${familyId}/invitations`, {
         method: 'POST',
         body: JSON.stringify({ email, role: inviteRole }),
       });
+      if (selectedFamilyRef.current !== familyId) return;
       setInviteEmail('');
+      setInviteOpen(false);
       setNotice(`${email} хаяг руу урилга илгээгдлээ.`);
-      await loadDetails(selectedFamily.id);
+      await loadDetails(familyId);
     } catch (cause) {
-      setDetailError(friendlyError(cause, 'Урилга илгээж чадсангүй.'));
+      if (selectedFamilyRef.current === familyId) {
+        setDetailError(friendlyError(cause, 'Урилга илгээж чадсангүй.', 'Энэ имэйл хаягт идэвхтэй урилга байгаа эсвэл аль хэдийн гишүүн байж болзошгүй.'));
+      }
     } finally { setMutation(''); }
   }
 
@@ -192,12 +216,16 @@ function FamiliesContent() {
     if (!selectedFamily || selectedFamily.role !== 'owner' || mutation) return;
     if (!window.confirm(`“${email}” хаягийн урилгыг цуцлах уу?`)) return;
     setMutation('revoke'); setDetailError(''); setNotice('');
+    const familyId = selectedFamily.id;
     try {
-      await api<void>(`/families/${selectedFamily.id}/invitations/${invitationId}`, { method: 'DELETE' });
+      await api<void>(`/families/${familyId}/invitations/${invitationId}`, { method: 'DELETE' });
+      if (selectedFamilyRef.current !== familyId) return;
       setNotice('Урилгыг цуцаллаа.');
-      await loadDetails(selectedFamily.id);
+      await loadDetails(familyId);
     } catch (cause) {
-      setDetailError(friendlyError(cause, 'Урилгыг цуцалж чадсангүй.'));
+      if (selectedFamilyRef.current === familyId) {
+        setDetailError(friendlyError(cause, 'Урилгыг цуцалж чадсангүй.'));
+      }
     } finally { setMutation(''); }
   }
 
@@ -226,7 +254,7 @@ function FamiliesContent() {
             <h2>Гэр бүлүүд</h2>
             <div className="cards">
               {families.map((family) => <button key={family.id} type="button" aria-pressed={selectedFamilyId === family.id} disabled={Boolean(mutation)} onClick={() => selectFamily(family.id)} style={{ textAlign: 'left', width: '100%' }}>
-                <strong>{family.name}</strong><br /><span>{family.role}</span>
+                <strong>{family.name}</strong><br /><span>{roleLabel(family.role)}</span>
               </button>)}
             </div>
           </aside>
@@ -236,7 +264,7 @@ function FamiliesContent() {
             {detailError && <div className="error" role="alert"><p>{detailError}</p>{selectedFamily && <button type="button" onClick={() => void loadDetails(selectedFamily.id)}>Дахин оролдох</button>}</div>}
             {selectedFamily && <section className="card" aria-labelledby="family-detail-title">
               <div className="row space">
-                <div><span className="tag">{selectedFamily.role}</span><h2 id="family-detail-title">{selectedFamily.name}</h2><p>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</p></div>
+                <div><span className="tag" aria-label={`Таны үүрэг: ${roleLabel(selectedFamily.role)}`}>{roleLabel(selectedFamily.role)}</span><h2 id="family-detail-title">{selectedFamily.name}</h2><p>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</p></div>
                 <div className="row">
                   <Link className="button" href={`/tree?family=${encodeURIComponent(selectedFamily.id)}`}>Ургийн мод →</Link>
                   <Link className="button" href={`/people?family=${encodeURIComponent(selectedFamily.id)}`}>Хүмүүс →</Link>
@@ -254,7 +282,7 @@ function FamiliesContent() {
 
               <hr style={{ margin: '24px 0' }} />
               <h3>Гишүүд</h3>
-              {detailLoading ? <p role="status" aria-live="polite">Гишүүд болон урилгуудыг ачаалж байна…</p> : members.length ? <ul>{members.map((member) => <li key={member.user_id}>{member.display_name} · <strong>{member.role}</strong></li>)}</ul> : <p>Гишүүний мэдээлэл одоогоор алга.</p>}
+              {detailLoading ? <p role="status" aria-live="polite">Гишүүд болон урилгуудыг ачаалж байна…</p> : members.length ? <ul>{members.map((member) => <li key={member.user_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}><span>{member.display_name}</span><strong className="tag" style={{ margin: 0 }}>{roleLabel(member.role)}</strong></li>)}</ul> : <p>Гишүүний мэдээлэл одоогоор алга.</p>}
 
               <section aria-labelledby="pending-invitations-title" style={{ marginTop: 24 }}>
                 <h3 id="pending-invitations-title">Хүлээгдэж буй урилгууд</h3>
@@ -262,8 +290,8 @@ function FamiliesContent() {
                   <ul>
                     {invitations.map((invitation) => (
                       <li key={invitation.id} style={{ marginBottom: 10 }}>
-                        <span>{invitation.email}</span> · <strong>{invitation.role}</strong>
-                        <span> · {new Date(invitation.expires_at).toLocaleDateString('mn-MN')}</span>
+                        <span>{invitation.email}</span> · <strong className="tag" style={{ margin: 0 }}>{roleLabel(invitation.role)}</strong>
+                        <span> · Дуусах: {new Date(invitation.expires_at).toLocaleDateString('mn-MN')}</span>
                         {selectedFamily.role === 'owner' && (
                           <button
                             type="button"
@@ -280,12 +308,21 @@ function FamiliesContent() {
                 ) : <p>Хүлээгдэж буй урилга алга.</p>}
               </section>
 
-              {selectedFamily.role === 'owner' && <form onSubmit={invite} style={{ marginTop: 20 }}>
-                <h3>Гишүүн урих</h3>
-                <label>Имэйл<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} maxLength={320} required disabled={Boolean(mutation)} /></label>
-                <label>Эрх<select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as 'member' | 'editor')} disabled={Boolean(mutation)}><option value="member">Гишүүн</option><option value="editor">Засварлагч</option></select></label>
-                <button className="primary" type="submit" disabled={Boolean(mutation)}>{mutation === 'invite' ? 'Илгээж байна…' : 'Урилга илгээх'}</button>
-              </form>}
+              {selectedFamily.role === 'owner' && <section aria-labelledby="invite-member-title" style={{ marginTop: 20 }}>
+                <div className="row space">
+                  <div><h3 id="invite-member-title">Гишүүн урих</h3><p>Зөвхөн эзэмшигч урилга илгээж, цуцлах боломжтой.</p></div>
+                  {!inviteOpen && <button type="button" disabled={Boolean(mutation)} onClick={() => setInviteOpen(true)}>Гишүүн урих</button>}
+                </div>
+                {inviteOpen && <form onSubmit={invite}>
+                  <label htmlFor="family-invite-email">Имэйл<input id="family-invite-email" name="email" type="email" autoComplete="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} maxLength={320} required disabled={Boolean(mutation)} aria-describedby="family-invite-help" /></label>
+                  <span id="family-invite-help">Урилгыг зөвхөн backend баталгаажуулсны дараа үүсгэнэ.</span>
+                  <label htmlFor="family-invite-role">Эрх<select id="family-invite-role" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as 'member' | 'editor')} disabled={Boolean(mutation)}><option value="member">Гишүүн</option><option value="editor">Засварлагч</option></select></label>
+                  <div className="row">
+                    <button className="primary" type="submit" disabled={Boolean(mutation)} aria-busy={mutation === 'invite'}>{mutation === 'invite' ? 'Илгээж байна…' : 'Урилга илгээх'}</button>
+                    <button type="button" disabled={Boolean(mutation)} onClick={() => { setInviteOpen(false); setInviteEmail(''); }}>Болих</button>
+                  </div>
+                </form>}
+              </section>}
             </section>}
           </div>
         </div>}

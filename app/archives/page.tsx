@@ -46,6 +46,8 @@ function ArchivesPageContent() {
   const [error, setError] = useState('');
   const familyRequestRef = useRef(0);
   const archiveRequestRef = useRef(0);
+  const familyAbortRef = useRef<AbortController | null>(null);
+  const archiveAbortRef = useRef<AbortController | null>(null);
 
   const loadArchives = useCallback(async (
     fid: string,
@@ -55,6 +57,9 @@ function ArchivesPageContent() {
   ) => {
     if (!fid) return;
     const requestId = ++archiveRequestRef.current;
+    archiveAbortRef.current?.abort();
+    const controller = new AbortController();
+    archiveAbortRef.current = controller;
     setBusy(true);
     setError('');
     try {
@@ -65,11 +70,11 @@ function ArchivesPageContent() {
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
       if (dateValue) params.set('document_date', dateValue);
-      const result = await api<ArchiveListPage>(`/families/${fid}/archives?${params.toString()}`);
+      const result = await api<ArchiveListPage>(`/families/${fid}/archives?${params.toString()}`, { signal: controller.signal });
       if (requestId !== archiveRequestRef.current) return;
       setArchives(result);
     } catch (cause) {
-      if (requestId !== archiveRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== archiveRequestRef.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
@@ -85,6 +90,10 @@ function ArchivesPageContent() {
 
   const loadFamilies = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
+    familyAbortRef.current?.abort();
+    archiveAbortRef.current?.abort();
+    const controller = new AbortController();
+    familyAbortRef.current = controller;
     archiveRequestRef.current += 1;
     setLoading(true);
     setError('');
@@ -92,7 +101,7 @@ function ArchivesPageContent() {
     setFamilyId('');
     setArchives(null);
     try {
-      const items = await api<Family[]>('/families');
+      const items = await api<Family[]>('/families', { signal: controller.signal });
       if (requestId !== familyRequestRef.current) return;
       setFamilies(items);
       if (!items.length) {
@@ -115,7 +124,7 @@ function ArchivesPageContent() {
       setFamilyId(selected.id);
       router.replace(`/archives?family=${encodeURIComponent(selected.id)}`);
     } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
+      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
       setLoading(false);
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
@@ -127,6 +136,10 @@ function ArchivesPageContent() {
 
   useEffect(() => {
     void loadFamilies();
+    return () => {
+      familyAbortRef.current?.abort();
+      archiveAbortRef.current?.abort();
+    };
   }, [loadFamilies]);
 
   useEffect(() => {
@@ -135,6 +148,7 @@ function ArchivesPageContent() {
   }, [familyId, loadArchives]);
 
   function chooseFamily(next: string) {
+    archiveAbortRef.current?.abort();
     archiveRequestRef.current += 1;
     const selected = families.find((item) => item.id === next) ?? null;
     setFamily(selected);

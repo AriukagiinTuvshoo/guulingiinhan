@@ -101,6 +101,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [familySwitching, setFamilySwitching] = useState(false);
 
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const firstNavRef = useRef<HTMLAnchorElement | null>(null);
@@ -166,6 +167,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (!shouldRenderShell || contextLoading) return;
     if (!families.length) {
       setFamilyId('');
+      setFamilySwitching(false);
       return;
     }
 
@@ -173,12 +175,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
     if (requestedFamilyId && !requested) {
       setFamilyId('');
+      setFamilySwitching(false);
       setContextError('Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.');
       return;
     }
 
     const nextFamily = requested ?? families[0].id;
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
+    if (requestedFamilyId === nextFamily) setFamilySwitching(false);
 
     if (
       nextFamily &&
@@ -265,9 +269,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   function switchFamily(nextId: string) {
-    if (!families.some((family) => family.id === nextId)) return;
+    if (familySwitching || logoutBusy || !families.some((family) => family.id === nextId)) return;
+    if (nextId === familyId) return;
     contextRequestRef.current += 1;
     setContextError('');
+    setFamilySwitching(true);
     setFamilyId(nextId);
     const params = new URLSearchParams(searchParams.toString());
     params.set('family', nextId);
@@ -316,6 +322,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 value={currentFamily?.id ?? ''}
                 onChange={(event) => switchFamily(event.target.value)}
                 aria-label="Гэр бүлийн орчин сонгох"
+                aria-busy={familySwitching}
+                disabled={contextLoading || familySwitching}
               >
                 {families.map((family) => (
                   <option key={family.id} value={family.id}>
@@ -472,7 +480,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <div className="app-shell__content">
+        <div className="app-shell__content" aria-busy={contextLoading || familySwitching}>
           {!families.length && !contextLoading ? (
             <div className="app-shell__no-family" role="status">
               <Users size={18} aria-hidden="true" />
@@ -480,7 +488,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
             </div>
           ) : null}
-          {children}
+          <div key={familyId || requestedFamilyId || 'no-family-context'}>
+            {children}
+          </div>
         </div>
       </div>
     </div>

@@ -74,6 +74,21 @@ function generationLabel(generation: number) {
   return generation === 0 ? 'Төв үе' : generation < 0 ? Math.abs(generation) + ' үеийн өмнө' : generation + ' үеийн үргэлжлэл';
 }
 
+function treeFriendlyError(cause: unknown, fallback: string) {
+  if (cause instanceof ApiError) {
+    if (cause.status === 401) return 'Нэвтрэх шаардлагатай. Дахин нэвтэрнэ үү.';
+    if (cause.status === 403) return 'Энэ удмын модонд хандах эрхгүй байна.';
+    if (cause.status === 404) return 'Удмын мод эсвэл сонгосон хүн олдсонгүй.';
+    if (cause.status === 409) return 'Энэ үйлдэл одоогоор зөрчилтэй байна. Дахин оролдоно уу.';
+    if (cause.status === 422) return 'Удмын модны хүсэлт буруу байна. Дахин оролдоно уу.';
+    if (cause.status === 429) return 'Хэт олон хүсэлт байна. Түр хүлээгээд дахин оролдоно уу.';
+    if (cause.status === 503) return 'Удмын модны үйлчилгээ түр боломжгүй байна. Дараа дахин оролдоно уу.';
+    if (cause.status >= 500) return 'Серверийн алдаа гарлаа. Түр хүлээгээд дахин оролдоно уу.';
+    if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
+  }
+  return fallback;
+}
+
 function buildTreeLayout(tree: TreeData): TreeLayout {
   if (!tree.persons.length) return { nodes: [], width: 920, height: 420, generations: 0 };
 
@@ -283,12 +298,22 @@ function TreePageContent() {
 
         setFamily(familyData);
         setTree(treeData);
-        const nextSelectedId =
-          preferredPersonId && treeData.persons.some((person) => person.id === preferredPersonId)
+        const preferredIsAvailable =
+          Boolean(preferredPersonId) &&
+          treeData.persons.some((person) => person.id === preferredPersonId);
+        const backendRootIsAvailable =
+          Boolean(treeData.root_person_id) &&
+          treeData.persons.some((person) => person.id === treeData.root_person_id);
+
+        // Never substitute an unrelated Person when a requested Person is unavailable.
+        // Only the backend-provided root is eligible as the initial selection.
+        const nextSelectedId = preferredPersonId
+          ? preferredIsAvailable
             ? preferredPersonId
-            : treeData.root_person_id && treeData.persons.some((person) => person.id === treeData.root_person_id)
-              ? treeData.root_person_id
-              : treeData.persons[0]?.id ?? '';
+            : ''
+          : backendRootIsAvailable
+            ? treeData.root_person_id ?? ''
+            : '';
 
         persistSelected(nextSelectedId);
       } catch (cause) {
@@ -297,11 +322,7 @@ function TreePageContent() {
           router.replace('/login');
           return;
         }
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Удмын модыг ачаалж чадсангүй.',
-        );
+        setError(treeFriendlyError(cause, 'Удмын модыг ачаалж чадсангүй.'));
       } finally {
         if (sequence === loadSequence.current) setLoading(false);
       }
@@ -344,11 +365,7 @@ function TreePageContent() {
           router.replace('/login');
           return;
         }
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
-        );
+        setError(treeFriendlyError(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
         setLoading(false);
       });
 
@@ -400,11 +417,7 @@ function TreePageContent() {
             router.replace('/login');
             return;
           }
-          setError(
-            cause instanceof Error
-              ? cause.message
-              : 'Хайлт хийхэд алдаа гарлаа.',
-          );
+          setError(treeFriendlyError(cause, 'Хайлт хийхэд алдаа гарлаа.'));
         })
         .finally(() => {
           if (sequence === searchSequence.current) setSearchBusy(false);
@@ -427,6 +440,19 @@ function TreePageContent() {
   const selectedPerson = selectedId
     ? tree?.persons.find((person) => person.id === selectedId) ?? null
     : null;
+
+  const hasBackendRoot =
+    Boolean(tree?.root_person_id) &&
+    Boolean(tree?.persons.some((person) => person.id === tree.root_person_id));
+
+  useEffect(() => {
+    if (!selectedId || !tree || loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      const element = document.getElementById('tree-person-' + selectedId);
+      element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, selectedId, tree]);
 
   const relationCounts = useMemo(() => {
     const parents = new Map<string, number>();
@@ -522,11 +548,7 @@ function TreePageContent() {
       setSearchPageNumber(nextPage);
     } catch (cause) {
       if (sequence !== searchSequence.current || controller.signal.aborted) return;
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Хайлтын үр дүнг ачаалж чадсангүй.',
-      );
+      setError(treeFriendlyError(cause, 'Хайлтын үр дүнг ачаалж чадсангүй.'));
     } finally {
       if (sequence === searchSequence.current) setSearchBusy(false);
     }
@@ -635,11 +657,7 @@ function TreePageContent() {
       setNotice('Гэрлэлтийн мэдээлэл шинэчлэгдлээ.');
       await loadTree(familyId, selectedId, depth);
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Гэрлэлтийн мэдээллийг шинэчилж чадсангүй.',
-      );
+      setError(treeFriendlyError(cause, 'Гэрлэлтийн мэдээллийг шинэчилж чадсангүй.'));
     }
   }
 
@@ -709,7 +727,7 @@ function TreePageContent() {
                   router.replace('/tree?family=' + encodeURIComponent(nextFamilyId));
                 })
                 .catch((cause) => {
-                  setError(cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.');
+                  setError(treeFriendlyError(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
                 });
             }}
           >
@@ -869,7 +887,16 @@ function TreePageContent() {
             )}
           </div>
 
-          {!tree?.persons.length ? (
+          {tree?.persons.length && !hasBackendRoot ? (
+            <section className="tree-state tree-state--empty tree-state--in-shell" role="status">
+              <div className="tree-state-mark" aria-hidden="true">!</div>
+              <h2>Удмын мод бүрэн бэлэн болоогүй байна.</h2>
+              <p>Энэ гэр бүлийн модонд backend-ээс баталгаатай төв хүн ирээгүй тул буруу холбоос таамаглан харуулахгүй.</p>
+              <Link className="tree-button tree-button--primary" href={'/people?family=' + encodeURIComponent(familyId)}>
+                Хүмүүс рүү очих
+              </Link>
+            </section>
+          ) : !tree?.persons.length ? (
             <section className="tree-state tree-state--empty tree-state--in-shell">
               <div className="tree-state-mark" aria-hidden="true">🌳</div>
               <h2>Удмын мод одоогоор хоосон байна.</h2>
