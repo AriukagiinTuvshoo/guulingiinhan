@@ -27,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     display_name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -146,6 +146,14 @@ class Invitation(Base):
     __table_args__ = (
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
+        Index(
+            "uq_invitation_active_family_email",
+            "family_id",
+            "invited_email",
+            unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
         Index("ix_invitation_expiry", "expires_at"),
     )
 
@@ -205,7 +213,7 @@ class PhoneOtpChallenge(Base):
     __tablename__ = "phone_otp_challenges"
     __table_args__ = (
         CheckConstraint(
-            "purpose IN ('phone_link', 'phone_login', 'password_recovery')",
+            "purpose IN ('phone_link', 'phone_login', 'phone_registration', 'password_recovery')",
             name="ck_phone_otp_purpose",
         ),
         CheckConstraint(

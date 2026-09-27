@@ -2584,6 +2584,29 @@ def create_invitation(
         )
     ):
         raise HTTPException(status_code=409, detail="Энэ хэрэглэгч гэр бүлийн гишүүн байна.")
+    now = datetime.now(UTC)
+    active_invitation = db.scalar(
+        select(Invitation).where(
+            Invitation.family_id == family_id,
+            Invitation.invited_email == email,
+            Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
+            Invitation.expires_at > now,
+        ).with_for_update()
+    )
+    if active_invitation is not None:
+        raise HTTPException(status_code=409, detail="Энэ имэйлд идэвхтэй урилга аль хэдийн байна.")
+    expired_pending = db.scalars(
+        select(Invitation).where(
+            Invitation.family_id == family_id,
+            Invitation.invited_email == email,
+            Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
+            Invitation.expires_at <= now,
+        ).with_for_update()
+    ).all()
+    for item in expired_pending:
+        item.revoked_at = now
     raw_token = secrets.token_urlsafe(32)
     invitation = Invitation(
         family_id=family_id,
@@ -2594,7 +2617,11 @@ def create_invitation(
         expires_at=datetime.now(UTC) + timedelta(days=7),
     )
     db.add(invitation)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Энэ имэйлд идэвхтэй урилга аль хэдийн байна.") from error
     _audit(db, user, family_id, "invitation.created", "invitation", invitation.id)
     db.commit()
     family = db.get(Family, family_id)
@@ -2664,7 +2691,7 @@ def accept_invitation(
     )
     if invitation is None:
         raise HTTPException(status_code=404, detail="Урилга хүчингүй эсвэл хугацаа дууссан байна.")
-    if normalize_email(user.email) != invitation.invited_email:
+    if not user.email or normalize_email(user.email) != invitation.invited_email:
         raise HTTPException(status_code=403, detail="Энэ урилга өөр имэйл хаягт зориулагдсан.")
     verified_identity = db.scalar(
         select(LoginIdentity.id).where(
