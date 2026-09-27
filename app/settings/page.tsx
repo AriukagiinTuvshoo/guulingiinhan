@@ -60,29 +60,46 @@ function SettingsContent() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const loadSequence = useRef(0);
   const identitySequence = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const identityAbortRef = useRef<AbortController | null>(null);
+  const mutationSequence = useRef(0);
 
   const selectedFamily = useMemo(
     () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
 
-  const refreshIdentities = useCallback(async () => {
-    const data = await api<Identity[]>('/auth/me/identities');
+  const refreshIdentities = useCallback(async (signal?: AbortSignal) => {
+    const requestId = ++identitySequence.current;
+    identityAbortRef.current?.abort();
+    const controller = signal ? null : new AbortController();
+    if (controller) identityAbortRef.current = controller;
+    const activeSignal = signal ?? controller!.signal;
+    const data = await api<Identity[]>('/auth/me/identities', { signal: activeSignal });
+    if (requestId !== identitySequence.current || activeSignal.aborted) return null;
     setIdentities(data);
+    return data;
   }, []);
 
   const load = useCallback(async () => {
+    const requestId = ++loadSequence.current;
+    loadAbortRef.current?.abort();
+    identityAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    identitySequence.current += 1;
     setLoading(true);
     setError('');
     setNotice(null);
     try {
       const [me, identityData, familyData, googleConfig] = await Promise.all([
-        api<User>('/auth/me'),
-        api<Identity[]>('/auth/me/identities'),
-        api<Family[]>('/families'),
-        api<{ enabled: boolean }>('/auth/google/config'),
+        api<User>('/auth/me', { signal: controller.signal }),
+        api<Identity[]>('/auth/me/identities', { signal: controller.signal }),
+        api<Family[]>('/families', { signal: controller.signal }),
+        api<{ enabled: boolean }>('/auth/google/config', { signal: controller.signal }),
       ]);
 
+      if (requestId !== loadSequence.current || controller.signal.aborted) return;
       setUser(me);
       setIdentities(identityData);
       setFamilies(familyData);
@@ -100,13 +117,14 @@ function SettingsContent() {
         router.replace('/settings?family=' + encodeURIComponent(resolvedFamily));
       }
     } catch (cause) {
+      if (controller.signal.aborted || requestId !== loadSequence.current) return;
       if (cause instanceof ApiError && cause.status === 401) {
         router.replace('/login');
         return;
       }
       setError(friendlyError(cause, 'Тохиргоог ачаалж чадсангүй.'));
     } finally {
-      setLoading(false);
+      if (requestId === loadSequence.current && !controller.signal.aborted) setLoading(false);
     }
   }, [requestedFamilyId, router]);
 
@@ -124,15 +142,28 @@ function SettingsContent() {
   }, [challenge, resendSeconds]);
 
   function switchFamily(nextId: string) {
-    if (!families.some((family) => family.id === nextId)) return;
-    setFamilyId(nextId);
-    router.replace('/settings?family=' + encodeURIComponent(nextId));
+    if (!families.some((family) => family.id === nextId) || nextId === familyId) return;
+    loadAbortRef.current?.abort();
+    identityAbortRef.current?.abort();
+    loadSequence.current += 1;
+    identitySequence.current += 1;
+    mutationSequence.current += 1;
+    setFamilyId('');
+    setUser(null);
+    setIdentities([]);
+    setChallenge(null);
+    setPhone('');
+    setResendSeconds(0);
     setNotice(null);
+    setLoading(true);
+    setSecurityBusy(false);
+    router.replace('/settings?family=' + encodeURIComponent(nextId));
   }
 
   async function requestEmailVerification() {
     const email = identities.find((item) => item.provider === 'email')?.display_identifier;
     if (!email || securityBusy) return;
+    const mutationId = ++mutationSequence.current;
     setSecurityBusy(true);
     setNotice(null);
     try {
@@ -140,10 +171,13 @@ function SettingsContent() {
         method: 'POST',
         body: JSON.stringify({ email }),
       });
+      if (mutationId !== mutationSequence.current) return;
       setNotice({ kind: 'success', text: result.message });
     } catch (cause) {
+      if (mutationId !== mutationSequence.current) return;
       setNotice({ kind: 'error', text: friendlyError(cause, 'Баталгаажуулах холбоос илгээж чадсангүй.') });
     } finally {
+      if (mutationId !== mutationSequence.current) return;
       setSecurityBusy(false);
     }
   }
@@ -152,6 +186,7 @@ function SettingsContent() {
     event.preventDefault();
     const requestedPhone = String(new FormData(event.currentTarget).get('phone') ?? '').trim();
     if (!requestedPhone || securityBusy) return;
+    const mutationId = ++mutationSequence.current;
     setSecurityBusy(true);
     setNotice(null);
     try {
@@ -159,19 +194,23 @@ function SettingsContent() {
         method: 'POST',
         body: JSON.stringify({ phone: requestedPhone }),
       });
+      if (mutationId !== mutationSequence.current) return;
       setPhone(requestedPhone);
       setChallenge(result);
       setResendSeconds(result.resend_after);
       setNotice({ kind: 'success', text: 'Баталгаажуулах код илгээгдлээ.' });
     } catch (cause) {
+      if (mutationId !== mutationSequence.current) return;
       setNotice({ kind: 'error', text: friendlyError(cause, 'Код илгээж чадсангүй.') });
     } finally {
+      if (mutationId !== mutationSequence.current) return;
       setSecurityBusy(false);
     }
   }
 
   async function resendPhone() {
     if (!phone || securityBusy || resendSeconds > 0) return;
+    const mutationId = ++mutationSequence.current;
     setSecurityBusy(true);
     setNotice(null);
     try {
@@ -179,12 +218,15 @@ function SettingsContent() {
         method: 'POST',
         body: JSON.stringify({ phone }),
       });
+      if (mutationId !== mutationSequence.current) return;
       setChallenge(result);
       setResendSeconds(result.resend_after);
       setNotice({ kind: 'success', text: 'Шинэ баталгаажуулах код илгээгдлээ.' });
     } catch (cause) {
+      if (mutationId !== mutationSequence.current) return;
       setNotice({ kind: 'error', text: friendlyError(cause, 'Код дахин илгээж чадсангүй.') });
     } finally {
+      if (mutationId !== mutationSequence.current) return;
       setSecurityBusy(false);
     }
   }
@@ -198,6 +240,7 @@ function SettingsContent() {
       return;
     }
 
+    const mutationId = ++mutationSequence.current;
     setSecurityBusy(true);
     setNotice(null);
     try {
@@ -205,28 +248,47 @@ function SettingsContent() {
         method: 'POST',
         body: JSON.stringify({ phone, challenge_id: challenge.challenge_id, code }),
       });
+      if (mutationId !== mutationSequence.current) return;
       setChallenge(null);
       setPhone('');
       setResendSeconds(0);
       await refreshIdentities();
       setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж, account-той холбогдлоо.' });
     } catch (cause) {
+      if (mutationId !== mutationSequence.current) return;
       setNotice({ kind: 'error', text: friendlyError(cause, 'Утас баталгаажуулж чадсангүй.') });
     } finally {
+      if (mutationId !== mutationSequence.current) return;
       setSecurityBusy(false);
     }
   }
 
   async function logout() {
     if (logoutBusy) return;
+    const mutationId = ++mutationSequence.current;
+    loadSequence.current += 1;
+    identitySequence.current += 1;
+    loadAbortRef.current?.abort();
+    identityAbortRef.current?.abort();
     setLogoutBusy(true);
     setNotice(null);
+    setChallenge(null);
+    setPhone('');
+    setResendSeconds(0);
     try {
       await api<void>('/auth/logout', { method: 'POST' });
+      if (mutationId !== mutationSequence.current) return;
+      setUser(null);
+      setIdentities([]);
+      setFamilies([]);
+      setFamilyId('');
+      setLoading(false);
       router.replace('/login');
     } catch (cause) {
+      if (mutationId !== mutationSequence.current) return;
       setLogoutBusy(false);
       setNotice({ kind: 'error', text: friendlyError(cause, 'Гарах үед алдаа гарлаа.') });
+      void load();
     }
   }
 
@@ -305,7 +367,6 @@ function SettingsContent() {
             <a href="#account">Account</a>
             <a href="#family">Family</a>
             <a href="#security">Security</a>
-            <a href="#preferences">Preferences</a>
             <a href="#signout">Sign out</a>
           </aside>
 
@@ -330,6 +391,11 @@ function SettingsContent() {
                     <div><dt>Имэйл</dt><dd>{user?.email || 'Account-д имэйл холбогдоогүй'}</dd></div>
                     <div><dt>Account ID</dt><dd className="settings-mono">{user?.id}</dd></div>
                   </dl>
+                  {user?.person_id && selectedFamily ? (
+                    <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>
+                      Миний холбоотой Person профайлыг харах
+                    </Link>
+                  ) : null}
                   <p className="settings-note">
                     Одоогийн backend-д өөрийн display name, email эсвэл account талбарыг засах authenticated mutation байхгүй.
                     Тиймээс immutable мэдээллийг editable мэтээр үзүүлээгүй.
@@ -395,6 +461,9 @@ function SettingsContent() {
                       <div className="settings-family-meta">
                         <span className="settings-family-badge">{selectedFamily.role}</span>
                         <span>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</span>
+                        <Link className="settings-button settings-button--light" href={'/families?family=' + encodeURIComponent(selectedFamily.id)}>
+                          Family тохиргоо, гишүүдийг удирдах →
+                        </Link>
                       </div>
                     )}
                   </div>
@@ -488,20 +557,7 @@ function SettingsContent() {
               </div>
             </section>
 
-            <section id="preferences" className="settings-section" aria-labelledby="settings-preferences-title">
-              <div className="settings-section__head">
-                <div className="settings-section__icon"><Globe2 size={18} /></div>
-                <div>
-                  <p className="settings-eyebrow">PREFERENCES</p>
-                  <h2 id="settings-preferences-title">Хэрэглээний тохиргоо</h2>
-                  <p>Server-side хадгалах language, notification эсвэл display preference contract одоогоор байхгүй.</p>
-                </div>
-              </div>
-              <div className="settings-card settings-empty settings-empty--compact">
-                <strong>Одоогоор хадгалдаг preference алга.</strong>
-                <span>Persistence contract үүсээгүй тул local-only эсвэл fake save interaction нэмээгүй.</span>
-              </div>
-            </section>
+
 
             <section id="signout" className="settings-section" aria-labelledby="settings-signout-title">
               <div className="settings-section__head">
