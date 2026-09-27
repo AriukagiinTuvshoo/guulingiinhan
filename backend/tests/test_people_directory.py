@@ -137,3 +137,54 @@ def test_people_directory_lineage_branch_filters_and_unassigned_state(client):
     assert {item["id"] for item in branch_payload["items"]} == {assigned["id"]}
     assert branch_payload["items"][0]["lineage_name"] == "Дээд удам"
     assert branch_payload["items"][0]["branch_name"] == "Баруун салаа"
+
+
+def test_person_detail_and_edit_are_family_scoped(client):
+    register_verified(client, "person-edit-scope@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Person A"}).json()["id"]
+    family_b = client.post("/api/v1/families", json={"name": "Person B"}).json()["id"]
+    person_b = client.post(
+        f"/api/v1/families/{family_b}/persons",
+        json={"first_name": "Би", "last_name": "Б"},
+    ).json()
+
+    assert client.get(
+        f"/api/v1/families/{family_a}/persons/{person_b['id']}"
+    ).status_code == 404
+
+    response = client.patch(
+        f"/api/v1/families/{family_a}/persons/{person_b['id']}",
+        json={"first_name": "Хөндлөн"},
+    )
+    assert response.status_code == 404
+
+    assert client.get(
+        f"/api/v1/families/{family_b}/persons/{person_b['id']}"
+    ).json()["first_name"] == "Би"
+
+
+def test_people_directory_redacts_minor_profile_fields_without_guardian_scope(client):
+    from datetime import UTC, datetime
+
+    register_verified(client, "directory-minor@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Minor directory"}).json()["id"]
+    minor_date = datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 10).isoformat()
+    minor = client.post(
+        f"/api/v1/families/{family_id}/persons",
+        json={
+            "first_name": "Хүүхэд",
+            "last_name": "Нууц",
+            "birth_date": minor_date,
+            "birth_place": "Нууц газар",
+            "death_date": None,
+            "short_description": "Нууц тайлбар",
+        },
+    ).json()
+
+    response = client.get(f"/api/v1/families/{family_id}/people")
+    assert response.status_code == 200
+    item = next(item for item in response.json()["items"] if item["id"] == minor["id"])
+    assert item["birth_date"] is None
+    assert item["birth_place"] is None
+    assert item["death_date"] is None
+    assert item["short_description"] is None
