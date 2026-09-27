@@ -1219,3 +1219,7 @@
   .story-detail-actions .button,.story-detail-actions button{width:100%;min-height:42px}
   .story-related-grid{grid-template-columns:1fr}
 }
+
+
+/* P4.6 — Memories/photo UX hardening */
+.memory-card-gallery .memory-photo-fallback,.memory-detail-gallery .memory-photo-fallback{display:grid;place-items:center;min-height:100%;padding:20px;background:#e9e1d1;color:#7c877f;text-align:center;font-size:10px;line-height:1.5}.memory-card-gallery .memory-photo-fallback{min-height:170px}.memory-photo-count{pointer-events:none}.memory-card:focus-within{border-color:#b69a5d;box-shadow:0 12px 28px #40392d18}.memory-card a:focus-visible,.memory-card button:focus-visible,.memory-dialog button:focus-visible{outline:2px solid #aa8c4d;outline-offset:3px}.memory-composer-form input[type="file"]{padding:8px 9px;background:#fffaf1}.memory-upload-status{min-height:18px}@media(max-width:480px){.memory-detail-photos{margin-top:24px}.memory-detail-gallery img,.memory-detail-gallery .memory-photo-fallback{height:260px;min-height:260px}.memory-dialog{padding:20px}}@media(max-width:320px){.memories-page{padding-left:6px;padding-right:6px}.memories-hero h1{font-size:32px}.memory-composer{padding:13px}.memory-composer-actions{display:grid}.memory-composer-actions>*{width:100%;min-height:44px}.memory-card-gallery,.memory-card-paper{height:150px}.memory-card-gallery .memory-photo-fallback{min-height:150px}.memory-detail-gallery img,.memory-detail-gallery .memory-photo-fallback{height:220px;min-height:220px}.memory-dialog-actions{grid-template-columns:1fr}}
