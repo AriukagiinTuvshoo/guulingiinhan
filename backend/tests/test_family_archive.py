@@ -261,3 +261,42 @@ def test_archive_delete_cleans_relations(client, database):
             .count()
             == 0
         )
+
+
+def test_archive_rejects_cross_family_mutations(client, database):
+    register_verified(client, "archive-isolation-owner@example.com")
+    family_a = client.post("/api/v1/families", json={"name": "Archive A"}).json()["id"]
+    family_b = client.post("/api/v1/families", json={"name": "Archive B"}).json()["id"]
+    archive_b = client.post(
+        f"/api/v1/families/{family_b}/archives",
+        json={"title": "B гэр бүлийн нууц record"},
+    ).json()
+
+    client.post("/api/v1/auth/logout")
+    register_verified(client, "archive-isolation-member@example.com")
+    with database() as db:
+        member = db.query(User).filter(
+            User.email == "archive-isolation-member@example.com"
+        ).one()
+        db.add(FamilyMember(family_id=UUID(family_a), user_id=member.id, role="member"))
+        db.commit()
+
+    assert client.get(f"/api/v1/families/{family_b}/archives").status_code == 403
+    assert client.get(
+        f"/api/v1/families/{family_b}/archives/{archive_b['id']}"
+    ).status_code == 403
+
+    payload = {"title": "Хөндлөн засвар", "person_ids": []}
+    assert client.post(
+        f"/api/v1/families/{family_b}/archives", json=payload
+    ).status_code == 403
+    assert client.put(
+        f"/api/v1/families/{family_b}/archives/{archive_b['id']}", json=payload
+    ).status_code == 403
+    assert client.delete(
+        f"/api/v1/families/{family_b}/archives/{archive_b['id']}"
+    ).status_code == 403
+
+    assert client.get(
+        f"/api/v1/families/{family_a}/archives?page=1&page_size=50"
+    ).json()["total"] == 0
