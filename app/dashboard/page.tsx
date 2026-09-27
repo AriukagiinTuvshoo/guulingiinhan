@@ -7,11 +7,7 @@ import {
   BookOpen,
   GitFork,
   Heart,
-  Home,
-  Menu,
-  Network,
   Search,
-  Settings,
   TreeDeciduous,
   Users,
   X,
@@ -659,7 +655,7 @@ function DashboardContent() {
   if (loading) {
     return (
       <main className="homev2-shell">
-        <div className="homev2-loading" aria-busy="true">
+        <div className="homev2-loading" aria-busy="true" aria-live="polite">
           <div className="homev2-loading__line homev2-loading__line--wide" />
           <div className="homev2-loading__line" />
           <div className="homev2-loading__grid">
