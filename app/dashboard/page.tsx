@@ -1,17 +1,13 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArrowRight,
   BookOpen,
   GitFork,
   Heart,
-  Home,
-  Menu,
-  Network,
   Search,
-  Settings,
   TreeDeciduous,
   Users,
   X,
@@ -54,15 +50,6 @@ type ActivityItem =
   | { kind: 'memory'; id: string; title: string; date: string; meta: string }
   | { kind: 'archive'; id: string; title: string; date: string; meta: string };
 
-const navItems = [
-  ['Нүүр', Home, (familyId: string) => '/dashboard?family=' + encodeURIComponent(familyId)],
-  ['Удмын мод', GitFork, (familyId: string) => '/tree?family=' + encodeURIComponent(familyId)],
-  ['Хүмүүс', Network, (familyId: string) => '/people?family=' + encodeURIComponent(familyId)],
-  ['Манай түүх', BookOpen, (familyId: string) => '/stories?family=' + encodeURIComponent(familyId)],
-  ['Дурсамж', Heart, (familyId: string) => '/memories?family=' + encodeURIComponent(familyId)],
-  ['Архив', Archive, (familyId: string) => '/archives?family=' + encodeURIComponent(familyId)],
-  ['Тохиргоо', Settings, () => '/account/security'],
-] as const;
 
 const previewSlots = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'] as const;
 
@@ -452,13 +439,21 @@ function DashboardContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [mobileNav, setMobileNav] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const dashboardRequestRef = useRef(0);
+  const searchRequestRef = useRef(0);
 
   const loadDashboard = useCallback(
     async (familyId: string, currentUser: User) => {
+      const requestId = dashboardRequestRef.current;
       setRefreshing(true);
       setError('');
+      setFamily(null);
+      setPeople([]);
+      setTree({ persons: [], parent_child_relationships: [], marriages: [] });
+      setMemories([]);
+      setMemoryCount(0);
+      setStories(null);
+      setArchives(null);
 
       try {
         const [familyData, peopleData, treeData, memoryData] = await Promise.all([
@@ -468,6 +463,7 @@ function DashboardContent() {
           api<MemoryListItem[]>('/families/' + familyId + '/memories'),
         ]);
 
+        if (requestId !== dashboardRequestRef.current) return null;
         setFamily(familyData);
         setPeople(peopleData);
         setTree(treeData);
@@ -478,6 +474,7 @@ function DashboardContent() {
           api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4').catch(() => null),
           api<ArchiveListPage>('/families/' + familyId + '/archives?page=1&page_size=4').catch(() => null),
         ]);
+        if (requestId !== dashboardRequestRef.current) return null;
         setStories(storiesResult);
         setArchives(archivesResult);
 
@@ -488,6 +485,7 @@ function DashboardContent() {
           ? treeData.root_person_id
           : peopleData[0]?.id ?? null;
       } catch (cause) {
+        if (requestId !== dashboardRequestRef.current) return null;
         if (cause instanceof ApiError && cause.status === 401) {
           router.replace('/login');
           return null;
@@ -505,8 +503,16 @@ function DashboardContent() {
     let active = true;
 
     async function initialize() {
+      const requestId = ++dashboardRequestRef.current;
       setLoading(true);
       setError('');
+      setFamily(null);
+      setPeople([]);
+      setTree({ persons: [], parent_child_relationships: [], marriages: [] });
+      setMemories([]);
+      setMemoryCount(0);
+      setStories(null);
+      setArchives(null);
       try {
         const [me, familyList] = await Promise.all([
           api<User>('/auth/me'),
@@ -522,16 +528,25 @@ function DashboardContent() {
           return;
         }
 
-        const requestedFamily = familyList.find((item) => item.id === familyIdFromUrl);
+        const requestedFamily = familyIdFromUrl
+          ? familyList.find((item) => item.id === familyIdFromUrl) ?? null
+          : null;
+        if (familyIdFromUrl && !requestedFamily) {
+          setFamily(null);
+          setPeople([]);
+          setTree({ persons: [], parent_child_relationships: [], marriages: [] });
+          setMemories([]);
+          setMemoryCount(0);
+          setStories(null);
+          setArchives(null);
+          setError('Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.');
+          return;
+        }
         const nextFamily = requestedFamily ?? familyList[0];
         await loadDashboard(nextFamily.id, me);
 
-        if (active && (!familyIdFromUrl || !requestedFamily)) {
-          window.history.replaceState(
-            null,
-            '',
-            '/dashboard?family=' + encodeURIComponent(nextFamily.id),
-          );
+        if (active && !familyIdFromUrl) {
+          router.replace('/dashboard?family=' + encodeURIComponent(nextFamily.id));
         }
       } catch (cause) {
         if (!active) return;
@@ -541,7 +556,7 @@ function DashboardContent() {
         }
         setError(cause instanceof Error ? cause.message : 'Нэвтрэлтийг шалгаж чадсангүй.');
       } finally {
-        if (active) setLoading(false);
+        if (active && requestId === dashboardRequestRef.current) setLoading(false);
       }
     }
 
@@ -559,6 +574,7 @@ function DashboardContent() {
     }
 
     const timer = window.setTimeout(() => {
+      const requestId = ++searchRequestRef.current;
       setSearchBusy(true);
       api<PersonSearchPage>(
         '/families/' +
@@ -573,12 +589,17 @@ function DashboardContent() {
             router.replace('/login');
             return;
           }
-          setSearchResults(null);
+          if (requestId === searchRequestRef.current) setSearchResults(null);
         })
-        .finally(() => setSearchBusy(false));
+        .finally(() => {
+          if (requestId === searchRequestRef.current) setSearchBusy(false);
+        });
     }, 250);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      searchRequestRef.current += 1;
+    };
   }, [family?.id, router, search]);
 
   const previewTree = useMemo(
@@ -630,25 +651,10 @@ function DashboardContent() {
     router.push('/profile?family=' + encodeURIComponent(family.id) + '&person=' + encodeURIComponent(personId));
   }
 
-  function go(pathFactory: (familyId: string) => string) {
-    if (!family) return;
-    setMobileNav(false);
-    router.push(pathFactory(family.id));
-  }
-
-  async function logout() {
-    try {
-      await api<void>('/auth/logout', { method: 'POST' });
-      router.replace('/login');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Гарах үед алдаа гарлаа.');
-    }
-  }
-
   if (loading) {
     return (
       <main className="homev2-shell">
-        <div className="homev2-loading" aria-busy="true">
+        <div className="homev2-loading" aria-busy="true" aria-live="polite">
           <div className="homev2-loading__line homev2-loading__line--wide" />
           <div className="homev2-loading__line" />
           <div className="homev2-loading__grid">
@@ -695,117 +701,44 @@ function DashboardContent() {
 
   return (
     <div className="homev2-app">
-      <header className="homev2-topbar">
-        <button
-          className="homev2-menu-button"
-          onClick={() => setMobileNav((value) => !value)}
-          aria-label="Навигаци нээх"
-          aria-expanded={mobileNav}
-        >
-          <Menu size={20} />
-        </button>
-
-        <Link className="homev2-brand" href={'/dashboard?family=' + encodeURIComponent(family?.id ?? '')}>
-          <span className="homev2-brand-mark"><TreeDeciduous size={23} /></span>
-          <span>
-            <strong>ГУУЛИНГИЙНХАН</strong>
-            <small>Миний удам · Манай түүх</small>
-          </span>
-        </Link>
-
-        <div className="homev2-search">
-          <Search size={17} aria-hidden="true" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Гэр бүлийн хүн хайх…"
-            aria-label="Гэр бүлийн хүн хайх"
-          />
-          {search && (
-            <button onClick={() => setSearch('')} aria-label="Хайлтыг арилгах">
-              <X size={15} />
-            </button>
-          )}
-          {search && (
-            <div className="homev2-search-results">
-              {searchBusy ? (
-                <span>Хайж байна…</span>
-              ) : searchResults?.items.length ? (
-                searchResults.items.map((result) => (
-                  <button
-                    key={result.id}
-                    onClick={() => openProfile(result.id)}
-                  >
-                    <span className="homev2-search-avatar">{result.name.slice(0, 2).toUpperCase()}</span>
-                    <span>
-                      <strong>{result.name}</strong>
-                      <small>{result.birth_year ?? '—'}</small>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <span>{searchResults ? 'Хүн олдсонгүй.' : 'Нэрээр хайж байна…'}</span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <Link className="homev2-family-link" href="/families">
-          Гэр бүлүүд
-        </Link>
-
-        <div className="homev2-user-wrap">
-          <button
-            className="homev2-user-button"
-            onClick={() => setMenuOpen((value) => !value)}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-          >
-            <span className="homev2-user-avatar">{user ? initials({ first_name: user.display_name, last_name: '' }) : '?'}</span>
-            <span>{user?.display_name ?? 'Хэрэглэгч'}</span>
-          </button>
-          {menuOpen && (
-            <div className="homev2-user-menu" role="menu">
-              <strong>{user?.display_name ?? 'Хэрэглэгч'}</strong>
-              {user?.person_id && family && (
-                <button role="menuitem" onClick={() => openProfile(user.person_id!)}>
-                  Миний профайл
+      <div className="homev2-layout">
+        <main className="homev2-main">
+          <div className="homev2-dashboard-toolbar" aria-label="Dashboard хэрэгслүүд">
+            <div className="homev2-search">
+              <Search size={17} aria-hidden="true" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Гэр бүлийн хүн хайх…"
+                aria-label="Гэр бүлийн хүн хайх"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch('')} aria-label="Хайлтыг арилгах">
+                  <X size={15} />
                 </button>
               )}
-              <Link role="menuitem" href="/families">Гэр бүлүүд</Link>
-              <button role="menuitem" onClick={() => void logout()}>Гарах</button>
+              {search && (
+                <div className="homev2-search-results">
+                  {searchBusy ? (
+                    <span aria-live="polite">Хайж байна…</span>
+                  ) : searchResults?.items.length ? (
+                    searchResults.items.map((result) => (
+                      <button type="button" key={result.id} onClick={() => openProfile(result.id)}>
+                        <span className="homev2-search-avatar">{result.name.slice(0, 2).toUpperCase()}</span>
+                        <span>
+                          <strong>{result.name}</strong>
+                          <small>{result.birth_year ?? '—'}</small>
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <span>{searchResults ? 'Хүн олдсонгүй.' : 'Нэрээр хайж байна…'}</span>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </header>
-
-      <div className="homev2-layout">
-        <aside className={'homev2-sidebar ' + (mobileNav ? 'homev2-sidebar--open' : '')}>
-          <nav aria-label="Үндсэн навигаци">
-            {navItems.map(([label, Icon, getHref]) => {
-              const href = getHref(family?.id ?? '');
-              return (
-                <Link
-                  key={label}
-                  className={'homev2-nav-item ' + (label === 'Нүүр' ? 'homev2-nav-item--active' : '')}
-                  href={href}
-                  onClick={() => setMobileNav(false)}
-                >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="homev2-sidebar-quote">
-            Өнгөрсөн түүхээ<br />
-            танин мэдэж,<br />
-            өнөөдрийн дурсамжаа<br />
-            ирээдүйд өвлүүлэн үлдээе.
           </div>
-        </aside>
 
-        <main className="homev2-main">
           {error && (
             <div className="homev2-inline-alert" role="alert">
               <span>{error}</span>
