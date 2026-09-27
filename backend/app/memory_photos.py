@@ -42,7 +42,7 @@ from app.models import (
     User,
     UserPersonLink,
 )
-from app.privacy import active_guardian_scopes, is_minor
+from app.privacy import active_guardian_scopes, has_guardian_scope, is_minor
 from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/families", tags=["memories and photos"])
@@ -92,8 +92,24 @@ def _visible_people_query(user: User, family_id: UUID):
     )
 
 
-def _can_edit_memory(memory: Memory, member: FamilyMember, user: User) -> bool:
-    return member.role in {"owner", "editor"} or memory.created_by == user.id
+def _can_manage_memory_people(
+    db: Session, family_id: UUID, user: User, person_ids: list[UUID]
+) -> bool:
+    """Guardians may manage memories only within explicitly granted minor scopes."""
+    if not person_ids:
+        return False
+    return all(
+        has_guardian_scope(db, user.id, family_id, person_id, "manage_memories")
+        for person_id in set(person_ids)
+    )
+
+
+def _can_edit_memory(db: Session, family_id: UUID, memory: Memory, member: FamilyMember, user: User) -> bool:
+    if member.role in {"owner", "editor"} or memory.created_by == user.id:
+        return True
+    return _can_manage_memory_people(
+        db, family_id, user, _memory_person_ids(db, memory.id)
+    )
 
 
 def _visible_memory(db: Session, family_id: UUID, memory_id: UUID, user: User) -> Memory:
@@ -402,6 +418,7 @@ def _memory_page_payload(
 
 
 class MemoryPersonOut(BaseModel):
+    model_config = {"from_attributes": True}
     id: UUID
     first_name: str
     last_name: str
@@ -648,7 +665,7 @@ def update_memory(
 ):
     member, _ = _member(db, family_id, user)
     memory = _visible_memory(db, family_id, memory_id, user)
-    if not _can_edit_memory(memory, member, user):
+    if not _can_edit_memory(db, family_id, memory, member, user):
         raise HTTPException(status_code=403, detail="Энэ дурсамжийг засах эрхгүй.")
     title, person_ids = _validate_memory_input(body)
     for person_id in person_ids:

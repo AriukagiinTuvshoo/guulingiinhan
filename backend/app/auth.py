@@ -52,6 +52,7 @@ SESSION_SECONDS = 60 * 60 * 24 * 7
 OTP_SECONDS = 5 * 60
 OTP_COOLDOWN_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
+PASSWORD_MIN_LENGTH = 8
 _OTP_DEV_SECRET = secrets.token_bytes(32)
 _DUMMY_PASSWORD_HASH: str
 GOOGLE_STATE_SECONDS = 600
@@ -61,7 +62,7 @@ logger = logging.getLogger("guulingiinhan.auth")
 
 class RegisterInput(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
 
     @model_validator(mode="after")
@@ -85,7 +86,7 @@ class EmailTokenInput(BaseModel):
 
 
 class PasswordResetConfirmInput(EmailTokenInput):
-    new_password: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
 
 
 class GenericEmailResponse(BaseModel):
@@ -94,7 +95,7 @@ class GenericEmailResponse(BaseModel):
 
 class UserOutput(BaseModel):
     id: UUID
-    email: str
+    email: str | None
     display_name: str
     person_id: UUID | None = None
 
@@ -119,6 +120,18 @@ class PhoneOtpRequestInput(BaseModel):
             raise ValueError(str(error)) from error
 
 
+class PhoneRegisterInput(PhoneOtpRequestInput):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Нэр хоосон байж болохгүй.")
+        return value
+
+
 class PhoneOtpRequestOutput(BaseModel):
     challenge_id: UUID
     expires_in: int
@@ -130,8 +143,20 @@ class PhoneOtpVerifyInput(PhoneOtpRequestInput):
     code: str = Field(pattern=r"^[0-9]{6}$")
 
 
+class PhoneRegisterVerifyInput(PhoneOtpVerifyInput):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def clean_display_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Нэр хоосон байж болохгүй.")
+        return value
+
+
 class PasswordRecoveryInput(PhoneOtpVerifyInput):
-    new_password: str = Field(min_length=10, max_length=128)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
 
 
 class PhoneLoginOutput(UserOutput):
@@ -469,6 +494,7 @@ def _user_output(db: Session, user: User) -> UserOutput:
 
 GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
 GENERIC_RESET_MESSAGE = "Хэрэв энэ имэйлд баталгаажсан account байвал нууц үг шинэчлэх холбоос илгээнэ."
+GENERIC_REGISTER_MESSAGE = "Бүртгэлийн хүсэлтийг хүлээн авлаа. Шаардлагатай бол баталгаажуулах холбоосыг имэйлээр илгээнэ."
 
 
 def _email_request_allowed(db: Session, request: Request, purpose: str, email: str) -> bool:
@@ -528,6 +554,8 @@ def _email_link(page: str, token: str) -> str:
 
 
 def _verified_email_identity(db: Session, user: User) -> LoginIdentity | None:
+    if not user.email:
+        return None
     identity = db.scalar(
         select(LoginIdentity).where(
             LoginIdentity.user_id == user.id,
@@ -844,18 +872,19 @@ def google_callback(
     return response
 
 
-@router.post("/register", response_model=UserOutput, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=GenericEmailResponse, status_code=status.HTTP_201_CREATED)
 def register(
     body: RegisterInput,
     request: Request,
-    response: Response,
     background_tasks: BackgroundTasks,
     email_provider: EmailProvider = Depends(get_email_provider),
     db: Session = Depends(get_db),
 ):
     email = normalize_email(str(body.email))
     if email_is_registered(db, email):
-        raise HTTPException(status_code=409, detail="Энэ имэйлээр бүртгэл үүссэн байна.")
+        _password_matches("registration-enumeration-padding", _DUMMY_PASSWORD_HASH)
+        return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
+
     user = User(
         email=email,
         display_name=(body.display_name or email.partition("@")[0]).strip(),
@@ -884,15 +913,14 @@ def register(
         from sqlalchemy.exc import IntegrityError
 
         if isinstance(error, IntegrityError):
-            raise HTTPException(
-                status_code=409, detail="Энэ имэйлээр бүртгэл үүссэн байна."
-            ) from error
+            _password_matches("registration-enumeration-padding", _DUMMY_PASSWORD_HASH)
+            return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
         raise
     db.refresh(user)
     _verification_link_for_user(
         db, user, email_provider, background_tasks, getattr(request.state, "request_id", None)
     )
-    return _user_output(db, user)
+    return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
 
 
 @router.post(
@@ -1251,8 +1279,12 @@ def cancel_identity_link_request(
 
 @router.get("/phone/config")
 def phone_auth_config():
-    """Indicates phone sign-in UI availability without disclosing provider settings."""
-    return {"enabled": get_settings().sms_provider.lower() in {"fake", "twilio"}}
+    """Expose only whether real SMS delivery is configured for auth UI."""
+    settings = get_settings()
+    enabled = settings.sms_provider.lower() == "twilio" and all(
+        (settings.twilio_account_sid, settings.twilio_auth_token, settings.twilio_from_number)
+    )
+    return {"enabled": enabled}
 
 
 @router.post("/me/phone/request", response_model=PhoneOtpRequestOutput, status_code=202)
@@ -1347,6 +1379,110 @@ def verify_phone_link(
         verified=True,
         created_at=identity.created_at,
     )
+
+
+@router.post("/phone/register/request", response_model=PhoneOtpRequestOutput, status_code=202)
+def request_phone_registration(
+    body: PhoneRegisterInput,
+    request: Request,
+    db: Session = Depends(get_db),
+    sms: SmsProvider = Depends(get_sms_provider),
+):
+    identity = _phone_identity(db, body.phone)
+    return _create_phone_challenge(
+        db=db,
+        request=request,
+        phone=body.phone,
+        purpose="phone_registration",
+        user_id=identity.user_id if identity else None,
+        sms=sms,
+    )
+
+
+@router.post("/phone/register/verify", response_model=UserOutput)
+def verify_phone_registration(
+    body: PhoneRegisterVerifyInput,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
+        raise HTTPException(
+            status_code=429, detail="Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу."
+        )
+    challenge = _matching_otp(
+        db,
+        challenge_id=body.challenge_id,
+        phone=body.phone,
+        purpose="phone_registration",
+        user_id=None,
+        code=body.code,
+    )
+    if challenge is None:
+        raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан байна.")
+
+    identity = _phone_identity(db, body.phone)
+    if identity is not None:
+        user = db.get(User, identity.user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=400, detail="Баталгаажуулалт дууссангүй. Дахин оролдоно уу.")
+        challenge.status = "consumed"
+        challenge.consumed_at = datetime.now(UTC)
+        _audit(db, user.id, "phone.registration_verified_existing", challenge)
+        db.commit()
+        set_session_cookie(db, response, user.id)
+        return _user_output(db, user)
+
+    user = User(
+        email=None,
+        display_name=body.display_name,
+        password_hash=None,
+        email_verified_at=None,
+    )
+    db.add(user)
+    try:
+        db.flush()
+        identity = LoginIdentity(
+            user_id=user.id,
+            provider="phone",
+            normalized_identifier=body.phone,
+            display_identifier=body.phone,
+            verified_at=datetime.now(UTC),
+        )
+        challenge.user_id = user.id
+        challenge.status = "consumed"
+        challenge.consumed_at = datetime.now(UTC)
+        db.add(identity)
+        _audit_auth_event(db, user.id, "phone.registration_verified", "phone_identity", identity.id)
+        db.add(
+            AuditLog(
+                actor_id=user.id,
+                action="user.registered",
+                target_type="user",
+                target_id=user.id,
+                request_id=request_id_context.get(),
+            )
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        identity = _phone_identity(db, body.phone)
+        user = db.get(User, identity.user_id) if identity else None
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=409, detail="Бүртгэлийг дуусгаж чадсангүй. Дахин оролдоно уу."
+            )
+        challenge = db.get(PhoneOtpChallenge, body.challenge_id)
+        if challenge is not None:
+            challenge.status = "consumed"
+            challenge.consumed_at = datetime.now(UTC)
+            _audit(db, user.id, "phone.registration_verified_existing", challenge)
+            db.commit()
+        else:
+            raise HTTPException(status_code=409, detail="Бүртгэлийг дуусгаж чадсангүй.")
+    db.refresh(user)
+    set_session_cookie(db, response, user.id)
+    return _user_output(db, user)
 
 
 @router.post("/phone/login/request", response_model=PhoneOtpRequestOutput, status_code=202)
