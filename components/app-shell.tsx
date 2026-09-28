@@ -303,7 +303,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   const active = activeKey(pathname);
-  const shellContext: AppShellContextValue = { user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError };
+  const shellContext = useMemo<AppShellContextValue>(
+    () => ({ user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError }),
+    [user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError],
+  );
 
   return (
     <AppShellContext.Provider value={shellContext}>
