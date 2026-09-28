@@ -199,6 +199,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
 
     const nextFamily = requested ?? families[0].id;
+    setContextError('');
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
     if (requestedFamilyId === nextFamily) setFamilySwitching(false);
 
