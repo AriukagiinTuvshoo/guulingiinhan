@@ -40,6 +40,7 @@ import {
   TreeData,
   TreePerson,
   User,
+  MemoryPage,
   personName,
 } from '../../lib/api';
 
@@ -71,8 +72,6 @@ type MemorySummary = {
   description: string | null;
   memory_date: string | null;
   visibility: string;
-  person_ids: string[];
-  person_names?: string[];
   created_at: string;
 };
 
@@ -93,6 +92,7 @@ const nav = [
   ['Ургийн мод', GitFork],
   ['Хүмүүс', Network],
   ['Манай түүх', BookOpen],
+  ['Дурсамж', Camera],
   ['Архив', Archive],
   ['Чат', MessageSquare],
   ['Календарь', CalendarDays],
@@ -659,7 +659,7 @@ function DashboardContent() {
       api<Family>('/families/' + familyId),
       api<TreeData>('/families/' + familyId + '/tree?' + queryParams.toString()),
       api<Person[]>('/families/' + familyId + '/persons'),
-      api<MemorySummary[]>('/families/' + familyId + '/memories'),
+      api<MemoryPage>('/families/' + familyId + '/memories?page=1&page_size=4'),
     ]);
 
     if (requestId !== loadRequestRef.current) return null;
@@ -673,7 +673,7 @@ function DashboardContent() {
     setFamily(familyData);
     setTree(treeData);
     setPeople(personData);
-    setMemories(memoryData.slice(0, 4));
+    setMemories(memoryData.items.slice(0, 4));
 
     const nextSelected = resolveSelectedPersonId(
       treeData,
@@ -706,9 +706,9 @@ function DashboardContent() {
     if (requestId !== loadRequestRef.current) return null;
     setPhotosByPerson(Object.fromEntries(photoEntries));
 
-    if (memoryData.length) {
+    if (memoryData.items.length) {
       const detailEntries = await Promise.all(
-        memoryData.slice(0, 4).map(async (memory) => {
+        memoryData.items.slice(0, 4).map(async (memory) => {
           try {
             const detail = await api<MemoryDetail>(
               '/families/' + familyId + '/memories/' + memory.id,

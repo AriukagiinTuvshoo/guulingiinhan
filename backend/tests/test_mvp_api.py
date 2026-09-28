@@ -17,7 +17,7 @@ def test_register_login_logout_me_and_email_normalization(client, email_provider
         json={"email": "Tree.Owner@example.com", "password": "strong-passphrase-123"},
     )
     assert response.status_code == 201
-    assert response.json()["email"] == "tree.owner@example.com"
+    assert response.json()["message"]
     assert "set-cookie" not in response.headers
     assert client.get("/api/v1/auth/me").status_code == 401
     assert client.post(
@@ -25,7 +25,12 @@ def test_register_login_logout_me_and_email_normalization(client, email_provider
         json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
     ).status_code == 403
 
-    assert register(client, "tree.owner@example.com").status_code == 409
+    duplicate = client.post(
+        "/api/v1/auth/register",
+        json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
+    )
+    assert duplicate.status_code == 201
+    assert duplicate.json() == response.json()
     assert (
         client.post(
             "/api/v1/auth/login",
@@ -92,6 +97,11 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
         json={"email": "new.member@example.com", "role": "editor"},
     )
     assert invite.status_code == 201
+    duplicate = client.post(
+        f"/api/v1/families/{family_id}/invitations",
+        json={"email": "new.member@example.com", "role": "editor"},
+    )
+    assert duplicate.status_code == 409
     assert "token" not in invite.json()
     token = _token_from_mail(email_provider, "new.member@example.com", "Урилга")
     client.post("/api/v1/auth/logout")
@@ -346,7 +356,7 @@ def test_biography_timeline_and_memory_round_trip(client):
     assert memory.status_code == 201
     detail = client.get(f"{base}/memories/{memory.json()['id']}")
     assert detail.status_code == 200
-    assert detail.json()["person_ids"] == [person_id]
+    assert [person["id"] for person in detail.json()["related_people"]] == [person_id]
 
 
 def test_login_rate_limit_and_audit_records(client):

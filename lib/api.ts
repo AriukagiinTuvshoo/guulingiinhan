@@ -145,5 +145,47 @@ export type Story = StoryListItem & {
   related_people: StoryPerson[];
 };
 
+export type MemoryPerson = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string | null;
+};
+
+export type MemoryListItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  memory_date: string | null;
+  visibility: string;
+  author_id: string;
+  author_name: string;
+  related_people_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MemoryPage = {
+  items: MemoryListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
+export type MemoryPhoto = {
+  id: string;
+  title: string | null;
+  created_at: string;
+  thumbnail_url: string;
+  content_url: string;
+  person_ids: string[];
+};
+
+export type Memory = MemoryListItem & {
+  related_people: MemoryPerson[];
+  photos: MemoryPhoto[];
+};
+
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>
   [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ');

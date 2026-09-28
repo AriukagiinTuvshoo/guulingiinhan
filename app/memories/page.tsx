@@ -1,120 +1,71 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { API_BASE, ApiError, api, PersonSearchPage } from '../../lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { ApiError, api, Family, MemoryPage } from '../../lib/api';
 
-type Photo = { id: string; title: string | null; thumbnail_url: string; content_url: string; };
-
-type Memory = {
-  id: string;
-  title: string;
-  description: string | null;
-  memory_date: string | null;
-  visibility: string;
-  person_ids: string[];
-  person_names?: string[];
-  created_at: string;
-  photos?: Photo[];
-};
-type SelectedPerson = { id: string; name: string };
+const PAGE_SIZE = 12;
 
 export default function MemoriesPage() {
-  const router = useRouter();
-  const [family, setFamily] = useState('');
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [personQuery, setPersonQuery] = useState('');
-  const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
-  const [personPage, setPersonPage] = useState(1);
-  const [selectedPeople, setSelectedPeople] = useState<SelectedPerson[]>([]);
-  const [error, setError] = useState('');
+  const [family, setFamily] = useState<Family | null>(null);
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [familyId, setFamilyId] = useState('');
+  const [memories, setMemories] = useState<MemoryPage | null>(null);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState('');
+  const [error, setError] = useState('');
 
-  async function load(id: string) {
-    const result = await api<{ items: Memory[] }>(`/families/${id}/memories?page=1&page_size=25`);
-    setMemories(result.items);
-  }
+  const load = useCallback(async (fid: string, page = 1, q = query) => {
+    if (!fid) return;
+    setBusy(true); setError('');
+    try {
+      const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+      if (q.trim()) params.set('q', q.trim());
+      setMemories(await api<MemoryPage>('/families/' + fid + '/memories?' + params.toString()));
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) { window.location.href = '/login'; return; }
+      setError(cause instanceof Error ? cause.message : 'Дурсамжуудыг ачаалж чадсангүй.');
+    } finally { setLoading(false); setBusy(false); }
+  }, [query]);
 
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('family') ?? '';
-    setFamily(id);
-    if (!id) { router.replace('/families'); return; }
-    load(id).catch((cause) => {
-      if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
-      else setError(cause instanceof Error ? cause.message : 'Дурсамжийг ачаалж чадсангүй.');
+    const requested = new URLSearchParams(window.location.search).get('family') ?? '';
+    api<Family[]>('/families').then((items) => {
+      setFamilies(items);
+      const selected = items.find((item) => item.id === requested) ?? items[0] ?? null;
+      setFamily(selected); setFamilyId(selected?.id ?? '');
+      if (selected && selected.id !== requested) window.history.replaceState(null, '', '/memories?family=' + encodeURIComponent(selected.id));
+      if (!selected) setLoading(false);
+    }).catch((cause) => {
+      if (cause instanceof ApiError && cause.status === 401) { window.location.href = '/login'; return; }
+      setLoading(false); setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
     });
-  }, [router]);
+  }, []);
 
-  useEffect(() => {
-    const query = personQuery.trim();
-    if (!family || !query) { setPersonResults(null); return; }
-    let active = true;
-    const timer = window.setTimeout(() => {
-      api<PersonSearchPage>(`/families/${family}/persons/search?q=${encodeURIComponent(query)}&page=1&page_size=20`)
-        .then((result) => { if (active) { setPersonResults(result); setPersonPage(1); } })
-        .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'Хайлт хийхэд алдаа гарлаа.'); });
-    }, 300);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [family, personQuery]);
+  useEffect(() => { if (familyId) void load(familyId, 1); }, [familyId, load]);
 
-  async function loadMorePeople() {
-    if (!personResults?.has_next) return;
-    const nextPage = personPage + 1;
-    try {
-      const next = await api<PersonSearchPage>(`/families/${family}/persons/search?q=${encodeURIComponent(personQuery.trim())}&page=${nextPage}&page_size=20`);
-      setPersonResults((current) => current ? { ...next, items: [...current.items, ...next.items] } : next);
-      setPersonPage(nextPage);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Үр дүнг ачаалж чадсангүй.'); }
-  }
+  const canMutate = family?.role === 'owner' || family?.role === 'editor';
+  const pageNo = memories?.page ?? 1;
 
-  function togglePerson(person: SelectedPerson) {
-    setSelectedPeople((current) => current.some((item) => item.id === person.id)
-      ? current.filter((item) => item.id !== person.id)
-      : current.length >= 100 ? current : [...current, person]);
-  }
-
-  async function create(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    setBusy(true);
-    setError('');
-    try {
-      const created = await api<{ id: string }>(`/families/${family}/memories`, { method: 'POST', body: JSON.stringify({ title: form.get('title'), description: form.get('description') || null, memory_date: form.get('memory_date') || null, visibility: form.get('visibility'), person_ids: selectedPeople.map((person) => person.id) }) });
-      const files = form.getAll('photos').filter((value): value is File => value instanceof File && value.size > 0);
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        setUploadStatus(`Зураг хадгалж байна… ${index + 1}/${files.length}`);
-        const saved = await api<Photo>(`/families/${family}/memories/${created.id}/photos`, {
-          method: 'POST', body: file,
-          headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
-        });
-        if (selectedPeople.length) {
-          await api(`/families/${family}/photos/${saved.id}/tags`, {
-            method: 'PUT', body: JSON.stringify({ person_ids: selectedPeople.map((person) => person.id) }),
-          });
-        }
-      }
-      formElement.reset();
-      setSelectedPeople([]);
-      setPersonQuery('');
-      setPersonResults(null);
-      await load(family);
-      setUploadStatus('');
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Дурсамж хадгалж чадсангүй.'); }
-    finally { setBusy(false); }
-  }
-
-  async function remove(id: string) {
-    if (!window.confirm('Энэ дурсамжийг устгах уу?')) return;
-    try { await api(`/families/${family}/memories/${id}`, { method: 'DELETE' }); await load(family); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Устгаж чадсангүй.'); }
-  }
-
-  return <main className="mvp"><section className="mvpbox" style={{ maxWidth: 980 }}><Link href={`/tree?family=${family}`}>← Ургийн мод</Link><h1 style={{ marginTop: 22 }}>Гэр бүлийн дурсамж</h1>{error && <div className="error" role="alert">{error}</div>}
-    <div className="cards"><section className="card"><h2>Дурсамж нэмэх</h2><form onSubmit={create}><label>Гарчиг<input name="title" maxLength={180} required /></label><label>Огноо<input name="memory_date" type="date" /></label><label>Тайлбар<textarea name="description" maxLength={20000} /></label><label>Зураг оруулах<input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple /></label><label>Холбоотой хүн хайх<input value={personQuery} onChange={(event) => setPersonQuery(event.target.value)} placeholder="Нэрээр хайх…" /></label><div className="row" aria-label="Сонгосон хүмүүс">{selectedPeople.map((person) => <button type="button" key={person.id} onClick={() => togglePerson(person)}>{person.name} ×</button>)}</div>{personQuery.trim() && personResults && <div className="card" aria-label="Хайлтын үр дүн">{personResults.items.length ? personResults.items.map((person) => { const selected = selectedPeople.some((item) => item.id === person.id); return <button type="button" key={person.id} aria-pressed={selected} style={{ margin: 4 }} onClick={() => togglePerson({ id: person.id, name: person.name })}>{selected ? '✓ ' : '+ '}{person.name}{person.birth_year ? ` · ${person.birth_year}` : ''}</button>; }) : <p>Тохирох хүн олдсонгүй.</p>}{personResults.has_next && <button type="button" onClick={() => void loadMorePeople()}>Дараагийн үр дүн</button>}</div>}{personQuery.trim() && !personResults && <p className="muted" role="status">Хайж байна…</p>}<label>Харагдах байдал<select name="visibility"><option value="family">Гэр бүлийнхэн</option><option value="private">Зөвхөн би</option><option value="public">Нийтийн</option></select></label><button className="primary" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Дурсамж хадгалах'}</button></form>{uploadStatus && <p role="status">{uploadStatus}</p>}</section>
-    <section className="card"><h2>Хадгалсан дурсамж</h2>{memories.length === 0 ? <p>Дурсамж одоогоор алга.</p> : memories.map((memory) => <article key={memory.id} style={{ padding: '14px 0', borderBottom: '1px solid #285847' }}><span className="tag">{memory.memory_date ?? 'Огноогүй'}</span><h3>{memory.title}</h3>{memory.description && <p>{memory.description}</p>}<p className="muted">{memory.person_names?.join(' · ') ?? `${memory.person_ids.length} холбоотой хүн`}</p>{memory.photos?.length ? <div className="row">{memory.photos.map((photo) => <figure key={photo.id}><a href={`${API_BASE}${photo.content_url}`} target="_blank" rel="noreferrer"><img crossOrigin="use-credentials" src={`${API_BASE}${photo.thumbnail_url}`} alt={photo.title ?? 'Дурсамжийн зураг'} width={120} height={100} style={{ objectFit: 'cover', borderRadius: 8 }} /></a><button type="button" onClick={async () => { try { await api(`/families/${family}/photos/${photo.id}`, { method: 'DELETE' }); await load(family); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Зураг устгаж чадсангүй.'); } }}>Зураг устгах</button></figure>)}</div> : null}<button onClick={() => void remove(memory.id)}>Устгах</button></article>)}</section></div>
+  return <main className="memories-page"><section className="memories-shell">
+    <header className="memories-heading">
+      <div>
+        <Link href={family ? '/dashboard?family=' + encodeURIComponent(family.id) : '/dashboard'}>← Dashboard</Link>
+        <p className="eyebrow">ГУУЛИНГИЙНХАН · FAMILY MEMORIES</p>
+        <h1>Манай дурсамж</h1>
+        <p>Гэр бүлийн зураг, дурсамж болон холбоотой хүмүүсийг тусдаа сан болгон хадгална.</p>
+      </div>
+      <div className="memories-actions">
+        {families.length > 1 && <label><span>Гэр бүл</span><select value={familyId} onChange={e => { setFamily(families.find(x => x.id === e.target.value) ?? null); setFamilyId(e.target.value); setMemories(null); }}>{families.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+        {canMutate && familyId && <Link className="button primary" href={'/memories/new?family=' + encodeURIComponent(familyId)}>+ Дурсамж нэмэх</Link>}
+      </div>
+    </header>
+    {error && <div className="error memories-error" role="alert"><span>{error}</span><button type="button" onClick={() => void load(familyId, pageNo)}>Дахин оролдох</button></div>}
+    <section className="memories-toolbar card" aria-label="Дурсамж хайх"><label>Дурсамж хайх<input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void load(familyId, 1); }} placeholder="Гарчиг эсвэл тайлбараар хайх…" /></label><button type="button" disabled={busy} onClick={() => void load(familyId, 1)}>Хайх</button></section>
+    {loading && !memories ? <section className="memories-state card" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Дурсамжуудыг ачаалж байна…</p></section>
+      : !families.length ? <section className="memories-state card"><h2>Гэр бүл олдсонгүй.</h2><p>Танд одоогоор хандах боломжтой гэр бүл алга.</p></section>
+      : memories?.items.length === 0 ? <section className="memories-state card"><h2>Одоогоор дурсамж алга.</h2><p>Гэр бүлийнхээ чухал мөчийг хадгалж эхлээрэй.</p>{canMutate && <Link className="button primary" href={'/memories/new?family=' + encodeURIComponent(familyId)}>Анхны дурсамж нэмэх</Link>}</section>
+      : <><div className="memories-results-head"><strong>{memories?.total ?? 0} дурсамж</strong>{busy && <span role="status">Шинэчилж байна…</span>}</div><div className="memory-grid">{memories?.items.map(memory => <article className="card memory-card" key={memory.id}><div className="memory-card-mark" aria-hidden="true">✦</div><div className="memory-card-meta"><span>{memory.memory_date ?? 'Огноогүй'}</span><span>{memory.visibility === 'private' ? 'Хувийн' : memory.visibility === 'public' ? 'Нийтийн' : 'Гэр бүлийн'}</span></div><h2>{memory.title}</h2><p>{memory.description || 'Тайлбар оруулаагүй байна.'}</p><footer><span>{memory.author_name}</span><span>{memory.related_people_count} хүн</span></footer><Link className="button memory-open" href={'/memories/' + memory.id + '?family=' + encodeURIComponent(familyId)}>Дурсамжийг үзэх →</Link></article>)}</div>{memories && memories.total > PAGE_SIZE && <nav className="stories-pagination" aria-label="Дурсамжийн хуудаслалт"><button disabled={pageNo <= 1 || busy} onClick={() => void load(familyId, pageNo - 1)}>← Өмнөх</button><span>{pageNo} / {Math.max(1, Math.ceil(memories.total / PAGE_SIZE))}</span><button disabled={!memories.has_next || busy} onClick={() => void load(familyId, pageNo + 1)}>Дараагийн →</button></nav>}</>}
   </section></main>;
 }
