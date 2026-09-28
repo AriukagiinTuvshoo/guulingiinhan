@@ -4,20 +4,28 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: TypeScript typecheck
+        run: npm run typecheck
       - name: Set non-production API base for CI build
         run: echo "NEXT_PUBLIC_API_BASE_URL=https://ci.invalid/api/v1" >> "$GITHUB_ENV"
-      - run: npm run build
+      - name: Next.js production build
+        run: npm run build
 
   backend:
     runs-on: ubuntu-latest
@@ -39,22 +47,32 @@ jobs:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@v6
-      - run: uv sync --locked --dev
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install backend dependencies
+        run: uv sync --locked --dev
         working-directory: backend
-      - run: uv run pytest
+      - name: Run pytest
+        run: uv run pytest
         working-directory: backend
-      - run: uv run ruff check app tests migrations
+      - name: Run Ruff
+        run: uv run ruff check app tests migrations
         working-directory: backend
-      - run: uv run alembic upgrade head
+      - name: Alembic upgrade
+        run: uv run alembic upgrade head
         working-directory: backend
-      - run: uv run alembic downgrade -1
+      - name: Alembic downgrade one revision
+        run: uv run alembic downgrade -1
         working-directory: backend
-      - run: uv run alembic upgrade head
+      - name: Alembic upgrade again
+        run: uv run alembic upgrade head
         working-directory: backend
-      - run: uv run alembic check
+      - name: Alembic consistency check
+        run: uv run alembic check
         working-directory: backend
