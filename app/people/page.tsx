@@ -2,17 +2,17 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ApiError,
   api,
   BranchSummary,
-  Family,
   LineageSummary,
   PersonDirectoryItem,
   PersonDirectoryPage,
   personName,
 } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -47,9 +47,7 @@ function activeFilterCount(query: string, lineageId: string, branchId: string) {
 
 function PeoplePageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [familyId, setFamilyId] = useState('');
+  const { families, currentFamily: family, familyId, contextError } = useAppShellContext();
   const [lineages, setLineages] = useState<LineageSummary[]>([]);
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [lineageId, setLineageId] = useState('');
@@ -112,119 +110,18 @@ function PeoplePageContent() {
     }
   }, [router]);
 
-  const loadFamilies = useCallback(async () => {
-    const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
+  useEffect(() => {
     peopleAbortRef.current?.abort();
     metadataAbortRef.current?.abort();
     peopleRequestRef.current += 1;
     metadataRequestRef.current += 1;
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
     setPeople(null);
     setLineages([]);
     setBranches([]);
     setLineageId('');
     setBranchId('');
-    setLoading(true);
     setError('');
-    try {
-      const list = await api<Family[]>('/families', { signal: controller.signal });
-      if (requestId !== familyRequestRef.current) return;
-      setFamilies(list);
-      peopleRequestRef.current += 1;
-      if (!list.length) {
-        setFamilyId('');
-        setPeople(null);
-        setLoading(false);
-        return;
-      }
-      const requestedFamily = searchParams.get('family') ?? '';
-      if (requestedFamily && !list.some((item) => item.id === requestedFamily)) {
-        peopleRequestRef.current += 1;
-        metadataRequestRef.current += 1;
-        setFamilyId('');
-        setPeople(null);
-        setLineages([]);
-        setBranches([]);
-        setLineageId('');
-        setBranchId('');
-        setLoading(false);
-        setError('Сонгосон гэр бүл олдсонгүй эсвэл танд хандах эрхгүй байна.');
-        return;
-      }
-      const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
-      setFamilyId(selected.id);
-      setPeople(null);
-      if (selected.id !== requestedFamily) {
-        router.replace('/people?family=' + encodeURIComponent(selected.id));
-      }
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setLoading(false);
-      setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
-    }
-  }, [router, searchParams]);
-
-  useEffect(() => {
-    void loadFamilies();
-  }, [loadFamilies]);
-
-  const loadLineages = useCallback(async (fid: string) => {
-    const requestId = ++metadataRequestRef.current;
-    metadataAbortRef.current?.abort();
-    const controller = new AbortController();
-    metadataAbortRef.current = controller;
-    setMetaBusy(true);
-    setMetaError('');
-    try {
-      const result = await api<LineageSummary[]>(`/families/${fid}/lineages`, { signal: controller.signal });
-      if (requestId !== metadataRequestRef.current) return;
-      setLineages(result);
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
-      setLineages([]);
-      setMetaError(
-        cause instanceof Error
-          ? cause.message
-          : 'Удам угсааны мэдээллийг ачаалж чадсангүй.',
-      );
-    } finally {
-      if (requestId === metadataRequestRef.current) {
-        setMetaBusy(false);
-      }
-    }
-  }, []);
-
-  const loadBranches = useCallback(async (fid: string, lid: string) => {
-    const requestId = ++metadataRequestRef.current;
-    metadataAbortRef.current?.abort();
-    const controller = new AbortController();
-    metadataAbortRef.current = controller;
-    setMetaBusy(true);
-    setMetaError('');
-    try {
-      const result = await api<BranchSummary[]>(`/lineages/${lid}/branches`, { signal: controller.signal });
-      if (requestId !== metadataRequestRef.current) return;
-      setBranches(result);
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
-      setBranches([]);
-      setMetaError(
-        cause instanceof Error
-          ? cause.message
-          : 'Салааны мэдээллийг ачаалж чадсангүй.',
-      );
-    } finally {
-      if (requestId === metadataRequestRef.current) {
-        setMetaBusy(false);
-      }
-    }
-  }, []);
+  }, [familyId]);
 
   useEffect(() => {
     metadataRequestRef.current += 1;
@@ -261,16 +158,16 @@ function PeoplePageContent() {
   }, [branchId, familyId, lineageId, query, loadPeople]);
 
   function chooseFamily(nextFamilyId: string) {
+    if (!families.some((item) => item.id === nextFamilyId) || nextFamilyId === familyId) return;
     peopleRequestRef.current += 1;
     metadataRequestRef.current += 1;
     peopleAbortRef.current?.abort();
     metadataAbortRef.current?.abort();
-    setFamilyId(nextFamilyId);
+    setPeople(null);
     setLineages([]);
     setBranches([]);
     setLineageId('');
     setBranchId('');
-    setPeople(null);
     setMetaError('');
     setError('');
     router.replace('/people?family=' + encodeURIComponent(nextFamilyId));
@@ -288,7 +185,6 @@ function PeoplePageContent() {
     setBranchId('');
   }
 
-  const family = families.find((item) => item.id === familyId) ?? null;
   const hasFilters = activeFilterCount(query, lineageId, branchId) > 0;
 
   return (
@@ -324,6 +220,7 @@ function PeoplePageContent() {
           </div>
         </div>
 
+        {contextError && <div className="error people-error" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="error people-error" role="alert">
             <span>{error}</span>
@@ -332,7 +229,7 @@ function PeoplePageContent() {
               onClick={() =>
                 void (familyId
                   ? loadPeople(familyId, query, lineageId, branchId, 1)
-                  : loadFamilies())
+                  : window.location.reload())
               }
             >
               Дахин оролдох
