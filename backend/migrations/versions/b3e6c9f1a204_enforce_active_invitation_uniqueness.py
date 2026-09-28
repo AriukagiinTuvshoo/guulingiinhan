@@ -1,7 +1,7 @@
 """Enforce one active invitation per family and canonical email.
 
 Revision ID: b3e6c9f1a204
-Revises: 9f4c2d7e8a31
+Revises: f4a7c2d9e611
 
 This restores the database-level invitation uniqueness invariant that was
 previously proposed in an unmerged historical migration.
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "b3e6c9f1a204"
-down_revision = "9f4c2d7e8a31"
+down_revision = "f4a7c2d9e611"
 branch_labels = None
 depends_on = None
 
