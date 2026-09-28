@@ -3101,7 +3101,18 @@ def create_invitation(
         expires_at=now + timedelta(days=7),
     )
     db.add(invitation)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as error:
+        constraint_name = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+        if constraint_name != "uq_invitation_active_family_email" and "uq_invitation_active_family_email" not in str(error.orig):
+            db.rollback()
+            raise
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Энэ хаяг руу идэвхтэй урилга аль хэдийн байна.",
+        ) from error
     _audit(db, user, family_id, "invitation.created", "invitation", invitation.id)
     db.commit()
     family = db.get(Family, family_id)
