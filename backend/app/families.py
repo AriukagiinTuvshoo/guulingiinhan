@@ -3104,6 +3104,10 @@ def create_invitation(
     try:
         db.flush()
     except IntegrityError as error:
+        constraint_name = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+        if constraint_name != "uq_invitation_active_family_email" and "uq_invitation_active_family_email" not in str(error.orig):
+            db.rollback()
+            raise
         db.rollback()
         raise HTTPException(
             status_code=409,
