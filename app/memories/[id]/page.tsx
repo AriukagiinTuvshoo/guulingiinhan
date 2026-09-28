@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { API_BASE, ApiError, api, Family, MemoryListItem } from '../../../lib/api';
+import { useParams, useRouter } from 'next/navigation';
+import { API_BASE, ApiError, api , MemoryListItem } from '../../../lib/api';
 
 type MemoryPhoto = NonNullable<MemoryListItem['photos']>[number];
 type MemoryDetail = Omit<MemoryListItem, 'photos'> & { photos: MemoryPhoto[] };
@@ -52,11 +52,8 @@ function friendlyError(cause: unknown, fallback: string) {
 
 function MemoryDetailPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [family, setFamily] = useState<Family | null>(null);
-  const [familyId, setFamilyId] = useState('');
+  const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [memoryId, setMemoryId] = useState('');
   const [memory, setMemory] = useState<MemoryDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,63 +109,44 @@ function MemoryDetailPageContent() {
   }, [router]);
 
   const loadFamilyContext = useCallback(async () => {
+    const mid = params.id ?? '';
     const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
-    setLoading(true);
+    memoryRequestRef.current += 1;
+    memoryAbortRef.current?.abort();
+    setMemoryId(mid);
+    setMemory(null);
     setError('');
-    try {
-      const items = await api<Family[]>('/families', { signal: controller.signal });
-      if (requestId !== familyRequestRef.current) return;
-      memoryRequestRef.current += 1;
-      memoryAbortRef.current?.abort();
-      const mid = params.id ?? '';
-      setMemoryId(mid);
-      if (!items.length) {
-        setFamily(null);
-        setFamilyId('');
-        setMemory(null);
-        setLoading(false);
-        setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
-        return;
-      }
-      const requested = searchParams.get('family') ?? '';
-      const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
-      if (!selected) {
-        setFamily(null);
-        setFamilyId('');
-        setMemory(null);
-        setLoading(false);
-        setError('Энэ гэр бүлийн дурсамжийг харах боломжгүй байна.');
-        return;
-      }
-      setFamilies(items);
-      setFamily(selected);
-      setFamilyId(selected.id);
-      if (!mid) {
-        setLoading(false);
-        setError('Дурсамжийн хаяг буруу байна.');
-        return;
-      }
-      if (!requested) {
-        router.replace(`/memories/${mid}?family=${encodeURIComponent(selected.id)}`);
-      }
-      await loadMemory(selected.id, mid);
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setMemory(null);
+    if (!mid) {
       setLoading(false);
-      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
+      setError('Дурсамжийн хаяг буруу байна.');
+      return;
     }
-  }, [loadMemory, params.id, router, searchParams]);
+    if (contextLoading || !contextLoaded) {
+      setLoading(true);
+      return;
+    }
+    if (contextError) {
+      setLoading(false);
+      setError(contextError);
+      return;
+    }
+    if (!family) {
+      setLoading(false);
+      setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
+      return;
+    }
+    if (requestId !== familyRequestRef.current) return;
+    await loadMemory(family.id, mid);
+  }, [contextError, contextLoaded, contextLoading, family, loadMemory, params.id]);
 
   useEffect(() => {
     void loadFamilyContext();
+    return () => {
+      familyRequestRef.current += 1;
+      familyAbortRef.current?.abort();
+      memoryAbortRef.current?.abort();
+      personAbortRef.current?.abort();
+    };
   }, [loadFamilyContext]);
 
   useEffect(() => () => {
