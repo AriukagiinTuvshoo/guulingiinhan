@@ -99,8 +99,17 @@ function StoryDetailPageContent() {
   useEffect(() => () => storyAbortRef.current?.abort(), []);
 
   useEffect(() => {
-    if (showDeleteDialog) deleteCancelRef.current?.focus();
-  }, [showDeleteDialog]);
+    if (!showDeleteDialog) return;
+    deleteCancelRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) {
+        event.preventDefault();
+        setShowDeleteDialog(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [busy, showDeleteDialog]);
 
   async function remove() {
     if (!story || busy) return;
