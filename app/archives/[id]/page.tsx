@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Archive, Family } from '../../../lib/api';
+import { ApiError, api, Archive } from '../../../lib/api';
+import { useAppShellContext } from '../../../components/app-shell';
 
 function formatDate(value: string | null) {
   if (!value) return 'Огноогүй';
@@ -23,13 +24,11 @@ function visibilityLabel(value: string) {
 
 function ArchiveDetailContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const params = useParams<{ id: string }>();
   const archiveId = params.id ?? '';
-  const requestedFamilyId = searchParams.get('family') ?? '';
+  const searchParams = useSearchParams();
   const saved = searchParams.get('saved') === '1';
-  const [familyId, setFamilyId] = useState('');
-  const [family, setFamily] = useState<Family | null>(null);
+  const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [archive, setArchive] = useState<Archive | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -71,41 +70,36 @@ function ArchiveDetailContent() {
 
   const loadFamilyContext = useCallback(async () => {
     const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
-    archiveAbortRef.current?.abort();
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
     archiveRequestRef.current += 1;
+    archiveAbortRef.current?.abort();
     setLoading(true);
     setError('');
-    setFamily(null);
-    setFamilyId('');
     setArchive(null);
-    if (!archiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
-    try {
-      const items = await api<Family[]>('/families', { signal: controller.signal });
-      if (requestId !== familyRequestRef.current) return;
-      if (!items.length) { setLoading(false); setError('Танд одоогоор хандах боломжтой гэр бүл алга.'); return; }
-      const selected = requestedFamilyId ? items.find((item) => item.id === requestedFamilyId) : items[0];
-      if (!selected) { setLoading(false); setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.'); return; }
-      setFamily(selected);
-      setFamilyId(selected.id);
-      if (!requestedFamilyId || saved) router.replace(`/archives/${archiveId}?family=${encodeURIComponent(selected.id)}`);
-      if (saved) setNotice('Архив хадгалагдлаа.');
-      await loadArchive(selected.id, archiveId);
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
-      setArchive(null);
+    if (!archiveId) {
       setLoading(false);
-      setError('Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
+      setError('Архивийн хаяг буруу байна.');
+      return;
     }
-  }, [archiveId, loadArchive, requestedFamilyId, router, saved]);
+    if (contextLoading || !contextLoaded) return;
+    if (contextError) {
+      setLoading(false);
+      setError(contextError);
+      return;
+    }
+    if (!family) {
+      setLoading(false);
+      setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
+      return;
+    }
+    if (requestId !== familyRequestRef.current) return;
+    if (saved) setNotice('Архив хадгалагдлаа.');
+    await loadArchive(family.id, archiveId);
+  }, [archiveId, contextError, contextLoaded, contextLoading, family, loadArchive, saved]);
 
   useEffect(() => {
     void loadFamilyContext();
     return () => {
-      familyAbortRef.current?.abort();
+      familyRequestRef.current += 1;
       archiveAbortRef.current?.abort();
       mutationRequestRef.current += 1;
     };
