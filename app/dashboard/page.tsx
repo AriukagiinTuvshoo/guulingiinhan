@@ -13,12 +13,11 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ApiError,
   api,
   ArchiveListPage,
-  Family,
   Marriage,
   MemoryListItem,
   Person,
@@ -29,6 +28,7 @@ import {
   User,
   personName,
 } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 type TreeNode = {
   id: string;
@@ -420,12 +420,9 @@ function TreePreview({
 
 function DashboardContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const familyIdFromUrl = searchParams.get('family') ?? '';
+  const { user, families, currentFamily, contextLoading, contextLoaded, contextError } = useAppShellContext();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [family, setFamily] = useState<Family | null>(null);
+  const [family, setFamily] = useState(currentFamily);
   const [people, setPeople] = useState<Person[]>([]);
   const [tree, setTree] = useState<TreeData>({ persons: [], parent_child_relationships: [], marriages: [] });
   const [memories, setMemories] = useState<MemoryListItem[]>([]);
@@ -460,15 +457,14 @@ function DashboardContent() {
       setArchiveError('');
 
       try {
-        const [familyData, peopleData, treeData, memoryData] = await Promise.all([
-          api<Family>('/families/' + familyId),
+        const [peopleData, treeData, memoryData] = await Promise.all([
           api<Person[]>('/families/' + familyId + '/persons'),
           api<TreeData>('/families/' + familyId + '/tree?depth=5'),
           api<MemoryListItem[]>('/families/' + familyId + '/memories'),
         ]);
 
         if (requestId !== dashboardRequestRef.current) return null;
-        setFamily(familyData);
+        setFamily(currentFamily);
         setPeople(peopleData);
         setTree(treeData);
         setMemoryCount(memoryData.length);
@@ -506,16 +502,30 @@ function DashboardContent() {
         setRefreshing(false);
       }
     },
-    [router],
+    [currentFamily, router],
   );
 
   useEffect(() => {
     let active = true;
+    const requestId = ++dashboardRequestRef.current;
 
-    async function initialize() {
-      const requestId = ++dashboardRequestRef.current;
+    if (contextLoading || !contextLoaded) {
       setLoading(true);
-      setError('');
+      return () => {
+        active = false;
+      };
+    }
+
+    if (contextError) {
+      setLoading(false);
+      setError(contextError);
+      return () => {
+        active = false;
+      };
+    }
+
+    if (!user || !families.length || !currentFamily) {
+      setLoading(false);
       setFamily(null);
       setPeople([]);
       setTree({ persons: [], parent_child_relationships: [], marriages: [] });
@@ -523,58 +533,30 @@ function DashboardContent() {
       setMemoryCount(0);
       setStories(null);
       setArchives(null);
-      try {
-        const [me, familyList] = await Promise.all([
-          api<User>('/auth/me'),
-          api<Family[]>('/families'),
-        ]);
-        if (!active) return;
-
-        setUser(me);
-        setFamilies(familyList);
-
-        if (!familyList.length) {
-          setFamily(null);
-          return;
-        }
-
-        const requestedFamily = familyIdFromUrl
-          ? familyList.find((item) => item.id === familyIdFromUrl) ?? null
-          : null;
-        if (familyIdFromUrl && !requestedFamily) {
-          setFamily(null);
-          setPeople([]);
-          setTree({ persons: [], parent_child_relationships: [], marriages: [] });
-          setMemories([]);
-          setMemoryCount(0);
-          setStories(null);
-          setArchives(null);
-          setError('Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.');
-          return;
-        }
-        const nextFamily = requestedFamily ?? familyList[0];
-        await loadDashboard(nextFamily.id, me);
-
-        if (active && !familyIdFromUrl) {
-          router.replace('/dashboard?family=' + encodeURIComponent(nextFamily.id));
-        }
-      } catch (cause) {
-        if (!active) return;
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setError(cause instanceof Error ? cause.message : 'Нэвтрэлтийг шалгаж чадсангүй.');
-      } finally {
-        if (active && requestId === dashboardRequestRef.current) setLoading(false);
-      }
+      return () => {
+        active = false;
+      };
     }
 
-    void initialize();
+    setLoading(true);
+    setError('');
+    setFamily(currentFamily);
+    setPeople([]);
+    setTree({ persons: [], parent_child_relationships: [], marriages: [] });
+    setMemories([]);
+    setMemoryCount(0);
+    setStories(null);
+    setArchives(null);
+
+    loadDashboard(currentFamily.id, user).finally(() => {
+      if (active && requestId === dashboardRequestRef.current) setLoading(false);
+    });
+
     return () => {
       active = false;
+      dashboardRequestRef.current += 1;
     };
-  }, [familyIdFromUrl, loadDashboard, router]);
+  }, [contextError, contextLoaded, contextLoading, currentFamily, families.length, loadDashboard, user]);
 
   useEffect(() => {
     if (!family?.id || !search.trim()) {
@@ -674,6 +656,19 @@ function DashboardContent() {
           </div>
           <span>Гэр бүлийн орон зайг ачаалж байна…</span>
         </div>
+      </main>
+    );
+  }
+
+  if (contextError) {
+    return (
+      <main className="homev2-shell">
+        <section className="homev2-state homev2-state--error" role="alert">
+          <TreeDeciduous size={36} />
+          <h1>Гэр бүлийн орчныг ачаалж чадсангүй</h1>
+          <p>{contextError}</p>
+          <p>Дээрх App Shell-ийн context шалгалтаар дахин оролдоно уу.</p>
+        </section>
       </main>
     );
   }
