@@ -228,6 +228,18 @@ function TreePageContent() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchPageNumber, setSearchPageNumber] = useState(1);
   const [relation, setRelation] = useState<RelationKind | null>(null);
+
+  useEffect(() => {
+    if (!relation) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setRelation(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [relation]);
   const [relationError, setRelationError] = useState('');
 
   const loadSequence = useRef(0);
