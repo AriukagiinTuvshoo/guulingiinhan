@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, Family, PersonSearchPage, Story } from '../lib/api';
-import { useParams, useSearchParams } from 'next/navigation';
+import { ApiError, api, PersonSearchPage, Story } from '../lib/api';
+import { useAppShellContext } from './app-shell';
+import { useParams } from 'next/navigation';
 
 type Props = {
   mode: 'create' | 'edit';
@@ -35,8 +36,7 @@ function friendlyError(cause: unknown, fallback: string) {
 }
 
 function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
-  const [family, setFamily] = useState<Family | null>(null);
-  const [familyId, setFamilyId] = useState(requestedFamilyId);
+  const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [story, setStory] = useState<Story | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -50,7 +50,6 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [initialSnapshot, setInitialSnapshot] = useState('');
-  const searchParams = useSearchParams();
   const routeParams = useParams<{ id?: string }>();
   const loadRequestRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
@@ -82,40 +81,34 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     loadAbortRef.current = controller;
 
     async function load() {
-      const effectiveFamilyId = requestedFamilyId || searchParams.get('family') || '';
       const effectiveStoryId = requestedStoryId || routeParams.id || '';
-      if (loadRequestRef.current !== requestId) return;
+      if (requestId !== loadRequestRef.current) return;
       setLoading(true);
       setError('');
+
+      if (contextLoading || !contextLoaded) return;
+      if (contextError) {
+        setLoading(false);
+        setError(contextError);
+        return;
+      }
+      if (!family || !familyId) {
+        setLoading(false);
+        setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
+        return;
+      }
       try {
         if (mode === 'create') {
-          const items = await api<Family[]>('/families', { signal: controller.signal });
-          if (cancelled || requestId !== loadRequestRef.current) return;
-          const requested = effectiveFamilyId;
-          const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0] ?? null;
-          if (!selected) {
-            setFamily(null);
-            setFamilyId('');
-            setError('Энэ гэр бүлийн түүхийг засах эрхгүй байна.');
-            return;
-          }
-          setFamily(selected);
-          setFamilyId(selected?.id ?? '');
+          setStory(null);
           setInitialSnapshot(JSON.stringify({ title: '', body: '', eventDate: '', place: '', visibility: 'family', people: [] }));
           return;
         }
-
-        if (!effectiveFamilyId || !effectiveStoryId) {
+        if (!effectiveStoryId) {
           setError('Түүхийн хаяг буруу байна.');
           return;
         }
-        const [familyResult, storyResult] = await Promise.all([
-          api<Family>('/families/' + effectiveFamilyId, { signal: controller.signal }),
-          api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId, { signal: controller.signal }),
-        ]);
+        const storyResult = await api<Story>('/families/' + familyId + '/stories/' + effectiveStoryId, { signal: controller.signal });
         if (cancelled || requestId !== loadRequestRef.current) return;
-        setFamily(familyResult);
-        setFamilyId(effectiveFamilyId);
         setStory(storyResult);
         setTitle(storyResult.title);
         setBody(storyResult.body);
@@ -132,19 +125,20 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
           people: storyResult.related_people.map((person) => person.id),
         }));
       } catch (cause) {
+        if (controller.signal.aborted || cancelled || requestId !== loadRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) {
           window.location.href = '/login';
           return;
         }
-        if (!cancelled && requestId === loadRequestRef.current) setError(friendlyError(cause, 'Түүхийг ачаалж чадсангүй.'));
+        setError(friendlyError(cause, 'Түүхийг ачаалж чадсангүй.'));
       } finally {
         if (!cancelled && requestId === loadRequestRef.current) setLoading(false);
       }
     }
 
     void load();
-    return () => { cancelled = true; };
-  }, [mode, requestedFamilyId, requestedStoryId, routeParams.id, searchParams]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [contextError, contextLoaded, contextLoading, family, familyId, mode, requestedStoryId, routeParams.id]);
 
   useEffect(() => {
     const requestId = ++personSearchRequestRef.current;

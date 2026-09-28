@@ -1725,7 +1725,9 @@ def link_me(
     db: Session = Depends(get_db),
 ):
     _member(db, family_id, user)
-    _person_in_family(db, family_id, person_id)
+    person = _person_in_family(db, family_id, person_id)
+    if person_is_minor(person):
+        raise HTTPException(status_code=403, detail="Энэ хүнийг бүртгэлтэй хэрэглэгчтэй холбох боломжгүй.")
     if db.scalar(select(UserPersonLink).where(UserPersonLink.user_id == user.id)):
         raise HTTPException(
             status_code=409, detail="Таны бүртгэл хүнтэй аль хэдийн холбогдсон байна."

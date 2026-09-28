@@ -14,7 +14,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
-  Family,
   Marriage,
   Person,
   PersonSearchPage,
@@ -22,6 +21,7 @@ import {
   TreeData,
   TreePerson,
 } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 type RelationKind = 'parent' | 'child' | 'spouse';
 
@@ -213,11 +213,8 @@ function marriagePartnerId(marriage: Marriage, personId: string) {
 function TreePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedFamilyId = searchParams.get('family') ?? '';
   const requestedPersonId = searchParams.get('person') ?? '';
-
-  const [familyId, setFamilyId] = useState('');
-  const [family, setFamily] = useState<Family | null>(null);
+  const { familyId, currentFamily: family, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [tree, setTree] = useState<TreeData | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [depth, setDepth] = useState(3);
@@ -231,6 +228,18 @@ function TreePageContent() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchPageNumber, setSearchPageNumber] = useState(1);
   const [relation, setRelation] = useState<RelationKind | null>(null);
+
+  useEffect(() => {
+    if (!relation) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setRelation(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [relation]);
   const [relationError, setRelationError] = useState('');
 
   const loadSequence = useRef(0);
@@ -261,19 +270,13 @@ function TreePageContent() {
       setLoading(true);
       setError('');
       setNotice('');
-      setFamilyId(id);
-      setFamily(null);
       setTree(null);
       setSelectedId('');
       setSearchPage(null);
       setRelation(null);
 
       try {
-        const familyData = await api<Family>('/families/' + encodeURIComponent(id), {
-          signal: controller.signal,
-        });
-        if (sequence !== loadSequence.current) return;
-
+        if (!family || family.id !== id) return;
         let treeData: TreeData;
         const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth);
         try {
@@ -296,7 +299,6 @@ function TreePageContent() {
 
         if (sequence !== loadSequence.current || controller.signal.aborted) return;
 
-        setFamily(familyData);
         setTree(treeData);
         const preferredIsAvailable =
           Boolean(preferredPersonId) &&
@@ -327,52 +329,37 @@ function TreePageContent() {
         if (sequence === loadSequence.current) setLoading(false);
       }
     },
-    [persistSelected, router],
+    [family, persistSelected, router],
   );
 
   useEffect(() => {
-    let active = true;
-
-    if (requestedFamilyId) {
-      void loadTree(requestedFamilyId, requestedPersonId || undefined);
-      return () => {
-        active = false;
-      };
-    }
-
-    setLoading(true);
+    loadAbort.current?.abort();
+    searchAbort.current?.abort();
+    loadSequence.current += 1;
+    searchSequence.current += 1;
+    setSearchPage(null);
+    setSelectedId('');
+    setTree(null);
     setError('');
     setNoFamily(false);
 
-    api<Family[]>('/families')
-      .then((families) => {
-        if (!active) return;
-        if (!families.length) {
-          setFamilyId('');
-          setFamily(null);
-          setTree(EMPTY_TREE);
-          setSelectedId('');
-          setNoFamily(true);
-          setLoading(false);
-          return;
-        }
-        const nextFamilyId = families[0].id;
-        router.replace('/tree?family=' + encodeURIComponent(nextFamilyId));
-      })
-      .catch((cause) => {
-        if (!active) return;
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setError(treeFriendlyError(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [loadTree, requestedFamilyId, requestedPersonId, router]);
+    if (contextLoading || !contextLoaded) {
+      setLoading(true);
+      return;
+    }
+    if (contextError) {
+      setLoading(false);
+      setError(contextError);
+      return;
+    }
+    if (!familyId || !family) {
+      setLoading(false);
+      setNoFamily(true);
+      setTree(EMPTY_TREE);
+      return;
+    }
+    void loadTree(familyId, requestedPersonId || undefined);
+  }, [contextError, contextLoaded, contextLoading, family, familyId, loadTree, requestedPersonId]);
 
   useEffect(() => {
     return () => {
@@ -711,24 +698,11 @@ function TreePageContent() {
             type="button"
             className="tree-button tree-button--primary"
             onClick={() => {
-              const retryFamilyId = requestedFamilyId || familyId;
-              if (retryFamilyId) {
-                void loadTree(retryFamilyId, requestedPersonId || selectedId || undefined, depth);
-                return;
+              if (familyId) {
+                void loadTree(familyId, selectedId || undefined, depth);
+              } else {
+                window.location.reload();
               }
-              api<Family[]>('/families')
-                .then((families) => {
-                  const nextFamilyId = families[0]?.id;
-                  if (!nextFamilyId) {
-                    setNoFamily(true);
-                    setLoading(false);
-                    return;
-                  }
-                  router.replace('/tree?family=' + encodeURIComponent(nextFamilyId));
-                })
-                .catch((cause) => {
-                  setError(treeFriendlyError(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
-                });
             }}
           >
             Дахин оролдох

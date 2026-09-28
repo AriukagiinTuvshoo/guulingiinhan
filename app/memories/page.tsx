@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { API_BASE, ApiError, api, Family, MemoryListItem, PersonSearchPage } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { API_BASE, ApiError, api, MemoryListItem, PersonSearchPage } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -75,10 +76,7 @@ function initials(title: string) {
 
 function MemoriesPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [family, setFamily] = useState<Family | null>(null);
-  const [familyId, setFamilyId] = useState('');
+  const { families, currentFamily: family, familyId, contextError } = useAppShellContext();
   const [memories, setMemories] = useState<MemoryListPage | null>(null);
   const [personQuery, setPersonQuery] = useState('');
   const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
@@ -125,59 +123,18 @@ function MemoriesPageContent() {
     }
   }, [router]);
 
-  const loadFamilies = useCallback(async () => {
-    const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
-    setLoading(true);
-    setError('');
-    try {
-      const items = await api<Family[]>('/families', { signal: controller.signal });
-      if (requestId !== familyRequestRef.current) return;
-      setFamilies(items);
-      memoryRequestRef.current += 1;
-      memoryAbortRef.current?.abort();
-      personRequestRef.current += 1;
-      personAbortRef.current?.abort();
-      if (!items.length) {
-        setFamily(null);
-        setFamilyId('');
-        setMemories(null);
-        setLoading(false);
-        return;
-      }
-      const requested = searchParams.get('family') ?? '';
-      const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
-      if (!selected) {
-        setFamily(null);
-        setFamilyId('');
-        setMemories(null);
-        setLoading(false);
-        setError('Энэ гэр бүлийн дурсамжийг харах боломжгүй байна.');
-        return;
-      }
-      setFamily(selected);
-      setFamilyId(selected.id);
-      setMemories(null);
-      setMemoryPage(1);
-      if (!requested) {
-        router.replace(`/memories?family=${encodeURIComponent(selected.id)}`);
-      }
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setLoading(false);
-      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
-    }
-  }, [router, searchParams]);
-
   useEffect(() => {
-    void loadFamilies();
-  }, [loadFamilies]);
+    memoryAbortRef.current?.abort();
+    personAbortRef.current?.abort();
+    memoryRequestRef.current += 1;
+    personRequestRef.current += 1;
+    setMemories(null);
+    setPersonResults(null);
+    setSelectedPeople([]);
+    setError('');
+    if (!familyId) return;
+    void loadMemories(familyId, 1);
+  }, [familyId, loadMemories]);
 
   useEffect(() => {
     if (!familyId) return;
@@ -229,8 +186,7 @@ function MemoriesPageContent() {
     personAbortRef.current?.abort();
     const selected = families.find((item) => item.id === next) ?? null;
     if (!selected) return;
-    setFamily(selected);
-    setFamilyId(next);
+
     setMemories(null);
     setMemoryPage(1);
     setSelectedPeople([]);
@@ -373,6 +329,7 @@ function MemoriesPageContent() {
           </div>
         </header>
 
+        {contextError && <div className="memories-alert" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="memories-alert" role="alert">
             <span>{error}</span>
