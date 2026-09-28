@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
 
@@ -83,6 +83,24 @@ function activeKey(pathname: string): NavItem['key'] | null {
 function familyHref(path: string, familyId: string | null) {
   if (!familyId) return path;
   return path + '?family=' + encodeURIComponent(familyId);
+}
+
+export type AppShellContextValue = {
+  user: User | null;
+  families: Family[];
+  familyId: string;
+  currentFamily: Family | null;
+  contextLoading: boolean;
+  contextLoaded: boolean;
+  contextError: string;
+};
+
+const AppShellContext = createContext<AppShellContextValue | null>(null);
+
+export function useAppShellContext() {
+  const context = useContext(AppShellContext);
+  if (!context) throw new Error('useAppShellContext must be used inside AppShell');
+  return context;
 }
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -181,6 +199,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
 
     const nextFamily = requested ?? families[0].id;
+    setContextError('');
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
     if (requestedFamilyId === nextFamily) setFamilySwitching(false);
 
@@ -285,9 +304,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   const active = activeKey(pathname);
+  const shellContext = useMemo<AppShellContextValue>(
+    () => ({ user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError }),
+    [user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError],
+  );
 
   return (
-    <div className="app-shell">
+    <AppShellContext.Provider value={shellContext}>
+      <div className="app-shell">
       <header className="app-shell__header">
         <button
           ref={menuButtonRef}
@@ -493,6 +517,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
-    </div>
+    </AppShellContext.Provider>
   );
 }

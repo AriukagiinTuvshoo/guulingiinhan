@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Family, Story } from '../../../lib/api';
+import { useParams, useRouter } from 'next/navigation';
+import { ApiError, api, Story } from '../../../lib/api';
+import { useAppShellContext } from '../../../components/app-shell';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -16,9 +17,7 @@ function friendlyError(cause: unknown, fallback: string) {
 }
 
 function StoryDetailPageContent() {
-  const [familyId, setFamilyId] = useState('');
   const [storyId, setStoryId] = useState('');
-  const [family, setFamily] = useState<Family | null>(null);
   const [story, setStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -28,7 +27,7 @@ function StoryDetailPageContent() {
   const storyRequestRef = useRef(0);
   const storyAbortRef = useRef<AbortController | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const params = useParams<{ id: string }>();
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
 
@@ -59,71 +58,58 @@ function StoryDetailPageContent() {
   }, [router]);
 
   const loadFamilyContext = useCallback(async () => {
+    const sid = params.id ?? '';
     const requestId = ++familyRequestRef.current;
-    setLoading(true);
-    setError('');
-    try {
-      const items = await api<Family[]>('/families');
-      if (requestId !== familyRequestRef.current) return;
-      storyRequestRef.current += 1;
-      const sid = params.id ?? '';
-      setStoryId(sid);
-      if (!items.length) {
-        setFamily(null);
-        setFamilyId('');
-        setStory(null);
-        setLoading(false);
-        setError('Танд одоогоор хандах боломжтой гэр бүл алга.');
-        return;
-      }
-      const requestedFamily = searchParams.get('family') ?? '';
-      const selected = requestedFamily ? items.find((item) => item.id === requestedFamily) ?? null : items[0];
-      if (!selected) {
-        setFamily(null);
-        setFamilyId('');
-        setStory(null);
-        setLoading(false);
-        setError('Энэ гэр бүлийн түүхийг харах боломжгүй байна.');
-        return;
-      }
-      setFamily(selected);
-      setFamilyId(selected.id);
-      if (!sid) {
-        setLoading(false);
-        setError('Түүхийн хаяг буруу байна.');
-        return;
-      }
-      if (!requestedFamily) {
-        router.replace('/stories/' + sid + '?family=' + encodeURIComponent(selected.id));
-      }
-      await load(selected.id, sid);
-    } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setStory(null);
-      setLoading(false);
-      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
-    }
-  }, [load, params.id, router, searchParams]);
-
-  useEffect(() => {
+    storyRequestRef.current += 1;
     storyAbortRef.current?.abort();
-    setFamily(null);
-    setFamilyId('');
+    setStoryId(sid);
     setStory(null);
     setError('');
-    storyRequestRef.current += 1;
+    if (!sid) {
+      setLoading(false);
+      setError('Түүхийн хаяг буруу байна.');
+      return;
+    }
+    if (contextLoading || !contextLoaded) {
+      setLoading(true);
+      return;
+    }
+    if (contextError) {
+      setLoading(false);
+      setError(contextError);
+      return;
+    }
+    if (!family) {
+      setLoading(false);
+      setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
+      return;
+    }
+    if (requestId !== familyRequestRef.current) return;
+    await load(family.id, sid);
+  }, [contextError, contextLoaded, contextLoading, family, load, params.id]);
+
+  useEffect(() => {
     void loadFamilyContext();
+    return () => {
+      familyRequestRef.current += 1;
+      storyAbortRef.current?.abort();
+    };
   }, [loadFamilyContext]);
 
   useEffect(() => () => storyAbortRef.current?.abort(), []);
 
   useEffect(() => {
-    if (showDeleteDialog) deleteCancelRef.current?.focus();
-  }, [showDeleteDialog]);
+    if (!showDeleteDialog) return;
+    deleteCancelRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) {
+        event.preventDefault();
+        setShowDeleteDialog(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [busy, showDeleteDialog]);
 
   async function remove() {
     if (!story || busy) return;

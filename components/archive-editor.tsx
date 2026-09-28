@@ -2,17 +2,15 @@
 
 import Link from 'next/link';
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Archive, Family, PersonSearchPage } from '../lib/api';
+import { useRouter } from 'next/navigation';
+import { ApiError, api, Archive, PersonSearchPage } from '../lib/api';
+import { useAppShellContext } from './app-shell';
 
 type SelectedPerson = { id: string; name: string };
 
 function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const requestedFamilyId = searchParams.get('family') ?? '';
-  const [familyId, setFamilyId] = useState('');
-  const [family, setFamily] = useState<Family | null>(null);
+  const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [archiveId, setArchiveId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -37,24 +35,30 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
 
   useEffect(() => {
     const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
     archiveAbortRef.current?.abort();
     peopleAbortRef.current?.abort();
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
     archiveRequestRef.current += 1;
-    setLoading(true); setReady(false); setFamily(null); setFamilyId(''); setArchiveId(''); setResults(null); setError('');
+    setLoading(true); setReady(false); setArchiveId(''); setResults(null); setError('');
+
     const requestedArchiveId = mode === 'edit' ? window.location.pathname.split('/').filter(Boolean).at(-2) ?? '' : '';
     async function load() {
+      if (contextLoading || !contextLoaded) return;
+      if (contextError) {
+        setLoading(false);
+        setError(contextError);
+        return;
+      }
+      if (!familyId || !family) {
+        setLoading(false);
+        setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
+        return;
+      }
+      if (family.role !== 'owner' && family.role !== 'editor') {
+        setLoading(false);
+        setError('Энэ архивын үйлдлийг хийх эрхгүй байна.');
+        return;
+      }
       try {
-        const families = await api<Family[]>('/families', { signal: controller.signal });
-        if (requestId !== familyRequestRef.current) return;
-        if (!families.length) { setLoading(false); setError('Танд хандах боломжтой гэр бүл олдсонгүй.'); return; }
-        const currentFamily = requestedFamilyId ? families.find((item) => item.id === requestedFamilyId) : families[0];
-        if (!currentFamily) { setLoading(false); setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.'); return; }
-        setFamilyId(currentFamily.id); setFamily(currentFamily);
-        if (!requestedFamilyId) router.replace(`/archives/${mode === 'edit' ? requestedArchiveId + '/edit' : 'new'}?family=${encodeURIComponent(currentFamily.id)}`);
-        if (currentFamily.role !== 'owner' && currentFamily.role !== 'editor') { setLoading(false); return; }
         if (mode === 'edit') {
           if (!requestedArchiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
           const archiveRequestId = ++archiveRequestRef.current;
@@ -62,16 +66,15 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
           const archiveController = new AbortController();
           archiveAbortRef.current = archiveController;
           setArchiveId(requestedArchiveId);
-          const archive = await api<Archive>(`/families/${currentFamily.id}/archives/${requestedArchiveId}`, { signal: archiveController.signal });
+          const archive = await api<Archive>(`/families/${familyId}/archives/${requestedArchiveId}`, { signal: archiveController.signal });
           if (requestId !== familyRequestRef.current || archiveRequestId !== archiveRequestRef.current) return;
           setTitle(archive.title); setDescription(archive.description ?? ''); setDocumentDate(archive.document_date ?? ''); setPlace(archive.place ?? ''); setVisibility(archive.visibility);
           setSelected(archive.related_people.map((person) => ({ id: person.id, name: [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ') })));
         }
         if (requestId === familyRequestRef.current) setReady(true);
       } catch (cause) {
-        if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
+        if (requestId !== familyRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
-        setLoading(false);
         setError(cause instanceof ApiError && cause.status === 403 ? 'Энэ архивын үйлдлийг хийх эрхгүй байна.' : cause instanceof ApiError && cause.status === 404 ? 'Архивын материал олдсонгүй.' : 'Архивийн editor-ийг ачаалж чадсангүй. Дахин оролдоно уу.');
       } finally {
         if (requestId === familyRequestRef.current) setLoading(false);
@@ -79,12 +82,11 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
     }
     void load();
     return () => {
-      familyAbortRef.current?.abort();
       archiveAbortRef.current?.abort();
       peopleAbortRef.current?.abort();
       archiveRequestRef.current += 1;
     };
-  }, [mode, requestedFamilyId, router]);
+  }, [contextError, contextLoaded, contextLoading, family, familyId, mode]);
 
   useEffect(() => {
     const trimmed = query.trim();

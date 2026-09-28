@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, ArchiveListPage, Family } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { ApiError, api, ArchiveListPage } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 const PAGE_SIZE = 12;
 
@@ -32,12 +33,8 @@ function visibilityLabel(value: string) {
 }
 
 function ArchivesPageContent() {
-  const searchParams = useSearchParams();
-  const requestedFamilyId = searchParams.get('family') ?? '';
   const router = useRouter();
-  const [family, setFamily] = useState<Family | null>(null);
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [familyId, setFamilyId] = useState('');
+  const { families, currentFamily, familyId, contextError } = useAppShellContext();
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [query, setQuery] = useState('');
   const [documentDate, setDocumentDate] = useState('');
@@ -88,59 +85,12 @@ function ArchivesPageContent() {
     }
   }, [router]);
 
-  const loadFamilies = useCallback(async () => {
-    const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
-    archiveAbortRef.current?.abort();
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
-    archiveRequestRef.current += 1;
-    setLoading(true);
-    setError('');
-    setFamily(null);
-    setFamilyId('');
-    setArchives(null);
-    try {
-      const items = await api<Family[]>('/families', { signal: controller.signal });
-      if (requestId !== familyRequestRef.current) return;
-      setFamilies(items);
-      if (!items.length) {
-        setLoading(false);
-        return;
-      }
-      if (requestedFamilyId) {
-        const selected = items.find((item) => item.id === requestedFamilyId);
-        if (!selected) {
-          setLoading(false);
-          setError('Сонгосон гэр бүлийн орчинд хандах боломжгүй байна.');
-          return;
-        }
-        setFamily(selected);
-        setFamilyId(selected.id);
-        return;
-      }
-      const selected = items[0];
-      setFamily(selected);
-      setFamilyId(selected.id);
-      router.replace(`/archives?family=${encodeURIComponent(selected.id)}`);
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
-      setLoading(false);
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setError('Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.');
-    }
-  }, [requestedFamilyId, router]);
-
   useEffect(() => {
-    void loadFamilies();
-    return () => {
-      familyAbortRef.current?.abort();
-      archiveAbortRef.current?.abort();
-    };
-  }, [loadFamilies]);
+    archiveAbortRef.current?.abort();
+    archiveRequestRef.current += 1;
+    setArchives(null);
+    setError('');
+  }, [familyId]);
 
   useEffect(() => {
     if (!familyId) return;
@@ -148,11 +98,9 @@ function ArchivesPageContent() {
   }, [familyId, loadArchives]);
 
   function chooseFamily(next: string) {
+    if (!families.some((item) => item.id === next) || next === familyId) return;
     archiveAbortRef.current?.abort();
     archiveRequestRef.current += 1;
-    const selected = families.find((item) => item.id === next) ?? null;
-    setFamily(selected);
-    setFamilyId(next);
     setArchives(null);
     setError('');
     router.replace(`/archives?family=${encodeURIComponent(next)}`);
@@ -172,6 +120,7 @@ function ArchivesPageContent() {
 
   const page = archives?.page ?? 1;
   const pageCount = archives ? Math.max(1, Math.ceil(archives.total / PAGE_SIZE)) : 1;
+  const family = currentFamily;
   const canCreate = family?.role === 'owner' || family?.role === 'editor';
 
   return (
@@ -208,11 +157,12 @@ function ArchivesPageContent() {
           </div>
         </header>
 
+        {contextError && <div className="archive-alert" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="archive-alert" role="alert">
             <span>{error}</span>
             <div className="archive-alert-actions">
-              <button type="button" onClick={() => void loadFamilies()}>Гэр бүлийн орчныг дахин ачаалах</button>
+              <button type="button" onClick={() => window.location.reload()}>Гэр бүлийн орчныг дахин ачаалах</button>
               {familyId && <button type="button" onClick={() => void loadArchives(familyId, page, query, documentDate)} disabled={busy}>Архивийг дахин ачаалах</button>}
             </div>
           </div>
