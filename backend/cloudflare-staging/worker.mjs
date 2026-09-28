@@ -1,0 +1,67 @@
+import { Container, getRandom } from "@cloudflare/containers";
+import { env } from "cloudflare:workers";
+
+// The FastAPI process remains the only HTTP application and owns CORS/auth.
+// Forward the original Request and Response to retain cookies, headers, body,
+// method, path, and query string without duplicating API behavior in the Worker.
+export class GuulingiinhanBackend extends Container {
+  defaultPort = 8000;
+  sleepAfter = "10m";
+  envVars = {
+    APP_ENV: "production",
+    DATABASE_URL: env.DATABASE_URL,
+    CORS_ORIGINS: env.CORS_ORIGINS,
+    OTP_HASH_SECRET: env.OTP_HASH_SECRET,
+    SMS_PROVIDER: "twilio",
+    TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+    TWILIO_FROM_NUMBER: env.TWILIO_FROM_NUMBER,
+    EMAIL_PROVIDER: "smtp",
+    EMAIL_FROM: env.EMAIL_FROM,
+    EMAIL_PUBLIC_BASE_URL: env.EMAIL_PUBLIC_BASE_URL,
+    EMAIL_SMTP_HOST: env.EMAIL_SMTP_HOST,
+    EMAIL_SMTP_PORT: env.EMAIL_SMTP_PORT ?? "587",
+    EMAIL_SMTP_USERNAME: env.EMAIL_SMTP_USERNAME,
+    EMAIL_SMTP_PASSWORD: env.EMAIL_SMTP_PASSWORD,
+    EMAIL_SMTP_STARTTLS: "true",
+    GOOGLE_OIDC_ENABLED: env.GOOGLE_OIDC_ENABLED ?? "false",
+    ...(env.GOOGLE_OIDC_ENABLED === "true"
+      ? {
+          GOOGLE_OIDC_CLIENT_ID: env.GOOGLE_OIDC_CLIENT_ID,
+          GOOGLE_OIDC_CLIENT_SECRET: env.GOOGLE_OIDC_CLIENT_SECRET,
+          GOOGLE_OIDC_REDIRECT_URI: env.GOOGLE_OIDC_REDIRECT_URI,
+          GOOGLE_OIDC_STATE_SECRET: env.GOOGLE_OIDC_STATE_SECRET,
+        }
+      : {}),
+    STORAGE_PROVIDER: "s3",
+    STORAGE_ENDPOINT: env.STORAGE_ENDPOINT,
+    STORAGE_BUCKET: "guulingiinhan-staging-media",
+    STORAGE_REGION: "auto",
+    STORAGE_ACCESS_KEY: env.STORAGE_ACCESS_KEY,
+    STORAGE_SECRET_KEY: env.STORAGE_SECRET_KEY,
+  };
+}
+
+export default {
+  async fetch(request, env) {
+    const required = [
+      "DATABASE_URL", "CORS_ORIGINS", "OTP_HASH_SECRET", "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "EMAIL_FROM",
+      "EMAIL_PUBLIC_BASE_URL", "EMAIL_SMTP_HOST", "EMAIL_SMTP_USERNAME",
+      "EMAIL_SMTP_PASSWORD", "STORAGE_ENDPOINT", "STORAGE_ACCESS_KEY",
+      "STORAGE_SECRET_KEY",
+    ];
+    if (env.GOOGLE_OIDC_ENABLED === "true") {
+      required.push(
+        "GOOGLE_OIDC_CLIENT_ID", "GOOGLE_OIDC_CLIENT_SECRET",
+        "GOOGLE_OIDC_REDIRECT_URI", "GOOGLE_OIDC_STATE_SECRET",
+      );
+    }
+    if (required.some((name) => !env[name])) {
+      console.error("Staging backend configuration is incomplete");
+      return new Response("Service unavailable", { status: 503 });
+    }
+    const container = await getRandom(env.BACKEND, 1);
+    return container.fetch(request);
+  },
+};

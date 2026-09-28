@@ -37,7 +37,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     let code: string | null = null;
     let requestId = response.headers.get('X-Request-ID');
     try {
-      const payload = await response.json();
+      const parsed: unknown = await response.json();
+      const payload = parsed && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : {};
       code = typeof payload.error_code === 'string' ? payload.error_code : null;
       requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
       message =
@@ -48,7 +51,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
         response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
         response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
-        payload.detail ?? message;
+        typeof payload.detail === 'string' ? payload.detail : message;
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }

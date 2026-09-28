@@ -15,3 +15,5 @@ backend/*.egg-info/
 .vinext/
 .cloudflare/
 *.tsbuildinfo
+backend/worker-configuration.d.ts
+backend/.wrangler-staging-build/
