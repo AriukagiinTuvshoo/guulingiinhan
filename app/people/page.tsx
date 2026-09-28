@@ -110,6 +110,46 @@ function PeoplePageContent() {
     }
   }, [router]);
 
+  const loadLineages = useCallback(async (fid: string) => {
+    const requestId = ++metadataRequestRef.current;
+    metadataAbortRef.current?.abort();
+    const controller = new AbortController();
+    metadataAbortRef.current = controller;
+    setMetaBusy(true);
+    setMetaError('');
+    try {
+      const result = await api<LineageSummary[]>(`/families/${fid}/lineages`, { signal: controller.signal });
+      if (requestId !== metadataRequestRef.current) return;
+      setLineages(result);
+    } catch (cause) {
+      if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
+      setLineages([]);
+      setMetaError(cause instanceof Error ? cause.message : 'Удам угсааны мэдээллийг ачаалж чадсангүй.');
+    } finally {
+      if (requestId === metadataRequestRef.current) setMetaBusy(false);
+    }
+  }, []);
+
+  const loadBranches = useCallback(async (_fid: string, lid: string) => {
+    const requestId = ++metadataRequestRef.current;
+    metadataAbortRef.current?.abort();
+    const controller = new AbortController();
+    metadataAbortRef.current = controller;
+    setMetaBusy(true);
+    setMetaError('');
+    try {
+      const result = await api<BranchSummary[]>(`/lineages/${lid}/branches`, { signal: controller.signal });
+      if (requestId !== metadataRequestRef.current) return;
+      setBranches(result);
+    } catch (cause) {
+      if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
+      setBranches([]);
+      setMetaError(cause instanceof Error ? cause.message : 'Салааны мэдээллийг ачаалж чадсангүй.');
+    } finally {
+      if (requestId === metadataRequestRef.current) setMetaBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     peopleAbortRef.current?.abort();
     metadataAbortRef.current?.abort();

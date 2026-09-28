@@ -299,15 +299,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
     router.replace(pathname + '?' + params.toString());
   }
 
+  const shellContext = useMemo<AppShellContextValue>(
+    () => ({ user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError }),
+    [user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError],
+  );
+
   if (!shouldRenderShell) {
     return <>{children}</>;
   }
 
   const active = activeKey(pathname);
-  const shellContext = useMemo<AppShellContextValue>(
-    () => ({ user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError }),
-    [user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError],
-  );
 
   return (
     <AppShellContext.Provider value={shellContext}>
@@ -516,6 +517,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {children}
           </div>
         </div>
+      </div>
       </div>
     </AppShellContext.Provider>
   );

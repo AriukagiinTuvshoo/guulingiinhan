@@ -26,6 +26,8 @@ jobs:
         run: echo "NEXT_PUBLIC_API_BASE_URL=https://ci.invalid/api/v1" >> "$GITHUB_ENV"
       - name: Next.js production build
         run: npm run build
+      - name: Cloudflare Worker build
+        run: npm run build:vinext
 
   backend:
     runs-on: ubuntu-latest

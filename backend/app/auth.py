@@ -44,8 +44,8 @@ from app.models import (
     UserSession,
 )
 from app.observability import request_id_context
-from app.privacy import user_linked_person_is_minor
 from app.oidc import ISSUER, GoogleOIDCProvider, OIDCError
+from app.privacy import user_linked_person_is_minor
 from app.sms import SmsProvider, get_sms_provider
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -823,9 +823,7 @@ def google_callback(
             or current_session.user_id != expected_user_id
             or not link_user
             or not link_user.is_active
-        ):
-            result = "failed"
-        elif user_linked_person_is_minor(db, expected_user_id):
+        ) or user_linked_person_is_minor(db, expected_user_id):
             result = "failed"
         elif identity and identity.user_id != expected_user_id:
             db.add(AuditLog(actor_id=expected_user_id, action="google.identity_conflict", target_type="google_identity"))

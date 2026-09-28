@@ -12,3 +12,6 @@ backend/.pytest_cache/
 backend/.ruff_cache/
 backend/*.egg-info/
 .DS_Store
+.vinext/
+.cloudflare/
+*.tsbuildinfo
