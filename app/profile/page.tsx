@@ -14,6 +14,7 @@ import {
   ProfileRelationPerson,
   personName,
 } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 type EventItem = {
   id: string;
@@ -47,12 +48,13 @@ function initials(person: Pick<ProfileRelationPerson, 'first_name' | 'last_name'
 function ProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { currentFamily, familyId: contextFamilyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
+  const family = contextFamilyId;
   const profileRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
   const mutationRequestRef = useRef(0);
   const profileAbortRef = useRef<AbortController | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
-  const [family, setFamily] = useState('');
   const [id, setId] = useState('');
   const [person, setPerson] = useState<PersonProfile | null>(null);
   const [biography, setBiography] = useState('');
@@ -153,12 +155,10 @@ function ProfilePageContent() {
   }
 
   useEffect(() => {
-    const fid = searchParams.get('family') ?? '';
     const pid = searchParams.get('person') ?? '';
     const requestId = ++profileRequestRef.current;
     memoryRequestRef.current += 1;
     mutationRequestRef.current += 1;
-    setFamily(fid);
     setId(pid);
     setPerson(null);
     setBiography('');
@@ -178,15 +178,24 @@ function ProfilePageContent() {
     setMutationBusy(false);
     setNotice('');
 
-    if (!fid || !pid) {
+    if (contextLoading || !contextLoaded) {
+      setLoading(true);
+      return;
+    }
+    if (contextError) {
       setLoading(false);
-      router.replace('/people');
+      setError(contextError);
+      return;
+    }
+    if (!currentFamily || !pid) {
+      setLoading(false);
+      setError(!pid ? 'Хүний хаяг буруу байна.' : 'Гэр бүлийн орчинд хандах боломжгүй байна.');
       return;
     }
 
     setLoading(true);
     setError('');
-    load(fid, pid, requestId)
+    load(currentFamily.id, pid, requestId)
       .catch((cause) => {
         if (requestId !== profileRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) {
@@ -202,7 +211,7 @@ function ProfilePageContent() {
       .finally(() => {
         if (requestId === profileRequestRef.current) setLoading(false);
       });
-  }, [router, searchParams]);
+  }, [contextError, contextLoaded, contextLoading, currentFamily, router, searchParams]);
 
   useEffect(() => () => profileAbortRef.current?.abort(), []);
 
