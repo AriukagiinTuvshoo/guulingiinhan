@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Person, PersonGuardianship
+from app.models import Person, PersonGuardianship, UserPersonLink
 
 GUARDIAN_SCOPES = frozenset(
     {
@@ -85,6 +85,15 @@ def has_guardian_scope(
 
 def person_is_minor(person: Person, today: date | None = None) -> bool:
     return is_minor(person.birth_date, today) is True
+
+
+def user_linked_person_is_minor(db: Session, user_id: UUID, today: date | None = None) -> bool:
+    person = db.scalar(
+        select(Person)
+        .join(UserPersonLink, UserPersonLink.person_id == Person.id)
+        .where(UserPersonLink.user_id == user_id)
+    )
+    return person is not None and person_is_minor(person, today)
 
 
 def redact_minor_profile_fields(person: Person, scopes: set[str]) -> dict[str, object]:

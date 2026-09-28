@@ -44,6 +44,7 @@ from app.models import (
     UserSession,
 )
 from app.observability import request_id_context
+from app.privacy import user_linked_person_is_minor
 from app.oidc import ISSUER, GoogleOIDCProvider, OIDCError
 from app.sms import SmsProvider, get_sms_provider
 
@@ -492,6 +493,11 @@ def _user_output(db: Session, user: User) -> UserOutput:
     )
 
 
+def _ensure_user_login_allowed(db: Session, user: User) -> None:
+    if user_linked_person_is_minor(db, user.id):
+        raise HTTPException(status_code=401, detail="Нэвтрэх мэдээлэл буруу байна.")
+
+
 GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
 GENERIC_RESET_MESSAGE = "Хэрэв энэ имэйлд баталгаажсан account байвал нууц үг шинэчлэх холбоос илгээнэ."
 GENERIC_REGISTER_MESSAGE = "Бүртгэлийн хүсэлтийг хүлээн авлаа. Шаардлагатай бол баталгаажуулах холбоосыг имэйлээр илгээнэ."
@@ -819,6 +825,8 @@ def google_callback(
             or not link_user.is_active
         ):
             result = "failed"
+        elif user_linked_person_is_minor(db, expected_user_id):
+            result = "failed"
         elif identity and identity.user_id != expected_user_id:
             db.add(AuditLog(actor_id=expected_user_id, action="google.identity_conflict", target_type="google_identity"))
             db.commit()
@@ -840,10 +848,15 @@ def google_callback(
     else:
         user = db.get(User, identity.user_id) if identity else None
         if identity and user and user.is_active:
-            response = _google_frontend_redirect("success")
-            set_session_cookie(db, response, user.id)
-            response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
-            return response
+            try:
+                _ensure_user_login_allowed(db, user)
+            except HTTPException:
+                result = "failed"
+            else:
+                response = _google_frontend_redirect("success")
+                set_session_cookie(db, response, user.id)
+                response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
+                return response
         # Verified Google email is not proof of ownership of a pre-existing app account.
         if identity is None and email_is_registered(db, email):
             result = "failed"
@@ -1130,6 +1143,7 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
             status_code=403,
             detail="Нэвтрэхийн өмнө имэйл хаягаа баталгаажуулна уу.",
         )
+    _ensure_user_login_allowed(db, user)
     # A successful sign-in clears the shared failure bucket for this account/client pair.
     db.execute(
         delete(LoginThrottle).where(
@@ -1531,6 +1545,7 @@ def verify_phone_login(
     user = db.get(User, identity.user_id) if identity else None
     if challenge is None or user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Утасны код буруу эсвэл хугацаа дууссан байна.")
+    _ensure_user_login_allowed(db, user)
     challenge.status = "consumed"
     challenge.consumed_at = datetime.now(UTC)
     _audit(db, user.id, "phone.login_verified", challenge)
