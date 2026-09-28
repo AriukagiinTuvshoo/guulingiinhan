@@ -30,7 +30,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/dashboard', needsFamily: false },
+  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
@@ -60,7 +60,7 @@ function isShellRoute(pathname: string) {
 }
 
 function isDashboardRoute(pathname: string) {
-  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  return pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 }
 
 function activeKey(pathname: string): NavItem['key'] | null {
@@ -325,7 +325,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
 
-        <Link className="app-shell__brand" href={familyHref('/dashboard', currentFamily?.id ?? null)}>
+        <Link className="app-shell__brand" href={familyHref('/', currentFamily?.id ?? null)}>
           <span className="app-shell__brand-mark" aria-hidden="true">
             <TreeDeciduous size={21} />
           </span>
