@@ -104,7 +104,18 @@ function ArchiveDetailContent() {
       mutationRequestRef.current += 1;
     };
   }, [loadFamilyContext]);
-  useEffect(() => { if (showDeleteDialog) cancelRef.current?.focus(); }, [showDeleteDialog]);
+  useEffect(() => {
+    if (!showDeleteDialog) return;
+    cancelRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) {
+        event.preventDefault();
+        setShowDeleteDialog(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [busy, showDeleteDialog]);
 
   async function remove() {
     if (!archive || busy || !familyId) return;
