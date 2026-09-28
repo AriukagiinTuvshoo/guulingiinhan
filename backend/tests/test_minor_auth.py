@@ -3,6 +3,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import pytest
+from conftest import register_verified
 from sqlalchemy import select
 
 from app import auth
@@ -10,8 +11,6 @@ from app.config import get_settings
 from app.main import app
 from app.models import LoginIdentity, Person, UserPersonLink
 from app.sms import get_sms_provider
-from conftest import register_verified
-
 
 PASSWORD = "strong-passphrase-123"
 

@@ -13,7 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="mn">
       <body>
-        <Suspense fallback={children}>
+        <Suspense fallback={<div role="status">Ачаалж байна…</div>}>
           <AppShell>{children}</AppShell>
         </Suspense>
       </body>

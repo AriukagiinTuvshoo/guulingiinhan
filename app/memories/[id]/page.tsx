@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { API_BASE, ApiError, api , MemoryListItem } from '../../../lib/api';
+import { useAppShellContext } from '../../../components/app-shell';
 
 type MemoryPhoto = NonNullable<MemoryListItem['photos']>[number];
 type MemoryDetail = Omit<MemoryListItem, 'photos'> & { photos: MemoryPhoto[] };
