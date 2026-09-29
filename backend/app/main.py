@@ -32,8 +32,8 @@ app = FastAPI(
     title="Гуулингийнхан API",
     version="0.1.0",
     description="Гэр бүлийн мод, хүмүүс болон удам угсааны түүхийн API.",
-    docs_url=None if settings.app_env.lower() == "production" else "/docs",
-    redoc_url=None if settings.app_env.lower() == "production" else "/redoc",
+    docs_url=None if settings.app_env.lower() in {"production", "staging"} else "/docs",
+    redoc_url=None if settings.app_env.lower() in {"production", "staging"} else "/redoc",
     lifespan=lifespan,
 )
 

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Protocol
 
+from fastapi import HTTPException
+
 from app.config import get_settings
 
 logger = logging.getLogger("guulingiinhan.email")
@@ -106,6 +108,8 @@ class SmtpEmailProvider:
 def get_email_provider() -> EmailProvider:
     settings = get_settings()
     provider = settings.email_provider.lower()
+    if provider == "disabled" and settings.app_env.lower() == "staging":
+        raise HTTPException(status_code=503, detail="Имэйл үйлчилгээ түр боломжгүй байна.")
     if provider == "fake":
         if settings.app_env.lower() == "production":
             raise RuntimeError("Fake email provider is not allowed in production")

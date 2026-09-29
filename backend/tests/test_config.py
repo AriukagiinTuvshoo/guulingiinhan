@@ -102,3 +102,79 @@ def test_observability_and_database_pool_settings_are_validated():
         Settings(log_level="VERBOSE")
     with pytest.raises(ValidationError):
         Settings(photo_cleanup_max_attempts=21)
+
+
+def staging_settings(**overrides):
+    values = {
+        "app_env": "staging",
+        "database_url": "postgresql+psycopg://user:pass@staging.example/db",
+        "cors_origins": "https://staging.example",
+        "otp_hash_secret": "x" * 40,
+        "sms_provider": "disabled",
+        "email_provider": "disabled",
+        "storage_provider": "s3",
+        "storage_endpoint": "https://r2.example",
+        "storage_bucket": "guulingiinhan-staging-media",
+        "storage_access_key": "staging-access-key",
+        "storage_secret_key": "staging-secret-key",
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
+def test_staging_starts_without_external_providers_and_google_off():
+    settings = staging_settings()
+    assert settings.google_oidc_enabled is False
+    assert settings.sms_provider == "disabled"
+    assert settings.email_provider == "disabled"
+
+
+def test_staging_keeps_hosted_security_requirements():
+    for overrides in (
+        {"database_url": "sqlite:///app.db"},
+        {"cors_origins": "*"},
+        {"cors_origins": "http://staging.example"},
+        {"otp_hash_secret": None},
+        {"storage_provider": "local"},
+        {"sms_provider": "fake"},
+        {"email_provider": "fake"},
+        {"sms_provider": "twilio"},
+        {"email_provider": "smtp"},
+    ):
+        with pytest.raises(ValidationError):
+            staging_settings(**overrides)
+
+
+def test_production_still_requires_both_real_providers():
+    for overrides in (
+        {"sms_provider": "disabled"},
+        {"sms_provider": "fake"},
+        {"sms_provider": "twilio"},
+        {"email_provider": "disabled"},
+        {"email_provider": "fake"},
+        {"email_provider": "smtp"},
+    ):
+        with pytest.raises(ValidationError):
+            staging_settings(app_env="production", **overrides)
+
+
+def test_production_rejects_each_missing_provider_independently():
+    real_providers = {
+        "sms_provider": "twilio",
+        "twilio_account_sid": "AC" + "x" * 32,
+        "twilio_auth_token": "x" * 32,
+        "twilio_from_number": "+12025550100",
+        "email_provider": "smtp",
+        "email_from": "staging@example.com",
+        "email_public_base_url": "https://staging.example",
+        "email_smtp_host": "smtp.example.com",
+        "email_smtp_username": "username",
+        "email_smtp_password": "password",
+    }
+    for missing in (
+        ("twilio_auth_token",),
+        ("email_smtp_password",),
+    ):
+        values = {**real_providers, **{name: None for name in missing}}
+        with pytest.raises(ValidationError):
+            staging_settings(app_env="production", **values)

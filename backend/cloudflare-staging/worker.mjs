@@ -8,21 +8,29 @@ export class GuulingiinhanBackend extends Container {
   defaultPort = 8000;
   sleepAfter = "10m";
   envVars = {
-    APP_ENV: "production",
+    APP_ENV: "staging",
     DATABASE_URL: env.DATABASE_URL,
     CORS_ORIGINS: env.CORS_ORIGINS,
     OTP_HASH_SECRET: env.OTP_HASH_SECRET,
-    SMS_PROVIDER: "twilio",
-    TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
-    TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
-    TWILIO_FROM_NUMBER: env.TWILIO_FROM_NUMBER,
-    EMAIL_PROVIDER: "smtp",
-    EMAIL_FROM: env.EMAIL_FROM,
-    EMAIL_PUBLIC_BASE_URL: env.EMAIL_PUBLIC_BASE_URL,
-    EMAIL_SMTP_HOST: env.EMAIL_SMTP_HOST,
-    EMAIL_SMTP_PORT: env.EMAIL_SMTP_PORT ?? "587",
-    EMAIL_SMTP_USERNAME: env.EMAIL_SMTP_USERNAME,
-    EMAIL_SMTP_PASSWORD: env.EMAIL_SMTP_PASSWORD,
+    SMS_PROVIDER: env.SMS_PROVIDER ?? "disabled",
+    ...(env.SMS_PROVIDER === "twilio"
+      ? {
+          TWILIO_ACCOUNT_SID: env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: env.TWILIO_AUTH_TOKEN,
+          TWILIO_FROM_NUMBER: env.TWILIO_FROM_NUMBER,
+        }
+      : {}),
+    EMAIL_PROVIDER: env.EMAIL_PROVIDER ?? "disabled",
+    ...(env.EMAIL_PROVIDER === "smtp"
+      ? {
+          EMAIL_FROM: env.EMAIL_FROM,
+          EMAIL_PUBLIC_BASE_URL: env.EMAIL_PUBLIC_BASE_URL,
+          EMAIL_SMTP_HOST: env.EMAIL_SMTP_HOST,
+          EMAIL_SMTP_PORT: env.EMAIL_SMTP_PORT ?? "587",
+          EMAIL_SMTP_USERNAME: env.EMAIL_SMTP_USERNAME,
+          EMAIL_SMTP_PASSWORD: env.EMAIL_SMTP_PASSWORD,
+        }
+      : {}),
     EMAIL_SMTP_STARTTLS: "true",
     GOOGLE_OIDC_ENABLED: env.GOOGLE_OIDC_ENABLED ?? "false",
     ...(env.GOOGLE_OIDC_ENABLED === "true"
@@ -45,12 +53,18 @@ export class GuulingiinhanBackend extends Container {
 export default {
   async fetch(request, env) {
     const required = [
-      "DATABASE_URL", "CORS_ORIGINS", "OTP_HASH_SECRET", "TWILIO_ACCOUNT_SID",
-      "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "EMAIL_FROM",
-      "EMAIL_PUBLIC_BASE_URL", "EMAIL_SMTP_HOST", "EMAIL_SMTP_USERNAME",
-      "EMAIL_SMTP_PASSWORD", "STORAGE_ENDPOINT", "STORAGE_ACCESS_KEY",
-      "STORAGE_SECRET_KEY",
+      "DATABASE_URL", "CORS_ORIGINS", "OTP_HASH_SECRET", "STORAGE_ENDPOINT",
+      "STORAGE_ACCESS_KEY", "STORAGE_SECRET_KEY",
     ];
+    if (env.SMS_PROVIDER === "twilio") {
+      required.push("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER");
+    }
+    if (env.EMAIL_PROVIDER === "smtp") {
+      required.push(
+        "EMAIL_FROM", "EMAIL_PUBLIC_BASE_URL", "EMAIL_SMTP_HOST",
+        "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD",
+      );
+    }
     if (env.GOOGLE_OIDC_ENABLED === "true") {
       required.push(
         "GOOGLE_OIDC_CLIENT_ID", "GOOGLE_OIDC_CLIENT_SECRET",
