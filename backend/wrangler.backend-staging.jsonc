@@ -3,6 +3,9 @@
   "name": "guulingiinhan-backend-staging",
   "main": "./cloudflare-staging/worker.mjs",
   "compatibility_date": "2026-09-28",
+  "vars": {
+    "CORS_ORIGINS": "https://guulingiinhan-backend-staging.tuvshoo0331.workers.dev"
+  },
   "containers": [
     {
       "class_name": "GuulingiinhanBackend",
