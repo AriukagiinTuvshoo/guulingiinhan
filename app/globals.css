@@ -1388,3 +1388,61 @@
   .homev2-tree-node small,.homev2-tree-node em{font-size:9px}
 }
 
+/* Authentication pages: a warmer, more legible family archive entrance. */
+.authv2-shell{display:grid;place-items:center;background:radial-gradient(circle at 14% 10%,#49675a 0,transparent 33%),radial-gradient(circle at 88% 90%,#1b3c31 0,transparent 30%),#143328;padding:clamp(18px,4vw,48px)}
+.authv2-frame{width:min(1160px,100%);min-height:670px;grid-template-columns:minmax(0,1fr) minmax(420px,.95fr);overflow:hidden;border:1px solid #d8c9a8;border-radius:22px;background:#fcf9f1;box-shadow:0 28px 75px #071e1780}
+.authv2-story{background:linear-gradient(150deg,#315547,#1b3d32 74%,#123329);border-color:#6c7c67}
+.authv2-story:before{background-image:linear-gradient(90deg,transparent 98%,#e8d9b62a 98%),linear-gradient(0deg,transparent 98%,#e8d9b62a 98%);opacity:.35}
+.authv2-story:after{content:"";position:absolute;width:380px;height:380px;right:-150px;top:18%;border:1px solid #d8c69a3b;border-radius:50%;box-shadow:0 0 0 38px #d8c69a13,0 0 0 82px #d8c69a0b;pointer-events:none}
+.authv2-story-content{padding:clamp(28px,4vw,52px)}
+.authv2-story .authv2-mark{background:#f0e8d6;color:#2d5140;border-color:#d5bf8c}
+.authv2-story .authv2-mark-link strong{color:#f7f0df;font-size:15px}
+.authv2-story .authv2-mark-link small{color:#c6d5c8;font-size:11px}
+.authv2-story-copy{max-width:450px;z-index:1}
+.authv2-story-copy .public-home__eyebrow{color:#dec68b;letter-spacing:.18em;font-size:11px}
+.authv2-story-copy h1{color:#fff8e8;font-size:clamp(42px,4.2vw,60px);line-height:1.12}
+.authv2-story-copy>p:last-child{color:#d4dfd6;font-size:15px;line-height:1.75}
+.authv2-branch-art{color:#d9c18c;opacity:.36;right:34px;bottom:24px}
+.authv2-back,.authv2-back:hover,.authv2-back:focus-visible{color:#e7d7ad;font-size:12px}
+.authv2-form-panel{padding:clamp(34px,5vw,68px)}
+.authv2-heading .public-home__eyebrow{font-size:11px;letter-spacing:.16em;color:#9a7a3d}
+.authv2-heading h2{font-size:clamp(39px,4vw,51px)}
+.authv2-heading p:last-child{font-size:14px}
+.authv2-tabs{margin:30px 0 12px;border:1px solid #ddd3c1;border-radius:12px;background:#f1ecdf;padding:4px;gap:4px}
+.authv2-tabs button{min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-radius:9px;color:#63756b;font-size:13px;font-weight:600}
+.authv2-tabs button.active{background:#fffdf8;color:#25483a;box-shadow:0 2px 8px #293b2817;border:0}
+.authv2-tabs button:disabled{cursor:not-allowed;color:#8a9189}
+.authv2-tab-status{font-size:9px;font-weight:500;color:#997843}
+.authv2-form{margin-top:16px;gap:8px}
+.authv2-form label{font-size:12px;font-weight:600;color:#385548}
+.authv2-form input{height:49px;border-radius:9px;font-size:14px}
+.authv2-password button{top:7px}
+.authv2-help{font-size:11px}
+.authv2-forgot-row a{font-size:12px}
+.authv2-submit{min-height:49px;margin-top:5px;border-radius:9px;font-size:14px;font-weight:600}
+.authv2-switch{font-size:12px;margin-top:24px}
+.authv2-message{font-size:12px}
+.authv2-availability{margin:22px 0;color:#617267;font-size:13px}
+.authv2-unavailable{margin-top:20px;padding:18px 20px;border:1px solid #ddcfb0;border-radius:12px;background:#f6f0e2;color:#3b5748}
+.authv2-unavailable strong{display:block;font-size:16px}
+.authv2-unavailable p{margin:7px 0 0;color:#667369;font-size:13px;line-height:1.6}
+@media(max-width:900px){
+  .authv2-frame{grid-template-columns:1fr;min-height:0}
+  .authv2-story{min-height:290px;border-right:0;border-bottom:1px solid #6c7c67}
+  .authv2-story-copy{margin:42px 0 0;max-width:570px}
+  .authv2-story-copy h1{font-size:clamp(35px,5vw,48px)}
+  .authv2-form-panel{padding:38px clamp(24px,7vw,58px) 46px}
+}
+@media(max-width:620px){
+  .authv2-shell{padding:10px}
+  .authv2-frame{border-radius:15px;box-shadow:0 14px 35px #071e1766}
+  .authv2-story{min-height:230px}
+  .authv2-story-content{padding:23px}
+  .authv2-story-copy{margin:33px 0 0;max-width:85%}
+  .authv2-story-copy h1{font-size:33px}
+  .authv2-story-copy>p:last-child{font-size:12px}
+  .authv2-form-panel{padding:29px 22px 36px}
+  .authv2-heading h2{font-size:39px}
+  .authv2-tabs button{font-size:12px;flex-direction:column;gap:1px}
+}
+

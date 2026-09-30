@@ -1291,6 +1291,17 @@ def cancel_identity_link_request(
     return Response(status_code=204)
 
 
+@router.get("/email/config")
+def email_auth_config():
+    """Expose email delivery availability without revealing provider credentials."""
+    settings = get_settings()
+    enabled = settings.email_provider.lower() == "smtp" and all(
+        (settings.email_from, settings.email_smtp_host,
+         settings.email_smtp_username, settings.email_smtp_password)
+    )
+    return {"enabled": bool(enabled)}
+
+
 @router.get("/phone/config")
 def phone_auth_config():
     """Expose only whether real SMS delivery is configured for auth UI."""

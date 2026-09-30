@@ -35,11 +35,13 @@ export default function RegisterPage() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [phoneEnabled, setPhoneEnabled] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     api<{ enabled: boolean }>('/auth/phone/config').then((result) => setPhoneEnabled(result.enabled)).catch(() => setPhoneEnabled(false));
+    api<{ enabled: boolean }>('/auth/email/config').then((result) => setEmailEnabled(result.enabled)).catch(() => setEmailEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -195,20 +197,22 @@ export default function RegisterPage() {
             <p>Гэр бүлийнхээ хувийн орчноо эхлүүлье.</p>
           </div>
 
-          {phoneEnabled && (
-            <>
-              <div className="authv2-method-heading">Утасны дугаар ашиглах уу?</div>
-              <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
-                <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
-                <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
-              </div>
-            </>
-          )}
+          <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
+            <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйлээр</button>
+            <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')} disabled={!phoneEnabled}>Утасны дугаараар{!phoneEnabled && <span className="authv2-tab-status">Түр хаалттай</span>}</button>
+          </div>
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
           {error && <div className="authv2-message authv2-message--error" role="alert">{error}</div>}
 
-          {registeredEmail && mode === 'email' ? (
+          {emailEnabled === null ? (
+            <p className="authv2-availability" role="status">Бүртгэлийн боломжийг шалгаж байна…</p>
+          ) : mode === 'email' && !emailEnabled ? (
+            <div className="authv2-unavailable" role="status">
+              <strong>Имэйл бүртгэл түр хаалттай</strong>
+              <p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна. Тохируулсны дараа эндээс бүртгүүлж болно.</p>
+            </div>
+          ) : registeredEmail && mode === 'email' ? (
             <div className="authv2-complete">
               <span className="authv2-complete-mark" aria-hidden="true">✓</span>
               <h3>Бүртгэлийн хүсэлт хүлээн авлаа.</h3>
