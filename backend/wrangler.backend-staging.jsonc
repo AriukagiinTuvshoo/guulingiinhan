@@ -6,6 +6,9 @@
   "vars": {
     "CORS_ORIGINS": "https://guulingiinhan-backend-staging.tuvshoo0331.workers.dev"
   },
+  "observability": {
+    "enabled": true
+  },
   "containers": [
     {
       "class_name": "GuulingiinhanBackend",
