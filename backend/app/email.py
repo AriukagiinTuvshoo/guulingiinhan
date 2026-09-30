@@ -141,6 +141,8 @@ def send_email_safely(
                 "provider": get_settings().email_provider,
                 "event": "email_delivery_failed",
                 "error_type": type(exc).__name__,
+                "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else None,
+                "cause_errno": getattr(exc.__cause__, "errno", None),
                 "request_id": request_id,
             },
         )
