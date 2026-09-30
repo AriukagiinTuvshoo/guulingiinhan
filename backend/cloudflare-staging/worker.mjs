@@ -9,7 +9,9 @@ export class GuulingiinhanBackend extends Container {
   sleepAfter = "10m";
   envVars = {
     APP_ENV: "staging",
-    DATABASE_URL: env.DATABASE_URL,
+    // Supabase's default postgresql:// URL selects psycopg2 in SQLAlchemy;
+    // this image installs psycopg (v3), so select its dialect explicitly.
+    DATABASE_URL: env.DATABASE_URL?.replace(/^postgresql:\/\//, "postgresql+psycopg://"),
     CORS_ORIGINS: env.CORS_ORIGINS,
     OTP_HASH_SECRET: env.OTP_HASH_SECRET,
     SMS_PROVIDER: env.SMS_PROVIDER ?? "disabled",
