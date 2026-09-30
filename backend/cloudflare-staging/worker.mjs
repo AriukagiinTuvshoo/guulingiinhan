@@ -30,7 +30,11 @@ export class GuulingiinhanBackend extends Container {
           EMAIL_SMTP_HOST: env.EMAIL_SMTP_HOST,
           EMAIL_SMTP_PORT: env.EMAIL_SMTP_PORT ?? "587",
           EMAIL_SMTP_USERNAME: env.EMAIL_SMTP_USERNAME,
-          EMAIL_SMTP_PASSWORD: env.EMAIL_SMTP_PASSWORD,
+          // Google displays app passwords in four-character groups. Treat
+          // copied whitespace as presentation only for this Gmail relay.
+          EMAIL_SMTP_PASSWORD: env.EMAIL_SMTP_HOST === "smtp.gmail.com"
+            ? env.EMAIL_SMTP_PASSWORD?.replace(/\s/g, "")
+            : env.EMAIL_SMTP_PASSWORD,
         }
       : {}),
     EMAIL_SMTP_STARTTLS: "true",
