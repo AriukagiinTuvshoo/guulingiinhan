@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     email_smtp_username: str | None = None
     email_smtp_password: str | None = None
     email_smtp_starttls: bool = True
+    admin_bootstrap_email: EmailStr | None = None
+    admin_bootstrap_admin_email: EmailStr | None = None
+    admin_bootstrap_moderator_email: EmailStr | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

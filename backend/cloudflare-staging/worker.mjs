@@ -14,6 +14,9 @@ export class GuulingiinhanBackend extends Container {
     DATABASE_URL: env.DATABASE_URL?.replace(/^postgresql:\/\//, "postgresql+psycopg://"),
     CORS_ORIGINS: env.CORS_ORIGINS,
     OTP_HASH_SECRET: env.OTP_HASH_SECRET,
+    ...(env.ADMIN_BOOTSTRAP_EMAIL ? { ADMIN_BOOTSTRAP_EMAIL: env.ADMIN_BOOTSTRAP_EMAIL } : {}),
+    ...(env.ADMIN_BOOTSTRAP_ADMIN_EMAIL ? { ADMIN_BOOTSTRAP_ADMIN_EMAIL: env.ADMIN_BOOTSTRAP_ADMIN_EMAIL } : {}),
+    ...(env.ADMIN_BOOTSTRAP_MODERATOR_EMAIL ? { ADMIN_BOOTSTRAP_MODERATOR_EMAIL: env.ADMIN_BOOTSTRAP_MODERATOR_EMAIL } : {}),
     SMS_PROVIDER: env.SMS_PROVIDER ?? "disabled",
     ...(env.SMS_PROVIDER === "twilio"
       ? {

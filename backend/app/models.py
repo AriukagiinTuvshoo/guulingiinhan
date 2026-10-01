@@ -49,6 +49,30 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class AdminGrant(Base):
+    """Global authorization, independent of family membership."""
+
+    __tablename__ = "admin_grants"
+    __table_args__ = (
+        CheckConstraint("role IN ('SUPER_ADMIN', 'ADMIN', 'MODERATOR')", name="ck_admin_grant_role"),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    granted_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class AdminBootstrap(Base):
+    """Durable one-time marker so a removed super admin cannot be re-granted on restart."""
+
+    __tablename__ = "admin_bootstrap"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class LoginIdentity(Base):
     """An authentication identifier owned by an account, never by a Person."""
 
@@ -147,6 +171,11 @@ class Invitation(Base):
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
         Index("ix_invitation_expiry", "expires_at"),
+        Index(
+            "uq_invitation_active_family_email", "family_id", "invited_email", unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)

@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.admin import bootstrap_admin_roles
+from app.admin import router as admin_router
 from app.auth import router as auth_router
 from app.config import get_settings
 from app.db import engine
@@ -24,6 +26,7 @@ configure_logging(settings.log_level, settings.app_env)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    bootstrap_admin_roles()
     yield
     engine.dispose()
 
@@ -148,6 +151,7 @@ async def request_context(request: Request, call_next):
 
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(lineages_router, prefix="/api/v1")

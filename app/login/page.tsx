@@ -51,9 +51,18 @@ export default function LoginPage() {
     return () => window.clearInterval(timer);
   }, [challenge, resendSeconds]);
 
-  function moveToApp() {
+  async function moveToApp() {
     const invite = new URLSearchParams(window.location.hash.slice(1)).get('invite');
-    router.push(invite ? `/invite#token=${encodeURIComponent(invite)}` : '/dashboard');
+    if (invite) {
+      router.push(`/invite#token=${encodeURIComponent(invite)}`);
+      return;
+    }
+    try {
+      await api('/admin/me');
+      router.push('/admin');
+    } catch {
+      router.push('/dashboard');
+    }
   }
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -64,7 +73,7 @@ export default function LoginPage() {
     const values = new FormData(event.currentTarget);
     try {
       await api<User>('/auth/login', { method: 'POST', body: JSON.stringify({ email: values.get('email'), password: values.get('password') }) });
-      moveToApp();
+      await moveToApp();
     } catch (cause) {
       setError(authError(cause));
     } finally {
@@ -125,7 +134,7 @@ export default function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ phone, challenge_id: challenge.challenge_id, code: values.get('code') }),
       });
-      moveToApp();
+      await moveToApp();
     } catch (cause) {
       setError(authError(cause));
     } finally {
