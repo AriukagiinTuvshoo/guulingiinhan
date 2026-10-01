@@ -375,6 +375,10 @@ class ParentChildCreate(BaseModel):
     relationship_type: str = Field(default="biological", pattern="^(biological|adoptive)$")
 
 
+class ParentChildPatch(BaseModel):
+    relationship_type: str = Field(pattern="^(biological|adoptive)$")
+
+
 class MarriageCreate(BaseModel):
     person_1_id: UUID
     person_2_id: UUID
@@ -1909,6 +1913,70 @@ def add_parent_child(
         "child_id": edge.child_id,
         "relationship_type": edge.relationship_type,
     }
+
+
+@router.patch("/{family_id}/relationships/parent-child/{relationship_id}")
+def update_parent_child(
+    family_id: UUID,
+    relationship_id: UUID,
+    body: ParentChildPatch,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    edge = db.scalar(
+        select(ParentChildRelationship).where(
+            ParentChildRelationship.id == relationship_id,
+            ParentChildRelationship.parent_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+            ParentChildRelationship.child_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+        )
+    )
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.parent_id), user)
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.child_id), user)
+    edge.relationship_type = body.relationship_type
+    _audit(db, user, family_id, "relationship.parent_child.updated", "parent_child", edge.id)
+    db.commit()
+    return {
+        "id": edge.id,
+        "parent_id": edge.parent_id,
+        "child_id": edge.child_id,
+        "relationship_type": edge.relationship_type,
+    }
+
+
+@router.delete("/{family_id}/relationships/parent-child/{relationship_id}", status_code=204)
+def remove_parent_child(
+    family_id: UUID,
+    relationship_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    edge = db.scalar(
+        select(ParentChildRelationship).where(
+            ParentChildRelationship.id == relationship_id,
+            ParentChildRelationship.parent_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+            ParentChildRelationship.child_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+        )
+    )
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.parent_id), user)
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.child_id), user)
+    _audit(db, user, family_id, "relationship.parent_child.deleted", "parent_child", edge.id)
+    db.delete(edge)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/{family_id}/marriages", status_code=201)
