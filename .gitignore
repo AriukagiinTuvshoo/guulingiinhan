@@ -1,4 +1,6 @@
 node_modules/
+.npm-cache/
+backend/.pytest-tmp/
 dist/
 .next/
 .open-next/

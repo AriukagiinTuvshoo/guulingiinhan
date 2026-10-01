@@ -54,6 +54,7 @@ function SettingsContent() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [securityBusy, setSecurityBusy] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [phone, setPhone] = useState('');
   const [resendSeconds, setResendSeconds] = useState(0);
@@ -68,6 +69,21 @@ function SettingsContent() {
     () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
+
+  async function saveDisplayName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accountBusy) return;
+    const displayName = String(new FormData(event.currentTarget).get('display_name') ?? '').trim();
+    if (!displayName) { setNotice({ kind: 'error', text: 'Дэлгэцийн нэр шаардлагатай.' }); return; }
+    setAccountBusy(true); setNotice(null);
+    try {
+      const updated = await api<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ display_name: displayName }) });
+      setUser(updated);
+      setNotice({ kind: 'success', text: 'Дэлгэцийн нэр хадгалагдлаа.' });
+    } catch (cause) {
+      setNotice({ kind: 'error', text: friendlyError(cause, 'Дэлгэцийн нэрийг хадгалж чадсангүй.') });
+    } finally { setAccountBusy(false); }
+  }
 
   const refreshIdentities = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++identitySequence.current;
@@ -366,6 +382,7 @@ function SettingsContent() {
           <aside className="settings-index" aria-label="Тохиргооны хэсгүүд">
             <a href="#account">Бүртгэл</a>
             <a href="#family">Гэр бүл ба удам</a>
+            <a href="#privacy">Нууцлал</a>
             <a href="#security">Аюулгүй байдал</a>
             <a href="#signout">Гарах</a>
           </aside>
@@ -391,13 +408,18 @@ function SettingsContent() {
                     <div><dt>Имэйл</dt><dd>{user?.email || 'Имэйл холбогдоогүй'}</dd></div>
                     <div><dt>Бүртгэлийн ID</dt><dd className="settings-mono">{user?.id}</dd></div>
                   </dl>
+                  <form className="settings-inline-form" onSubmit={saveDisplayName}>
+                    <label htmlFor="account-display-name">Дэлгэцийн нэрээ засах</label>
+                    <input id="account-display-name" name="display_name" defaultValue={user?.display_name ?? ''} maxLength={120} required disabled={accountBusy} />
+                    <button className="settings-button settings-button--dark" type="submit" disabled={accountBusy}>{accountBusy ? 'Хадгалж байна…' : 'Нэр хадгалах'}</button>
+                  </form>
                   {user?.person_id && selectedFamily ? (
                     <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>
                       Удам дахь миний профайлыг харах
                     </Link>
                   ) : null}
                   <p className="settings-note">
-                    Дэлгэцийн нэр болон имэйлийг энэ хэсгээс засах боломж одоогоор байхгүй.
+                    Имэйл солиход тусдаа баталгаажуулалт шаардлагатай. Хүний профайл зураг өөрийн зөвшөөрлөөр тусад нь хадгалагдана.
                   </p>
                 </div>
               </div>
@@ -468,6 +490,22 @@ function SettingsContent() {
                   </div>
                 )}
                 {selectedFamily && <div className="settings-lineage-links"><div><strong>Удмын мод</strong><p>{user?.person_id ? 'Таны профайл удмын хүнтэй холбогдсон.' : 'Таны бүртгэл удмын хүнтэй хараахан холбогдоогүй.'}</p></div><Link className="settings-button settings-button--light" href={'/tree?family=' + encodeURIComponent(selectedFamily.id)}>Бүх удмыг харах →</Link></div>}
+              </div>
+            </section>
+
+            <section id="privacy" className="settings-section" aria-labelledby="settings-privacy-title">
+              <div className="settings-section__head">
+                <div className="settings-section__icon"><ShieldCheck size={18} /></div>
+                <div><p className="settings-eyebrow">НУУЦЛАЛ</p><h2 id="settings-privacy-title">Профайл ба гэр бүлийн мэдээлэл</h2><p>Хувийн удам зөвшөөрөгдсөн гэр бүлийн гишүүдэд харагдана.</p></div>
+              </div>
+              <div className="settings-card settings-privacy-card">
+                {user?.person_id && selectedFamily ? <>
+                  <div><strong>Өөрийн профайлын харагдац</strong><p>Харагдах хүрээг өөрийн хүний профайл дээр засна. Серверийн зөвшөөрөл үйлдэл бүрд шалгагдана.</p></div>
+                  <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>Профайлын нууцлалыг тохируулах</Link>
+                </> : <>
+                  <div><strong>Өөрийгөө удмын хүнтэй холбох</strong><p>Нэрээр таамаглан автоматаар холбохгүй. Гэр бүлийн эзэн хүсэлтийг шалгаж батална.</p></div>
+                  <Link className="settings-button settings-button--light" href={selectedFamily ? '/tree?family=' + encodeURIComponent(selectedFamily.id) : '/families'}>Удам дотроос өөрийгөө олох</Link>
+                </>}
               </div>
             </section>
 

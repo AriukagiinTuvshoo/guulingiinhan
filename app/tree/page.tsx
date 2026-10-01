@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   FormEvent,
   Suspense,
@@ -22,6 +23,11 @@ import {
   TreePerson,
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+
+const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
+  ssr: false,
+  loading: () => <div className="tree-3d-loading" role="status">3D удмын зураглалыг ачаалж байна…</div>,
+});
 
 type RelationKind = 'parent' | 'child' | 'spouse';
 type LinkRequest = { id: string; person_id: string; user_id: string; user_name: string; person_name: string; status: string; created_at: string };
@@ -213,6 +219,7 @@ function TreePageContent() {
   const [selectedId, setSelectedId] = useState('');
   const [depth, setDepth] = useState(3);
   const [viewMode, setViewMode] = useState<'full' | 'close'>('full');
+  const [treeView, setTreeView] = useState<'2d' | '3d'>('2d');
   const [zoom, setZoom] = useState(0.9);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -1004,6 +1011,10 @@ function TreePageContent() {
             </div>
 
             <div className="tree-controls">
+              <div className="tree-segmented" role="group" aria-label="Модны харагдац">
+                <button type="button" aria-pressed={treeView === '2d'} onClick={() => setTreeView('2d')}>2D мод</button>
+                <button type="button" aria-pressed={treeView === '3d'} onClick={() => setTreeView('3d')}>3D орон зай</button>
+              </div>
               <label>
                 <span>Хүрээ</span>
                 <select
@@ -1118,7 +1129,15 @@ function TreePageContent() {
               </Link>
             </section>
           ) : (
-            <div className="tree-map-layout">
+            <div className={'tree-map-layout ' + (treeView === '3d' ? 'tree-map-layout--3d' : '')}>
+              {treeView === '3d' ? <Tree3DScene
+                data={tree}
+                selectedPersonId={selectedId}
+                currentPersonId={tree.linked_person_id}
+                canonicalRootId={tree.lineage_root_person_id || tree.root_person_id}
+                onSelect={selectPerson}
+                onFallback={() => setTreeView('2d')}
+              /> : (
               <div
                 ref={scrollRef}
                 className="tree-map-scroll"
@@ -1274,6 +1293,7 @@ function TreePageContent() {
                   </div>
                 </div>
               </div>
+              )}
 
               <aside className="tree-selected-panel" aria-label="Сонгосон хүний мэдээлэл">
                 {selectedPerson ? (
