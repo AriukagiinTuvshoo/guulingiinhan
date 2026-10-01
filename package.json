@@ -6,19 +6,35 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
-    "typecheck": "tsc --noEmit",
-    "start": "next start --hostname 0.0.0.0"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
+    "start": "next start --hostname 0.0.0.0",
+    "dev:vinext": "vite dev --port 3001",
+    "build:vinext": "vite build",
+    "start:vinext": "vite preview",
+    "deploy:vinext": "vinext-cloudflare deploy",
+    "deploy:staging": "node scripts/deploy-cloudflare-staging.mjs"
   },
   "dependencies": {
     "lucide-react": "latest",
     "next": "16.3.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "three": "^0.186.1",
+    "vinext": "latest",
+    "react-server-dom-webpack": "latest",
+    "@vinext/cloudflare": "latest"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "typescript": "^7.0.2"
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "8.3.0",
+    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-rsc": "latest",
+    "@cloudflare/vite-plugin": "beta",
+    "cf": "latest"
   }
 }

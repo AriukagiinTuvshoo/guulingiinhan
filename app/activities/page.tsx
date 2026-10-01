@@ -1,0 +1,66 @@
+'use client';
+
+import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { api, Family } from '../../lib/api';
+
+type Fund = { id: string; title: string; purpose: string; currency: string; payment_instruction: string; is_active: boolean };
+type Donation = { id: string; fund_id: string; amount_minor: number; currency: string; status: string; donor_name: string | null; private_donor: boolean };
+type FamilyEvent = { id: string; title: string; description: string; starts_at: string; location: string; registration_deadline: string | null; capacity: number | null; adult_fee_minor: number; child_fee_minor: number; currency: string; payment_instruction: string };
+type Registration = { id: string; event_id: string; user_id: string; adult_count: number; child_count: number; status: string; payment_status: string };
+const root = (id: string) => `/families/${encodeURIComponent(id)}`;
+const money = (amount: number, currency: string) => `${new Intl.NumberFormat('mn-MN').format(amount / 100)} ${currency}`;
+const localDate = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 16);
+
+function ActivitiesContent() {
+  const params = useSearchParams(); const familyId = params.get('family') ?? '';
+  const [family, setFamily] = useState<Family | null>(null); const [funds, setFunds] = useState<Fund[]>([]);
+  const [donations, setDonations] = useState<Record<string, Donation[]>>({}); const [events, setEvents] = useState<FamilyEvent[]>([]);
+  const [registrations, setRegistrations] = useState<Record<string, Registration[]>>({}); const [mine, setMine] = useState<Record<string, Registration | null>>({});
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const manage = family?.role === 'owner' || family?.role === 'editor'; const owner = family?.role === 'owner';
+
+  const reload = useCallback(async () => {
+    if (!familyId) return; setError('');
+    try {
+      const [families, fundRows, eventRows] = await Promise.all([api<Family[]>('/families'), api<Fund[]>(`${root(familyId)}/funds`), api<FamilyEvent[]>(`${root(familyId)}/events`)]);
+      const selected = families.find((row) => row.id === familyId) ?? null; setFamily(selected); setFunds(fundRows); setEvents(eventRows);
+      const ds = await Promise.all(fundRows.map(async (f) => [f.id, await api<Donation[]>(`${root(familyId)}/funds/${f.id}/donations`)] as const)); setDonations(Object.fromEntries(ds));
+      const rs = await Promise.all(eventRows.map(async (e) => [e.id, selected?.role === 'owner' || selected?.role === 'editor' ? await api<Registration[]>(`${root(familyId)}/events/${e.id}/registrations`) : []] as const)); setRegistrations(Object.fromEntries(rs));
+      const own = await Promise.all(eventRows.map(async (e) => { try { return [e.id, await api<Registration>(`${root(familyId)}/events/${e.id}/registrations/me`)] as const; } catch { return [e.id, null] as const; } })); setMine(Object.fromEntries(own));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Мэдээлэл ачаалж чадсангүй.'); }
+  }, [familyId]);
+  useEffect(() => { void reload(); }, [reload]);
+
+  async function run(action: () => Promise<unknown>, success: string) {
+    setBusy(true); setError(''); setNotice('');
+    try { await action(); await reload(); setNotice(success); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Үйлдэл амжилтгүй боллоо.'); }
+    finally { setBusy(false); }
+  }
+  async function newFund(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const form = e.currentTarget; const d = new FormData(form);
+    await run(() => api(`${root(familyId)}/funds`, { method: 'POST', body: JSON.stringify({ title: d.get('title'), purpose: d.get('purpose'), currency: 'MNT', payment_instruction: d.get('instruction') }) }), 'Гэр бүлийн сан үүслээ.'); form.reset();
+  }
+  async function newEvent(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const form = e.currentTarget; const d = new FormData(form);
+    await run(() => api(`${root(familyId)}/events`, { method: 'POST', body: JSON.stringify({ title: d.get('title'), description: d.get('description'), location: d.get('location'), starts_at: new Date(String(d.get('starts_at'))).toISOString(), registration_deadline: d.get('deadline') ? new Date(String(d.get('deadline'))).toISOString() : null, capacity: d.get('capacity') ? Number(d.get('capacity')) : null, adult_fee_minor: Number(d.get('adult_fee')) * 100, child_fee_minor: Number(d.get('child_fee')) * 100, currency: 'MNT', payment_instruction: d.get('instruction') }) }), 'Арга хэмжээ үүслээ.'); form.reset();
+  }
+  if (!familyId) return <main className="activities-page"><p>Гэр бүлийн орчин ачаалж байна…</p></main>;
+  return <main className="activities-page">
+    <header className="activities-heading"><div><span>ГЭР БҮЛИЙН ХАМТЫН АМЬДРАЛ</span><h1>Сан ба уулзалт</h1><p>{family?.name ?? 'Гэр бүлийн орчин'} · гишүүдийн хүрээнд</p></div><button onClick={() => void reload()} disabled={busy}>Шинэчлэх</button></header>
+    {error && <div className="activities-alert" role="alert">{error}<button onClick={() => void reload()}>Дахин оролдох</button></div>}{notice && <p role="status" className="activities-notice">{notice}</p>}
+    <section className="activities-section"><div className="activities-section-title"><div><span>ХАМТЫН САН</span><h2>Гэр бүлийн сан</h2></div><p>Шилжүүлгийг зохион байгуулагч гар аргаар баталгаажуулна.</p></div>
+      {owner && <form className="activities-form" onSubmit={(e) => void newFund(e)}><h3>Шинэ сан үүсгэх</h3><label>Сангийн нэр<input name="title" required maxLength={180} /></label><label>Зориулалт<textarea name="purpose" required maxLength={4000} /></label><label>Данс эсвэл QR заавар<textarea name="instruction" required maxLength={4000} /></label><button disabled={busy}>Сан үүсгэх</button></form>}
+      {!funds.length ? <p className="activities-empty">Одоогоор сан бүртгээгүй байна.</p> : <div className="activities-grid">{funds.map((f) => <article className="activities-card" key={f.id}><div className="activities-card-top"><span className="activities-kicker">{f.is_active ? 'ИДЭВХТЭЙ' : 'ТҮР ЗОГССОН'}</span>{owner && <button className="activities-quiet" disabled={busy} onClick={() => void run(() => api(`${root(familyId)}/funds/${f.id}/status?is_active=${!f.is_active}`, { method: 'PATCH' }), 'Сангийн төлөв шинэчлэгдлээ.')}>{f.is_active ? 'Түр зогсоох' : 'Идэвхжүүлэх'}</button>}</div><h3>{f.title}</h3><p>{f.purpose}</p><div className="activities-instructions"><small>ШИЛЖҮҮЛГИЙН МЭДЭЭЛЭЛ</small><p>{f.payment_instruction}</p></div>{f.is_active && <form className="activities-inline-form" onSubmit={(e) => { e.preventDefault(); const form = e.currentTarget; const d = new FormData(form); void run(() => api(`${root(familyId)}/funds/${f.id}/donations`, { method: 'POST', body: JSON.stringify({ amount_minor: Number(d.get('amount')) * 100, private_donor: d.get('private') === 'on' }) }), 'Хандивын мэдэгдэл бүртгэгдлээ.'); form.reset(); }}><label>Хандивын дүн (₮)<input name="amount" type="number" min="1" required /></label><label className="activities-check"><input name="private" type="checkbox" /> Нэрээ нууцлах</label><button disabled={busy}>Шилжүүлсэн гэж мэдэгдэх</button></form>}<div className="activities-ledger"><h4>Хандивын бүртгэл {owner ? '· гэр бүлийн тайлан' : '· зөвхөн таны бүртгэл'}</h4>{(donations[f.id] ?? []).map((d) => <div className="activities-row" key={d.id}><span>{d.private_donor ? 'Нууц хандивлагч' : d.donor_name ?? 'Гишүүн'} · {money(d.amount_minor, d.currency)} · {d.status}</span>{owner && d.status === 'reported' && <button disabled={busy} onClick={() => void run(() => api(`${root(familyId)}/funds/${f.id}/donations/${d.id}/confirm`, { method: 'POST' }), 'Хандив баталгаажлаа.')}>Батлах</button>}{!owner && d.status === 'pledged' && <button disabled={busy} onClick={() => void run(() => api(`${root(familyId)}/funds/${f.id}/donations/${d.id}/report`, { method: 'POST' }), 'Шилжүүлгийг мэдээллээ.')}>Төлбөр мэдэгдэх</button>}</div>)}</div></article>)}</div>}
+    </section>
+    <section className="activities-section"><div className="activities-section-title"><div><span>УДМЫН УУЛЗАЛТ</span><h2>Арга хэмжээ</h2></div><p>Бүртгэл, багтаамж, төлбөрийн явц</p></div>
+      {manage && <form className="activities-form" onSubmit={(e) => void newEvent(e)}><h3>Арга хэмжээ нэмэх</h3><div className="activities-form-grid"><label>Нэр<input name="title" required maxLength={180} /></label><label>Байршил<input name="location" required maxLength={300} /></label><label>Эхлэх цаг<input name="starts_at" type="datetime-local" required defaultValue={localDate(30)} /></label><label>Бүртгэл хаах<input name="deadline" type="datetime-local" defaultValue={localDate(20)} /></label><label>Суудлын тоо<input name="capacity" type="number" min="1" /></label><label>Том хүний төлбөр ₮<input name="adult_fee" type="number" min="0" defaultValue="0" /></label><label>Хүүхдийн төлбөр ₮<input name="child_fee" type="number" min="0" defaultValue="0" /></label></div><label>Тайлбар<textarea name="description" maxLength={12000} /></label><label>Төлбөрийн заавар<textarea name="instruction" maxLength={4000} /></label><button disabled={busy}>Арга хэмжээ үүсгэх</button></form>}
+      {!events.length ? <p className="activities-empty">Одоогоор уулзалт зарлаагүй байна.</p> : <div className="activities-grid">{events.map((event) => { const own = mine[event.id]; const total = (own?.adult_count ?? 0) * event.adult_fee_minor + (own?.child_count ?? 0) * event.child_fee_minor; return <article className="activities-card" key={event.id}><span className="activities-kicker">{new Date(event.starts_at).toLocaleString('mn-MN')}</span><h3>{event.title}</h3><p>{event.description}</p><p><strong>Байршил:</strong> {event.location}{event.capacity ? ` · ${event.capacity} суудал` : ''}</p>{(event.adult_fee_minor || event.child_fee_minor) > 0 && <p><strong>Төлбөр:</strong> том хүн {money(event.adult_fee_minor, event.currency)}, хүүхэд {money(event.child_fee_minor, event.currency)}</p>}{event.payment_instruction && <div className="activities-instructions"><small>ШИЛЖҮҮЛГИЙН МЭДЭЭЛЭЛ</small><p>{event.payment_instruction}</p></div>}{(!own || own.status === 'cancelled') && <form className="activities-inline-form" onSubmit={(e) => { e.preventDefault(); const d = new FormData(e.currentTarget); void run(() => api(`${root(familyId)}/events/${event.id}/registrations`, { method: 'POST', body: JSON.stringify({ adult_count: Number(d.get('adults')), child_count: Number(d.get('children')) }) }), 'Арга хэмжээнд бүртгүүллээ.'); }}><label>Том хүн<input name="adults" type="number" min="0" defaultValue="1" /></label><label>Хүүхэд<input name="children" type="number" min="0" defaultValue="0" /></label><button disabled={busy}>Бүртгүүлэх</button></form>}{own && own.status === 'registered' && <div className="activities-instructions"><strong>Таны бүртгэл:</strong> {own.adult_count} том хүн, {own.child_count} хүүхэд · {own.status}<p>Төлбөр {money(total, event.currency)} · {own.payment_status}</p>{own.payment_status === 'unpaid' && <button disabled={busy} onClick={() => void run(() => api(`${root(familyId)}/events/${event.id}/registrations/me/report-payment`, { method: 'POST' }), 'Төлбөр мэдэгдлээ.')}>Төлбөр шилжүүлсэн</button>}<button className="activities-quiet" disabled={busy} onClick={() => void run(() => api(`${root(familyId)}/events/${event.id}/registrations/me/cancel`, { method: 'POST' }), 'Бүртгэл цуцлагдлаа.')}>Бүртгэл цуцлах</button></div>}{manage && <div className="activities-ledger"><h4>Оролцогчдын төлбөр</h4>{(registrations[event.id] ?? []).map((r) => <div className="activities-row" key={r.id}><span>{r.adult_count} том хүн · {r.child_count} хүүхэд · {r.payment_status}</span>{r.payment_status === 'reported' && <button disabled={busy} onClick={() => void run(() => api(`${root(familyId)}/events/${event.id}/registrations/${r.id}/confirm-payment`, { method: 'POST' }), 'Төлбөр баталгаажлаа.')}>Батлах</button>}</div>)}</div>}</article>; })}</div>}
+    </section>
+  </main>;
+}
+
+export default function ActivitiesPage() {
+  return <Suspense fallback={<main className="activities-page"><p>Гэр бүлийн үйл ажиллагааг ачаалж байна…</p></main>}><ActivitiesContent /></Suspense>;
+}

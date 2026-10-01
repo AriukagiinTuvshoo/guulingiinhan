@@ -203,7 +203,7 @@ def test_tree_node_limit_caps_large_fanout(client, database):
             created_by=owner_id,
             visibility="family",
         )
-        for index in range(350)
+        for index in range(850)
     ]
     edges = [
         ParentChildRelationship(
@@ -223,7 +223,8 @@ def test_tree_node_limit_caps_large_fanout(client, database):
     response = client.get(f"/api/v1/families/{family_id}/tree?person_id={persons[0].id}&depth=1")
     assert response.status_code == 200
     tree = response.json()
-    assert tree["meta"]["node_count"] <= tree["meta"]["node_limit"]
+    assert tree["meta"]["node_limit"] == 800
+    assert tree["meta"]["node_count"] == 800
     assert tree["meta"]["truncated"] is True
 
 

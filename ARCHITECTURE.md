@@ -12,6 +12,27 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - PostgreSQL нь орчны `DATABASE_URL`-аар тохируулагдана; development-д SQLite ашиглаж болно.
 - Зураг PostgreSQL-д бус object storage-д хадгалагдана; `photos.object_key` нь storage key байна.
 
+## Family-ийн хамтын үйл ажиллагаа
+
+- Сан ба donation endpoint-үүд Family membership-ийг шалгана. Owner сан удирдаж, гишүүн шилжүүлсэн төлбөрөө мэдээлнэ; owner гар аргаар батална. Private donor сонголттой гишүүний нэрийг owner хүртэл харахгүй.
+- Уулзалт нь `LifeEvent`-ээс тусдаа family-scoped entity. Owner/editor үүсгэж, бүртгэл болон төлбөрийг удирдана. Гишүүн бүртгэлээ харах, цуцлах, дахин бүртгүүлэх боломжтой.
+- Төлбөрийн эхний хувилбар банк/QR заавар ба `unpaid → reported → confirmed` төлөвөөр хязгаарлагдана. Бодит gateway, гүйлгээний баталгаажуулалт, картын өгөгдөл хадгалалт байхгүй.
+- Role болон family/event холбоосыг backend шалгана. `Family.root_person_id` нь owner-оор тохируулж болох nullable reference бөгөөд бодит Person-ийг зохиомлоор үүсгэхгүй. Тохируулсан root-ийг family-ээс салгахаас өмнө owner root-ийг цуцлах ёстой. Migration chain нь main-ийн `b3e6c9f1a204`-өөс `c4e0a2b1d991` → `d7a2f1b893c4` → `e3b82c41a7d0` хүртэл үргэлжилнэ.
+
+## PWA
+
+`app/manifest.ts` нь install metadata гаргаж, `public/sw.js` зөвхөн public home болон install icon-уудыг cache хийнэ. API, authenticated route, profile, зураг, бусад family өгөгдлийг cache-д хадгалахгүй. Service worker зөвхөн production build дээр бүртгэгдэнэ.
+
+## Удмын модны 3D харагдац
+
+`components/tree-3d-scene.tsx` нь Three.js-ээр одоогийн authenticated, Family-scoped `/families/{id}/tree` өгөгдлийг зурна. Шинэ Person эсвэл relationship хүснэгт/API үүсгэхгүй. Canonical `Person.id`, root, parent-child, Marriage-ийн одоогийн/түүхэн төлөв, Lineage/Branch ID-г scene ашиглана. Сонголт ба хайлтын дараа одоогийн Tree API тухайн бодит хүний ойр орчныг дахин татна.
+
+Tree API нэг хүсэлтэд 800 хүртэл хүн, 1,200 хүртэл холбоос буцаана. 3D scene instanced mesh болон batch шугам ашиглан draw-call-ыг цөөлж, 72 хүртэл ойрын node label гаргана. Generation/branch focus, “Бүх модыг харах”, хүний хайлт ба төвлөрүүлэлт одоо байгаа API-ийн зөвшөөрөгдсөн хүрээнд ажиллана. 800 synthetic Person дээр layout тооцооны хамгийн сүүлийн median 30.66 ms хэмжсэн; энэ нь зөвхөн layout алгоритмын хугацаа бөгөөд WebGL/GPU дүрслэл, API latency эсвэл бодит өгөгдлийн ачааллын хэмжилт биш. WebGL боломжгүй бол үндсэн 2D зураглал болон keyboard/search-аар навигацлах хүний жагсаалт үлдэнэ.
+
+Эцэг эх-хүүхдийн холбоосыг owner/editor баталгаажуулах dialog-оор салгаж болно (`DELETE /families/{family_id}/relationships/parent-child/{relationship_id}`). Хүн, бусад холбоос болон гэрлэлтийн түүхийг устгахгүй. Тухайн холбоосын хоёр хүн өөр гэр бүлийн орчинд хамт бүртгэлтэй байвал өгөгдөл дундын холбоосыг аюулгүй арилгах боломжгүй тул API 409 буцаана.
+
+`Бүтэн удам` болон `Ойрын хүрээлэл` нь нэг canonical tree-ийн focus/depth тохиргоо. Ойрын хүрээлэл account-ыг бодит Person-той холбосон үед ажиллана; Full Lineage нь Family root тохируулсан бол түүнийг, үгүй бол Tree API-ийн зөвшөөрөгдсөн context-ийг эхэлнэ. Удмын root Person-ийг бодит эх сурвалжаар гэр бүлийн owner сонгох хүртэл зохиомлоор үүсгэхгүй.
+
 ## Өгөгдлийн зарчим
 
 1. `Person` нь бүртгэлтэй `User` биш тусдаа entity. Нас барсан, accountгүй өвөг дээдсийг бүртгэж болно.
@@ -70,7 +91,7 @@ Authentication ба authorization бэлэн болтол user data-д CRUD API 
 - `GET /families/{family_id}/persons/search?q=...&page=1&page_size=25&birth_year=...` нь зөвхөн тухайн гэр бүлийн эрхтэй гишүүний нэрээр хайна. Хайлтын үг Unicode NFKC/casefold нормчилолтой, нэрийн эхлэлээр таарна; бүх талбар SQL параметрээр дамжина. Хариу нь `items`, `page`, `page_size`, `total`, `has_next` бүхий хөнгөн хуудас; `page_size` 100-аас их байж болохгүй.
 - `persons.search_first_name`, `search_last_name`, `search_middle_name` нь canonical нэрийг өөрчлөхгүй хайлтын түлхүүр. `b51c9e7a60f4` migration хуучин мөрүүдийг нормчилж backfill хийгээд PostgreSQL `text_pattern_ops`-той btree болон birth-date index нэмнэ. Шинэ/зассан хүний түлхүүрүүд API write үед шинэчлэгдэнэ.
 - Хайлтын хариу нэр, зөвшөөрөгдсөн төрсөн оноор хязгаарлагдана; хувийн мэдээлэл, зураг, намтар буцаахгүй. Private Person зөвхөн үүсгэсэн эсвэл холбосон хэрэглэгчид харагдана. Насанд хүрээгүй хүний төрсөн он хариунд нууцлагдаж, minor жилээр `birth_year` filter өгөхөд тоон мэдээлэл задруулахгүй.
-- `GET /families/{family_id}/tree?person_id=...&depth=2` нь сонгосон хүнээс эцэг-эх/хүүхэд болон гэрлэлтийн холбоогоор өргөжинө. Default depth 2, дээд тал нь 5; нэг хариу 300 хүн, 1,200 ирмэгээр хязгаарлагдана. `meta.truncated` нь хязгаарт хүрснийг илтгэнэ. Бүх гэр бүлийн хүмүүсийг нэг дор татахгүй, давтагдсан хүн/цикл traversal-ийг зогсооно.
+- `GET /families/{family_id}/tree?person_id=...&depth=2` нь сонгосон хүнээс эцэг-эх/хүүхэд болон гэрлэлтийн холбоогоор өргөжинө. Default depth 2, дээд тал нь 5; нэг хариу 800 хүн, 1,200 ирмэгээр хязгаарлагдана. `meta.truncated` нь хязгаарт хүрснийг илтгэнэ. Бүх гэр бүлийн хүснэгтийг татахгүй, давтагдсан хүн/цикл traversal-ийг зогсооно.
 - Tree холбоосууд family membership, private visibility, guardian-ийн `view_profile` эрхийг сервер талд шалгана. Хайлтын, tree-ийн хуудаслалт болон том графын хязгаарыг `backend/tests/test_search_tree_scale.py`-д 1,001 хүний нэрийн хайлт, олон салаа tree, cycle болон query-count шалгалтаар батална.
 
 ## Дурсамжийн зураг ба объект хадгалалт (P4.9)

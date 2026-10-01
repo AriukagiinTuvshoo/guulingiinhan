@@ -7,6 +7,7 @@ import {
   GitFork,
   Globe2,
   Home,
+  CalendarDays,
   LogOut,
   Menu,
   Settings,
@@ -21,7 +22,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
 
 type NavItem = {
-  key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'settings';
+  key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -36,6 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
   { key: 'memories', label: 'Дурсамж', description: 'Хадгалсан дурсамж', icon: Globe2, path: '/memories', needsFamily: true },
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
+  { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
   { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
 ];
 
@@ -51,6 +53,8 @@ function isShellRoute(pathname: string) {
     pathname.startsWith('/memories/') ||
     pathname === '/archives' ||
     pathname.startsWith('/archives/') ||
+    pathname === '/activities' ||
+    pathname.startsWith('/activities/') ||
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
     pathname === '/account/security' ||
@@ -70,6 +74,7 @@ function activeKey(pathname: string): NavItem['key'] | null {
   if (pathname === '/stories' || pathname.startsWith('/stories/')) return 'stories';
   if (pathname === '/memories' || pathname.startsWith('/memories/')) return 'memories';
   if (pathname === '/archives' || pathname.startsWith('/archives/')) return 'archives';
+  if (pathname === '/activities' || pathname.startsWith('/activities/')) return 'activities';
   if (
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
