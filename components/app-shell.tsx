@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  ShieldCheck,
   TreeDeciduous,
   UserRound,
   Users,
@@ -111,6 +112,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const requestedFamilyId = searchParams.get('family') ?? '';
 
   const [user, setUser] = useState<User | null>(null);
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [contextLoading, setContextLoading] = useState(false);
@@ -137,6 +139,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setContextLoaded(false);
     setContextError('');
     setUser(null);
+    setIsGlobalAdmin(false);
     setFamilies([]);
     setFamilyId('');
     try {
@@ -148,6 +151,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setUser(me);
       setFamilies(familyData);
       setContextLoaded(true);
+      void api('/admin/me')
+        .then(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(true);
+        })
+        .catch(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(false);
+        });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         setContextLoaded(true);
@@ -158,6 +168,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextError(
         cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
       );
+      setIsGlobalAdmin(false);
       setContextLoaded(true);
     } finally {
       if (requestId === contextRequestRef.current) setContextLoading(false);
@@ -170,6 +181,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextLoaded(false);
       setContextError('');
       setUser(null);
+      setIsGlobalAdmin(false);
       setFamilies([]);
       setFamilyId('');
       setMobileOpen(false);
@@ -397,6 +409,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   onClick={() => setAccountOpen(false)}
                 >
                   Миний профайл
+                </Link>
+              ) : null}
+              {isGlobalAdmin ? (
+                <Link role="menuitem" href="/admin" onClick={() => setAccountOpen(false)}>
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  Админ удирдлага
                 </Link>
               ) : null}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>

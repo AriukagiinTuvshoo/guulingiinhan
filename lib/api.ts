@@ -100,6 +100,7 @@ export type ProfileRelationPerson = Pick<
   'id' | 'first_name' | 'last_name' | 'middle_name' | 'nickname' | 'gender' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'
 >;
 export type PersonProfile = Person & {
+  can_edit_profile: boolean;
   lineage_id: string | null;
   lineage_name: string | null;
   branch_id: string | null;

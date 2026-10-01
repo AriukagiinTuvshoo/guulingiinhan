@@ -1,5 +1,6 @@
 """Global administration. Family membership never grants these permissions."""
 
+import logging
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
@@ -37,6 +38,7 @@ class AdminRole(StrEnum):
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger("guulingiinhan.admin")
 
 
 class AdminIdentity(BaseModel):
@@ -158,7 +160,12 @@ def bootstrap_admin_roles() -> None:
                 )
             ) if user else None
             if not user or not user.is_active or not user.email_verified_at or not identity:
-                raise RuntimeError("Admin bootstrap requires active, verified email accounts")
+                logger.warning(
+                    "Admin bootstrap deferred until the configured account is verified",
+                    extra={"event": "admin_bootstrap_deferred",
+                           "error_code": "ADMIN_BOOTSTRAP_ACCOUNT_UNAVAILABLE"},
+                )
+                return
             accounts.append((role, user))
         now = datetime.now(UTC)
         root_id = accounts[0][1].id

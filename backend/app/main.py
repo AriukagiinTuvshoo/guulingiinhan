@@ -19,6 +19,7 @@ from app.families import invitations_router, lineages_router
 from app.families import router as families_router
 from app.memory_photos import router as memory_photos_router
 from app.observability import configure_logging, error_classification, request_id_context
+from app.profile_photos import router as profile_photos_router
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.app_env)
@@ -153,6 +154,7 @@ async def request_context(request: Request, call_next):
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")
+app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(lineages_router, prefix="/api/v1")
 app.include_router(invitations_router, prefix="/api/v1")

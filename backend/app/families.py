@@ -236,6 +236,7 @@ class ProfileRelationPersonOut(BaseModel):
 
 class PersonProfileOut(PersonOut):
     profile_photo_url: str | None = None
+    can_edit_profile: bool = False
     lineage_id: UUID | None = None
     lineage_name: str | None = None
     branch_id: UUID | None = None
@@ -1345,6 +1346,34 @@ def search_persons(
     )
 
 
+def _person_profile_photo_url(family_id: UUID, person: Person) -> str | None:
+    key = person.profile_photo_key
+    if key:
+        prefix = f"profile-photos/{person.id}/"
+        if key.startswith(prefix) and key.endswith(".jpg"):
+            version = key[len(prefix):-4]
+            if len(version) == 36:
+                return f"/families/{family_id}/persons/{person.id}/profile-photo?v={version}"
+            return None
+    return person.profile_photo_url
+
+
+def _can_edit_person_profile(db: Session, family_id: UUID, person: Person, user: User) -> bool:
+    member = db.scalar(
+        select(FamilyMember).where(
+            FamilyMember.family_id == family_id, FamilyMember.user_id == user.id
+        )
+    )
+    linked = db.scalar(
+        select(UserPersonLink.id).where(
+            UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
+        )
+    ) is not None
+    if person_is_minor(person):
+        return has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
+    return (member is not None and member.role in {"owner", "editor"}) or linked
+
+
 def _person_profile_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonProfileOut:
     """Build one family-scoped profile payload without inferring genealogy data."""
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
@@ -1352,10 +1381,11 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
     result = PersonProfileOut(
         **base.model_dump(),
         profile_photo_url=(
-            person.profile_photo_url
+            _person_profile_photo_url(family_id, person)
             if not person_is_minor(person) or "view_profile" in scopes
             else None
         ),
+        can_edit_profile=_can_edit_person_profile(db, family_id, person, user),
     )
     if person_is_minor(person) and "view_profile" not in scopes:
         return result
@@ -1438,7 +1468,9 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
 
     def relation_items(ids: list[UUID]) -> list[ProfileRelationPersonOut]:
         return [
-            ProfileRelationPersonOut.model_validate(visible[item_id])
+            ProfileRelationPersonOut.model_validate(visible[item_id]).model_copy(
+                update={"profile_photo_url": _person_profile_photo_url(family_id, visible[item_id])}
+            )
             for item_id in ids
             if item_id in visible
         ]

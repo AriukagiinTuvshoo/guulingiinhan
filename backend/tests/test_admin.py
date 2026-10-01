@@ -107,6 +107,24 @@ def test_bootstrap_is_one_time_and_requires_verified_user(client, database, emai
         assert db.get(AdminGrant, user_id) is None
 
 
+def test_bootstrap_waits_for_configured_verified_account_without_failing_service(
+    client, database, monkeypatch
+):
+    monkeypatch.setattr(admin, "SessionLocal", database)
+    monkeypatch.setattr(admin, "get_settings", lambda: type("Settings", (), {
+        "admin_bootstrap_email": "owner-not-registered@example.com",
+        "admin_bootstrap_admin_email": None,
+        "admin_bootstrap_moderator_email": None,
+    })())
+
+    bootstrap_admin_roles()
+
+    with database() as db:
+        assert db.get(AdminBootstrap, 1) is None
+        assert db.scalar(select(AdminGrant.user_id).limit(1)) is None
+    assert client.get("/health").status_code == 200
+
+
 def test_account_inspection_block_and_story_privacy(client, database, email_provider):
     root_email, operator_email, moderator_email, member_email = (
         "inspector@example.com", "operator2@example.com",

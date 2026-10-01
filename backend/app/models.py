@@ -420,6 +420,7 @@ class Person(Base):
     death_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     death_place: Mapped[str | None] = mapped_column(String(240), nullable=True)
     death_cause: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     profile_photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     short_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     visibility: Mapped[str] = mapped_column(String(12), default="family")

@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import './mvp.css';
+import './profile/profile.css';
 import AppShell from '../components/app-shell';
 
 export const metadata: Metadata = {
