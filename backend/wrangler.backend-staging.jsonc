@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "guulingiinhan-backend-staging",
+  "main": "./cloudflare-staging/worker.mjs",
+  "compatibility_date": "2026-09-28",
+  "vars": {
+    "CORS_ORIGINS": "https://guulingiinhan-staging.tuvshoo0331.workers.dev"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "containers": [
+    {
+      "class_name": "GuulingiinhanBackend",
+      "image": "./Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BACKEND", "class_name": "GuulingiinhanBackend" }
+    ]
+  },
+  "migrations": [
+    { "tag": "backend-staging-v1", "new_sqlite_classes": ["GuulingiinhanBackend"] }
+  ]
+}

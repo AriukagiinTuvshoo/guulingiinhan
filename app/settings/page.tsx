@@ -348,8 +348,8 @@ function SettingsContent() {
             <p className="settings-eyebrow">ХУВИЙН ОРОН ЗАЙ</p>
             <h1>Тохиргоо</h1>
             <p className="settings-intro">
-              Өөрийн account, нэвтрэх аргууд болон одоогийн гэр бүлийн орчноо эндээс шалгана.
-              Зөвхөн таны account-д хамаарах мэдээлэл харагдана.
+              Өөрийн бүртгэл, нэвтрэх аргууд болон одоогийн гэр бүлийн орчноо эндээс шалгана.
+              Зөвхөн танд хандах эрхтэй мэдээлэл харагдана.
             </p>
           </div>
           <div className="settings-mark" aria-hidden="true"><TreeDeciduous size={52} strokeWidth={1.05} /></div>
@@ -364,10 +364,10 @@ function SettingsContent() {
 
         <div className="settings-layout">
           <aside className="settings-index" aria-label="Тохиргооны хэсгүүд">
-            <a href="#account">Account</a>
-            <a href="#family">Family</a>
-            <a href="#security">Security</a>
-            <a href="#signout">Sign out</a>
+            <a href="#account">Бүртгэл</a>
+            <a href="#family">Гэр бүл ба удам</a>
+            <a href="#security">Аюулгүй байдал</a>
+            <a href="#signout">Гарах</a>
           </aside>
 
           <div className="settings-content">
@@ -375,9 +375,9 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><UserRound size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">ACCOUNT</p>
-                  <h2 id="settings-account-title">Таны account</h2>
-                  <p>Одоогийн authenticated user API болон identity API-аас ирсэн мэдээллийг харуулна.</p>
+                  <p className="settings-eyebrow">БҮРТГЭЛ</p>
+                  <h2 id="settings-account-title">Таны бүртгэл</h2>
+                  <p>Таны бүртгэл болон баталгаажсан нэвтрэх аргууд.</p>
                 </div>
               </div>
 
@@ -388,17 +388,16 @@ function SettingsContent() {
                 <div>
                   <dl className="settings-facts">
                     <div><dt>Дэлгэцийн нэр</dt><dd>{user?.display_name || 'Тодорхойгүй'}</dd></div>
-                    <div><dt>Имэйл</dt><dd>{user?.email || 'Account-д имэйл холбогдоогүй'}</dd></div>
-                    <div><dt>Account ID</dt><dd className="settings-mono">{user?.id}</dd></div>
+                    <div><dt>Имэйл</dt><dd>{user?.email || 'Имэйл холбогдоогүй'}</dd></div>
+                    <div><dt>Бүртгэлийн ID</dt><dd className="settings-mono">{user?.id}</dd></div>
                   </dl>
                   {user?.person_id && selectedFamily ? (
                     <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>
-                      Миний холбоотой Person профайлыг харах
+                      Удам дахь миний профайлыг харах
                     </Link>
                   ) : null}
                   <p className="settings-note">
-                    Одоогийн backend-д өөрийн display name, email эсвэл account талбарыг засах authenticated mutation байхгүй.
-                    Тиймээс immutable мэдээллийг editable мэтээр үзүүлээгүй.
+                    Дэлгэцийн нэр болон имэйлийг энэ хэсгээс засах боломж одоогоор байхгүй.
                   </p>
                 </div>
               </div>
@@ -422,9 +421,9 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><UsersRound size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">FAMILY CONTEXT</p>
-                  <h2 id="settings-family-title">Гэр бүлийн орчин</h2>
-                  <p>Зөвхөн /families API-аас таны эрхтэй membership-үүдийг ашиглана.</p>
+                  <p className="settings-eyebrow">ГЭР БҮЛИЙН УДАМ</p>
+                  <h2 id="settings-family-title">Гэр бүл ба удам</h2>
+                  <p>Таны гишүүнчлэлтэй гэр бүл, удмын модонд очих холбоос.</p>
                 </div>
               </div>
 
@@ -432,15 +431,15 @@ function SettingsContent() {
                 {families.length === 0 ? (
                   <div className="settings-empty">
                     <strong>Одоогоор харагдах гэр бүл алга.</strong>
-                    <span>Энд зөвхөн таны membership-тэй гэр бүлүүд харагдана.</span>
-                    <Link className="settings-button settings-button--light" href="/onboarding">Гэр бүл үүсгэх</Link>
+                    <span>Одоо байгаа удмын орчинд орохын тулд гэр бүлийн урилга хүлээн авна уу.</span>
+                    <Link className="settings-button settings-button--light" href="/invite">Урилга хүлээн авах</Link>
                   </div>
                 ) : families.length === 1 ? (
                   <div className="settings-family-single">
                     <span className="settings-family-single__name">{families[0].name}</span>
                     <span className="settings-family-badge">{families[0].role}</span>
                     <p className="settings-help">
-                      Танд одоогоор нэг л authorized family context байна.
+                      Таны хандах эрхтэй гэр бүл энэ байна.
                     </p>
                   </div>
                 ) : (
@@ -455,19 +454,20 @@ function SettingsContent() {
                       {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
                     </select>
                     <p id="settings-family-help" className="settings-help">
-                      URL дахь family ID өөрөө эрх олгохгүй; backend membership шалгалт нь үргэлж authoritative хэвээр.
+                      Гэр бүл солиход таны гишүүнчлэл сервер талд шалгагдана.
                     </p>
                     {selectedFamily && (
                       <div className="settings-family-meta">
                         <span className="settings-family-badge">{selectedFamily.role}</span>
                         <span>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</span>
                         <Link className="settings-button settings-button--light" href={'/families?family=' + encodeURIComponent(selectedFamily.id)}>
-                          Family тохиргоо, гишүүдийг удирдах →
+                          Гэр бүлийн гишүүдийг харах →
                         </Link>
                       </div>
                     )}
                   </div>
                 )}
+                {selectedFamily && <div className="settings-lineage-links"><div><strong>Удмын мод</strong><p>{user?.person_id ? 'Таны профайл удмын хүнтэй холбогдсон.' : 'Таны бүртгэл удмын хүнтэй хараахан холбогдоогүй.'}</p></div><Link className="settings-button settings-button--light" href={'/tree?family=' + encodeURIComponent(selectedFamily.id)}>Бүх удмыг харах →</Link></div>}
               </div>
             </section>
 
@@ -475,9 +475,9 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><ShieldCheck size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">SECURITY</p>
+                  <p className="settings-eyebrow">АЮУЛГҮЙ БАЙДАЛ</p>
                   <h2 id="settings-security-title">Нэвтрэх ба аюулгүй байдал</h2>
-                  <p>Одоо backend дэмжиж буй verification болон identity linking flow-уудыг л ашиглана.</p>
+                  <p>Одоо ашиглаж буй баталгаажуулалт болон нэвтрэх аргууд.</p>
                 </div>
               </div>
 
@@ -563,8 +563,8 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><LogOut size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">SESSION</p>
-                  <h2 id="settings-signout-title">Sign out</h2>
+                  <p className="settings-eyebrow">НЭВТРЭЛТ</p>
+                  <h2 id="settings-signout-title">Гарах</h2>
                   <p>Одоогийн browser session-ийг existing logout endpoint-оор хүчингүй болгоно.</p>
                 </div>
               </div>

@@ -10,13 +10,14 @@ import {
   LogOut,
   Menu,
   Settings,
+  ShieldCheck,
   TreeDeciduous,
   UserRound,
   Users,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
 
@@ -30,7 +31,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/dashboard', needsFamily: false },
+  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
@@ -60,7 +61,7 @@ function isShellRoute(pathname: string) {
 }
 
 function isDashboardRoute(pathname: string) {
-  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  return pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 }
 
 function activeKey(pathname: string): NavItem['key'] | null {
@@ -85,6 +86,24 @@ function familyHref(path: string, familyId: string | null) {
   return path + '?family=' + encodeURIComponent(familyId);
 }
 
+export type AppShellContextValue = {
+  user: User | null;
+  families: Family[];
+  familyId: string;
+  currentFamily: Family | null;
+  contextLoading: boolean;
+  contextLoaded: boolean;
+  contextError: string;
+};
+
+const AppShellContext = createContext<AppShellContextValue | null>(null);
+
+export function useAppShellContext() {
+  const context = useContext(AppShellContext);
+  if (!context) throw new Error('useAppShellContext must be used inside AppShell');
+  return context;
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -93,6 +112,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const requestedFamilyId = searchParams.get('family') ?? '';
 
   const [user, setUser] = useState<User | null>(null);
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [contextLoading, setContextLoading] = useState(false);
@@ -119,6 +139,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setContextLoaded(false);
     setContextError('');
     setUser(null);
+    setIsGlobalAdmin(false);
     setFamilies([]);
     setFamilyId('');
     try {
@@ -130,6 +151,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setUser(me);
       setFamilies(familyData);
       setContextLoaded(true);
+      void api('/admin/me')
+        .then(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(true);
+        })
+        .catch(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(false);
+        });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         setContextLoaded(true);
@@ -140,6 +168,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextError(
         cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
       );
+      setIsGlobalAdmin(false);
       setContextLoaded(true);
     } finally {
       if (requestId === contextRequestRef.current) setContextLoading(false);
@@ -152,6 +181,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextLoaded(false);
       setContextError('');
       setUser(null);
+      setIsGlobalAdmin(false);
       setFamilies([]);
       setFamilyId('');
       setMobileOpen(false);
@@ -181,6 +211,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
 
     const nextFamily = requested ?? families[0].id;
+    setContextError('');
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
     if (requestedFamilyId === nextFamily) setFamilySwitching(false);
 
@@ -280,6 +311,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
     router.replace(pathname + '?' + params.toString());
   }
 
+  const shellContext = useMemo<AppShellContextValue>(
+    () => ({ user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError }),
+    [user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError],
+  );
+
   if (!shouldRenderShell) {
     return <>{children}</>;
   }
@@ -287,7 +323,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const active = activeKey(pathname);
 
   return (
-    <div className="app-shell">
+    <AppShellContext.Provider value={shellContext}>
+      <div className="app-shell">
       <header className="app-shell__header">
         <button
           ref={menuButtonRef}
@@ -301,7 +338,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
 
-        <Link className="app-shell__brand" href={familyHref('/dashboard', currentFamily?.id ?? null)}>
+        <Link className="app-shell__brand" href={familyHref('/', currentFamily?.id ?? null)}>
           <span className="app-shell__brand-mark" aria-hidden="true">
             <TreeDeciduous size={21} />
           </span>
@@ -372,6 +409,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   onClick={() => setAccountOpen(false)}
                 >
                   Миний профайл
+                </Link>
+              ) : null}
+              {isGlobalAdmin ? (
+                <Link role="menuitem" href="/admin" onClick={() => setAccountOpen(false)}>
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  Админ удирдлага
                 </Link>
               ) : null}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>
@@ -493,6 +536,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </AppShellContext.Provider>
   );
 }

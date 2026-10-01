@@ -49,6 +49,30 @@ class UserSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class AdminGrant(Base):
+    """Global authorization, independent of family membership."""
+
+    __tablename__ = "admin_grants"
+    __table_args__ = (
+        CheckConstraint("role IN ('SUPER_ADMIN', 'ADMIN', 'MODERATOR')", name="ck_admin_grant_role"),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    granted_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class AdminBootstrap(Base):
+    """Durable one-time marker so a removed super admin cannot be re-granted on restart."""
+
+    __tablename__ = "admin_bootstrap"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class LoginIdentity(Base):
     """An authentication identifier owned by an account, never by a Person."""
 
@@ -147,6 +171,11 @@ class Invitation(Base):
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
         Index("ix_invitation_expiry", "expires_at"),
+        Index(
+            "uq_invitation_active_family_email", "family_id", "invited_email", unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -262,6 +291,9 @@ class Family(Base):
     __tablename__ = "families"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    root_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(180))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -388,6 +420,7 @@ class Person(Base):
     death_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     death_place: Mapped[str | None] = mapped_column(String(240), nullable=True)
     death_cause: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     profile_photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     short_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     visibility: Mapped[str] = mapped_column(String(12), default="family")
@@ -430,6 +463,25 @@ class UserPersonLink(Base):
     person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
     linked_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PersonLinkRequest(Base):
+    """Owner-reviewed claim of an existing Person by a family member."""
+
+    __tablename__ = "person_link_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_person_link_request_status"),
+        Index("ix_person_link_request_family_status", "family_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(12), default="pending")
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PersonGuardianship(Base):

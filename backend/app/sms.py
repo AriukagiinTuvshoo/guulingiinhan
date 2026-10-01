@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from typing import Protocol
 
+from fastapi import HTTPException
+
 from app.config import get_settings
 
 
@@ -57,6 +59,8 @@ class TwilioSmsProvider:
 
 def get_sms_provider() -> SmsProvider:
     settings = get_settings()
+    if settings.sms_provider.lower() == "disabled" and settings.app_env.lower() == "staging":
+        raise HTTPException(status_code=503, detail="SMS үйлчилгээ түр боломжгүй байна.")
     if settings.sms_provider.lower() == "twilio":
         if not (
             settings.twilio_account_sid

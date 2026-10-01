@@ -45,6 +45,7 @@ from app.models import (
 )
 from app.observability import request_id_context
 from app.oidc import ISSUER, GoogleOIDCProvider, OIDCError
+from app.privacy import user_linked_person_is_minor
 from app.sms import SmsProvider, get_sms_provider
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -232,7 +233,7 @@ def _otp_secret() -> bytes:
     configured = get_settings().otp_hash_secret
     if configured:
         return configured.encode()
-    if get_settings().app_env.lower() == "production":
+    if get_settings().app_env.lower() in {"production", "staging"}:
         raise RuntimeError("OTP_HASH_SECRET is required")
     return _OTP_DEV_SECRET
 
@@ -414,6 +415,7 @@ def _audit(db: Session, user_id: UUID, action: str, challenge: PhoneOtpChallenge
 
 def set_session_cookie(db: Session, response: Response, user_id: UUID) -> None:
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     token = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
     db.execute(delete(UserSession).where(UserSession.expires_at < now))
@@ -430,20 +432,21 @@ def set_session_cookie(db: Session, response: Response, user_id: UUID) -> None:
         token,
         max_age=SESSION_SECONDS,
         httponly=True,
-        secure=settings.app_env.lower() == "production",
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        secure=hosted_env,
+        samesite="none" if hosted_env else "lax",
         path="/",
     )
 
 
 def clear_session_cookie(response: Response) -> None:
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     response.delete_cookie(
         settings.session_cookie_name,
         path="/",
-        secure=settings.app_env.lower() == "production",
+        secure=hosted_env,
         httponly=True,
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        samesite="none" if hosted_env else "lax",
     )
 
 
@@ -490,6 +493,11 @@ def _user_output(db: Session, user: User) -> UserOutput:
     return UserOutput(
         id=user.id, email=user.email, display_name=user.display_name, person_id=person_id
     )
+
+
+def _ensure_user_login_allowed(db: Session, user: User) -> None:
+    if user_linked_person_is_minor(db, user.id):
+        raise HTTPException(status_code=401, detail="Нэвтрэх мэдээлэл буруу байна.")
 
 
 GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
@@ -645,7 +653,7 @@ def _google_state_secret() -> bytes:
     if settings.google_oidc_state_secret:
         return settings.google_oidc_state_secret.encode()
     # Development-only process fallback; production settings reject a missing secret.
-    if settings.app_env.lower() == "production":
+    if settings.app_env.lower() in {"production", "staging"}:
         raise RuntimeError("GOOGLE_OIDC_STATE_SECRET is required")
     return _OTP_DEV_SECRET
 
@@ -713,7 +721,7 @@ def _start_google(
         cookie,
         max_age=GOOGLE_STATE_SECONDS,
         httponly=True,
-        secure=settings.app_env.lower() == "production",
+        secure=settings.app_env.lower() in {"production", "staging"},
         samesite="lax",
         path="/api/v1/auth/google/callback",
     )
@@ -817,7 +825,7 @@ def google_callback(
             or current_session.user_id != expected_user_id
             or not link_user
             or not link_user.is_active
-        ):
+        ) or user_linked_person_is_minor(db, expected_user_id):
             result = "failed"
         elif identity and identity.user_id != expected_user_id:
             db.add(AuditLog(actor_id=expected_user_id, action="google.identity_conflict", target_type="google_identity"))
@@ -840,10 +848,15 @@ def google_callback(
     else:
         user = db.get(User, identity.user_id) if identity else None
         if identity and user and user.is_active:
-            response = _google_frontend_redirect("success")
-            set_session_cookie(db, response, user.id)
-            response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
-            return response
+            try:
+                _ensure_user_login_allowed(db, user)
+            except HTTPException:
+                result = "failed"
+            else:
+                response = _google_frontend_redirect("success")
+                set_session_cookie(db, response, user.id)
+                response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
+                return response
         # Verified Google email is not proof of ownership of a pre-existing app account.
         if identity is None and email_is_registered(db, email):
             result = "failed"
@@ -1130,6 +1143,7 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
             status_code=403,
             detail="Нэвтрэхийн өмнө имэйл хаягаа баталгаажуулна уу.",
         )
+    _ensure_user_login_allowed(db, user)
     # A successful sign-in clears the shared failure bucket for this account/client pair.
     db.execute(
         delete(LoginThrottle).where(
@@ -1277,6 +1291,17 @@ def cancel_identity_link_request(
     return Response(status_code=204)
 
 
+@router.get("/email/config")
+def email_auth_config():
+    """Expose email delivery availability without revealing provider credentials."""
+    settings = get_settings()
+    enabled = settings.email_provider.lower() == "smtp" and all(
+        (settings.email_from, settings.email_smtp_host,
+         settings.email_smtp_username, settings.email_smtp_password)
+    )
+    return {"enabled": bool(enabled)}
+
+
 @router.get("/phone/config")
 def phone_auth_config():
     """Expose only whether real SMS delivery is configured for auth UI."""
@@ -1331,6 +1356,7 @@ def verify_phone_link(
     body: PhoneOtpVerifyInput,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     challenge = _matching_otp(
         db,
@@ -1405,6 +1431,7 @@ def verify_phone_registration(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
         raise HTTPException(
@@ -1514,6 +1541,7 @@ def verify_phone_login(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
         raise HTTPException(
@@ -1531,6 +1559,7 @@ def verify_phone_login(
     user = db.get(User, identity.user_id) if identity else None
     if challenge is None or user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Утасны код буруу эсвэл хугацаа дууссан байна.")
+    _ensure_user_login_allowed(db, user)
     challenge.status = "consumed"
     challenge.consumed_at = datetime.now(UTC)
     _audit(db, user.id, "phone.login_verified", challenge)
@@ -1566,6 +1595,7 @@ def request_phone_recovery(
 def confirm_phone_recovery(
     body: PasswordRecoveryInput,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     challenge = _matching_otp(
         db,

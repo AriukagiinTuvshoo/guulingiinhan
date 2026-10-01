@@ -13,8 +13,10 @@ export default function PasswordResetPage() {
   const [complete, setComplete] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
+    api<{ enabled: boolean }>('/auth/email/config').then((result) => setEmailEnabled(result.enabled)).catch(() => setEmailEnabled(false));
     const value = new URLSearchParams(window.location.hash.slice(1)).get('token');
     if (value) {
       setToken(value);
@@ -64,7 +66,9 @@ export default function PasswordResetPage() {
         </div>
         {notice && <div className="auth-message success" role="status">{notice}</div>}
         {error && <div className="auth-message error" role="alert">{error}</div>}
-        {!token && !complete && <form className="auth-form" onSubmit={request}>
+        {!token && !complete && emailEnabled === false && <div className="authv2-unavailable" role="status"><strong>Имэйлээр сэргээх түр хаалттай</strong><p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна.</p></div>}
+        {!token && !complete && emailEnabled === null && <p className="authv2-availability" role="status">Үйлчилгээний төлөвийг шалгаж байна…</p>}
+        {!token && !complete && emailEnabled === true && <form className="auth-form" onSubmit={request}>
           <label htmlFor="reset-email">Имэйл</label>
           <input id="reset-email" name="email" type="email" autoComplete="email" maxLength={320} required />
           <button className="auth-primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Холбоос илгээх'}</button>

@@ -14,7 +14,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ApiError,
   api,
-  Family,
   Marriage,
   Person,
   PersonSearchPage,
@@ -22,8 +21,10 @@ import {
   TreeData,
   TreePerson,
 } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 type RelationKind = 'parent' | 'child' | 'spouse';
+type LinkRequest = { id: string; person_id: string; user_id: string; user_name: string; person_name: string; status: string; created_at: string };
 
 type LayoutNode = {
   id: string;
@@ -94,20 +95,20 @@ function buildTreeLayout(tree: TreeData): TreeLayout {
 
   const personIds = new Set(tree.persons.map((person) => person.id));
   const generationById = new Map<string, number>();
-  const adjacency = new Map<string, string[]>();
+  const adjacency = new Map<string, { id: string; delta: number }[]>();
 
   for (const person of tree.persons) adjacency.set(person.id, []);
 
   for (const edge of tree.parent_child_relationships) {
     if (!personIds.has(edge.parent_id) || !personIds.has(edge.child_id)) continue;
-    adjacency.get(edge.parent_id)?.push(edge.child_id);
-    adjacency.get(edge.child_id)?.push(edge.parent_id);
+    adjacency.get(edge.parent_id)?.push({ id: edge.child_id, delta: 1 });
+    adjacency.get(edge.child_id)?.push({ id: edge.parent_id, delta: -1 });
   }
 
   for (const marriage of tree.marriages) {
     if (!personIds.has(marriage.person_1_id) || !personIds.has(marriage.person_2_id)) continue;
-    adjacency.get(marriage.person_1_id)?.push(marriage.person_2_id);
-    adjacency.get(marriage.person_2_id)?.push(marriage.person_1_id);
+    adjacency.get(marriage.person_1_id)?.push({ id: marriage.person_2_id, delta: 0 });
+    adjacency.get(marriage.person_2_id)?.push({ id: marriage.person_1_id, delta: 0 });
   }
 
   const rootId = tree.root_person_id && personIds.has(tree.root_person_id)
@@ -117,27 +118,14 @@ function buildTreeLayout(tree: TreeData): TreeLayout {
   generationById.set(rootId, 0);
   const queue = [rootId];
 
-  while (queue.length) {
-    const currentId = queue.shift();
-    if (!currentId) break;
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const currentId = queue[cursor];
     const currentGeneration = generationById.get(currentId) ?? 0;
 
-    for (const neighborId of adjacency.get(currentId) ?? []) {
-      if (generationById.has(neighborId)) continue;
-
-      const parentEdge = tree.parent_child_relationships.find(
-        (edge) =>
-          (edge.parent_id === neighborId && edge.child_id === currentId) ||
-          (edge.parent_id === currentId && edge.child_id === neighborId),
-      );
-      const nextGeneration = parentEdge
-        ? parentEdge.parent_id === currentId
-          ? currentGeneration + 1
-          : currentGeneration - 1
-        : currentGeneration;
-
-      generationById.set(neighborId, nextGeneration);
-      queue.push(neighborId);
+    for (const neighbor of adjacency.get(currentId) ?? []) {
+      if (generationById.has(neighbor.id)) continue;
+      generationById.set(neighbor.id, currentGeneration + neighbor.delta);
+      queue.push(neighbor.id);
     }
   }
 
@@ -213,24 +201,38 @@ function marriagePartnerId(marriage: Marriage, personId: string) {
 function TreePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedFamilyId = searchParams.get('family') ?? '';
   const requestedPersonId = searchParams.get('person') ?? '';
-
-  const [familyId, setFamilyId] = useState('');
-  const [family, setFamily] = useState<Family | null>(null);
+  const { familyId, currentFamily: family, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [tree, setTree] = useState<TreeData | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [depth, setDepth] = useState(3);
+  const [viewMode, setViewMode] = useState<'full' | 'close'>('full');
   const [zoom, setZoom] = useState(0.9);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [noFamily, setNoFamily] = useState(false);
   const [notice, setNotice] = useState('');
+  const [linkRequests, setLinkRequests] = useState<LinkRequest[]>([]);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [confirmRoot, setConfirmRoot] = useState(false);
+  const [linkToApprove, setLinkToApprove] = useState<LinkRequest | null>(null);
   const [search, setSearch] = useState('');
   const [searchPage, setSearchPage] = useState<PersonSearchPage | null>(null);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchPageNumber, setSearchPageNumber] = useState(1);
   const [relation, setRelation] = useState<RelationKind | null>(null);
+
+  useEffect(() => {
+    if (!relation) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setRelation(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [relation]);
   const [relationError, setRelationError] = useState('');
 
   const loadSequence = useRef(0);
@@ -261,19 +263,13 @@ function TreePageContent() {
       setLoading(true);
       setError('');
       setNotice('');
-      setFamilyId(id);
-      setFamily(null);
       setTree(null);
       setSelectedId('');
       setSearchPage(null);
       setRelation(null);
 
       try {
-        const familyData = await api<Family>('/families/' + encodeURIComponent(id), {
-          signal: controller.signal,
-        });
-        if (sequence !== loadSequence.current) return;
-
+        if (!family || family.id !== id) return;
         let treeData: TreeData;
         const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth);
         try {
@@ -296,7 +292,6 @@ function TreePageContent() {
 
         if (sequence !== loadSequence.current || controller.signal.aborted) return;
 
-        setFamily(familyData);
         setTree(treeData);
         const preferredIsAvailable =
           Boolean(preferredPersonId) &&
@@ -327,52 +322,37 @@ function TreePageContent() {
         if (sequence === loadSequence.current) setLoading(false);
       }
     },
-    [persistSelected, router],
+    [family, persistSelected, router],
   );
 
   useEffect(() => {
-    let active = true;
-
-    if (requestedFamilyId) {
-      void loadTree(requestedFamilyId, requestedPersonId || undefined);
-      return () => {
-        active = false;
-      };
-    }
-
-    setLoading(true);
+    loadAbort.current?.abort();
+    searchAbort.current?.abort();
+    loadSequence.current += 1;
+    searchSequence.current += 1;
+    setSearchPage(null);
+    setSelectedId('');
+    setTree(null);
     setError('');
     setNoFamily(false);
 
-    api<Family[]>('/families')
-      .then((families) => {
-        if (!active) return;
-        if (!families.length) {
-          setFamilyId('');
-          setFamily(null);
-          setTree(EMPTY_TREE);
-          setSelectedId('');
-          setNoFamily(true);
-          setLoading(false);
-          return;
-        }
-        const nextFamilyId = families[0].id;
-        router.replace('/tree?family=' + encodeURIComponent(nextFamilyId));
-      })
-      .catch((cause) => {
-        if (!active) return;
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setError(treeFriendlyError(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [loadTree, requestedFamilyId, requestedPersonId, router]);
+    if (contextLoading || !contextLoaded) {
+      setLoading(true);
+      return;
+    }
+    if (contextError) {
+      setLoading(false);
+      setError(contextError);
+      return;
+    }
+    if (!familyId || !family) {
+      setLoading(false);
+      setNoFamily(true);
+      setTree(EMPTY_TREE);
+      return;
+    }
+    void loadTree(familyId, requestedPersonId || undefined);
+  }, [contextError, contextLoaded, contextLoading, family, familyId, loadTree, requestedPersonId]);
 
   useEffect(() => {
     return () => {
@@ -380,6 +360,15 @@ function TreePageContent() {
       searchAbort.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!familyId || family?.role !== 'owner') { setLinkRequests([]); return; }
+    let active = true;
+    api<LinkRequest[]>(`/families/${encodeURIComponent(familyId)}/link-requests`)
+      .then((rows) => { if (active) setLinkRequests(rows); })
+      .catch(() => { if (active) setLinkRequests([]); });
+    return () => { active = false; };
+  }, [familyId, family?.role]);
 
   useEffect(() => {
     const query = search.trim();
@@ -518,6 +507,54 @@ function TreePageContent() {
     if (!selectedId) return;
     const element = document.getElementById('tree-person-' + selectedId);
     element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }
+
+  function switchView(mode: 'full' | 'close') {
+    if (!tree || !familyId) return;
+    if (mode === 'close' && !tree.linked_person_id) {
+      setNotice('Таны аккаунт удмын хүнтэй холбогдоогүй байна. Эхлээд өөрийгөө хүнээс хайж, гэр бүлийн эзэнтэй холбоосоо баталгаажуулна уу.');
+      return;
+    }
+    setViewMode(mode);
+    const focus = mode === 'close' ? tree.linked_person_id : tree.lineage_root_person_id;
+    void loadTree(familyId, focus || undefined, mode === 'close' ? 2 : 5);
+    setDepth(mode === 'close' ? 2 : 5);
+  }
+
+  async function designateRoot() {
+    if (!familyId || !selectedId || family?.role !== 'owner' || tree?.lineage_root_person_id) return;
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/root`, {
+        method: 'PUT', body: JSON.stringify({ person_id: selectedId }),
+      });
+      setNotice('Удмын эхийг хадгаллаа.');
+      setConfirmRoot(false);
+      await loadTree(familyId, selectedId, depth);
+    } catch (cause) {
+      setError(treeFriendlyError(cause, 'Удмын эхийг хадгалж чадсангүй.'));
+    }
+  }
+
+  async function requestLink() {
+    if (!familyId || !selectedId || linkBusy) return;
+    setLinkBusy(true); setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(selectedId)}/link-request`, { method: 'POST' });
+      setNotice('Холбох хүсэлтийг гэр бүлийн эзэнд илгээлээ. Таныг мөн болохыг баталгаажуулсны дараа холбоно.');
+    } catch (cause) { setError(treeFriendlyError(cause, 'Холбох хүсэлт илгээж чадсангүй.')); }
+    finally { setLinkBusy(false); }
+  }
+
+  async function approveLink(request: LinkRequest) {
+    if (!familyId || family?.role !== 'owner' || linkBusy) return;
+    setLinkBusy(true); setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/link-requests/${encodeURIComponent(request.id)}/approve`, { method: 'POST' });
+      setLinkRequests((rows) => rows.filter((row) => row.id !== request.id));
+      setLinkToApprove(null);
+      setNotice(`${request.user_name} аккаунтыг ${request.person_name} хүнтэй холболоо.`);
+    } catch (cause) { setError(treeFriendlyError(cause, 'Холбоосыг баталгаажуулж чадсангүй.')); }
+    finally { setLinkBusy(false); }
   }
 
   async function loadMoreSearch() {
@@ -711,24 +748,11 @@ function TreePageContent() {
             type="button"
             className="tree-button tree-button--primary"
             onClick={() => {
-              const retryFamilyId = requestedFamilyId || familyId;
-              if (retryFamilyId) {
-                void loadTree(retryFamilyId, requestedPersonId || selectedId || undefined, depth);
-                return;
+              if (familyId) {
+                void loadTree(familyId, selectedId || undefined, depth);
+              } else {
+                window.location.reload();
               }
-              api<Family[]>('/families')
-                .then((families) => {
-                  const nextFamilyId = families[0]?.id;
-                  if (!nextFamilyId) {
-                    setNoFamily(true);
-                    setLoading(false);
-                    return;
-                  }
-                  router.replace('/tree?family=' + encodeURIComponent(nextFamilyId));
-                })
-                .catch((cause) => {
-                  setError(treeFriendlyError(cause, 'Гэр бүлийн орчныг ачаалж чадсангүй.'));
-                });
             }}
           >
             Дахин оролдох
@@ -754,6 +778,10 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions">
+            <button type="button" className={'tree-button ' + (viewMode === 'full' ? 'tree-button--primary' : 'tree-button--secondary')} onClick={() => switchView('full')}>Бүх удам</button>
+            <button type="button" className={'tree-button ' + (viewMode === 'close' ? 'tree-button--primary' : 'tree-button--secondary')} onClick={() => switchView('close')}>Ойрын хүрээ</button>
+            {family?.role === 'owner' && !tree?.lineage_root_person_id && selectedId && <button type="button" className="tree-button tree-button--secondary" onClick={() => setConfirmRoot(true)}>Сонгосон хүнийг удмын эх болгох</button>}
+            {tree && !tree.linked_person_id && selectedId && <button type="button" className="tree-button tree-button--secondary" disabled={linkBusy} onClick={() => void requestLink()}>Өөрийн бүртгэлтэй холбох хүсэлт</button>}
             <Link
               className="tree-button tree-button--secondary"
               href={'/people?family=' + encodeURIComponent(familyId)}
@@ -781,6 +809,10 @@ function TreePageContent() {
             <button type="button" onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах">×</button>
           </div>
         )}
+
+        {tree?.persons.length && !tree.lineage_root_person_id && <div className="tree-alert tree-alert--info" role="status">Энэ гэр бүлийн удмын эхийг эзэн нь хараахан баталгаажуулаагүй байна. Одоогийн мод бодит хүмүүс, холбоосыг харуулж байгаа ч үеийн дугаарыг удмын эхтэй холбож үзүүлэхгүй.</div>}
+        {tree?.persons.length && !tree.linked_person_id && <div className="tree-alert tree-alert--info" role="status">Удмын мод бэлэн байна. Та өөрийн Person бүртгэлтэй холбогдоогүй бол “Хүмүүс” хэсэгт өөрийгөө олж, гэр бүлийн эзэнтэй холбоосоо баталгаажуулна уу.</div>}
+        {family?.role === 'owner' && linkRequests.length > 0 && <section className="tree-link-requests" aria-label="Холбох хүсэлтүүд"><h2>Хүнтэй холбох хүсэлт</h2><p>Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.</p>{linkRequests.map((request) => <div key={request.id}><span><strong>{request.user_name}</strong> → {request.person_name}</span><button type="button" disabled={linkBusy} onClick={() => setLinkToApprove(request)}>Шалгаж батлах</button></div>)}</section>}
 
         <section className="tree-workspace" aria-label="Удмын модны ажлын хэсэг">
           <div className="tree-workspace-top">
@@ -1040,7 +1072,7 @@ function TreePageContent() {
                             </span>
                             <strong>{personName(person) || 'Нэргүй хүн'}</strong>
                             <span>{lifeSummary(person)}</span>
-                            <em>{generationLabel(node.generation)}</em>
+                            <em>{tree.lineage_root_person_id && viewMode === 'full' ? generationLabel(node.generation) : 'Үе тогтоогоогүй'}</em>
                           </button>
 
                           <div className="tree-person-meta">
@@ -1177,6 +1209,8 @@ function TreePageContent() {
           <span>Гэрлэлт болон эцэг-эх/хүүхдийн холбоо тусдаа хадгалагдана.</span>
         </footer>
       </section>
+
+      {(confirmRoot || linkToApprove) && <div className="tree-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !linkBusy) { setConfirmRoot(false); setLinkToApprove(null); } }}><section className="tree-modal" role="dialog" aria-modal="true" aria-labelledby="tree-confirm-title"><div className="tree-modal-heading"><div><p className="tree-eyebrow">БАТАЛГААЖУУЛАХ</p><h2 id="tree-confirm-title">{confirmRoot ? 'Удмын эхийг сонгох' : 'Хүнтэй холбох'}</h2></div></div><p>{confirmRoot ? `${selectedPerson ? personName(selectedPerson) : 'Сонгосон хүн'}-ийг удмын эхээр хадгална. Энгийн дэлгэцээс дараа нь солих боломжгүй.` : `${linkToApprove?.user_name} аккаунтыг ${linkToApprove?.person_name} хүнтэй холбоно. Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.`}</p><div className="tree-modal-actions"><button type="button" className="tree-button tree-button--secondary" disabled={linkBusy} onClick={() => { setConfirmRoot(false); setLinkToApprove(null); }}>Болих</button><button type="button" className="tree-button tree-button--primary" disabled={linkBusy} onClick={() => { if (confirmRoot) void designateRoot(); else if (linkToApprove) void approveLink(linkToApprove); }}>{linkBusy ? 'Хүлээнэ үү…' : 'Батлах'}</button></div></section></div>}
 
       {relation && selectedPerson && (
         <div className="tree-modal-backdrop" role="presentation" onMouseDown={() => setRelation(null)}>
