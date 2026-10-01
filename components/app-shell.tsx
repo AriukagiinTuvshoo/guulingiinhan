@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
+import { FamilyContext } from './family-context';
 
 type NavItem = {
   key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'settings';
@@ -181,6 +182,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     }
 
     const nextFamily = requested ?? families[0].id;
+    setContextError('');
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
     if (requestedFamilyId === nextFamily) setFamilySwitching(false);
 
@@ -488,8 +490,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
             </div>
           ) : null}
-          <div key={familyId || requestedFamilyId || 'no-family-context'}>
-            {children}
+          <div key={requestedFamilyId || familyId || 'no-family-context'}>
+            <FamilyContext.Provider value={{
+              family: requestedFamilyId ? families.find((item) => item.id === requestedFamilyId) ?? null : null,
+              user,
+              loading: contextLoading || !contextLoaded || (!requestedFamilyId && families.length > 0),
+              error: requestedFamilyId && contextLoaded && !families.some((item) => item.id === requestedFamilyId)
+                ? 'Энэ гэр бүл олдсонгүй эсвэл хандах эрхгүй байна.' : contextError,
+              retry: retryContext,
+            }}>
+              {children}
+            </FamilyContext.Provider>
           </div>
         </div>
       </div>

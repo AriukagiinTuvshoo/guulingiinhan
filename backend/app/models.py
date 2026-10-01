@@ -147,6 +147,14 @@ class Invitation(Base):
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
         Index("ix_invitation_expiry", "expires_at"),
+        Index(
+            "uq_invitation_active_family_email",
+            "family_id",
+            "invited_email",
+            unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
