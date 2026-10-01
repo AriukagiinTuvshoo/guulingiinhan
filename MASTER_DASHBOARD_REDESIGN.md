@@ -4,6 +4,8 @@ Baseline: `030db4fda4964e7f64637afb85944ca904db259b` (current main at start).
 Branch: `feature/master-dashboard-redesign`.
 Overall acceptance: **BLOCKED** on the existing 3D renderer dependency and the full CI gate. This is a reviewable main-based frontend implementation, not a claim of complete 3D delivery.
 
+V2 visual pass: the hero now has a richer forest treatment, the real-data metrics form a forest-green editorial band, and the relationship overview draws only parent-child/marriage links actually returned by the API. The story and featured-person areas use warmer sage/ivory framing. Mobile heading wrapping was corrected after screenshot review.
+
 ## Data and behavior
 
 - The existing App Shell remains the only navigation/family switcher owner. Its loaded user/family context is exposed through a small React context; the dashboard does not repeat those requests.
@@ -15,6 +17,7 @@ Overall acceptance: **BLOCKED** on the existing 3D renderer dependency and the f
 - Album reads the actual paginated memory response (the old dashboard incorrectly assumed an array). It uses authenticated family photo endpoints, lazy images, and an error fallback. Portraits accept family-scoped API photo paths; other URLs use initials. No arbitrary third-party private photo URL is loaded.
 - Archive remains metadata-only. Owner/editor creation links are hidden for members; memory creation remains available according to the existing API policy. Backend authorization remains authoritative.
 - Settings Google-link form now uses the guarded API_BASE export; there is no production localhost fallback.
+- Cloudflare staging frontend deployment is configured separately in `wrangler.staging.jsonc` and uses the official OpenNext adapter. The target is the existing `guulingiinhan-staging` Worker, with the current staging API URL baked in as a public build value. Its staging CORS origin already matches the frontend hostname. No backend secret or production Worker configuration changes are made.
 
 ## Deliberate dependency limits
 
@@ -29,6 +32,13 @@ Main has no family Activity, upcoming Family Event, or Family Fund endpoints. Th
 - `npm run build`: PASS.
 - `npm run test:tree-3d`: BLOCKED: main does not define this script.
 - `git diff --check`: PASS.
+- `npm ci` after adding the Cloudflare adapter and cross-platform staging script: PASS, 0 reported vulnerabilities.
+- `npm run cf:build:staging`: PASS. OpenNext generated `.open-next/worker.js` using the existing Workers runtime config. It warns that Windows is not its recommended build host.
+- `npm run deploy:staging -- --dry-run`: PASS; resolved target `guulingiinhan-staging`, `ASSETS` only, 4.9 MB upload estimate.
+- Local Workers runtime `/login`: HTTP 200.
+- V2 responsive screenshot check: 390px headline remains whole-word; document width 375px within a 390px viewport.
+- Cloudflare account auth: Wrangler lists the authorized Tuvshoo0331 account, matching the target staging Worker.
+- Remote staging deployment result is reported after the explicit staging publish step.
 - `uv run pytest`: 142 passed, 2 setup errors caused by Windows access to the shared pytest temporary directory. Re-running exactly those two tests with an isolated `--basetemp` passed both (144 tested successfully across the runs).
 - `uv run ruff check app tests migrations`: FAIL on pre-existing I001 in `backend/tests/test_invitation_uniqueness.py:1`. Backend files are unchanged.
 
@@ -45,4 +55,4 @@ Browser QA used a separate loopback fixture API with explicitly labeled syntheti
 - Keyboard Tab: visible solid focus outline; one main h1; canonical person links inspected.
 - Reduced motion has a scoped CSS override. Full screen reader and real-device GPU performance are not verified.
 
-Live authenticated data, real image cropping, Vercel preview and production browser acceptance are not claimed by the local fixture checks. No deployment or merge is performed by this task.
+Live authenticated data, real image cropping and production browser acceptance are not claimed by the local fixture checks. PR auto-merge remains off. The explicit staging deployment is not a production release.

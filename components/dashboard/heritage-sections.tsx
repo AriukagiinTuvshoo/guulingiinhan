@@ -210,23 +210,107 @@ export function TreeOverview({
         {(tree) =>
           tree.persons.length ? (
             <div className="heritage-tree-overview">
-              <TreeDeciduous size={70} strokeWidth={1} aria-hidden="true" />
-              <p>
-                Хүн бүрийн нэрийн цаана
-                <br />
-                нэгэн амьдрал, нэгэн түүх бий.
-              </p>
-              <div className="heritage-person-links">
-                {tree.persons.slice(0, 4).map((person) => (
-                  <Link key={person.id} href={personLink(person.id, familyId)}>
-                    {personName(person)}
-                    <ArrowRight size={14} aria-hidden="true" />
-                  </Link>
-                ))}
-              </div>
+              {(() => {
+                const positions =
+                  tree.persons.length === 1
+                    ? [{ x: 50, y: 50 }]
+                    : tree.persons.length === 2
+                      ? [
+                          { x: 27, y: 50 },
+                          { x: 73, y: 50 },
+                        ]
+                      : tree.persons.length === 3
+                        ? [
+                            { x: 50, y: 20 },
+                            { x: 25, y: 76 },
+                            { x: 75, y: 76 },
+                          ]
+                        : [
+                            { x: 25, y: 23 },
+                            { x: 75, y: 23 },
+                            { x: 25, y: 77 },
+                            { x: 75, y: 77 },
+                          ];
+                const people = tree.persons.slice(0, 4);
+                const personIds = new Set(people.map((person) => person.id));
+                const connections = [
+                  ...tree.parent_child_relationships.map((relation) => ({
+                    from: relation.parent_id,
+                    to: relation.child_id,
+                    kind: "family" as const,
+                  })),
+                  ...tree.marriages.map((marriage) => ({
+                    from: marriage.person_1_id,
+                    to: marriage.person_2_id,
+                    kind: "partner" as const,
+                  })),
+                ].filter(
+                  (relation) =>
+                    personIds.has(relation.from) && personIds.has(relation.to),
+                );
+                const indexById = new Map(
+                  people.map((person, index) => [person.id, index]),
+                );
+                return (
+                  <>
+                    <div
+                      className="heritage-tree-graph"
+                      role="group"
+                      aria-label="Бүртгэлтэй удмын холбоос бүхий хүмүүс"
+                    >
+                      <svg
+                        className="heritage-tree-connections"
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                        aria-hidden="true"
+                      >
+                        {connections.map((connection, index) => {
+                          const from = positions[indexById.get(connection.from)!];
+                          const to = positions[indexById.get(connection.to)!];
+                          return (
+                            <line
+                              key={`${connection.from}-${connection.to}-${index}`}
+                              x1={from.x}
+                              y1={from.y}
+                              x2={to.x}
+                              y2={to.y}
+                              className={`heritage-tree-edge heritage-tree-edge--${connection.kind}`}
+                            />
+                          );
+                        })}
+                      </svg>
+                      <div className="heritage-tree-nodes">
+                        {people.map((person, index) => (
+                          <Link
+                            key={person.id}
+                            className="heritage-tree-node"
+                            href={personLink(person.id, familyId)}
+                            style={{
+                              left: `${positions[index].x}%`,
+                              top: `${positions[index].y}%`,
+                            }}
+                          >
+                            <TreeDeciduous
+                              size={18}
+                              strokeWidth={1.5}
+                              aria-hidden="true"
+                            />
+                            <span>{personName(person)}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="heritage-tree-caption">
+                      {connections.length
+                        ? `${connections.length} бүртгэлтэй холбоос · ${people.length} хүний хураангуй`
+                        : `Холбоос хараахан бүртгэгдээгүй · ${people.length} хүний хураангуй`}
+                    </p>
+                  </>
+                );
+              })()}
               <small>
-                Хураангуйд {tree.persons.length} хүн ·{" "}
-                {tree.parent_child_relationships.length} эцэг эх, хүүхдийн
+                Удмын модны жишээ өгөгдөл. Хураангуйд {tree.persons.length} хүн
+                · {tree.parent_child_relationships.length} эцэг эх, хүүхдийн
                 холбоо
               </small>
               <Link
