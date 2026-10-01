@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Family, FamilyMember, Invitation, User
 
+
 def _seed_family(db, email):
     user = User(
         email=email,
