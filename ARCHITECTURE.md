@@ -12,6 +12,17 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - PostgreSQL нь орчны `DATABASE_URL`-аар тохируулагдана; development-д SQLite ашиглаж болно.
 - Зураг PostgreSQL-д бус object storage-д хадгалагдана; `photos.object_key` нь storage key байна.
 
+## Family-ийн хамтын үйл ажиллагаа
+
+- Сан ба donation endpoint-үүд Family membership-ийг шалгана. Owner сан удирдаж, гишүүн шилжүүлсэн төлбөрөө мэдээлнэ; owner гар аргаар батална. Private donor сонголттой гишүүний нэрийг owner хүртэл харахгүй.
+- Уулзалт нь `LifeEvent`-ээс тусдаа family-scoped entity. Owner/editor үүсгэж, бүртгэл болон төлбөрийг удирдана. Гишүүн бүртгэлээ харах, цуцлах, дахин бүртгүүлэх боломжтой.
+- Төлбөрийн эхний хувилбар банк/QR заавар ба `unpaid → reported → confirmed` төлөвөөр хязгаарлагдана. Бодит gateway, гүйлгээний баталгаажуулалт, картын өгөгдөл хадгалалт байхгүй.
+- Role болон family/event холбоосыг backend шалгана. `Family.root_person_id` нь owner-оор тохируулж болох nullable reference бөгөөд бодит Person-ийг зохиомлоор үүсгэхгүй. Тохируулсан root-ийг family-ээс салгахаас өмнө owner root-ийг цуцлах ёстой. Migration chain нь main-ийн `b3e6c9f1a204`-өөс `c4e0a2b1d991` → `d7a2f1b893c4` → `e3b82c41a7d0` хүртэл үргэлжилнэ.
+
+## PWA
+
+`app/manifest.ts` нь install metadata гаргаж, `public/sw.js` зөвхөн public home болон install icon-уудыг cache хийнэ. API, authenticated route, profile, зураг, бусад family өгөгдлийг cache-д хадгалахгүй. Service worker зөвхөн production build дээр бүртгэгдэнэ.
+
 ## Өгөгдлийн зарчим
 
 1. `Person` нь бүртгэлтэй `User` биш тусдаа entity. Нас барсан, accountгүй өвөг дээдсийг бүртгэж болно.

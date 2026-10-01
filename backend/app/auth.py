@@ -100,6 +100,18 @@ class UserOutput(BaseModel):
     person_id: UUID | None = None
 
 
+class AccountProfileInput(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str) -> str:
+        name = " ".join(value.split())
+        if not name:
+            raise ValueError("Дэлгэцийн нэр хоосон байж болохгүй.")
+        return name
+
+
 class LoginIdentityOutput(BaseModel):
     id: UUID
     provider: str
@@ -1156,6 +1168,21 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserOutput)
 def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _user_output(db, user)
+
+
+@router.patch("/me", response_model=UserOutput)
+def update_account_profile(
+    body: AccountProfileInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.display_name != body.display_name:
+        user.display_name = body.display_name
+        db.add(AuditLog(actor_id=user.id, action="user.display_name_updated",
+                        target_type="user", target_id=user.id))
+        db.commit()
+        db.refresh(user)
     return _user_output(db, user)
 
 

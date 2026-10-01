@@ -1,6 +1,6 @@
 # Өгөгдлийн сан
 
-Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a88229` → `74a31c87f462` → `b762e4a19d30` → `cc924bf31a12` → `2e9d7f4c1a63` → `9b36d2c718fa` → `a71d3f0c92b4` → `b51c9e7a60f4` → `e8b0a6c14d29` → `d4a9f73b8210` → `c441b2f3a805` (P4.11 head). `c441b2f3a805` нь `audit_logs.request_id` correlation талбар, `photos.cleanup_attempts` bounded retry тоолуур нэмнэ.
+Migration chain нь `b3e6c9f1a204` main baseline-оос `c4e0a2b1d991` → `d7a2f1b893c4` → `e3b82c41a7d0` хүртэл үргэлжилнэ. Эхний revision нь owner review-тэй Person claim request, хоёр дахь нь Family Fund, Donation, Family Event, Event Registration хүснэгтүүдийг, сүүлийнх нь nullable canonical root Person холбоос нэмнэ. `e3b82c41a7d0` нь энэ branch-ийн одоогийн head.
 
 | Хүснэгт | Хэрэглээ |
 |---|---|
@@ -21,6 +21,15 @@ Migration дараалал нэг шугамтай: `4532a98a2fe5` → `f10695a8
 | identity_link_requests | Ирээдүйн verification-д зориулсан хугацаатай, эрх олгодоггүй хүсэлтийн бүртгэл |
 | phone_otp_challenges | HMAC OTP digest, зориулалт, төлөв, оролдлого ба хугацаа; raw OTP агуулахгүй |
 | photos | Family/memory, хувийн object key, MIME/size/dimensions, thumbnail key, uploader metadata |
+| person_link_requests | Хэрэглэгчийн хүсэлт, family owner-ийн шийдвэр бүхий account ↔ canonical Person холболтын хүсэлт |
+| family_funds | Гэр бүлд зориулсан сан, purpose, төлбөрийн заавар ба идэвхтэй төлөв |
+| donations | Хандивын дүн, нууц нэрийн сонголт, мэдээлсэн/баталгаажсан төлөв |
+| family_events | Уулзалтын цаг, байршил, багтаамж, төлбөрийн заавар ба үнэ |
+| event_registrations | Нэг хэрэглэгчийн event-д өгсөн оролцогчдын тоо, бүртгэл ба төлбөрийн төлөв |
+
+`person_link_requests` нь давхар pending хүсэлтийг family + user түвшинд partial unique index-ээр хориглоно. Одоо холбоотой User/Person-д шууд claim хийхийг хориглож, зөвхөн тухайн account-ын өөрөө шинээр үүсгэсэн насанд хүрсэн Person-ийг шууд холбоно; бусад хүсэлтэд family owner шийдвэр гаргана.
+
+Шинэ сан, donation, event, registration endpoint-үүд Family membership-ээр шалгагдана. Owner сан үүсгэж/идэвхгүй болгоно, owner/editor уулзалт үүсгэж төлбөр батална. Donation жагсаалтыг гишүүн өөрийнхөө хүрээнд харж, private donor тохиргоотой хүний identity-г owner хүртэл харахгүй. Одоогийн төлбөрийн гүйцэтгэл нь зөвхөн банк/QR заавар болон manual confirmation; gateway, картын мэдээлэл хадгалалт байхгүй.
 | photo_person_tags | Зураг ба Person-ийн tag холбоос; хүнээр хайх индекс |
 
 `person_guardianships` нь composite foreign key ашиглан Person family context болон guardian-ийн family membership-ийг батална. Scope нь `view_profile`, `edit_profile`, `manage_biography`, `manage_events`, `manage_memories`, `manage_media`; төлөв нь `active` эсвэл `revoked`. Active scope давхардахгүй partial unique index-тэй. Expiry-г authorization шалгалт бүрд мөрдөнө.

@@ -21,9 +21,11 @@ import {
   personName,
   TreeData,
   TreePerson,
+  User,
 } from '../../lib/api';
 
 type RelationKind = 'parent' | 'child' | 'spouse';
+type LinkRequest = { id: string; person_id: string; user_id: string; user_name: string; person_name: string; status: string; created_at: string };
 
 type LayoutNode = {
   id: string;
@@ -219,6 +221,9 @@ function TreePageContent() {
   const [familyId, setFamilyId] = useState('');
   const [family, setFamily] = useState<Family | null>(null);
   const [tree, setTree] = useState<TreeData | null>(null);
+  const [me, setMe] = useState<User | null>(null);
+  const [linkRequests, setLinkRequests] = useState<LinkRequest[]>([]);
+  const [linkBusy, setLinkBusy] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [depth, setDepth] = useState(3);
   const [zoom, setZoom] = useState(0.9);
@@ -382,6 +387,21 @@ function TreePageContent() {
   }, []);
 
   useEffect(() => {
+    if (!familyId || !family) return;
+    let active = true;
+    void api<User>('/auth/me').then((user) => { if (active) setMe(user); })
+      .catch(() => { if (active) setMe(null); });
+    if (family.role === 'owner') {
+      void api<LinkRequest[]>(`/families/${encodeURIComponent(familyId)}/link-requests`)
+        .then((rows) => { if (active) setLinkRequests(rows); })
+        .catch(() => { if (active) setLinkRequests([]); });
+    } else {
+      setLinkRequests([]);
+    }
+    return () => { active = false; };
+  }, [familyId, family]);
+
+  useEffect(() => {
     const query = search.trim();
     searchAbort.current?.abort();
 
@@ -518,6 +538,52 @@ function TreePageContent() {
     if (!selectedId) return;
     const element = document.getElementById('tree-person-' + selectedId);
     element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+  }
+
+  async function requestLink() {
+    if (!familyId || !selectedId || linkBusy) return;
+    setLinkBusy(true); setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(selectedId)}/link-request`, { method: 'POST' });
+      setNotice('Холбох хүсэлтийг гэр бүлийн эзэнд илгээлээ. Таны хэн болохыг шалгасны дараа батална.');
+    } catch (cause) { setError(treeFriendlyError(cause, 'Холбох хүсэлт илгээж чадсангүй.')); }
+    finally { setLinkBusy(false); }
+  }
+
+  async function setSelectedAsFamilyRoot() {
+    if (!familyId || !selectedId || family?.role !== 'owner') return;
+    setLinkBusy(true); setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/root`, {
+        method: 'PUT', body: JSON.stringify({ person_id: selectedId }),
+      });
+      setNotice('Сонгосон хүнийг гэр бүлийн удмын эхээр тохирууллаа.');
+      await loadTree(familyId, selectedId, depth);
+    } catch (cause) {
+      setError(treeFriendlyError(cause, 'Удмын эхийг тохируулж чадсангүй.'));
+    } finally { setLinkBusy(false); }
+  }
+
+  function focusFamilyRoot() {
+    if (!familyId || !tree?.family_root_person_id) return;
+    void loadTree(familyId, tree.family_root_person_id, depth);
+  }
+
+  function focusMyPerson() {
+    if (!familyId || !me?.person_id) return;
+    void loadTree(familyId, me.person_id, depth);
+  }
+
+  async function decideLink(request: LinkRequest, decision: 'approve' | 'reject') {
+    if (!familyId || family?.role !== 'owner' || linkBusy) return;
+    if (!window.confirm(`${request.user_name} аккаунтыг ${request.person_name} хүнтэй ${decision === 'approve' ? 'холбох' : 'холбохоос татгалзах'} уу?`)) return;
+    setLinkBusy(true); setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/link-requests/${encodeURIComponent(request.id)}/${decision}`, { method: 'POST' });
+      setLinkRequests((rows) => rows.filter((row) => row.id !== request.id));
+      setNotice(decision === 'approve' ? 'Хүн ба аккаунтыг холболоо.' : 'Хүсэлтийг татгалзлаа.');
+    } catch (cause) { setError(treeFriendlyError(cause, 'Хүсэлтийг шийдэж чадсангүй.')); }
+    finally { setLinkBusy(false); }
   }
 
   async function loadMoreSearch() {
@@ -754,6 +820,10 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions">
+            {family?.role === 'owner' && selectedId && tree?.family_root_person_id !== selectedId && <button type="button" className="tree-button tree-button--secondary" disabled={linkBusy} onClick={() => void setSelectedAsFamilyRoot()}>Удмын эхээр тохируулах</button>}
+            {tree?.family_root_person_id && selectedId !== tree.family_root_person_id && <button type="button" className="tree-button tree-button--secondary" onClick={focusFamilyRoot}>Удмын эх рүү</button>}
+            {me?.person_id && selectedId !== me.person_id && <button type="button" className="tree-button tree-button--secondary" onClick={focusMyPerson}>Миний хүн рүү</button>}
+            {me && !me.person_id && selectedId && <button type="button" className="tree-button tree-button--secondary" disabled={linkBusy} onClick={() => void requestLink()}>Энэ хүн мөн гэдгээ хүсэх</button>}
             <Link
               className="tree-button tree-button--secondary"
               href={'/people?family=' + encodeURIComponent(familyId)}
@@ -781,6 +851,8 @@ function TreePageContent() {
             <button type="button" onClick={() => setNotice('')} aria-label="Мэдэгдлийг хаах">×</button>
           </div>
         )}
+
+        {family?.role === 'owner' && linkRequests.length > 0 && <section className="tree-link-requests" aria-label="Хүнтэй холбох хүсэлтүүд"><h2>Хүнтэй холбох хүсэлтүүд</h2><p>Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг биечлэн шалгана уу.</p>{linkRequests.map((request) => <div key={request.id}><span><strong>{request.user_name}</strong> → {request.person_name}</span><button type="button" disabled={linkBusy} onClick={() => void decideLink(request, 'approve')}>Батлах</button><button type="button" disabled={linkBusy} onClick={() => void decideLink(request, 'reject')}>Татгалзах</button></div>)}</section>}
 
         <section className="tree-workspace" aria-label="Удмын модны ажлын хэсэг">
           <div className="tree-workspace-top">
@@ -1112,6 +1184,23 @@ function TreePageContent() {
                       <button type="button" className="tree-button tree-button--secondary" onClick={() => setRelation('spouse')}>
                         + Гэрлэлт
                       </button>
+                    </div>
+
+                    <div className="tree-selected-relations tree-generation-navigation" aria-label="Үе хооронд навигаци">
+                      <section>
+                        <h3>Өмнөх үе · эцэг, эхийн салаа</h3>
+                        {selectedParents.length ? selectedParents.map((edge) => {
+                          const parent = tree?.persons.find((person) => person.id === edge.parent_id);
+                          return parent ? <button key={edge.id} type="button" onClick={() => void loadTree(familyId, parent.id, depth)}>{personName(parent)} →</button> : null;
+                        }) : <span>Өмнөх үеийн холбоос бүртгэлгүй байна.</span>}
+                      </section>
+                      <section>
+                        <h3>Дараагийн үе · хүүхэд, үр сад</h3>
+                        {selectedChildren.length ? selectedChildren.map((edge) => {
+                          const child = tree?.persons.find((person) => person.id === edge.child_id);
+                          return child ? <button key={edge.id} type="button" onClick={() => void loadTree(familyId, child.id, depth)}>{personName(child)} →</button> : null;
+                        }) : <span>Дараагийн үеийн холбоос бүртгэлгүй байна.</span>}
+                      </section>
                     </div>
 
                     <div className="tree-selected-relations">

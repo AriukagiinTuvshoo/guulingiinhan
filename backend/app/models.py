@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -147,6 +148,14 @@ class Invitation(Base):
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
         Index("ix_invitation_expiry", "expires_at"),
+        Index(
+            "uq_invitation_active_family_email",
+            "family_id",
+            "invited_email",
+            unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -265,6 +274,9 @@ class Family(Base):
     name: Mapped[str] = mapped_column(String(180))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    root_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="RESTRICT", name="fk_families_root_person_id_persons"), nullable=True
+    )
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -346,6 +358,84 @@ class FamilyMember(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(16), default="member")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class FamilyFund(Base):
+    __tablename__ = "family_funds"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    purpose: Mapped[str] = mapped_column(Text)
+    currency: Mapped[str] = mapped_column(String(3))
+    payment_instruction: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class Donation(Base):
+    __tablename__ = "donations"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="ck_donation_positive_amount"),
+        CheckConstraint("status IN ('pledged', 'reported', 'confirmed', 'cancelled')", name="ck_donation_status"),
+        Index("ix_donation_family_created", "family_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    fund_id: Mapped[UUID] = mapped_column(ForeignKey("family_funds.id", ondelete="RESTRICT"))
+    donor_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(12), default="pledged")
+    private_donor: Mapped[bool] = mapped_column(default=False)
+    confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class FamilyEvent(Base):
+    __tablename__ = "family_events"
+    __table_args__ = (
+        CheckConstraint("capacity IS NULL OR capacity > 0", name="ck_family_event_positive_capacity"),
+        CheckConstraint("adult_fee_minor >= 0 AND child_fee_minor >= 0", name="ck_family_event_nonnegative_fees"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    location: Mapped[str] = mapped_column(String(300))
+    registration_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    capacity: Mapped[int | None] = mapped_column(nullable=True)
+    adult_fee_minor: Mapped[int] = mapped_column(BigInteger, default=0)
+    child_fee_minor: Mapped[int] = mapped_column(BigInteger, default=0)
+    currency: Mapped[str] = mapped_column(String(3))
+    payment_instruction: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class EventRegistration(Base):
+    __tablename__ = "event_registrations"
+    __table_args__ = (
+        UniqueConstraint("event_id", "user_id", name="uq_event_registration_user"),
+        CheckConstraint("adult_count >= 0 AND child_count >= 0 AND adult_count + child_count > 0", name="ck_event_attendee_counts"),
+        CheckConstraint("status IN ('registered', 'cancelled')", name="ck_event_registration_status"),
+        CheckConstraint("payment_status IN ('unpaid', 'reported', 'confirmed')", name="ck_event_payment_status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(ForeignKey("family_events.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    adult_count: Mapped[int] = mapped_column(default=1)
+    child_count: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String(12), default="registered")
+    payment_status: Mapped[str] = mapped_column(String(12), default="unpaid")
+    confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class Person(Base):
@@ -430,6 +520,28 @@ class UserPersonLink(Base):
     person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
     linked_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PersonLinkRequest(Base):
+    """Owner-reviewed claim of an existing family Person."""
+
+    __tablename__ = "person_link_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_person_link_request_status"),
+        Index("ix_person_link_request_family_status", "family_id", "status"),
+        Index("uq_person_link_request_pending_user", "family_id", "user_id", unique=True,
+              sqlite_where=text("status = 'pending'"),
+              postgresql_where=text("status = 'pending'")),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(12), default="pending")
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PersonGuardianship(Base):

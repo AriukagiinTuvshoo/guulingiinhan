@@ -54,6 +54,7 @@ function SettingsContent() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [securityBusy, setSecurityBusy] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [phone, setPhone] = useState('');
   const [resendSeconds, setResendSeconds] = useState(0);
@@ -68,6 +69,21 @@ function SettingsContent() {
     () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
+
+  async function saveDisplayName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accountBusy) return;
+    const displayName = String(new FormData(event.currentTarget).get('display_name') ?? '').trim();
+    if (!displayName) { setNotice({ kind: 'error', text: 'Дэлгэцийн нэр шаардлагатай.' }); return; }
+    setAccountBusy(true); setNotice(null);
+    try {
+      const updated = await api<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ display_name: displayName }) });
+      setUser(updated);
+      setNotice({ kind: 'success', text: 'Дэлгэцийн нэр хадгалагдлаа.' });
+    } catch (cause) {
+      setNotice({ kind: 'error', text: friendlyError(cause, 'Дэлгэцийн нэрийг хадгалж чадсангүй.') });
+    } finally { setAccountBusy(false); }
+  }
 
   const refreshIdentities = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++identitySequence.current;
@@ -391,14 +407,18 @@ function SettingsContent() {
                     <div><dt>Имэйл</dt><dd>{user?.email || 'Account-д имэйл холбогдоогүй'}</dd></div>
                     <div><dt>Account ID</dt><dd className="settings-mono">{user?.id}</dd></div>
                   </dl>
+                  <form className="settings-inline-form" onSubmit={saveDisplayName}>
+                    <label htmlFor="account-display-name">Дэлгэцийн нэрээ засах</label>
+                    <input id="account-display-name" name="display_name" defaultValue={user?.display_name ?? ''} maxLength={120} required disabled={accountBusy} />
+                    <button className="settings-button settings-button--dark" type="submit" disabled={accountBusy}>{accountBusy ? 'Хадгалж байна…' : 'Нэр хадгалах'}</button>
+                  </form>
                   {user?.person_id && selectedFamily ? (
                     <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>
                       Миний холбоотой Person профайлыг харах
                     </Link>
                   ) : null}
                   <p className="settings-note">
-                    Одоогийн backend-д өөрийн display name, email эсвэл account талбарыг засах authenticated mutation байхгүй.
-                    Тиймээс immutable мэдээллийг editable мэтээр үзүүлээгүй.
+                    Имэйл өөрчлөх болон account зураг нэмэх баталгаажуулсан урсгал одоогоор байхгүй. Person-ийн зураг нь тусдаа эрхтэй мэдээлэл.
                   </p>
                 </div>
               </div>
