@@ -5,15 +5,29 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import func, select
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user, normalize_email
+from app.auth import _consume_otp_rate, get_current_user, normalize_email
 from app.config import get_settings
 from app.db import SessionLocal, get_db
-from app.models import AdminBootstrap, AdminGrant, AuditLog, Family, LoginIdentity, User
+from app.email import EmailDeliveryError, EmailProvider, get_email_provider
+from app.models import (
+    AdminBootstrap,
+    AdminGrant,
+    AuditLog,
+    Family,
+    FamilyMember,
+    FamilyPerson,
+    LoginIdentity,
+    Person,
+    Story,
+    User,
+    UserPersonLink,
+    UserSession,
+)
 
 
 class AdminRole(StrEnum):
@@ -59,6 +73,51 @@ class AdminAccount(AdminUser):
 class AdminRoleInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     role: AdminRole
+
+
+class AdminUserStatusInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_active: bool
+
+
+class AdminAccountInviteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: EmailStr
+
+
+class AdminMembership(BaseModel):
+    family_id: UUID
+    family_name: str
+    role: str
+
+
+class AdminLinkedPerson(BaseModel):
+    id: UUID
+    family_id: UUID
+    first_name: str
+    last_name: str
+
+
+class AdminUserDetail(AdminUser):
+    email_verified: bool
+    admin_role: AdminRole | None
+    memberships: list[AdminMembership]
+    linked_people: list[AdminLinkedPerson]
+
+
+class AdminStory(BaseModel):
+    id: UUID
+    family_id: UUID
+    title: str
+    body: str
+    visibility: str
+    created_at: datetime
+
+
+class AdminStoryEdit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=180)
+    body: str = Field(min_length=1, max_length=100000)
 
 
 def bootstrap_admin_roles() -> None:
@@ -135,6 +194,14 @@ def require_super_admin(
     return current
 
 
+def require_operator(
+    current: tuple[User, AdminRole] = Depends(require_admin),
+) -> tuple[User, AdminRole]:
+    if current[1] == AdminRole.MODERATOR:
+        raise HTTPException(status_code=403, detail="Энэ үйлдэлд эрх хүрэхгүй.")
+    return current
+
+
 @router.get("/me", response_model=AdminIdentity)
 def admin_me(current: tuple[User, AdminRole] = Depends(require_admin)):
     user, role = current
@@ -189,6 +256,131 @@ def lookup_user(
         raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй.")
     return AdminUser(id=user.id, display_name=user.display_name, email=user.email,
                      is_active=user.is_active, created_at=user.created_at)
+
+
+@router.post("/users/invite", status_code=202)
+def invite_new_account(
+    body: AdminAccountInviteInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+    provider: EmailProvider = Depends(get_email_provider),
+):
+    email = normalize_email(str(body.email))
+    if db.scalar(select(User.id).where(User.email == email)):
+        raise HTTPException(status_code=409, detail="Энэ имэйлээр бүртгэл бий.")
+    if not _consume_otp_rate(db, "admin-account-invite", email, 2):
+        raise HTTPException(status_code=429, detail="Урилга хэт олон илгээгдсэн.")
+    link = get_settings().email_public_base_url.rstrip("/") + "/register"
+    try:
+        provider.send_account_invitation_email(email, link)
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail="Урилгын имэйл илгээж чадсангүй.") from exc
+    db.add(AuditLog(id=uuid4(), family_id=None, actor_id=current[0].id,
+                    action="admin.account_invitation_sent", target_type="user", target_id=current[0].id))
+    db.commit()
+    return {"message": "Бүртгүүлэх холбоос илгээлээ. Аккаунт хэрэглэгч баталгаажуулсны дараа үүснэ."}
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetail)
+def user_detail(
+    user_id: UUID,
+    _: tuple[User, AdminRole] = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй.")
+    memberships = db.execute(
+        select(FamilyMember, Family).join(Family, Family.id == FamilyMember.family_id)
+        .where(FamilyMember.user_id == user_id, Family.archived_at.is_(None))
+        .order_by(Family.name, Family.id)
+    ).all()
+    linked = db.execute(
+        select(Person, FamilyPerson.family_id)
+        .join(UserPersonLink, UserPersonLink.person_id == Person.id)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .join(FamilyMember, FamilyMember.family_id == FamilyPerson.family_id)
+        .where(UserPersonLink.user_id == user_id, FamilyMember.user_id == user_id)
+    ).all()
+    grant = db.get(AdminGrant, user_id)
+    return AdminUserDetail(
+        id=user.id, display_name=user.display_name, email=user.email,
+        is_active=user.is_active, created_at=user.created_at,
+        email_verified=user.email_verified_at is not None,
+        admin_role=AdminRole(grant.role) if grant else None,
+        memberships=[AdminMembership(family_id=f.id, family_name=f.name, role=m.role)
+                     for m, f in memberships],
+        linked_people=[AdminLinkedPerson(id=p.id, family_id=family_id,
+                                         first_name=p.first_name, last_name=p.last_name)
+                       for p, family_id in linked],
+    )
+
+
+@router.put("/users/{user_id}/status", response_model=AdminUser)
+def set_user_status(
+    user_id: UUID,
+    body: AdminUserStatusInput,
+    current: tuple[User, AdminRole] = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
+    actor, role = current
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй.")
+    target_grant = db.get(AdminGrant, user_id)
+    if target.id == actor.id or (target_grant and (
+        target_grant.role == AdminRole.SUPER_ADMIN or role != AdminRole.SUPER_ADMIN
+    )):
+        raise HTTPException(status_code=403, detail="Энэ аккаунтын төлөвийг өөрчлөх эрхгүй.")
+    if target.is_active != body.is_active:
+        target.is_active = body.is_active
+        if not body.is_active:
+            db.execute(delete(UserSession).where(UserSession.user_id == user_id))
+        db.add(AuditLog(id=uuid4(), family_id=None, actor_id=actor.id,
+                        action="admin.user_activated" if body.is_active else "admin.user_blocked",
+                        target_type="user", target_id=user_id))
+        db.commit()
+    return AdminUser(id=target.id, display_name=target.display_name, email=target.email,
+                     is_active=target.is_active, created_at=target.created_at)
+
+
+@router.get("/users/{user_id}/stories", response_model=list[AdminStory])
+def user_stories(
+    user_id: UUID,
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    if db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй.")
+    rows = db.scalars(select(Story).where(Story.created_by == user_id)
+                      .order_by(Story.created_at.desc(), Story.id).offset(offset).limit(limit)).all()
+    db.add(AuditLog(id=uuid4(), family_id=None, actor_id=current[0].id,
+                    action="admin.user_stories_viewed", target_type="user", target_id=user_id))
+    db.commit()
+    return [AdminStory(id=s.id, family_id=s.family_id, title=s.title, body=s.body,
+                       visibility=s.visibility, created_at=s.created_at) for s in rows]
+
+
+@router.put("/stories/{story_id}", response_model=AdminStory)
+def edit_story(
+    story_id: UUID, body: AdminStoryEdit,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    story = db.get(Story, story_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
+    story.title = body.title.strip()
+    story.body = body.body.strip()
+    if not story.title or not story.body:
+        raise HTTPException(status_code=422, detail="Гарчиг болон түүхийн агуулга шаардлагатай.")
+    db.add(AuditLog(id=uuid4(), family_id=story.family_id, actor_id=current[0].id,
+                    action="admin.story_edited", target_type="story", target_id=story.id))
+    db.commit()
+    return AdminStory(id=story.id, family_id=story.family_id, title=story.title,
+                      body=story.body, visibility=story.visibility, created_at=story.created_at)
 
 
 @router.get("/admins", response_model=list[AdminAccount])

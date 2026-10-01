@@ -12,7 +12,9 @@ type Overview = { users: number; families: number; admins: number };
 type UserRow = { id: string; display_name: string; email: string | null; is_active: boolean; created_at: string };
 type FamilyRow = { id: string; name: string; created_at: string };
 type AdminRow = UserRow & { role: Role };
-type Section = 'overview' | 'users' | 'families' | 'admins';
+type UserDetail = UserRow & { email_verified: boolean; admin_role: Role | null; memberships: { family_id: string; family_name: string; role: string }[]; linked_people: { id: string; family_id: string; first_name: string; last_name: string }[] };
+type UserStory = { id: string; family_id: string; title: string; body: string; visibility: string; created_at: string };
+type Section = 'overview' | 'users' | 'families' | 'admins' | 'user_detail';
 
 const labels: Record<Role, string> = {
   SUPER_ADMIN: 'Ерөнхий админ', ADMIN: 'Админ', MODERATOR: 'Хяналтын админ',
@@ -33,9 +35,15 @@ export default function AdminPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
   const [selectedRole, setSelectedRole] = useState<'ADMIN' | 'MODERATOR'>('MODERATOR');
-  const [confirmation, setConfirmation] = useState<{ userId: string; action: 'grant' | 'revoke'; label: string } | null>(null);
+  const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [stories, setStories] = useState<UserStory[]>([]);
+  const [editingStoryId, setEditingStoryId] = useState('');
+  const [storyTitle, setStoryTitle] = useState('');
+  const [storyBody, setStoryBody] = useState('');
+  const [confirmation, setConfirmation] = useState<{ userId: string; action: 'grant' | 'revoke' | 'block' | 'unblock'; label: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,7 +60,7 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!identity || section === 'overview') return;
+    if (!identity || section === 'overview' || section === 'user_detail') return;
     let active = true;
     setBusy(true);
     setError('');
@@ -86,6 +94,20 @@ export default function AdminPage() {
     setSection(sectionName); setOffset(0); setError(''); setNotice(''); setConfirmation(null);
   }
 
+  async function openUser(userId: string) {
+    setBusy(true); setError(''); setStories([]); setEditingStoryId('');
+    try {
+      const found = await api<UserDetail>(`/admin/users/${userId}`);
+      setDetail(found);
+      setSection('user_detail');
+      if (identity?.role === 'SUPER_ADMIN') {
+        setStories(await api<UserStory[]>(`/admin/users/${userId}/stories`));
+      }
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Хэрэглэгчийн мэдээллийг ачаалж чадсангүй.');
+    } finally { setBusy(false); }
+  }
+
   async function findUser() {
     setSelectedUser(null); setError('');
     try {
@@ -94,6 +116,17 @@ export default function AdminPage() {
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Хэрэглэгчийг хайж чадсангүй.');
     }
+  }
+
+  async function inviteAccount() {
+    if (!inviteEmail.trim() || working) return;
+    setWorking(true); setError(''); setNotice('');
+    try {
+      await api('/admin/users/invite', { method: 'POST', body: JSON.stringify({ email: inviteEmail.trim() }) });
+      setNotice('Бүртгүүлэх холбоосыг имэйлээр илгээлээ. Хэрэглэгч өөрөө бүртгэлээ баталгаажуулна.');
+      setInviteEmail('');
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Урилга илгээж чадсангүй.'); }
+    finally { setWorking(false); }
   }
 
   async function logout() {
@@ -107,11 +140,33 @@ export default function AdminPage() {
     }
   }
 
+  async function saveStory() {
+    if (!editingStoryId || !storyTitle.trim() || !storyBody.trim() || working) return;
+    setWorking(true); setError('');
+    try {
+      const changed = await api<UserStory>(`/admin/stories/${editingStoryId}`, {
+        method: 'PUT', body: JSON.stringify({ title: storyTitle.trim(), body: storyBody.trim() }),
+      });
+      setStories((rows) => rows.map((row) => row.id === changed.id ? changed : row));
+      setEditingStoryId('');
+      setNotice('Түүхийн бичвэрийг хадгаллаа.');
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Түүхийг хадгалж чадсангүй.'); }
+    finally { setWorking(false); }
+  }
+
   async function applyRoleChange() {
     if (!confirmation || working) return;
     setWorking(true); setError(''); setNotice('');
     try {
-      if (confirmation.action === 'revoke') {
+      if (confirmation.action === 'block' || confirmation.action === 'unblock') {
+        const nextActive = confirmation.action === 'unblock';
+        await api<UserRow>(`/admin/users/${confirmation.userId}/status`, {
+          method: 'PUT', body: JSON.stringify({ is_active: nextActive }),
+        });
+        setUsers((rows) => rows.map((row) => row.id === confirmation.userId ? { ...row, is_active: nextActive } : row));
+        setDetail((current) => current?.id === confirmation.userId ? { ...current, is_active: nextActive } : current);
+        setNotice(`${confirmation.label} аккаунт ${nextActive ? 'идэвхжлээ' : 'блоклогдлоо'}.`);
+      } else if (confirmation.action === 'revoke') {
         await api<void>(`/admin/admins/${confirmation.userId}`, { method: 'DELETE' });
         setNotice(`${confirmation.label} хаягийн админ эрх цуцлагдлаа.`);
       } else {
@@ -120,10 +175,12 @@ export default function AdminPage() {
         });
         setNotice(`${confirmation.label} хаягт ${labels[selectedRole]} эрх олголоо.`);
       }
-      const [rows, counts] = await Promise.all([
-        api<AdminRow[]>('/admin/admins'), api<Overview>('/admin/overview'),
-      ]);
-      setAdmins(rows); setOverview(counts);
+      if (confirmation.action === 'grant' || confirmation.action === 'revoke') {
+        const [rows, counts] = await Promise.all([
+          api<AdminRow[]>('/admin/admins'), api<Overview>('/admin/overview'),
+        ]);
+        setAdmins(rows); setOverview(counts);
+      }
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Эрхийн өөрчлөлт амжилтгүй боллоо.');
     } finally { setWorking(false); setConfirmation(null); }
@@ -131,7 +188,8 @@ export default function AdminPage() {
 
   const title = section === 'overview' ? 'Ерөнхий мэдээлэл'
     : section === 'users' ? 'Хэрэглэгчид'
-      : section === 'families' ? 'Гэр бүлүүд' : 'Админ эрхүүд';
+      : section === 'families' ? 'Гэр бүлүүд'
+        : section === 'user_detail' ? 'Хэрэглэгчийн мэдээлэл' : 'Админ эрхүүд';
 
   return <main className={styles.page}>
     <div className={styles.shell}>
@@ -154,7 +212,7 @@ export default function AdminPage() {
           {notice && <div className={styles.notice} role="status">{notice}</div>}
           {busy && <p role="status" className={styles.state}>Ачаалж байна…</p>}
           {!busy && identity && section === 'overview' && overview && <>
-            <p className={styles.intro}>Энд системийн бүртгэлийн тоо харагдана. Гэр бүлийн хувийн түүх, зураг, дурсамж энэ хэсгээс нээгдэхгүй.</p>
+            <p className={styles.intro}>Энд системийн ерөнхий тоо харагдана. Ерөнхий админ хэрэглэгчийн дэлгэрэнгүй хэсэгт түүний нийтэлсэн түүхийг үзэж, засаж болно.</p>
             <div className={styles.stats}>
               <div><span>Хэрэглэгч</span><strong>{overview.users}</strong></div>
               <div><span>Идэвхтэй гэр бүл</span><strong>{overview.families}</strong></div>
@@ -162,8 +220,23 @@ export default function AdminPage() {
             </div>
           </>}
           {!busy && identity && section === 'users' && <>
-            {users.length === 0 ? <p className={styles.state}>Хэрэглэгч алга.</p> : <div className={styles.list}>{users.map((user) => <div className={styles.row} key={user.id}><div><strong>{user.display_name}</strong><span>{user.email || 'Имэйлгүй аккаунт'}</span></div><small>{user.is_active ? 'Идэвхтэй' : 'Идэвхгүй'}</small></div>)}</div>}
+            <p className={styles.intro}>Аккаунтын мэдээлэл, гэр бүлийн гишүүнчлэл болон төлөвийг шалгана. Блоклосон хэрэглэгчийн бүх session хүчингүй болно.</p>
+            {identity.role === 'SUPER_ADMIN' && <form className={styles.invite} onSubmit={(event) => { event.preventDefault(); void inviteAccount(); }}><label>Шинэ хэрэглэгчийг бүртгүүлэхээр урих<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@example.com" required /></label><button type="submit" disabled={working || !inviteEmail.trim()}>{working ? 'Илгээж байна…' : 'Урилга илгээх'}</button><p>Урилга нь аккаунт эсвэл гэр бүлийн гишүүнчлэл автоматаар үүсгэхгүй. Хүлээн авагч өөрөө бүртгүүлж, имэйлээ баталгаажуулна.</p></form>}
+            {users.length === 0 ? <p className={styles.state}>Хэрэглэгч алга.</p> : <div className={styles.list}>{users.map((user) => <div className={styles.row} key={user.id}><div><strong>{user.display_name}</strong><span>{user.email || 'Имэйлгүй аккаунт'} · {user.is_active ? 'Идэвхтэй' : 'Блоклогдсон'}</span></div><button type="button" onClick={() => openUser(user.id)}>Дэлгэрэнгүй</button></div>)}</div>}
             <div className={styles.pagination}><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Өмнөх</button><span>{offset + 1}–{offset + users.length}</span><button disabled={users.length < pageSize} onClick={() => setOffset(offset + pageSize)}>Дараах</button></div>
+          </>}
+          {!busy && identity && section === 'user_detail' && detail && <>
+            <button className={styles.textButton} type="button" onClick={() => show('users')}>← Хэрэглэгчид рүү буцах</button>
+            <div className={styles.detailCard}>
+              <div className={styles.detailTop}><div><h2>{detail.display_name}</h2><p>{detail.email || 'Имэйлгүй аккаунт'}</p></div><span>{detail.is_active ? 'Идэвхтэй' : 'Блоклогдсон'}</span></div>
+              <dl className={styles.facts}><div><dt>Имэйл</dt><dd>{detail.email_verified ? 'Баталгаажсан' : 'Баталгаажаагүй'}</dd></div><div><dt>Бүртгэсэн</dt><dd>{new Date(detail.created_at).toLocaleDateString('mn-MN')}</dd></div><div><dt>Системийн эрх</dt><dd>{detail.admin_role ? labels[detail.admin_role] : 'Энгийн хэрэглэгч'}</dd></div></dl>
+              {identity.role !== 'MODERATOR' && detail.id !== identity.user_id && detail.admin_role !== 'SUPER_ADMIN' && (identity.role === 'SUPER_ADMIN' || !detail.admin_role) && <button className={styles.dangerButton} type="button" onClick={() => setConfirmation({ userId: detail.id, action: detail.is_active ? 'block' : 'unblock', label: detail.email || detail.display_name })}>{detail.is_active ? 'Аккаунт блоклох' : 'Блок гаргах'}</button>}
+            </div>
+            <h2 className={styles.subheading}>Гэр бүлийн гишүүнчлэл</h2>
+            {detail.memberships.length ? <div className={styles.list}>{detail.memberships.map((item) => <div className={styles.row} key={item.family_id}><strong>{item.family_name}</strong><span>{item.role}</span></div>)}</div> : <p className={styles.state}>Гэр бүлийн гишүүнчлэл алга.</p>}
+            <h2 className={styles.subheading}>Холбосон хүн</h2>
+            {detail.linked_people.length ? <div className={styles.list}>{detail.linked_people.map((person) => <div className={styles.row} key={`${person.family_id}-${person.id}`}><strong>{person.last_name} {person.first_name}</strong><span>Person ID: {person.id}</span></div>)}</div> : <p className={styles.state}>Удмын хүнтэй холбогдоогүй байна.</p>}
+            {identity.role === 'SUPER_ADMIN' && <><h2 className={styles.subheading}>Нийтэлсэн түүхүүд</h2><p className={styles.intro}>Хувийн түүхийг үзэх, бичвэрийг засах үйлдэл аудит бүртгэлд хадгалагдана. Гэр бүлийн холбоос, харагдах хүрээ өөрчлөгдөхгүй.</p>{stories.length ? <div className={styles.list}>{stories.map((story) => <article className={styles.story} key={story.id}>{editingStoryId === story.id ? <div className={styles.storyEditor}><label>Гарчиг<input value={storyTitle} maxLength={180} onChange={(event) => setStoryTitle(event.target.value)} /></label><label>Агуулга<textarea value={storyBody} maxLength={100000} rows={8} onChange={(event) => setStoryBody(event.target.value)} /></label><div><button type="button" disabled={working} onClick={() => setEditingStoryId('')}>Болих</button><button type="button" disabled={working || !storyTitle.trim() || !storyBody.trim()} onClick={() => void saveStory()}>{working ? 'Хадгалж байна…' : 'Хадгалах'}</button></div></div> : <><strong>{story.title}</strong><small>{story.visibility} · {new Date(story.created_at).toLocaleDateString('mn-MN')}</small><p>{story.body}</p><button type="button" onClick={() => { setEditingStoryId(story.id); setStoryTitle(story.title); setStoryBody(story.body); }}>Бичвэр засах</button></>}</article>)}</div> : <p className={styles.state}>Энэ хэрэглэгчийн нийтэлсэн түүх алга.</p>}</>}
           </>}
           {!busy && identity && section === 'families' && <>
             {families.length === 0 ? <p className={styles.state}>Идэвхтэй гэр бүл алга.</p> : <div className={styles.list}>{families.map((family) => <div className={styles.row} key={family.id}><strong>{family.name}</strong><small>{new Date(family.created_at).toLocaleDateString('mn-MN')}</small></div>)}</div>}
@@ -185,8 +258,8 @@ export default function AdminPage() {
     </div>
     {confirmation && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !working) setConfirmation(null); }}>
       <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="admin-confirm-title">
-        <h2 id="admin-confirm-title">Эрхийн өөрчлөлтийг батлах</h2>
-        <p><strong>{confirmation.label}</strong> хаягийн {confirmation.action === 'revoke' ? 'админ эрхийг цуцална' : `эрхийг ${labels[selectedRole]} болгоно`}.</p>
+        <h2 id="admin-confirm-title">Үйлдлийг батлах</h2>
+        <p><strong>{confirmation.label}</strong> хаягийн {confirmation.action === 'revoke' ? 'админ эрхийг цуцална' : confirmation.action === 'block' ? 'аккаунтыг блоклож, бүх session-ийг хүчингүй болгоно' : confirmation.action === 'unblock' ? 'блокийг гаргана' : `эрхийг ${labels[selectedRole]} болгоно`}.</p>
         <div><button disabled={working} onClick={() => setConfirmation(null)}>Болих</button><button disabled={working} onClick={applyRoleChange}>{working ? 'Хадгалж байна…' : 'Батлах'}</button></div>
       </div>
     </div>}

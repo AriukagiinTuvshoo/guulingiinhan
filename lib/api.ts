@@ -84,6 +84,8 @@ export type TreeData = {
   parent_child_relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[];
   marriages: Marriage[];
   root_person_id?: string | null;
+  lineage_root_person_id?: string | null;
+  linked_person_id?: string | null;
   meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
 export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'> & {

@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app import admin
 from app.admin import bootstrap_admin_roles
-from app.models import AdminBootstrap, AdminGrant, User, UserSession
+from app.models import AdminBootstrap, AdminGrant, Story, User, UserSession
 from tests.conftest import register_verified
 
 PASSWORD = "admin-test-passphrase-123"
@@ -105,3 +105,74 @@ def test_bootstrap_is_one_time_and_requires_verified_user(client, database, emai
     bootstrap_admin_roles()
     with database() as db:
         assert db.get(AdminGrant, user_id) is None
+
+
+def test_account_inspection_block_and_story_privacy(client, database, email_provider):
+    root_email, operator_email, moderator_email, member_email = (
+        "inspector@example.com", "operator2@example.com",
+        "moderator2@example.com", "member2@example.com",
+    )
+    root_id = _register(client, email_provider, root_email)
+    operator_id = _register(client, email_provider, operator_email)
+    moderator_id = _register(client, email_provider, moderator_email)
+    member_id = _register(client, email_provider, member_email)
+    family = client.post("/api/v1/families", json={"name": "Visible membership"}).json()
+    with database.begin() as db:
+        db.add_all([
+            AdminGrant(user_id=root_id, role="SUPER_ADMIN"),
+            AdminGrant(user_id=operator_id, role="ADMIN"),
+            AdminGrant(user_id=moderator_id, role="MODERATOR"),
+            Story(family_id=UUID(family["id"]), title="Private account story", body="Protected body",
+                  created_by=member_id, visibility="private"),
+        ])
+
+    _login(client, member_email)
+    assert client.get(f"/api/v1/admin/users/{root_id}").status_code == 403
+    assert client.get(f"/api/v1/admin/users/{member_id}/stories").status_code == 403
+    assert client.put(f"/api/v1/admin/users/{root_id}/status", json={"is_active": False}).status_code == 403
+
+    _login(client, moderator_email)
+    assert client.get(f"/api/v1/admin/users/{member_id}").status_code == 200
+    assert client.post("/api/v1/admin/users/invite", json={"email": "new-member@example.com"}).status_code == 403
+    assert client.get(f"/api/v1/admin/users/{member_id}/stories").status_code == 403
+    assert client.put(f"/api/v1/admin/users/{member_id}/status", json={"is_active": False}).status_code == 403
+
+    _login(client, operator_email)
+    assert client.get(f"/api/v1/admin/users/{member_id}/stories").status_code == 403
+    with database() as db:
+        story_id = db.scalar(select(Story.id).where(Story.created_by == member_id))
+    assert client.put(f"/api/v1/admin/stories/{story_id}", json={
+        "title": "Changed", "body": "Changed body",
+    }).status_code == 403
+    assert client.put(f"/api/v1/admin/users/{root_id}/status", json={"is_active": False}).status_code == 403
+    assert client.put(f"/api/v1/admin/users/{member_id}/status", json={"is_active": False}).status_code == 200
+
+    _login(client, root_email)
+    invited = client.post("/api/v1/admin/users/invite", json={"email": "new-member@example.com"})
+    assert invited.status_code == 202
+    assert any(item.recipient == "new-member@example.com" and "/register" in item.text
+               for item in email_provider.deliveries)
+    assert client.post("/api/v1/admin/users/invite", json={"email": member_email}).status_code == 409
+    response = client.get(f"/api/v1/admin/users/{member_id}")
+    assert response.status_code == 200
+    assert response.json()["memberships"][0]["family_id"] == family["id"]
+    assert "password_hash" not in response.text
+    stories = client.get(f"/api/v1/admin/users/{member_id}/stories")
+    assert stories.status_code == 200
+    assert stories.json()[0]["body"] == "Protected body"
+    edited = client.put(f"/api/v1/admin/stories/{story_id}", json={
+        "title": "Reviewed story", "body": "Reviewed body",
+    })
+    assert edited.status_code == 200
+    assert edited.json()["body"] == "Reviewed body"
+    assert edited.json()["visibility"] == "private"
+    assert client.put(f"/api/v1/admin/stories/{story_id}", json={
+        "title": "Invalid", "body": "Changed", "family_id": str(root_id),
+    }).status_code == 422
+    assert client.put(f"/api/v1/admin/users/{root_id}/status", json={"is_active": False}).status_code == 403
+    assert client.put(f"/api/v1/admin/users/{operator_id}/status", json={"is_active": False}).status_code == 200
+    blocked_login = client.post("/api/v1/auth/login", json={"email": operator_email, "password": PASSWORD})
+    assert blocked_login.status_code == 401
+    assert client.put(f"/api/v1/admin/users/{member_id}/status", json={"is_active": True}).status_code == 200
+    _login(client, member_email)
+    assert client.get("/api/v1/auth/me").status_code == 200

@@ -23,6 +23,8 @@ class EmailProvider(Protocol):
 
     def send_invitation_email(self, recipient: str, family_name: str, link: str) -> None: ...
 
+    def send_account_invitation_email(self, recipient: str, link: str) -> None: ...
+
 
 @dataclass(frozen=True)
 class EmailDelivery:
@@ -54,6 +56,9 @@ class FakeEmailProvider:
 
     def send_invitation_email(self, recipient: str, family_name: str, link: str) -> None:
         self._send(recipient, f"{family_name} гэр бүлд урьж байна", f"Урилгыг нээх: {link}")
+
+    def send_account_invitation_email(self, recipient: str, link: str) -> None:
+        self._send(recipient, "Гуулингийнхан — бүртгүүлэх урилга", f"Бүртгэл үүсгэх: {link}")
 
 
 class SmtpEmailProvider:
@@ -103,6 +108,9 @@ class SmtpEmailProvider:
 
     def send_invitation_email(self, recipient: str, family_name: str, link: str) -> None:
         self._send(recipient, f"{family_name} гэр бүлд урьж байна", f"Урилгыг нээх: {link}")
+
+    def send_account_invitation_email(self, recipient: str, link: str) -> None:
+        self._send(recipient, "Гуулингийнхан — бүртгүүлэх урилга", f"Бүртгэл үүсгэх: {link}")
 
 
 def get_email_provider() -> EmailProvider:
