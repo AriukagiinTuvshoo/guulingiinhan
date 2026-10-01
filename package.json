@@ -7,18 +7,21 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "tsc --noEmit",
+    "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
     "start": "next start --hostname 0.0.0.0"
   },
   "dependencies": {
     "lucide-react": "latest",
     "next": "16.3.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "typescript": "^7.0.2"
   }
 }

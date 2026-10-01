@@ -16,12 +16,16 @@ Baseline: `030db4fda4964e7f64637afb85944ca904db259b` (`main`). The Cloudflare st
 | PWA | Responsive pages existed; install metadata, worker and icons were absent. | PASS | `app/manifest.ts`, `public/sw.js`, `public/icon-192.png`, `public/icon-512.png`, `backend/tests/test_pwa_contract.py` | Cache allowlist covers only public home and static icons. |
 | Home | Public Home and authenticated dashboard exist. | EXISTS | `app/page.tsx`, `app/dashboard/page.tsx` | Preserve and add links only for real modules. |
 | Canonical family root | Baseline had no Family root designation; tree used the current linked Person or an arbitrary visible Person as traversal root. | PASS | `Family.root_person_id`, `PUT /families/{id}/root`, `e3b82c41a7d0` | Nullable pointer to a real existing Person; owner selects later; root cannot be detached until cleared. |
+| 3D tree visualization | Baseline tree was SVG 2D; no 3D rendering dependency existed. | PARTIAL | `components/tree-3d-scene.tsx`, `lib/tree-3d-layout.ts`, `npm run test:tree-3d` | Three.js consumes the existing authenticated Tree response, with 2D/list fallback; live browser/WebGL verification remains outstanding. |
+| 700–800 person performance | Existing Tree API caps one neighborhood at 300 and exposes paginated family-scoped search/directory. | PARTIAL | Tree API cap in `backend/app/families.py`; synthetic 800-person layout benchmark | Search/focus can switch neighborhoods; 800-person WebGL/GPU render and API latency were not measured. |
 
 ## Architecture and infrastructure
 
 The schema maintains separate `User`, `Person`, `Family`, `Lineage`, `Branch`, relationship, story, memory, archive and photo entities. Family membership and guardian scopes enforce private access. Registration and password recovery use authentication identities and do not create a Person; onboarding can create one by explicit choice. This branch adds `person_link_requests`, `family_funds`, `donations`, `family_events`, `event_registrations`, and nullable `families.root_person_id`, ending at migration `e3b82c41a7d0`.
 
 Main has a Next.js frontend, FastAPI backend, PostgreSQL-oriented CI with upgrade/downgrade checks, Vercel entrypoint tests and a Dockerfile. It has no Cloudflare Worker configuration. The Cloudflare staging implementation lives on another branch; this work does not merge it. `ARCHITECTURE.md` and `DATABASE.md` are reconciled with this branch's model and migration evidence.
+
+The production tree visualization is client-only Three.js, loaded dynamically so server rendering does not require WebGL. It reuses `/families/{id}/tree`, `/families/{id}/persons/search`, existing person directory/lineage/branch endpoints, canonical root and relationship identifiers. See the architecture note for the 300-node per-response limit and the synthetic layout benchmark scope.
 
 ## Security finding
 

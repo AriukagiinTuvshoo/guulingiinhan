@@ -23,6 +23,14 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 
 `app/manifest.ts` нь install metadata гаргаж, `public/sw.js` зөвхөн public home болон install icon-уудыг cache хийнэ. API, authenticated route, profile, зураг, бусад family өгөгдлийг cache-д хадгалахгүй. Service worker зөвхөн production build дээр бүртгэгдэнэ.
 
+## Удмын модны 3D харагдац
+
+`components/tree-3d-scene.tsx` нь Three.js-ээр одоогийн authenticated, Family-scoped `/families/{id}/tree` өгөгдлийг зурна. Шинэ Person эсвэл relationship хүснэгт/API үүсгэхгүй. Canonical `Person.id`, root, parent-child, Marriage-ийн одоогийн/түүхэн төлөв, Lineage/Branch ID-г scene ашиглана. Сонголт ба хайлтын дараа одоогийн Tree API тухайн бодит хүний ойр орчныг дахин татна.
+
+Tree API нэг хүсэлтэд 300 хүртэл хүн буцаадаг. 3D scene тухайн хүрээнд 72 хүртэлх ойрын node label үүсгэж, бусад node-ийг хөнгөн геометрээр үзүүлнэ; бүлгийн хооронд хайлт болон focus шилжилтээр үргэлжилж болно. 800 synthetic Person дээр layout тооцооны median 21.57 ms хэмжсэн; энэ нь WebGL/GPU дүрслэл, API latency эсвэл бодит 700–800 хүний browser performance-ийн хэмжилт биш. WebGL боломжгүй бол үндсэн 2D зураглал болон keyboard-аар ашиглах Person жагсаалт үлдэнэ.
+
+`Бүтэн удам` болон `Ойрын хүрээлэл` нь нэг canonical tree-ийн focus/depth тохиргоо. Ойрын хүрээлэл account-ыг бодит Person-той холбосон үед ажиллана; Full Lineage нь Family root тохируулсан бол түүнийг, үгүй бол Tree API-ийн зөвшөөрөгдсөн context-ийг эхэлнэ. Удмын root Person-ийг бодит эх сурвалжаар гэр бүлийн owner сонгох хүртэл зохиомлоор үүсгэхгүй.
+
 ## Өгөгдлийн зарчим
 
 1. `Person` нь бүртгэлтэй `User` биш тусдаа entity. Нас барсан, accountгүй өвөг дээдсийг бүртгэж болно.

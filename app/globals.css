@@ -1197,6 +1197,36 @@
 @media(max-width:320px){.tree-page{padding-inline:3px}.tree-page-header h1{font-size:29px}.tree-map-scroll{min-height:430px}.tree-map-layout{padding:7px}}
 
 .memory-photo-fallback{min-height:180px;display:grid;place-items:center;padding:24px;background:#0b392f;color:#aebfb5;font-size:12px;text-align:center}.memory-card-gallery .memory-photo-fallback{min-height:150px;width:100%;grid-column:1/-1}.memory-detail-gallery .memory-photo-fallback{min-height:220px;width:100%}.memory-person-link{display:inline-flex;margin-right:6px;color:#d9c06b;text-decoration:underline;text-underline-offset:3px}.memory-person-link:hover{color:#f0d890}.memory-detail-people{margin-top:28px;padding-top:22px;border-top:1px solid #255648}.memory-detail-people h2{font:20px Georgia,serif;margin:0 0 12px}.memory-related-people{display:flex;flex-wrap:wrap;gap:8px}.memory-related-people a{display:inline-flex;align-items:center;min-height:38px;padding:0 13px;border:1px solid #3a6c5b;border-radius:18px;color:#ead38b;text-decoration:none;background:#08382d}.memory-related-people a:hover{background:#0d493a}.memory-related-people a:focus-visible,.memory-person-link:focus-visible{outline:2px solid #ead38b;outline-offset:3px}
+
+.tree-segmented{display:inline-flex;align-items:center;overflow:hidden;border:1px solid #d4c7b0;border-radius:9px;background:#fffaf0}
+.tree-segmented button{min-height:32px;padding:0 10px;border:0;border-right:1px solid #e0d7c6;background:transparent;color:#657368;font-size:8px;white-space:nowrap}
+.tree-segmented button:last-child{border-right:0}
+.tree-segmented button[aria-pressed="true"]{background:#1a493a;color:#f0e5c8;font-weight:650}
+.tree-segmented button:disabled{color:#aaa99c;cursor:not-allowed}
+.tree-branch-control select{max-width:190px}
+.tree-map-layout--3d{grid-template-columns:minmax(0,1fr) 285px}
+.tree-3d-panel{min-width:0;overflow:hidden;border:1px solid #c7bda9;border-radius:12px;background:#102b23;box-shadow:inset 0 0 0 1px rgba(255,250,240,.08)}
+.tree-3d-stage{position:relative;width:100%;height:clamp(430px,62vh,760px);overflow:hidden;background:radial-gradient(ellipse at 50% 28%,#355c47,#19392f 56%,#102b23)}
+.tree-3d-canvas{position:absolute;inset:0}
+.tree-3d-stage canvas{cursor:grab;touch-action:none}.tree-3d-stage canvas:active{cursor:grabbing}
+.tree-3d-overlay{position:absolute;inset:0;pointer-events:none}
+.tree-3d-legend{position:absolute;top:12px;left:12px;display:grid;gap:6px;max-width:230px;padding:10px 12px;border:1px solid rgba(218,202,158,.35);border-radius:10px;background:rgba(12,35,28,.83);color:#e5e2d5;font-size:8px;backdrop-filter:blur(6px)}
+.tree-3d-legend span{display:flex;align-items:center;gap:7px}.tree-3d-legend i{position:relative;display:inline-block;width:22px;height:8px;flex:0 0 auto}
+.tree-legend-parent:before,.tree-legend-current:before,.tree-legend-history:before{content:"";position:absolute;left:0;right:0;top:3px;border-top:2px solid #d2bd82}.tree-legend-current:before{border-color:#e7ca7c;border-top-width:3px}.tree-legend-history:before{border-color:#a99059;border-top-style:dashed}
+.tree-legend-root:before,.tree-legend-self:before{content:"";position:absolute;left:6px;top:0;width:8px;height:8px;border:1px solid #f2d77d;background:#b39446;transform:rotate(45deg)}.tree-legend-self:before{border-radius:50%;border-color:#a7c8af;background:#5f9875;transform:none}
+.tree-3d-hint{position:absolute;left:12px;bottom:12px;max-width:calc(100% - 160px);padding:8px 10px;border-radius:8px;background:rgba(12,35,28,.8);color:#d2d8ce;font-size:8px;line-height:1.5;pointer-events:auto}
+.tree-3d-focus{position:absolute;right:12px;bottom:12px;min-height:36px;padding:0 12px;border:1px solid #dfc270;border-radius:20px;background:#d0ae5b;color:#193a2d;font-size:8px;font-weight:700;pointer-events:auto}
+.tree-3d-context{margin:0;padding:8px 12px;border-top:1px solid #315346;color:#eee4c8;font-size:9px}
+.tree-3d-accessible-list{display:flex;max-height:124px;gap:5px;overflow:auto;padding:8px 10px;border-top:1px solid #315346;background:#17382e;scrollbar-color:#60745c #17382e}
+.tree-3d-accessible-list button{min-height:30px;flex:0 0 auto;padding:0 9px;border:1px solid #60745c;border-radius:16px;background:#214637;color:#ebe7d7;font-size:8px}.tree-3d-accessible-list button[aria-pressed="true"]{border-color:#e5c36b;background:#8b713d;color:#fff7df}
+.tree-3d-limit{margin:0;padding:8px 11px;border-top:1px solid #5c533a;background:#f7f0df;color:#756744;font-size:8px;line-height:1.55}
+.tree-3d-loading{position:absolute;inset:0;display:grid;place-items:center;color:#e4d7ad;font:16px Georgia,serif}
+.tree-3d-fallback{position:absolute;inset:0;display:grid;align-content:center;justify-items:center;gap:10px;padding:20px;background:#17382e;color:#eee6d1;text-align:center}.tree-3d-fallback strong{font:22px Georgia,serif}.tree-3d-fallback span{max-width:360px;color:#c4d1c5;font-size:12px;line-height:1.6}.tree-3d-fallback button{min-height:38px;padding:0 14px;border:1px solid #e1c778;border-radius:20px;background:#d0ae5b;color:#17382e}
+.tree-spouse-focus{padding:0;border:0;background:none;color:#52665a;font-size:8px;font-weight:700;text-align:left;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+@media(max-width:1020px){.tree-map-layout--3d{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){.tree-segmented{max-width:100%}.tree-segmented button{padding-inline:7px;font-size:7px}.tree-branch-control{max-width:100%}.tree-branch-control select{max-width:min(220px,58vw)}.tree-3d-stage{height:460px}.tree-3d-legend{top:8px;left:8px;gap:4px;padding:7px 9px;font-size:7px}.tree-3d-hint{left:8px;bottom:8px;max-width:calc(100% - 136px);font-size:7px}.tree-3d-focus{right:8px;bottom:8px;padding-inline:9px;font-size:7px}.tree-3d-accessible-list{max-height:110px}}
+@media(max-width:430px){.tree-controls{align-items:stretch}.tree-controls .tree-segmented{width:100%}.tree-segmented button{flex:1}.tree-3d-stage{height:420px}.tree-3d-legend{max-width:174px}.tree-3d-legend span:nth-child(2){white-space:nowrap}.tree-3d-hint{max-width:calc(100% - 16px);bottom:54px}.tree-3d-focus{left:8px;right:auto}}
+@media(prefers-reduced-motion:reduce){.tree-3d-stage canvas{scroll-behavior:auto}}
 .story-grid.story-timeline .story-card:focus-within{border-color:#9a7a34;box-shadow:0 8px 24px #17372b12}
 .stories-page button:focus-visible,.stories-page a:focus-visible,.stories-page input:focus-visible,.stories-page select:focus-visible,.stories-page textarea:focus-visible{outline:2px solid #9a7a34;outline-offset:2px}
 @media(max-width:480px){
