@@ -24,10 +24,12 @@ npm run cf:build:staging
 npm run cf:preview:staging
 ```
 
-The branch's Cloudflare Git checks for `guulingiinhan` and `guulingiinhan-backend-staging` target other Worker names and report that their preview Workers do not exist. They are not the staging frontend Worker. The staging frontend is deployed explicitly with the root config above; do not point the backend build at this config.
+The PR also receives builds from other Cloudflare Worker integrations. These are separate targets: the production `guulingiinhan` Preview command fails because its default Wrangler config has no `previews` block; `guulingiinhan-backend-staging` reports preview-worker creation failure even though the account API lists that Worker; and `guulingiinhanback` is a stale Worker name that does not exist. The staging frontend has preview builds disabled. Its own production trigger was manually run against the exact PR source commit and succeeded. Do not point the backend build at this config.
 
 ## Safety and rollback
 
 - Do not use this config to deploy `guulingiinhan` or `guulingiinhan-backend-staging`.
 - The dashboard UI change requires no backend migration and changes no staging backend secret.
+- Latest successful Cloudflare Build ID: `1defb773-97b4-40aa-a6e9-f280a034f0a7` for source commit `1aa7a9602b1db0b30decf4ec44acae00ee00effc`.
+- Active staging deployment: `ee89d129-fb17-4861-9f4d-840ffc6e332d`, version `5d46e30d-396e-41fb-80a7-e49240660c25` at 100% traffic. The public `/`, `/login`, `/register`, and backend `/health/ready` routes were checked.
 - Before this update, the active staging frontend version was `773e1fcd-8658-4c7e-b151-9f57fecb4176`. If a regression appears, use Cloudflare Workers' deployment history to restore that version.
