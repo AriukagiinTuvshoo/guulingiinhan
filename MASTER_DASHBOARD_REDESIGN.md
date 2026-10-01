@@ -2,8 +2,8 @@
 
 Baseline: 030db4fda4964e7f64637afb85944ca904db259b (main at task start).
 Branch: feature/master-dashboard-redesign.
-Source version deployed to staging: f45f656df3e3bb68773c4c2be3e30740c167413a.
-Acceptance: the requested frontend redesign is live on the staging Worker. The broader spec still has explicit dependency limits: main has no reusable 3D renderer or Activity/Event/Fund APIs, and the backend Ruff gate reports a pre-existing import-order error.
+Source version deployed to staging: 1aa7a9602b1db0b30decf4ec44acae00ee00effc.
+Acceptance: the requested frontend redesign is live on the staging Worker. The broader spec still has explicit dependency limits: main has no reusable 3D renderer or Activity/Event/Fund APIs.
 
 ## V2 design and data behavior
 
@@ -30,13 +30,13 @@ Main has no family Activity, upcoming Family Event, or Family Fund endpoints. Th
 
 - Target Worker: guulingiinhan-staging.
 - URL: https://guulingiinhan-staging.tuvshoo0331.workers.dev
-- Deployment ID: 36d2e499-2822-409b-b185-e4814e63fa5b.
-- Active version: 0838c43e-97ed-43c8-88c2-4b62b445e4af, receiving 100% of Worker traffic at 2026-10-01 12:01:15 UTC.
-- Previous version 773e1fcd-8658-4c7e-b151-9f57fecb4176 remains in deployment history for rollback.
-- Live smoke checks: /login returned HTTP 200; the deployed V2 stylesheet returned HTTP 200 and included the heritage hero, forest color and tree node styles.
-- The authenticated private family dashboard was not browsed, so live private records, real photos and account-specific page rendering remain unverified.
-- Cloudflare automatic PR preview checks fail for guulingiinhan, guulingiinhan-backend-staging and guulingiinhanback because those configured Worker preview targets do not exist or are different services. This does not change the direct deployment result for guulingiinhan-staging.
-- Vercel project guulingiinhan-a6te produced a ready preview. The unrelated Vercel guulingiinhan production status failed; no production deployment was performed.
+- Build ID: 1defb773-97b4-40aa-a6e9-f280a034f0a7; Cloudflare Build API outcome: success, using exact source commit 1aa7a9602b1db0b30decf4ec44acae00ee00effc.
+- Deployment ID: ee89d129-fb17-4861-9f4d-840ffc6e332d.
+- Active version: 5d46e30d-396e-41fb-80a7-e49240660c25, receiving 100% of Worker traffic at 2026-10-01 13:01:18 UTC.
+- Previous version 0838c43e-97ed-43c8-88c2-4b62b445e4af remains in deployment history for rollback.
+- Public staging smoke checks: /, /login and /register loaded in the browser; backend /health/ready returned {\"status\":\"ok\",\"service\":\"guulingiinhan-api\",\"database\":\"ok\"}.
+- The authenticated private family dashboard was not browsed, so live private records, real photos and account-specific dashboard rendering remain unverified.
+- The PR's unrelated Cloudflare Build checks remain red: production Worker guulingiinhan fails its Preview command because its default Wrangler config has no previews block; guulingiinhan-backend-staging reports preview-worker creation failure even though the account API lists that Worker; guulingiinhanback is a stale target that does not exist. These were not changed because this task authorizes staging only. The direct staging frontend build succeeded.
 
 ## Validation
 
@@ -51,11 +51,12 @@ Main has no family Activity, upcoming Family Event, or Family Fund endpoints. Th
 - npm run deploy:staging -- --strict: PASS; staging deployment completed.
 - Local Workers runtime /login: HTTP 200.
 - Backend CI pytest: 144 passed with one Starlette deprecation warning.
-- Backend CI Ruff: FAIL on existing I001 import ordering at backend/tests/test_invitation_uniqueness.py:1. No backend file was changed in this task.
+- Backend CI Ruff: PASS.
+- Backend Alembic model/migration consistency check: PASS after aligning the model index with the existing migration; invitation tests validate the model-created index without recreating it.
 - Responsive screenshots checked at desktop, tablet and 390px mobile widths. Mobile document width stayed within its viewport and Mongolian headings wrap by whole words.
 - Browser QA used a separate loopback fixture API with synthetic records kept outside the repository. No fixture data was sent to staging or production.
 - 320, 375, 390, 430, 768, 1024, 1280 and 1440px: no horizontal document overflow.
 - Family switch isolation, invalid family, member actions, error recovery, loading, failed photos and keyboard focus were checked against the separate fixture.
 - Reduced motion has a scoped CSS override. Full screen reader and real-device GPU performance were not verified.
 
-This staging update is not a production release. No merge or auto-merge was performed.
+This staging update is not a production release. No production Worker, database, secret, migration, DNS, merge or auto-merge was performed.
