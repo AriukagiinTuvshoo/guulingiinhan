@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Check, Globe2, LogOut, Mail, Phone, RefreshCw, ShieldCheck, TreeDeciduous, UserRound, UsersRound } from 'lucide-react';
-import { ApiError, api, Family, User } from '../../lib/api';
+import { API_BASE, ApiError, api, Family, User } from '../../lib/api';
 
 type Identity = {
   id: string;
@@ -537,8 +537,8 @@ function SettingsContent() {
                   </div>
                   {googleIdentity ? (
                     <span className="settings-status settings-status--verified"><Check size={13} /> Холбогдсон</span>
-                  ) : googleEnabled ? (
-                    <form method="post" action={(process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1') + '/auth/me/google/start'}>
+                  ) : googleEnabled && API_BASE ? (
+                    <form method="post" action={API_BASE + '/auth/me/google/start'}>
                       <button className="settings-button settings-button--light" type="submit">Google account холбох</button>
                     </form>
                   ) : (
