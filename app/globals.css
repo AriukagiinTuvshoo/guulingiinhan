@@ -1139,6 +1139,37 @@
 .authv2-method-heading{margin:22px 0 -12px;color:#53675d;font:600 10px/1.4 'Noto Sans','DM Sans',sans-serif}
 @media(max-width:620px){.authv2-method-heading{margin-top:18px}}
 
+/* A greener, more natural palette for sign-in and registration. */
+.authv2-shell{background:radial-gradient(ellipse at 8% 12%,rgba(102,139,93,.15),transparent 35%),radial-gradient(ellipse at 92% 88%,rgba(174,190,145,.19),transparent 34%),linear-gradient(145deg,#edf3e9 0%,#e5ecdf 52%,#f2f1e7 100%);color:#263f32}
+.authv2-frame{background:#fbfcf7;border-color:#bdcbb7;box-shadow:16px 18px 0 rgba(80,112,76,.13)}
+.authv2-story{background:linear-gradient(155deg,#dce8d5 0%,#cfddc7 56%,#e4e8d8 100%);border-right-color:#c1cfb8}
+.authv2-story:before{background-image:radial-gradient(ellipse at 78% 24%,rgba(255,255,255,.6),transparent 35%),linear-gradient(90deg,transparent 98%,#829b7a45 98%),linear-gradient(0deg,transparent 98%,#829b7a45 98%);opacity:.28}
+.authv2-mark{border-color:#9ab08f;color:#315d43;background:#edf4e7}
+.authv2-mark-link strong,.authv2-story-copy h1,.authv2-heading h2{color:#234a35}
+.authv2-mark-link small,.authv2-story-copy>p:last-child{color:#607764}
+.authv2-branch-art{color:#47734b;opacity:.38}
+.authv2-back{color:#506b56}.authv2-back:hover,.authv2-back:focus-visible{color:#2f6841}
+.authv2-heading .public-home__eyebrow{color:#567c4f}
+.authv2-heading p:last-child{color:#66796a}
+.authv2-tabs{border-bottom-color:#cbd7c4}
+.authv2-tabs button.active{border-bottom-color:#4d7d4c;color:#2f6841}
+.authv2-tabs button:focus-visible{outline-color:#5e8c58}
+.authv2-message--success{border-color:#b8d0ae;background:#eef6e9;color:#3f6644}
+.authv2-form label{color:#435f4a}
+.authv2-form input{border-color:#c3d0bb;background:#fffefa;color:#284a36}
+.authv2-form input:focus-visible{border-color:#5c8c55;box-shadow:0 0 0 3px rgba(92,140,85,.18)}
+.authv2-password button{color:#637966}.authv2-password button:hover,.authv2-password button:focus-visible{background:#eaf1e5;color:#3e6945}
+.authv2-forgot-row a,.authv2-switch a,.authv2-otp-actions button{color:#467647}
+.authv2-forgot-row a:hover,.authv2-forgot-row a:focus-visible,.authv2-switch a:hover,.authv2-switch a:focus-visible,.authv2-otp-actions button:hover,.authv2-otp-actions button:focus-visible{color:#285b35}
+.authv2-submit{border-color:#315f3d;background:linear-gradient(135deg,#3f7549,#2f5e3b);color:#f8fbf3;box-shadow:0 5px 12px rgba(49,95,61,.17)}
+.authv2-submit:hover,.authv2-submit:focus-visible{background:linear-gradient(135deg,#356b40,#285433);outline-color:#85a876}
+.authv2-google{border-color:#c2d0bc;background:#fafff7;color:#42634a}
+.authv2-google:hover,.authv2-google:focus-visible{background:#edf5e9;border-color:#8fac86;outline-color:#85a876}
+.authv2-switch{border-top-color:#d5dfcf;color:#697b6b}
+.authv2-otp-summary{border-left-color:#719660;background:#edf4e7}.authv2-otp-summary strong{color:#315f3e}
+.authv2-complete-mark{border-color:#a9c69f;background:#edf5e8;color:#3c7144}.authv2-complete h3{color:#2d593a}
+.authv2-shell :focus-visible{outline-color:#5c8c55}
+
 
 /* Production family tree */
 .tree-page{min-height:calc(100vh - 68px);padding:28px clamp(10px,3vw,34px) 42px;background:radial-gradient(circle at 82% 4%,rgba(149,118,55,.10),transparent 30%),linear-gradient(180deg,#f3ede1 0%,#eee7da 100%);color:#40564b}
