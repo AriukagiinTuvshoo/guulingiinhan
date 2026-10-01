@@ -20,6 +20,7 @@ import Link from 'next/link';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
+import { FamilyContext } from './family-context';
 
 type NavItem = {
   key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'settings';
@@ -531,8 +532,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
             </div>
           ) : null}
-          <div key={familyId || requestedFamilyId || 'no-family-context'}>
-            {children}
+          <div key={requestedFamilyId || familyId || 'no-family-context'}>
+            <FamilyContext.Provider value={{
+              family: currentFamily,
+              user,
+              loading: contextLoading || !contextLoaded || familySwitching,
+              error: contextError,
+              retry: retryContext,
+            }}>
+              {children}
+            </FamilyContext.Provider>
           </div>
         </div>
       </div>
