@@ -125,7 +125,7 @@ function SettingsContent() {
       const resolvedFamily = familyData.find((family) => family.id === requestedFamily)?.id ?? '';
       setFamilyId(resolvedFamily);
       if (requestedFamily && !resolvedFamily) {
-        setError('Энэ Family ID таны authorized family context-д байхгүй байна.');
+        setError('Энэ гэр бүлийн дугаар таны эрхтэй гэр бүлийн жагсаалтад байхгүй байна.');
         return;
       }
       if (!requestedFamily && resolvedFamily) {
@@ -269,7 +269,7 @@ function SettingsContent() {
       setPhone('');
       setResendSeconds(0);
       await refreshIdentities();
-      setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж, account-той холбогдлоо.' });
+      setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж, бүртгэлтэй холбогдлоо.' });
     } catch (cause) {
       if (mutationId !== mutationSequence.current) return;
       setNotice({ kind: 'error', text: friendlyError(cause, 'Утас баталгаажуулж чадсангүй.') });
@@ -347,7 +347,7 @@ function SettingsContent() {
   }
 
   if (!familyId && families.length > 0 && requestedFamilyId) {
-    return <main className="settings-page"><section className="settings-shell settings-state-wrap"><div className="settings-state" role="alert"><AlertCircle size={24} /><p className="settings-eyebrow">FAMILY CONTEXT</p><h1>Гэр бүл олдсонгүй</h1><p>Энэ Family ID таны эрхтэй гэр бүлүүдийн жагсаалтад байхгүй байна.</p><button className="settings-button settings-button--dark" type="button" onClick={() => router.replace('/settings')}>Гэр бүлийн тохиргоо руу буцах</button></div></section></main>;
+    return <main className="settings-page"><section className="settings-shell settings-state-wrap"><div className="settings-state" role="alert"><AlertCircle size={24} /><p className="settings-eyebrow">ГЭР БҮЛ</p><h1>Гэр бүл олдсонгүй</h1><p>Энэ гэр бүлийн дугаар таны эрхтэй гэр бүлүүдийн жагсаалтад байхгүй байна.</p><button className="settings-button settings-button--dark" type="button" onClick={() => router.replace('/settings')}>Гэр бүлийн тохиргоо руу буцах</button></div></section></main>;
   }
 
   return (
@@ -364,8 +364,8 @@ function SettingsContent() {
             <p className="settings-eyebrow">ХУВИЙН ОРОН ЗАЙ</p>
             <h1>Тохиргоо</h1>
             <p className="settings-intro">
-              Өөрийн account, нэвтрэх аргууд болон одоогийн гэр бүлийн орчноо эндээс шалгана.
-              Зөвхөн таны account-д хамаарах мэдээлэл харагдана.
+              Бүртгэл, нэвтрэх аргууд болон одоогийн гэр бүлийн орчноо эндээс шалгана.
+              Зөвхөн таны бүртгэлд хамаарах мэдээлэл харагдана.
             </p>
           </div>
           <div className="settings-mark" aria-hidden="true"><TreeDeciduous size={52} strokeWidth={1.05} /></div>
@@ -380,10 +380,11 @@ function SettingsContent() {
 
         <div className="settings-layout">
           <aside className="settings-index" aria-label="Тохиргооны хэсгүүд">
-            <a href="#account">Account</a>
-            <a href="#family">Family</a>
-            <a href="#security">Security</a>
-            <a href="#signout">Sign out</a>
+            <a href="#account">Аккаунт</a>
+            <a href="#family">Гэр бүл</a>
+            <a href="#privacy">Нууцлал</a>
+            <a href="#security">Аюулгүй байдал</a>
+            <a href="#signout">Гарах</a>
           </aside>
 
           <div className="settings-content">
@@ -392,8 +393,8 @@ function SettingsContent() {
                 <div className="settings-section__icon"><UserRound size={18} /></div>
                 <div>
                   <p className="settings-eyebrow">ACCOUNT</p>
-                  <h2 id="settings-account-title">Таны account</h2>
-                  <p>Одоогийн authenticated user API болон identity API-аас ирсэн мэдээллийг харуулна.</p>
+                  <h2 id="settings-account-title">Таны бүртгэл</h2>
+              <p>Таны аккаунт болон баталгаажуулсан нэвтрэх аргын мэдээллийг харуулна.</p>
                 </div>
               </div>
 
@@ -404,8 +405,8 @@ function SettingsContent() {
                 <div>
                   <dl className="settings-facts">
                     <div><dt>Дэлгэцийн нэр</dt><dd>{user?.display_name || 'Тодорхойгүй'}</dd></div>
-                    <div><dt>Имэйл</dt><dd>{user?.email || 'Account-д имэйл холбогдоогүй'}</dd></div>
-                    <div><dt>Account ID</dt><dd className="settings-mono">{user?.id}</dd></div>
+                    <div><dt>Имэйл</dt><dd>{user?.email || 'Аккаунтад имэйл холбогдоогүй'}</dd></div>
+                    <div><dt>Аккаунтын дугаар</dt><dd className="settings-mono">{user?.id}</dd></div>
                   </dl>
                   <form className="settings-inline-form" onSubmit={saveDisplayName}>
                     <label htmlFor="account-display-name">Дэлгэцийн нэрээ засах</label>
@@ -414,11 +415,11 @@ function SettingsContent() {
                   </form>
                   {user?.person_id && selectedFamily ? (
                     <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>
-                      Миний холбоотой Person профайлыг харах
+                      Миний хүний профайлыг харах
                     </Link>
                   ) : null}
                   <p className="settings-note">
-                    Имэйл өөрчлөх болон account зураг нэмэх баталгаажуулсан урсгал одоогоор байхгүй. Person-ийн зураг нь тусдаа эрхтэй мэдээлэл.
+                    Имэйл солих баталгаажуулсан урсгал одоогоор байхгүй. Бүртгэлийн зураг нэмэх боломжгүй; хүний профайл зураг тусдаа зөвшөөрөлтэй.
                   </p>
                 </div>
               </div>
@@ -444,7 +445,7 @@ function SettingsContent() {
                 <div>
                   <p className="settings-eyebrow">FAMILY CONTEXT</p>
                   <h2 id="settings-family-title">Гэр бүлийн орчин</h2>
-                  <p>Зөвхөн /families API-аас таны эрхтэй membership-үүдийг ашиглана.</p>
+              <p>Зөвхөн таны гишүүнээр бүртгэгдсэн гэр бүлүүд энд харагдана.</p>
                 </div>
               </div>
 
@@ -452,15 +453,15 @@ function SettingsContent() {
                 {families.length === 0 ? (
                   <div className="settings-empty">
                     <strong>Одоогоор харагдах гэр бүл алга.</strong>
-                    <span>Энд зөвхөн таны membership-тэй гэр бүлүүд харагдана.</span>
-                    <Link className="settings-button settings-button--light" href="/onboarding">Гэр бүл үүсгэх</Link>
+                    <span>Энд зөвхөн таны гишүүнээр бүртгэгдсэн гэр бүлүүд харагдана.</span>
+                    <span>Гуулингийнхан удмын модонд нэвтрэх бол гэр бүлийн эзнээс урилга хүснэ үү. Гишүүнчлэлгүйгээр хувийн удам харагдахгүй.</span>
                   </div>
                 ) : families.length === 1 ? (
                   <div className="settings-family-single">
                     <span className="settings-family-single__name">{families[0].name}</span>
                     <span className="settings-family-badge">{families[0].role}</span>
                     <p className="settings-help">
-                      Танд одоогоор нэг л authorized family context байна.
+                      Танд одоогоор эрхтэй нэг гэр бүлийн орчин байна.
                     </p>
                   </div>
                 ) : (
@@ -475,14 +476,14 @@ function SettingsContent() {
                       {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
                     </select>
                     <p id="settings-family-help" className="settings-help">
-                      URL дахь family ID өөрөө эрх олгохгүй; backend membership шалгалт нь үргэлж authoritative хэвээр.
+                      Хаяг дахь гэр бүлийн дугаар эрх олгохгүй; сервер гишүүнчлэлийг хүсэлт бүрд шалгана.
                     </p>
                     {selectedFamily && (
                       <div className="settings-family-meta">
                         <span className="settings-family-badge">{selectedFamily.role}</span>
                         <span>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</span>
                         <Link className="settings-button settings-button--light" href={'/families?family=' + encodeURIComponent(selectedFamily.id)}>
-                          Family тохиргоо, гишүүдийг удирдах →
+                          Гэр бүлийн тохиргоо, гишүүдийг удирдах →
                         </Link>
                       </div>
                     )}
@@ -491,13 +492,38 @@ function SettingsContent() {
               </div>
             </section>
 
+            <section id="privacy" className="settings-section" aria-labelledby="settings-privacy-title">
+              <div className="settings-section__head">
+                <div className="settings-section__icon"><ShieldCheck size={18} /></div>
+                <div>
+                  <p className="settings-eyebrow">НУУЦЛАЛ</p>
+                  <h2 id="settings-privacy-title">Профайл ба гэр бүлийн мэдээлэл</h2>
+                  <p>Хувийн удам зөвхөн зөвшөөрөгдсөн гэр бүлийн гишүүдэд харагдана. Бүртгэлээс гэр бүлийн дугаар сольсон нь эрх нэмэхгүй.</p>
+                </div>
+              </div>
+              <div className="settings-card settings-privacy-card">
+                {user?.person_id && selectedFamily ? (
+                  <>
+                    <div><strong>Өөрийн хүний профайлын харагдац</strong><p>Профайл засах хэсэгт “Зөвхөн би”, “Гэр бүлийнхэн”, эсвэл “Нийтийн” сонголтыг сервер дээр шалгагддаг нууцлалын дүрмээр удирдана.</p></div>
+                    <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>Профайлын нууцлалыг тохируулах</Link>
+                  </>
+                ) : (
+                  <>
+                    <div><strong>Өөрийгөө одоо байгаа удамтай холбоно уу</strong><p>Хайлтаар хүнээ олж, холбох хүсэлт гаргана. Гэр бүлийн эзэн хэн болохыг тань шалгасны дараа батална. Нэр ижил гэдгээр автоматаар холбохгүй.</p></div>
+                    <Link className="settings-button settings-button--light" href={selectedFamily ? '/tree?family=' + encodeURIComponent(selectedFamily.id) : '/families'}>Удам дотроос өөрийгөө олох</Link>
+                  </>
+                )}
+              </div>
+              <p className="settings-help">Хуваалцсан зураг болон бусад мэдээллийн харагдацыг тухайн профайл, өгүүллэг, дурсамжийн бодит нууцлалын тохиргоо удирдана. Энд хэрэгжээгүй “бүх өгөгдлийг нуух” тохиргоо нэмээгүй.</p>
+            </section>
+
             <section id="security" className="settings-section" aria-labelledby="settings-security-title">
               <div className="settings-section__head">
                 <div className="settings-section__icon"><ShieldCheck size={18} /></div>
                 <div>
                   <p className="settings-eyebrow">SECURITY</p>
                   <h2 id="settings-security-title">Нэвтрэх ба аюулгүй байдал</h2>
-                  <p>Одоо backend дэмжиж буй verification болон identity linking flow-уудыг л ашиглана.</p>
+                  <p>Зөвхөн серверт хэрэгжсэн баталгаажуулалт болон нэвтрэх арга холбох үйлдлүүдийг ашиглана.</p>
                 </div>
               </div>
 
@@ -505,7 +531,7 @@ function SettingsContent() {
                 <article className="settings-card settings-action-card">
                   <div className="settings-action-copy">
                     <div className="settings-action-title"><Mail size={17} /><div><strong>Имэйл баталгаажуулалт</strong><span>{emailIdentity?.display_identifier || 'Имэйл холбогдоогүй'}</span></div></div>
-                    <p>{emailIdentity?.verified ? 'Энэ account-ийн имэйл баталгаажсан байна.' : 'Баталгаажаагүй бол existing verification endpoint-оор шинэ холбоос хүсэж болно.'}</p>
+                    <p>{emailIdentity?.verified ? 'Энэ бүртгэлийн имэйл баталгаажсан байна.' : 'Баталгаажаагүй бол шинэ баталгаажуулах холбоос хүсэж болно.'}</p>
                   </div>
                   {emailIdentity?.verified ? (
                     <span className="settings-status settings-status--verified"><Check size={13} /> Баталгаажсан</span>
@@ -521,7 +547,7 @@ function SettingsContent() {
                 <article className="settings-card settings-action-card">
                   <div className="settings-action-copy">
                     <div className="settings-action-title"><Phone size={17} /><div><strong>Утасны дугаар</strong><span>{phoneIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
-                    <p>{phoneIdentity ? 'Баталгаажсан утас энэ account-той холбогдсон байна.' : 'Утас холбох үед backend-ийн OTP verification заавал хийгдэнэ.'}</p>
+                    <p>{phoneIdentity ? 'Баталгаажсан утас энэ бүртгэлтэй холбогдсон байна.' : 'Утас холбохдоо нэг удаагийн кодоор баталгаажуулна.'}</p>
                   </div>
 
                   {phoneIdentity ? (
@@ -552,14 +578,14 @@ function SettingsContent() {
 
                 <article className="settings-card settings-action-card">
                   <div className="settings-action-copy">
-                    <div className="settings-action-title"><Globe2 size={17} /><div><strong>Google account</strong><span>{googleIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
-                    <p>Google linking enabled бол existing OAuth flow-оор холбоно. Credential энэ хуудсанд хадгалагдахгүй.</p>
+                    <div className="settings-action-title"><Globe2 size={17} /><div><strong>Google бүртгэл</strong><span>{googleIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
+                    <p>Google бүртгэл холбох боломж идэвхтэй бол баталгаажсан нэвтрэх урсгалаар холбоно. Нууц мэдээллийг энэ хуудсанд хадгалахгүй.</p>
                   </div>
                   {googleIdentity ? (
                     <span className="settings-status settings-status--verified"><Check size={13} /> Холбогдсон</span>
                   ) : googleEnabled ? (
                     <form method="post" action={(process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1') + '/auth/me/google/start'}>
-                      <button className="settings-button settings-button--light" type="submit">Google account холбох</button>
+                      <button className="settings-button settings-button--light" type="submit">Google бүртгэл холбох</button>
                     </form>
                   ) : (
                     <span className="settings-status settings-status--pending">Одоогоор боломжгүй</span>
@@ -570,7 +596,7 @@ function SettingsContent() {
                   <ShieldCheck size={17} />
                   <div>
                     <strong>Нууц үг солих</strong>
-                    <p>Authenticated password-change endpoint байхгүй. Existing password reset нь reset token-оор ажилладаг тул энд зохиомол password-change API нэмээгүй.</p>
+                    <p>Нэвтэрсэн үед нууц үг солих тусгай үйлдэл одоогоор байхгүй. Нууц үг сэргээх баталгаажуулсан урсгалыг ашиглана.</p>
                     <Link href="/password-reset">Нууц үг сэргээх</Link>
                   </div>
                 </article>
@@ -585,7 +611,7 @@ function SettingsContent() {
                 <div>
                   <p className="settings-eyebrow">SESSION</p>
                   <h2 id="settings-signout-title">Sign out</h2>
-                  <p>Одоогийн browser session-ийг existing logout endpoint-оор хүчингүй болгоно.</p>
+                  <p>Энэ хөтөчийн одоогийн нэвтрэлтийг хүчингүй болгоно.</p>
                 </div>
               </div>
               <div className="settings-card settings-logout-card">

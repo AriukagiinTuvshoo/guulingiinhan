@@ -55,6 +55,17 @@ try {
   assert.ok([...result.positions.values()].every((point) =>
     Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z)), 'all coordinates are finite');
   assert.ok(timings[3] < 5000, '800-person layout completes within the generous local safety ceiling');
+  const disconnected = layoutTree3D({
+    persons: [
+      { id: 'root', first_name: 'Root', last_name: 'Fixture' },
+      { id: 'unknown', first_name: 'Unknown', last_name: 'Fixture' },
+    ],
+    parent_child_relationships: [],
+    marriages: [],
+    root_person_id: 'root',
+  });
+  assert.equal(disconnected.generations.get('unknown'), null, 'disconnected people do not receive a fabricated generation');
+  assert.ok(disconnected.positions.get('unknown').y > disconnected.positions.get('root').y, 'unlinked people get a separate visual lane');
   console.log(JSON.stringify({
     syntheticPeople: count,
     parentChildEdges: parentChild.length,

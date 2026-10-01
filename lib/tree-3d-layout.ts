@@ -1,7 +1,7 @@
 import { personName, TreeData, TreePerson } from './api';
 
 export type Point3 = { x: number; y: number; z: number };
-export type Tree3DLayout = { positions: Map<string, Point3>; generations: Map<string, number> };
+export type Tree3DLayout = { positions: Map<string, Point3>; generations: Map<string, number | null> };
 
 /** Deterministic 3D coordinates derived only from canonical relationship and branch IDs. */
 export function layoutTree3D(data: TreeData): Tree3DLayout {
@@ -22,7 +22,7 @@ export function layoutTree3D(data: TreeData): Tree3DLayout {
   const rootId = data.root_person_id && personIds.has(data.root_person_id)
     ? data.root_person_id
     : data.persons[0]?.id;
-  const generations = new Map<string, number>();
+  const generations = new Map<string, number | null>();
   if (!rootId) return { positions: new Map(), generations };
   generations.set(rootId, 0);
   const queue = [rootId];
@@ -35,14 +35,13 @@ export function layoutTree3D(data: TreeData): Tree3DLayout {
       queue.push(edge.id);
     }
   }
-  for (const person of data.persons) if (!generations.has(person.id)) generations.set(person.id, 0);
-
+  for (const person of data.persons) if (!generations.has(person.id)) generations.set(person.id, null);
   const branches = [...new Set(data.persons.map((person) => person.branch_id ?? person.lineage_id ?? ''))]
     .filter(Boolean).sort();
   const branchSlot = new Map(branches.map((id, index) => [id, index]));
-  const generationRows = new Map<number, TreePerson[]>();
+  const generationRows = new Map<number | null, TreePerson[]>();
   for (const person of data.persons) {
-    const generation = generations.get(person.id) ?? 0;
+    const generation = generations.get(person.id) ?? null;
     let row = generationRows.get(generation);
     if (!row) {
       row = [];
@@ -50,6 +49,15 @@ export function layoutTree3D(data: TreeData): Tree3DLayout {
     }
     row.push(person);
   }
+
+  const generationValues = [...generationRows.keys()].filter((generation): generation is number => generation !== null);
+  const generationSpan = generationValues.length
+    ? Math.max(...generationValues) - Math.min(...generationValues)
+    : 0;
+  const widestGeneration = Math.max(...[...generationRows.values()].map((people) => people.length));
+  const xSpacing = Math.min(5.4, 520 / Math.max(1, widestGeneration - 1));
+  const zSpacing = Math.min(13, 340 / Math.max(1, branches.length - 1));
+  const ySpacing = Math.min(12, 360 / Math.max(1, generationSpan));
 
   const positions = new Map<string, Point3>();
   for (const [generation, people] of generationRows) {
@@ -63,9 +71,9 @@ export function layoutTree3D(data: TreeData): Tree3DLayout {
       const branchId = person.branch_id ?? person.lineage_id ?? '';
       const branch = branchSlot.get(branchId) ?? 0;
       positions.set(person.id, {
-        x: (index - rowOffset) * 5.4,
-        y: -generation * 12,
-        z: (branch - Math.max(0, branches.length - 1) / 2) * 13,
+        x: (index - rowOffset) * xSpacing,
+        y: generation === null ? ySpacing * 1.75 : -generation * ySpacing,
+        z: (branch - Math.max(0, branches.length - 1) / 2) * zSpacing,
       });
     });
   }

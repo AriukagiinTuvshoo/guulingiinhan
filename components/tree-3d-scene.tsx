@@ -11,6 +11,7 @@ type Props = {
   selectedPersonId: string;
   currentPersonId?: string | null;
   canonicalRootId?: string | null;
+  focusedBranchId?: string | null;
   focusRequest?: number;
   onSelect: (personId: string) => void;
   onFallback: () => void;
@@ -44,8 +45,31 @@ function makeLabel(person: TreePerson, color: string): THREE.Sprite {
   return sprite;
 }
 
+function peopleInFocusedBranch(data: TreeData, branchId: string | null | undefined, selectedId: string, rootId: string | null | undefined) {
+  if (!branchId) return data.persons;
+  const visibleIds = new Set(data.persons
+    .filter((person) => person.branch_id === branchId)
+    .map((person) => person.id));
+  if (rootId) visibleIds.add(rootId);
+  if (selectedId) visibleIds.add(selectedId);
+  // Keep one relationship ring around the branch so its parent, child, and spouse context remains legible.
+  for (const edge of data.parent_child_relationships) {
+    if (visibleIds.has(edge.parent_id) || visibleIds.has(edge.child_id)) {
+      visibleIds.add(edge.parent_id);
+      visibleIds.add(edge.child_id);
+    }
+  }
+  for (const marriage of data.marriages) {
+    if (visibleIds.has(marriage.person_1_id) || visibleIds.has(marriage.person_2_id)) {
+      visibleIds.add(marriage.person_1_id);
+      visibleIds.add(marriage.person_2_id);
+    }
+  }
+  return data.persons.filter((person) => visibleIds.has(person.id));
+}
+
 export default function Tree3DScene({
-  data, selectedPersonId, currentPersonId, canonicalRootId, focusRequest = 0, onSelect, onFallback,
+  data, selectedPersonId, currentPersonId, canonicalRootId, focusedBranchId, focusRequest = 0, onSelect, onFallback,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -57,6 +81,7 @@ export default function Tree3DScene({
   const [webglError, setWebglError] = useState(false);
   const [ready, setReady] = useState(false);
   const [selectedContext, setSelectedContext] = useState('');
+  const [generationChoices, setGenerationChoices] = useState<Array<{ generation: number; personId: string; count: number }>>([]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -81,7 +106,7 @@ export default function Tree3DScene({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x102b23);
-    scene.fog = new THREE.Fog(0x102b23, 70, 180);
+    scene.fog = new THREE.Fog(0x102b23, 250, 1200);
     scene.add(new THREE.HemisphereLight(0xe8dfc5, 0x203c31, 2.1));
     const keyLight = new THREE.DirectionalLight(0xffe5a4, 2.4);
     keyLight.position.set(20, 40, 25);
@@ -96,7 +121,7 @@ export default function Tree3DScene({
     controls.enableDamping = true;
     controls.dampingFactor = 0.075;
     controls.minDistance = 9;
-    controls.maxDistance = 160;
+    controls.maxDistance = 900;
     controls.maxPolarAngle = Math.PI * 0.88;
     controls.target.set(0, 0, 0);
 
@@ -170,90 +195,154 @@ export default function Tree3DScene({
       });
     }
 
-    const { positions } = layoutTree3D(data);
+    const { positions, generations } = layoutTree3D(data);
     positionsRef.current = positions;
+    if (positions.size) {
+      const bounds = new THREE.Box3().setFromPoints([...positions.values()].map((point) => new THREE.Vector3(point.x, point.y, point.z)));
+      const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
+      if (cameraRef.current) {
+        cameraRef.current.far = Math.max(400, radius * 4);
+        cameraRef.current.updateProjectionMatrix();
+      }
+      controlsRef.current && (controlsRef.current.maxDistance = Math.max(900, radius * 2));
+      if (scene.fog instanceof THREE.Fog) scene.fog.far = Math.max(180, radius * 3);
+    }
     const nextObjects: THREE.Object3D[] = [];
-    const personIds = new Set(data.persons.map((person) => person.id));
-    const byId = new Map(data.persons.map((person) => [person.id, person]));
-    for (const edge of data.parent_child_relationships) {
-      const start = positions.get(edge.parent_id);
-      const end = positions.get(edge.child_id);
-      if (!start || !end) continue;
-      const points = [new THREE.Vector3(start.x, start.y, start.z), new THREE.Vector3(end.x, end.y, end.z)];
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xd2bd82, transparent: true, opacity: 0.68 }));
+    const visiblePeople = peopleInFocusedBranch(data, focusedBranchId, selectedPersonId, canonicalRootId);
+    const personIds = new Set(visiblePeople.map((person) => person.id));
+    const generationGroups = new Map<number, string[]>();
+    for (const person of visiblePeople) {
+      const generation = generations.get(person.id);
+      if (generation === undefined || generation === null) continue;
+      const rows = generationGroups.get(generation) ?? [];
+      rows.push(person.id);
+      generationGroups.set(generation, rows);
+    }
+    setGenerationChoices([...generationGroups.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([generation, generationPersonIds]) => ({ generation, personId: generationPersonIds[0], count: generationPersonIds.length })));
+    const visibleData = {
+      parent_child_relationships: data.parent_child_relationships.filter((edge) => personIds.has(edge.parent_id) && personIds.has(edge.child_id)),
+      marriages: data.marriages.filter((marriage) => personIds.has(marriage.person_1_id) && personIds.has(marriage.person_2_id)),
+    };
+    const byId = new Map(visiblePeople.map((person) => [person.id, person]));
+    const segments = (pairs: Array<[string, string]>) => {
+      const coordinates: number[] = [];
+      for (const [fromId, toId] of pairs) {
+        const from = positions.get(fromId);
+        const to = positions.get(toId);
+        if (!from || !to) continue;
+        coordinates.push(from.x, from.y, from.z, to.x, to.y, to.z);
+      }
+      if (!coordinates.length) return null;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(coordinates, 3));
+      return geometry;
+    };
+    const parentGeometry = segments(visibleData.parent_child_relationships.map((edge) => [edge.parent_id, edge.child_id]));
+    if (parentGeometry) {
+      const line = new THREE.LineSegments(parentGeometry, new THREE.LineBasicMaterial({ color: 0xd2bd82, transparent: true, opacity: 0.68 }));
       line.userData.relationshipType = 'parent-child';
       nextObjects.push(line);
       scene.add(line);
     }
-    for (const marriage of data.marriages) {
-      const start = positions.get(marriage.person_1_id);
-      const end = positions.get(marriage.person_2_id);
-      if (!start || !end) continue;
-      const geometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(start.x, start.y, start.z), new THREE.Vector3(end.x, end.y, end.z),
-      ]);
-      const current = marriage.status === 'married';
-      const line = new THREE.Line(geometry, current
-        ? new THREE.LineBasicMaterial({ color: 0xe7ca7c, linewidth: 2.4, transparent: true, opacity: 0.92 })
-        : new THREE.LineDashedMaterial({ color: 0xa99059, dashSize: 0.8, gapSize: 0.48, transparent: true, opacity: 0.72 }));
-      if (!current) line.computeLineDistances();
-      line.userData.relationshipType = 'spouse';
-      line.userData.status = marriage.status;
+    const currentMarriages = visibleData.marriages.filter((marriage) => marriage.status === 'married');
+    const historicMarriages = visibleData.marriages.filter((marriage) => marriage.status !== 'married');
+    const currentGeometry = segments(currentMarriages.map((marriage) => [marriage.person_1_id, marriage.person_2_id]));
+    if (currentGeometry) {
+      const line = new THREE.LineSegments(currentGeometry, new THREE.LineBasicMaterial({ color: 0xe7ca7c, transparent: true, opacity: 0.92 }));
+      line.userData.relationshipType = 'current-marriage';
+      nextObjects.push(line);
+      scene.add(line);
+    }
+    const historicGeometry = segments(historicMarriages.map((marriage) => [marriage.person_1_id, marriage.person_2_id]));
+    if (historicGeometry) {
+      const line = new THREE.LineSegments(historicGeometry, new THREE.LineDashedMaterial({ color: 0xa99059, dashSize: 0.8, gapSize: 0.48, transparent: true, opacity: 0.72 }));
+      line.computeLineDistances();
+      line.userData.relationshipType = 'historic-marriage';
+      nextObjects.push(line);
+      scene.add(line);
+    }
+    const highlightedPairs: Array<[string, string]> = [];
+    for (const edge of visibleData.parent_child_relationships) {
+      if (edge.parent_id === selectedPersonId || edge.child_id === selectedPersonId) highlightedPairs.push([edge.parent_id, edge.child_id]);
+    }
+    for (const marriage of visibleData.marriages) {
+      if (marriage.person_1_id === selectedPersonId || marriage.person_2_id === selectedPersonId) highlightedPairs.push([marriage.person_1_id, marriage.person_2_id]);
+    }
+    const highlightedGeometry = segments(highlightedPairs);
+    if (highlightedGeometry) {
+      const line = new THREE.LineSegments(highlightedGeometry, new THREE.LineBasicMaterial({ color: 0xffefd0, transparent: true, opacity: 0.96 }));
+      line.userData.relationshipType = 'selected-person-context';
       nextObjects.push(line);
       scene.add(line);
     }
 
     const labeledPeople = new Set<string>([selectedPersonId, currentPersonId ?? '', canonicalRootId ?? '']);
-    const selectedParents = data.parent_child_relationships
+    const selectedParents = visibleData.parent_child_relationships
       .filter((edge) => edge.child_id === selectedPersonId)
       .map((edge) => edge.parent_id);
-    for (const edge of data.parent_child_relationships) {
+    for (const edge of visibleData.parent_child_relationships) {
       if (edge.parent_id === selectedPersonId) labeledPeople.add(edge.child_id);
       if (edge.child_id === selectedPersonId) labeledPeople.add(edge.parent_id);
       if (selectedParents.includes(edge.parent_id)) labeledPeople.add(edge.child_id);
     }
-    for (const marriage of data.marriages) {
+    for (const marriage of visibleData.marriages) {
       if (marriage.person_1_id === selectedPersonId) labeledPeople.add(marriage.person_2_id);
       if (marriage.person_2_id === selectedPersonId) labeledPeople.add(marriage.person_1_id);
     }
     const labelsToShow = new Set([...labeledPeople].filter((id) => personIds.has(id)).slice(0, 72));
 
+    const rootPeople = visiblePeople.filter((person) => person.id === canonicalRootId && positions.has(person.id));
+    const regularPeople = visiblePeople.filter((person) => person.id !== canonicalRootId && positions.has(person.id));
+    const addPeopleInstances = (people: TreePerson[], root: boolean) => {
+      if (!people.length) return null;
+      const geometry = root ? new THREE.IcosahedronGeometry(1, 1) : new THREE.SphereGeometry(1, 12, 10);
+      const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.54, metalness: root ? 0.18 : 0.05, vertexColors: true });
+      const mesh = new THREE.InstancedMesh(geometry, material, people.length);
+      mesh.userData.personIds = people.map((person) => person.id);
+      const matrix = new THREE.Matrix4();
+      const quaternion = new THREE.Quaternion();
+      const color = new THREE.Color();
+      people.forEach((person, index) => {
+        const point = positions.get(person.id)!;
+        const isSelected = person.id === selectedPersonId;
+        const isCurrent = person.id === currentPersonId;
+        const scale = root ? (isSelected ? 1.6 : 1.35) : (isSelected ? 1.32 : isCurrent ? 1.05 : 0.82);
+        matrix.compose(new THREE.Vector3(point.x, point.y, point.z), quaternion, new THREE.Vector3(scale, scale, scale));
+        mesh.setMatrixAt(index, matrix);
+        color.set(root ? 0xe9ca71 : isSelected ? 0xffefd0 : isCurrent ? 0x8bb59a : 0x6e9276);
+        mesh.setColorAt(index, color);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      scene.add(mesh);
+      nextObjects.push(mesh);
+      return mesh;
+    };
+    addPeopleInstances(regularPeople, false);
+    addPeopleInstances(rootPeople, true);
+
+    const currentPerson = currentPersonId && personIds.has(currentPersonId) ? positions.get(currentPersonId) : null;
+    if (currentPerson && currentPersonId !== canonicalRootId) {
+      const ring = new THREE.InstancedMesh(
+        new THREE.TorusGeometry(1.12, 0.07, 8, 28),
+        new THREE.MeshStandardMaterial({ color: 0xb4d0b8, roughness: 0.42, metalness: 0.12 }),
+        1,
+      );
+      ring.position.set(currentPerson.x, currentPerson.y, currentPerson.z);
+      ring.rotation.x = Math.PI / 2;
+      ring.userData.personIds = [currentPersonId];
+      scene.add(ring);
+      nextObjects.push(ring);
+    }
+
     let labelsCreated = 0;
-    for (const person of data.persons) {
+    for (const person of visiblePeople) {
       const point = positions.get(person.id);
       if (!point) continue;
       const isRoot = person.id === canonicalRootId;
-      const isCurrent = person.id === currentPersonId;
       const isSelected = person.id === selectedPersonId;
-      const geometry: THREE.BufferGeometry = isRoot
-        ? new THREE.IcosahedronGeometry(isSelected ? 1.55 : 1.3, 1)
-        : new THREE.SphereGeometry(isSelected ? 1.28 : 0.88, 16, 12);
-      const color = isRoot ? 0xe9ca71 : isSelected ? 0xffefd0 : isCurrent ? 0x8bb59a : 0x6e9276;
-      const material = new THREE.MeshStandardMaterial({
-        color, roughness: 0.52, metalness: isRoot ? 0.22 : 0.06,
-        emissive: color, emissiveIntensity: isSelected ? 0.18 : isRoot ? 0.12 : 0.035,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(point.x, point.y, point.z);
-      mesh.userData.personId = person.id;
-      mesh.userData.personName = personName(person);
-      mesh.userData.isRoot = isRoot;
-      scene.add(mesh);
-      nextObjects.push(mesh);
-
-      if (isCurrent && !isRoot) {
-        const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(1.27, 0.075, 8, 28),
-          new THREE.MeshStandardMaterial({ color: 0xb4d0b8, roughness: 0.42, metalness: 0.12 }),
-        );
-        ring.position.copy(mesh.position);
-        ring.rotation.x = Math.PI / 2;
-        ring.userData.personId = person.id;
-        scene.add(ring);
-        nextObjects.push(ring);
-      }
-
       if (labelsToShow.has(person.id) && labelsCreated < 72) {
         const label = makeLabel(person, isRoot ? '#e9ca71' : isSelected ? '#fff0cc' : '#819f87');
         label.position.set(point.x, point.y + 1.45, point.z);
@@ -264,7 +353,7 @@ export default function Tree3DScene({
       }
     }
 
-    const floorGeometry = new THREE.CircleGeometry(Math.max(11, Math.sqrt(data.persons.length) * 2), 64);
+    const floorGeometry = new THREE.CircleGeometry(Math.max(11, Math.sqrt(visiblePeople.length) * 2), 64);
     const floor = new THREE.Mesh(floorGeometry, new THREE.MeshBasicMaterial({ color: 0x254438, transparent: true, opacity: 0.27, side: THREE.DoubleSide }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = Math.min(...[...positions.values()].map((point) => point.y)) - 3;
@@ -274,7 +363,7 @@ export default function Tree3DScene({
     objectsRef.current = nextObjects;
     if (cameraRef.current) rendererRef.current?.render(scene, cameraRef.current);
     if (selectedPersonId && personIds.has(selectedPersonId)) setSelectedContext(byId.get(selectedPersonId)?.branch_name ?? '');
-  }, [canonicalRootId, currentPersonId, data, selectedPersonId]);
+  }, [canonicalRootId, data, focusedBranchId, selectedPersonId]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -283,7 +372,7 @@ export default function Tree3DScene({
     if (!controls || !camera || !point) return;
     const destination = new THREE.Vector3(point.x, point.y, point.z);
     const offset = camera.position.clone().sub(controls.target);
-    const distance = Math.max(16, Math.min(52, offset.length()));
+    const distance = Math.max(16, Math.min(34, offset.length()));
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       controls.target.copy(destination);
       camera.position.copy(destination.clone().add(new THREE.Vector3(distance * 0.62, distance * 0.45, distance * 0.82)));
@@ -322,6 +411,28 @@ export default function Tree3DScene({
     controls.update();
   }
 
+  function focusWholeTree() {
+    const controls = controlsRef.current;
+    const camera = cameraRef.current;
+    const visibleIds = focusedBranchId
+      ? new Set(peopleInFocusedBranch(data, focusedBranchId, selectedPersonId, canonicalRootId).map((person) => person.id))
+      : null;
+    const points = [...positionsRef.current.entries()]
+      .filter(([personId]) => !visibleIds || visibleIds.has(personId))
+      .map(([, point]) => point);
+    if (!controls || !camera || !points.length) return;
+    const box = new THREE.Box3().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, point.z)));
+    const center = box.getCenter(new THREE.Vector3());
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const distance = Math.max(28, Math.min(850, sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.08));
+    const direction = new THREE.Vector3(0.62, 0.45, 0.82).normalize();
+    controls.target.copy(center);
+    camera.position.copy(center.clone().add(direction.multiplyScalar(distance)));
+    camera.far = Math.max(1200, distance * 3);
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
@@ -332,8 +443,12 @@ export default function Tree3DScene({
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, cameraRef.current!);
-      const hit = raycaster.intersectObjects(objectsRef.current, false).find((item) => typeof item.object.userData.personId === 'string');
-      const id = hit?.object.userData.personId;
+      const hit = raycaster.intersectObjects(objectsRef.current, false).find((item) =>
+        typeof item.object.userData.personId === 'string'
+        || (Number.isInteger(item.instanceId) && Array.isArray(item.object.userData.personIds)));
+      const id = typeof hit?.object.userData.personId === 'string'
+        ? hit.object.userData.personId
+        : Number.isInteger(hit?.instanceId) ? hit?.object.userData.personIds?.[hit.instanceId!] : undefined;
       if (typeof id === 'string') onSelect(id);
     };
     renderer.domElement.addEventListener('click', handleClick);
@@ -344,7 +459,10 @@ export default function Tree3DScene({
   const selectedMarriages: Marriage[] = selectedPerson
     ? data.marriages.filter((marriage) => marriage.person_1_id === selectedPerson.id || marriage.person_2_id === selectedPerson.id)
     : [];
-  const visibleNodeCount = data.persons.length;
+  const visiblePersons = peopleInFocusedBranch(data, focusedBranchId, selectedPersonId, canonicalRootId);
+  const accessiblePeople = visiblePersons.slice(0, 40);
+  if (selectedPerson && !accessiblePeople.some((person) => person.id === selectedPerson.id)) accessiblePeople.push(selectedPerson);
+  const visibleNodeCount = visiblePersons.length;
 
   return (
     <section className="tree-3d-panel" aria-label="3D удмын мод">
@@ -369,7 +487,16 @@ export default function Tree3DScene({
             <span><i className="tree-legend-self" /> Миний хүн</span>
           </div>
           <div className="tree-3d-hint">Чирж эргүүлэх · баруун товчоор зөөх · дугуйгаар томруулах</div>
-          <button type="button" className="tree-3d-focus" onClick={focusSelected}>Сонгосон хүнийг төвлөрүүлэх</button>
+          <div className="tree-3d-actions">
+            <button type="button" className="tree-3d-focus" onClick={focusSelected}>Сонгосон хүнийг төвлөрүүлэх</button>
+            <button type="button" className="tree-3d-focus" onClick={focusWholeTree}>Бүх модыг харах</button>
+          </div>
+          {generationChoices.length > 1 && <div className="tree-3d-generations" aria-label={data.root_person_id === canonicalRootId ? 'Удмын эхээс үе сонгох' : 'Одоогийн фокусаас үе сонгох'}>
+            <strong>{data.root_person_id === canonicalRootId ? 'Үе · удмын эхээс' : 'Үе · одоогийн фокусаас'}</strong>
+            <div>{generationChoices.map((choice) => <button key={choice.generation} type="button" onClick={() => onSelect(choice.personId)} aria-label={`${choice.generation === 0 ? 'Төв үе' : choice.generation < 0 ? Math.abs(choice.generation) + ' үеийн өмнө' : choice.generation + ' үеийн дараа'}, ${choice.count} хүн`}>
+              {choice.generation === 0 ? 'Төв үе' : choice.generation < 0 ? `${Math.abs(choice.generation)} үеийн өмнө` : `${choice.generation} үеийн дараа`} · {choice.count}
+            </button>)}</div>
+          </div>}
         </div>
       )}
       {selectedPerson && (
@@ -378,13 +505,14 @@ export default function Tree3DScene({
         </p>
       )}
       <div className="tree-3d-accessible-list" aria-label="3D модны хүртээмжтэй жагсаалт">
-        {data.persons.map((person) => (
+          {accessiblePeople.map((person) => (
           <button key={person.id} type="button" aria-pressed={person.id === selectedPersonId} onClick={() => onSelect(person.id)}>
             {person.id === canonicalRootId ? 'Удмын эх · ' : ''}{person.id === currentPersonId ? 'Миний хүн · ' : ''}{personName(person)}
           </button>
         ))}
       </div>
-      {data.meta?.truncated && <p className="tree-3d-limit" role="status">Одоогийн фокусын хүрээний {visibleNodeCount} хүнийг дүрсэллээ. Бусад хүнийг хайж сонгоход тухайн хүний эргэн тойрны зөвшөөрөгдсөн холбоосыг дахин ачаална.</p>}
+      {visiblePersons.length > 40 && <p className="tree-3d-limit" role="status">Хүртээмжтэй жагсаалтад эхний 40 хүнийг үзүүлж байна. Бусдыг дээд талын хайлтаар олж сонгоно уу.</p>}
+      {data.meta?.truncated && <p className="tree-3d-limit" role="status">Одоогийн фокусын хүрээнд {visibleNodeCount} хүнийг дүрсэллээ. Бусад хүнийг хайж сонгоход тухайн хүний зөвшөөрөгдсөн холбоосыг ачаална.</p>}
     </section>
   );
 }

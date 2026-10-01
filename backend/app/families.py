@@ -1898,6 +1898,40 @@ def add_parent_child(
     }
 
 
+@router.delete("/{family_id}/relationships/parent-child/{relationship_id}", status_code=204)
+def remove_parent_child(
+    family_id: UUID,
+    relationship_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove an authorized parent-child edge without deleting either Person."""
+    _member(db, family_id, user, {"owner", "editor"})
+    edge = db.get(ParentChildRelationship, relationship_id)
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
+    parent = _person_in_family(db, family_id, edge.parent_id)
+    child = _person_in_family(db, family_id, edge.child_id)
+    _assert_person_visible(db, parent, user)
+    _assert_person_visible(db, child, user)
+    shared_family = db.scalar(
+        select(FamilyPerson.family_id)
+        .where(FamilyPerson.person_id.in_([edge.parent_id, edge.child_id]))
+        .group_by(FamilyPerson.family_id)
+        .having(func.count(func.distinct(FamilyPerson.person_id)) == 2)
+        .having(FamilyPerson.family_id != family_id)
+    )
+    if shared_family is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Энэ холбоо өөр гэр бүлийн мэдээлэлд мөн хамаарч байгаа тул эндээс салгаж болохгүй.",
+        )
+    _audit(db, user, family_id, "relationship.parent_child.removed", "parent_child", edge.id)
+    db.delete(edge)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post("/{family_id}/marriages", status_code=201)
 def create_marriage(
     family_id: UUID,
@@ -3381,7 +3415,7 @@ def family_tree(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return a family-authorized tree neighborhood capped at 300 people and 1,200 edges."""
+    """Return a family-authorized tree neighborhood capped at 800 people and 1,200 edges."""
     _member(db, family_id, user)
     family_root_person_id = db.scalar(select(Family.root_person_id).where(Family.id == family_id))
     if person_id is None:
@@ -3410,7 +3444,7 @@ def family_tree(
             "persons": [],
             "parent_child_relationships": [],
             "marriages": [],
-            "meta": {"depth": depth, "node_count": 0, "node_limit": 300, "truncated": False},
+            "meta": {"depth": depth, "node_count": 0, "node_limit": 800, "truncated": False},
         }
 
     root = _person_in_family(db, family_id, person_id)
@@ -3425,7 +3459,7 @@ def family_tree(
 
     frontier = {root.id} if can_traverse(root) else set()
     truncated = False
-    node_limit = 300
+    node_limit = 800
     edge_limit = 1200
 
     for _level in range(depth):
