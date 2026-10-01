@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
     "start": "next start --hostname 0.0.0.0",
     "dev:vinext": "vite dev --port 3001",
