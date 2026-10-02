@@ -82,6 +82,21 @@ class AdminUserStatusInput(BaseModel):
     is_active: bool
 
 
+class AdminUserProfileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str = Field(min_length=1, max_length=120)
+
+
+class AdminAuditEvent(BaseModel):
+    id: UUID
+    action: str
+    target_type: str
+    target_id: UUID | None
+    family_id: UUID | None
+    actor_name: str
+    created_at: datetime
+
+
 class AdminAccountInviteInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: EmailStr
@@ -321,6 +336,47 @@ def user_detail(
                                          first_name=p.first_name, last_name=p.last_name)
                        for p, family_id in linked],
     )
+
+
+@router.put("/users/{user_id}/profile", response_model=AdminUser)
+def edit_user_profile(
+    user_id: UUID,
+    body: AdminUserProfileInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй.")
+    name = body.display_name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Нэр хоосон байж болохгүй.")
+    if target.display_name != name:
+        target.display_name = name
+        db.add(AuditLog(id=uuid4(), family_id=None, actor_id=current[0].id,
+                        action="admin.user_profile_edited", target_type="user", target_id=user_id))
+        db.commit()
+    return AdminUser(id=target.id, display_name=target.display_name, email=target.email,
+                     is_active=target.is_active, created_at=target.created_at)
+
+
+@router.get("/audit", response_model=list[AdminAuditEvent])
+def audit_events(
+    limit: int = Query(default=40, ge=1, le=100),
+    _: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(AuditLog, User.display_name)
+        .join(User, User.id == AuditLog.actor_id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit)
+    ).all()
+    return [
+        AdminAuditEvent(id=log.id, action=log.action, target_type=log.target_type,
+                        target_id=log.target_id, family_id=log.family_id,
+                        actor_name=name, created_at=log.created_at)
+        for log, name in rows
+    ]
 
 
 @router.put("/users/{user_id}/status", response_model=AdminUser)

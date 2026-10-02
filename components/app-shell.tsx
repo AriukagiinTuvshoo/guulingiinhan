@@ -104,6 +104,26 @@ export type AppShellContextValue = {
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
+type PublishedNotice = { id: string; title: string; body: string };
+
+function AnnouncementBanner({ userId }: { userId: string }) {
+  const [notice, setNotice] = useState<PublishedNotice | null>(null);
+  const [dismissed, setDismissed] = useState('');
+  useEffect(() => {
+    let active = true;
+    void api<PublishedNotice[]>('/announcements?limit=1')
+      .then((rows) => { if (active) setNotice(rows[0] ?? null); })
+      .catch(() => { if (active) setNotice(null); });
+    return () => { active = false; };
+  }, [userId]);
+  if (!notice || dismissed === notice.id) return null;
+  return <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
+    <span aria-hidden="true">✦</span>
+    <div><strong>{notice.title}</strong><p>{notice.body}</p></div>
+    <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
+  </aside>;
+}
+
 export function useAppShellContext() {
   const context = useContext(AppShellContext);
   if (!context) throw new Error('useAppShellContext must be used inside AppShell');
@@ -456,6 +476,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
       )}
+
+      {user && <AnnouncementBanner userId={user.id} />}
 
       <div className="app-shell__body">
         <button

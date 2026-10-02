@@ -563,6 +563,21 @@ class PersonLinkRequest(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Announcement(Base):
+    """A published notice shown to authenticated users in the application."""
+
+    __tablename__ = "announcements"
+    __table_args__ = (Index("ix_announcements_created_at", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    title: Mapped[str] = mapped_column(String(180))
+    body: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_published: Mapped[bool] = mapped_column(default=False)
+
+
 class PersonGuardianship(Base):
     """Explicit, revocable authorization scoped to one person in one family."""
 

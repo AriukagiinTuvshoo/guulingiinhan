@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.admin import bootstrap_admin_roles
 from app.admin import router as admin_router
+from app.admin_workspace import public_router as announcements_router
+from app.admin_workspace import router as admin_workspace_router
 from app.auth import router as auth_router
 from app.config import get_settings
 from app.db import engine
@@ -154,6 +156,8 @@ async def request_context(request: Request, call_next):
 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+app.include_router(admin_workspace_router, prefix="/api/v1")
+app.include_router(announcements_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
