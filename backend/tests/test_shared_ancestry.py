@@ -1,6 +1,12 @@
 from uuid import UUID
 
-from app.models import AdminGrant, AuditLog, Family, SharedAncestryPerson, SharedAncestryRelationship
+from app.models import (
+    AdminGrant,
+    AuditLog,
+    Family,
+    SharedAncestryPerson,
+    SharedAncestryRelationship,
+)
 from tests.conftest import register_verified
 
 PASSWORD = "shared-ancestry-passphrase-123"
