@@ -1,5 +1,7 @@
 # Cloudflare frontend staging
 
+Custom-domain readiness and hostname cutover steps are documented in [`docs/CLOUDFLARE_CUSTOM_DOMAIN.md`](docs/CLOUDFLARE_CUSTOM_DOMAIN.md). Do not replace staging or production hostnames until the domain owner confirms the exact domain and its Cloudflare zone is active.
+
 The frontend is configured as a separate Cloudflare Worker named `guulingiinhan-staging` in `cloudflare.config.ts`. The existing `guulingiinhan` Worker must remain untouched. Staging uses the separate Cloudflare FastAPI Container, Supabase PostgreSQL project, and private R2 bucket.
 
 ## Build and deploy
