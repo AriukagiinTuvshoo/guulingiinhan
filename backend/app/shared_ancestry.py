@@ -86,6 +86,12 @@ class RootInput(BaseModel):
     expected_root_person_id: UUID | None = None
 
 
+class AdminSharedRelationshipInput(BaseModel):
+    parent_person_id: UUID
+    child_person_id: UUID
+    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive|step)$")
+
+
 class DonationInfoInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(default="", max_length=180)
@@ -398,6 +404,61 @@ def set_shared_root(body: RootInput, current: tuple[User, AdminRole] = Depends(r
     else:
         db.add(AuditLog(actor_id=current[0].id, family_id=None,
                         action="shared_ancestry.root_set", target_type="person", target_id=person.id))
+    db.commit()
+    return read_shared_tree(current[0], db)
+
+
+@admin_router.post("/relationships", response_model=SharedTreeOut, status_code=201)
+def add_shared_relationship(
+    body: AdminSharedRelationshipInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Connect two people already visible in the consent based shared tree."""
+    root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+    if body.parent_person_id == body.child_person_id or body.child_person_id == root_id:
+        raise HTTPException(status_code=422, detail="Үндсэн эхийг хүүхэд болгох эсвэл хүнийг өөртэй нь холбох боломжгүй.")
+    for person_id in (body.parent_person_id, body.child_person_id):
+        person = db.get(Person, person_id)
+        if person is None or person.visibility == "private" or person_is_minor(person) or not (
+            person_id == root_id or db.get(SharedAncestryPerson, person_id)
+        ):
+            raise HTTPException(status_code=404, detail="Нийтлэг модонд зөвшөөрлөөр орсон хүн олдсонгүй.")
+    edges = db.execute(select(
+        SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id
+    )).all()
+    try:
+        assert_parent_child_is_acyclic(edges, body.parent_person_id, body.child_person_id)
+    except RelationshipError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if any(parent == body.parent_person_id and child == body.child_person_id for parent, child in edges):
+        raise HTTPException(status_code=409, detail="Энэ хоёр хүн аль хэдийн холбогдсон байна.")
+    if sum(child == body.child_person_id for _, child in edges) >= 2:
+        raise HTTPException(status_code=409, detail="Нэг хүнд хоёр хүртэлх эцэг эх холбож болно.")
+    edge = SharedAncestryRelationship(
+        parent_id=body.parent_person_id, child_id=body.child_person_id,
+        relationship_type=body.relationship_type, created_by=current[0].id,
+    )
+    db.add(edge)
+    db.flush()
+    db.add(AuditLog(actor_id=current[0].id, family_id=None,
+                    action="shared_ancestry.relationship_added", target_type="relationship", target_id=edge.id))
+    db.commit()
+    return read_shared_tree(current[0], db)
+
+
+@admin_router.delete("/relationships/{relationship_id}", response_model=SharedTreeOut)
+def remove_shared_relationship(
+    relationship_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    edge = db.get(SharedAncestryRelationship, relationship_id)
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Нийтлэг модны холбоос олдсонгүй.")
+    db.delete(edge)
+    db.add(AuditLog(actor_id=current[0].id, family_id=None,
+                    action="shared_ancestry.relationship_removed", target_type="relationship", target_id=relationship_id))
     db.commit()
     return read_shared_tree(current[0], db)
 

@@ -19,10 +19,10 @@ type Props = {
 };
 
 function lifeSummary(person: TreePerson) {
-  const birth = person.birth_date?.slice(0, 4);
-  const death = !person.is_alive ? person.death_date?.slice(0, 4) : null;
+  const birth = person.birth_date;
+  const death = !person.is_alive ? person.death_date : null;
   if (birth && death) return `${birth} – ${death}`;
-  if (birth) return person.is_alive ? `${birth} – одоо` : `${birth} – ?`;
+  if (birth) return person.is_alive ? `Төрсөн: ${birth}` : `${birth} – ?`;
   return 'Огноо тодорхойгүй';
 }
 

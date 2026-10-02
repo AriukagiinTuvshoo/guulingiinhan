@@ -7,6 +7,7 @@ type DonationInfo = { title: string; purpose: string; currency: string; bank_nam
 
 export default function SharedDonationBanner({ userId }: { userId: string }) {
   const [info, setInfo] = useState<DonationInfo | null>(null);
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     let active = true;
     api<DonationInfo | null>('/shared-lineage/donation-info')
@@ -20,6 +21,10 @@ export default function SharedDonationBanner({ userId }: { userId: string }) {
     <div className="shared-donation__copy"><strong>{info.title || 'Гуулингийнхны удмын сан'}</strong><p>{info.purpose}</p>
       <div className="shared-donation__bank">{info.bank_name && <span>{info.bank_name}</span>}{info.account_name && <span>{info.account_name}</span>}{info.account_number && <span><b>Данс</b> {info.account_number}</span>}{info.currency && <span>{info.currency}</span>}</div>
     </div>
+    {info.account_number && <button type="button" className="shared-donation__copy-button" onClick={async () => {
+      try { await navigator.clipboard.writeText(info.account_number); setCopied(true); window.setTimeout(() => setCopied(false), 2500); }
+      catch { setCopied(false); }
+    }}>{copied ? 'Хуулагдлаа ✓' : 'Данс хуулах'}</button>}
     {info.qr_image_url && <img className="shared-donation__qr" src={info.qr_image_url} alt="Хандив шилжүүлэх QR код" loading="lazy" referrerPolicy="no-referrer" />}
   </aside>;
 }
