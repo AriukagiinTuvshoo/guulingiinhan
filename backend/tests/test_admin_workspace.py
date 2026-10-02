@@ -53,9 +53,24 @@ def test_workspace_permissions_and_genealogy_integrity(client, database, email_p
     assert client.post(base + "/relationships", json={
         "parent_id": child_id, "child_id": parent_id
     }).status_code == 422
+    lineage = client.post(base + "/lineages", json={"name": "First lineage"})
+    assert lineage.status_code == 201
+    lineage_id = lineage.json()["id"]
+    branch = client.post(base + f"/lineages/{lineage_id}/branches", json={"name": "East branch"})
+    assert branch.status_code == 201
+    assignment_url = base + f"/people/{child_id}/lineage-assignment"
+    assert client.put(assignment_url, json={
+        "lineage_id": lineage_id, "branch_id": branch.json()["id"],
+    }).status_code == 200
+    assert client.put(assignment_url, json={
+        "lineage_id": lineage_id, "branch_id": parent_id,
+    }).status_code == 404
+    assert client.get(base + "/workspace").json()["assignments"][0]["person_id"] == child_id
     assert client.delete(base + f"/people/{parent_id}").status_code == 409
     assert client.delete(base + f"/people/{child_id}").status_code == 409
     assert client.delete(base + f"/relationships/{edge.json()['id']}").status_code == 204
+    assert client.delete(base + f"/people/{child_id}").status_code == 409
+    assert client.delete(assignment_url).status_code == 204
     assert client.delete(base + f"/people/{child_id}").status_code == 204
     assert client.patch(base + f"/people/{parent_id}", json={
         "first_name": "Updated Ancestor"

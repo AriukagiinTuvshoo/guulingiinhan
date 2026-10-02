@@ -12,16 +12,26 @@ from sqlalchemy.orm import Session
 from app.admin import AdminRole, require_admin, require_super_admin
 from app.auth import get_current_user
 from app.db import get_db
-from app.families import FamilyPatch, ParentChildCreate, PersonCreate, PersonPatch
+from app.families import (
+    BranchCreate,
+    FamilyPatch,
+    LineageCreate,
+    ParentChildCreate,
+    PersonCreate,
+    PersonLineageAssignmentInput,
+    PersonPatch,
+)
 from app.models import (
     Announcement,
     ArchivePerson,
     AuditLog,
     Biography,
+    Branch,
     Family,
     FamilyMember,
     FamilyPerson,
     LifeEvent,
+    Lineage,
     Marriage,
     MemoryPersonTag,
     ParentChildRelationship,
@@ -91,12 +101,35 @@ class WorkspaceEvent(BaseModel):
     created_at: datetime
 
 
+class WorkspaceLineage(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    name: str
+    description: str | None
+
+
+class WorkspaceBranch(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    lineage_id: UUID
+    name: str
+
+
+class WorkspaceAssignment(BaseModel):
+    person_id: UUID
+    lineage_id: UUID
+    branch_id: UUID | None
+
+
 class FamilyWorkspace(BaseModel):
     family: WorkspaceFamily
     people: list[WorkspacePerson]
     relationships: list[WorkspaceEdge]
     stories: list[WorkspaceStory]
     history: list[WorkspaceEvent]
+    lineages: list[WorkspaceLineage]
+    branches: list[WorkspaceBranch]
+    assignments: list[WorkspaceAssignment]
 
 
 class RootInput(BaseModel):
@@ -196,6 +229,15 @@ def family_workspace(
         select(AuditLog, User.display_name).join(User, User.id == AuditLog.actor_id)
         .where(AuditLog.family_id == family_id).order_by(AuditLog.created_at.desc()).limit(50)
     ).all()
+    lineages = db.scalars(select(Lineage).where(Lineage.family_id == family_id)
+                          .order_by(Lineage.name, Lineage.id)).all()
+    lineage_ids = [lineage.id for lineage in lineages]
+    branches = db.scalars(select(Branch).where(Branch.lineage_id.in_(lineage_ids))
+                          .order_by(Branch.name, Branch.id)).all() if lineage_ids else []
+    assignments = db.scalars(select(PersonLineageAssignment).where(
+        PersonLineageAssignment.person_id.in_(ids),
+        PersonLineageAssignment.lineage_id.in_(lineage_ids),
+    )).all() if ids and lineage_ids else []
     _audit(db, current[0], family_id, "admin.family_workspace_viewed", "family", family_id)
     db.commit()
     return FamilyWorkspace(
@@ -213,7 +255,111 @@ def family_workspace(
         history=[WorkspaceEvent(id=log.id, action=log.action, target_type=log.target_type,
                                 target_id=log.target_id, actor_name=name, created_at=log.created_at)
                  for log, name in logs],
+        lineages=[WorkspaceLineage.model_validate(row) for row in lineages],
+        branches=[WorkspaceBranch.model_validate(row) for row in branches],
+        assignments=[WorkspaceAssignment(person_id=row.person_id, lineage_id=row.lineage_id,
+                                         branch_id=row.branch_id) for row in assignments],
     )
+
+
+@router.post("/families/{family_id}/lineages", response_model=WorkspaceLineage, status_code=201)
+def create_workspace_lineage(
+    family_id: UUID, body: LineageCreate,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    _family(db, family_id)
+    lineage = Lineage(family_id=family_id, name=body.name.strip(), description=body.description)
+    db.add(lineage)
+    try:
+        db.flush()
+        _audit(db, current[0], family_id, "admin.lineage_created", "lineage", lineage.id)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Энэ нэртэй удам аль хэдийн байна.") from exc
+    return WorkspaceLineage.model_validate(lineage)
+
+
+@router.post(
+    "/families/{family_id}/lineages/{lineage_id}/branches",
+    response_model=WorkspaceBranch, status_code=201,
+)
+def create_workspace_branch(
+    family_id: UUID, lineage_id: UUID, body: BranchCreate,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    _family(db, family_id)
+    if db.scalar(select(Lineage.id).where(Lineage.id == lineage_id,
+                                          Lineage.family_id == family_id)) is None:
+        raise HTTPException(status_code=404, detail="Удам олдсонгүй.")
+    branch = Branch(lineage_id=lineage_id, name=body.name.strip(), description=body.description)
+    db.add(branch)
+    try:
+        db.flush()
+        _audit(db, current[0], family_id, "admin.branch_created", "branch", branch.id)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Энэ нэртэй салаа аль хэдийн байна.") from exc
+    return WorkspaceBranch.model_validate(branch)
+
+
+@router.put(
+    "/families/{family_id}/people/{person_id}/lineage-assignment",
+    response_model=WorkspaceAssignment,
+)
+def set_workspace_assignment(
+    family_id: UUID, person_id: UUID, body: PersonLineageAssignmentInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    _family(db, family_id)
+    _person(db, family_id, person_id)
+    if db.scalar(select(Lineage.id).where(
+        Lineage.id == body.lineage_id, Lineage.family_id == family_id,
+    )) is None:
+        raise HTTPException(status_code=404, detail="Удам олдсонгүй.")
+    if body.branch_id is not None and db.scalar(select(Branch.id).where(
+        Branch.id == body.branch_id, Branch.lineage_id == body.lineage_id,
+    )) is None:
+        raise HTTPException(status_code=404, detail="Салаа энэ удамд харьяалагдахгүй.")
+    assignment = db.scalar(select(PersonLineageAssignment).where(
+        PersonLineageAssignment.person_id == person_id,
+    ))
+    if assignment is not None:
+        existing_family = db.scalar(select(Lineage.family_id).where(
+            Lineage.id == assignment.lineage_id,
+        ))
+        if existing_family != family_id:
+            raise HTTPException(status_code=409, detail="Энэ хүн өөр гэр бүлийн удамд бүртгэлтэй.")
+        assignment.lineage_id = body.lineage_id
+        assignment.branch_id = body.branch_id
+    else:
+        assignment = PersonLineageAssignment(
+            person_id=person_id, lineage_id=body.lineage_id, branch_id=body.branch_id,
+        )
+        db.add(assignment)
+    _audit(db, current[0], family_id, "admin.lineage_assignment_saved", "person", person_id)
+    db.commit()
+    return WorkspaceAssignment(person_id=person_id, lineage_id=body.lineage_id,
+                               branch_id=body.branch_id)
+
+
+@router.delete("/families/{family_id}/people/{person_id}/lineage-assignment", status_code=204)
+def clear_workspace_assignment(
+    family_id: UUID, person_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    _family(db, family_id)
+    _person(db, family_id, person_id)
+    assignment = db.scalar(select(PersonLineageAssignment).join(
+        Lineage, Lineage.id == PersonLineageAssignment.lineage_id,
+    ).where(PersonLineageAssignment.person_id == person_id, Lineage.family_id == family_id))
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Удмын багцлалт олдсонгүй.")
+    db.delete(assignment)
+    _audit(db, current[0], family_id, "admin.lineage_assignment_cleared", "person", person_id)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.patch("/families/{family_id}")

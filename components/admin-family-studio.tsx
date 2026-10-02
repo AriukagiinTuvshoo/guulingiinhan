@@ -13,9 +13,13 @@ type Person = {
 type Edge = { id: string; parent_id: string; child_id: string; relationship_type: string };
 type Story = { id: string; title: string; body: string; visibility: string; created_at: string };
 type Event = { id: string; action: string; target_type: string; target_id: string | null; actor_name: string; created_at: string };
+type Lineage = { id: string; name: string; description: string | null };
+type Branch = { id: string; lineage_id: string; name: string };
+type Assignment = { person_id: string; lineage_id: string; branch_id: string | null };
 type Workspace = {
   family: { id: string; name: string; description: string | null; root_person_id: string | null; people_count: number; relationship_count: number; story_count: number; members_count: number };
   people: Person[]; relationships: Edge[]; stories: Story[]; history: Event[];
+  lineages: Lineage[]; branches: Branch[]; assignments: Assignment[];
 };
 type PersonForm = {
   first_name: string; last_name: string; gender: string; birth_date: string;
@@ -36,6 +40,9 @@ const actionLabels: Record<string, string> = {
   'admin.lineage_root_changed': 'Удмын эхийг өөрчилсөн',
   'admin.family_edited': 'Гэр бүлийн мэдээлэл зассан',
   'admin.story_created': 'Түүх нэмсэн', 'admin.story_edited': 'Түүх зассан',
+  'admin.lineage_created': 'Удам нэмсэн', 'admin.branch_created': 'Салаа нэмсэн',
+  'admin.lineage_assignment_saved': 'Хүний удмын багцлалт зассан',
+  'admin.lineage_assignment_cleared': 'Хүний удмын багцлалт цэвэрлэсэн',
 };
 
 function displayName(person: Person) {
@@ -52,7 +59,7 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [tab, setTab] = useState<'people' | 'links' | 'stories' | 'history'>('people');
+  const [tab, setTab] = useState<'people' | 'links' | 'lineages' | 'stories' | 'history'>('people');
   const [familyName, setFamilyName] = useState('');
   const [familyDescription, setFamilyDescription] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -61,6 +68,11 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
   const [parentId, setParentId] = useState('');
   const [childId, setChildId] = useState('');
   const [relationshipType, setRelationshipType] = useState('biological');
+  const [lineageName, setLineageName] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [lineageId, setLineageId] = useState('');
+  const [branchId, setBranchId] = useState('');
+  const [assignmentPersonId, setAssignmentPersonId] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
   const [storyBody, setStoryBody] = useState('');
   const [editingStoryId, setEditingStoryId] = useState('');
@@ -135,7 +147,7 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
     {error && <div className={styles.error} role="alert">{error}</div>}
     {notice && <div className={styles.notice} role="status">{notice}</div>}
     <div className={styles.studioTabs} role="tablist" aria-label="Удмын удирдлага">
-      {([['people', '👥 Хүмүүс'], ['links', '🌿 Удмын мод'], ['stories', '📖 Түүх'], ['history', '🕘 Өөрчлөлт']] as const).map(([key, label]) =>
+      {([['people', '👥 Хүмүүс'], ['links', '🌿 Удмын мод'], ['lineages', '🪴 Удам ба салаа'], ['stories', '📖 Түүх'], ['history', '🕘 Өөрчлөлт']] as const).map(([key, label]) =>
         <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}
     </div>
     {tab === 'people' && <div className={styles.studioGrid}>
@@ -166,6 +178,13 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
     {tab === 'stories' && <div className={styles.studioGrid}>
       <section className={styles.panel}><span className={styles.eyebrow}>📜 ТҮҮХЭН САН</span><h3>{editingStoryId ? 'Түүх засах' : 'Түүх оруулах'}</h3><label>Гарчиг<input value={storyTitle} maxLength={180} onChange={(event) => setStoryTitle(event.target.value)} /></label><label>Агуулга<textarea rows={10} maxLength={100000} value={storyBody} onChange={(event) => setStoryBody(event.target.value)} /></label><div className={styles.panelActions}><button disabled={saving || !storyTitle.trim() || !storyBody.trim()} onClick={() => void run(async () => { if (editingStoryId) await api(`/admin/stories/${editingStoryId}`, { method: 'PUT', body: JSON.stringify({ title: storyTitle.trim(), body: storyBody.trim() }) }); else await api(`/admin/families/${familyId}/stories`, { method: 'POST', body: JSON.stringify({ title: storyTitle.trim(), body: storyBody.trim(), visibility: 'family' }) }); setStoryTitle(''); setStoryBody(''); setEditingStoryId(''); }, 'Түүх хадгалагдлаа.')}>{editingStoryId ? 'Засварыг хадгалах' : 'Түүх нийтлэх'}</button>{editingStoryId && <button className={styles.secondaryButton} onClick={() => { setEditingStoryId(''); setStoryTitle(''); setStoryBody(''); }}>Болих</button>}</div></section>
       <section className={styles.panel}><span className={styles.eyebrow}>📚 БҮРТГЭЛТЭЙ ТҮҮХ</span><h3>Гэр бүлийн түүхүүд</h3>{data.stories.length ? <div className={styles.storyStack}>{data.stories.map((story) => <article key={story.id}><small>{new Date(story.created_at).toLocaleDateString('mn-MN')} · {story.visibility}</small><h4>{story.title}</h4><p>{story.body}</p><button onClick={() => { setEditingStoryId(story.id); setStoryTitle(story.title); setStoryBody(story.body); }}>Бичвэр засах →</button></article>)}</div> : <p className={styles.state}>Түүх оруулаагүй байна.</p>}</section>
+    </div>}
+    {tab === 'lineages' && <div className={styles.studioGrid}>
+      <section className={styles.panel}><span className={styles.eyebrow}>🪴 УДАМ УГСАА</span><h3>Удам бүртгэх</h3><p className={styles.muted}>Нэг гэр бүлд хэд хэдэн удам угсаа, тус бүрт салбар салаа бүртгэж болно.</p><label>Удмын нэр<input maxLength={180} value={lineageName} onChange={(event) => setLineageName(event.target.value)} /></label><div className={styles.panelActions}><button disabled={saving || !lineageName.trim()} onClick={() => void run(async () => { await api(`/admin/families/${familyId}/lineages`, { method: 'POST', body: JSON.stringify({ name: lineageName.trim() }) }); setLineageName(''); }, 'Удам бүртгэгдлээ.')}>Удам нэмэх</button></div>
+        <div className={styles.storyStack}>{data.lineages.map((lineage) => <article key={lineage.id}><h4>{lineage.name}</h4><small>{data.branches.filter((branch) => branch.lineage_id === lineage.id).map((branch) => branch.name).join(' · ') || 'Салаа бүртгээгүй'}</small></article>)}</div>
+      </section>
+      <section className={styles.panel}><span className={styles.eyebrow}>🌱 САЛАА</span><h3>Салаа нэмэх</h3><label>Удам<select value={lineageId} onChange={(event) => { setLineageId(event.target.value); setBranchId(''); }}><option value="">Удам сонгох</option>{data.lineages.map((lineage) => <option key={lineage.id} value={lineage.id}>{lineage.name}</option>)}</select></label><label>Салааны нэр<input maxLength={180} value={branchName} onChange={(event) => setBranchName(event.target.value)} /></label><div className={styles.panelActions}><button disabled={saving || !lineageId || !branchName.trim()} onClick={() => void run(async () => { await api(`/admin/families/${familyId}/lineages/${lineageId}/branches`, { method: 'POST', body: JSON.stringify({ name: branchName.trim() }) }); setBranchName(''); }, 'Салаа бүртгэгдлээ.')}>Салаа нэмэх</button></div></section>
+      <section className={`${styles.panel} ${styles.fullWidth}`}><span className={styles.eyebrow}>🌳 ХҮНИЙ ХАРЬЯАЛАЛ</span><h3>Удам, салаанд хуваарилах</h3><p className={styles.muted}>Энэ багцлалт нь эцэг эхийн холбоосыг орлохгүй; удмын модны харагдацыг цэгцэлнэ.</p><div className={styles.formGrid}><label>Хүн<select value={assignmentPersonId} onChange={(event) => { const id = event.target.value; const current = data.assignments.find((row) => row.person_id === id); setAssignmentPersonId(id); setLineageId(current?.lineage_id || ''); setBranchId(current?.branch_id || ''); }}><option value="">Хүн сонгох</option>{data.people.map((person) => <option key={person.id} value={person.id}>{displayName(person)}</option>)}</select></label><label>Удам<select value={lineageId} onChange={(event) => { setLineageId(event.target.value); setBranchId(''); }}><option value="">Удам сонгох</option>{data.lineages.map((lineage) => <option key={lineage.id} value={lineage.id}>{lineage.name}</option>)}</select></label><label>Салаа<select value={branchId} onChange={(event) => setBranchId(event.target.value)}><option value="">Салаа сонгоогүй</option>{data.branches.filter((branch) => branch.lineage_id === lineageId).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label></div><div className={styles.panelActions}><button disabled={saving || !assignmentPersonId || !lineageId} onClick={() => void run(() => api(`/admin/families/${familyId}/people/${assignmentPersonId}/lineage-assignment`, { method: 'PUT', body: JSON.stringify({ lineage_id: lineageId, branch_id: branchId || null }) }), 'Хүний удмын багцлалт хадгалагдлаа.')}>Хуваарилалт хадгалах</button><button className={styles.outlineDanger} disabled={saving || !assignmentPersonId || !data.assignments.some((row) => row.person_id === assignmentPersonId)} onClick={() => { if (window.confirm('Энэ хүний удмын багцлалтыг цэвэрлэх үү?')) void run(() => api(`/admin/families/${familyId}/people/${assignmentPersonId}/lineage-assignment`, { method: 'DELETE' }), 'Багцлалт цэвэрлэгдлээ.'); }}>Багцлалт цэвэрлэх</button></div></section>
     </div>}
     {tab === 'history' && <div className={styles.studioGrid}>
       <section className={`${styles.panel} ${styles.fullWidth}`}><span className={styles.eyebrow}>🕘 ХЯНАЛТЫН БҮРТГЭЛ</span><h3>Сүүлийн өөрчлөлтүүд</h3><p className={styles.muted}>Үйлдэл бүрийн хийсэн хүн, хугацаа болон объектын ID хадгалагдана.</p>{data.history.length ? <div className={styles.timeline}>{data.history.map((event) => <div key={event.id}><span className={styles.timelineDot} /><div><b>{actionLabels[event.action] || event.action}</b><p>{event.actor_name} · {new Date(event.created_at).toLocaleString('mn-MN')}</p><small>{event.target_type}{event.target_id ? ` · ${event.target_id}` : ''}</small></div></div>)}</div> : <p className={styles.state}>Өөрчлөлт бүртгэгдээгүй байна.</p>}</section>
