@@ -1853,7 +1853,7 @@ def request_person_link(
                             user_id=user.id, status="pending")
     db.add(row)
     _audit(db, user, family_id, "person.link_requested", "person", person_id)
-    db.commit()
+    _commit(db, "Холбох хүсэлт аль хэдийн хүлээгдэж байна.")
     return PersonLinkRequestOut(id=row.id, person_id=person_id, user_id=user.id,
                                 user_name=user.display_name,
                                 person_name=f"{person.last_name} {person.first_name}".strip(),

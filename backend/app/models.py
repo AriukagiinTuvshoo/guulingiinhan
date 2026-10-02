@@ -629,6 +629,14 @@ class PersonLinkRequest(Base):
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_person_link_request_status"),
         Index("ix_person_link_request_family_status", "family_id", "status"),
+        Index(
+            "uq_person_link_request_pending_user",
+            "family_id",
+            "user_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
