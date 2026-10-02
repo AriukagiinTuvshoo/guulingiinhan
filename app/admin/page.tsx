@@ -249,6 +249,7 @@ export default function AdminPage() {
             <div className={styles.overviewActions}>
               <button type="button" onClick={() => show('users')}><span>👥</span><strong>Хэрэглэгчид</strong><small>Аккаунт харах, урих, блоклох</small><b>→</b></button>
               <button type="button" onClick={() => show('families')}><span>🌳</span><strong>Гэр бүл ба удам</strong><small>Хүн, холбоос, түүхийг удирдах</small><b>→</b></button>
+              {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => router.push('/admin/ancestry')}><span>🌲</span><strong>Нийтлэг эх мод</strong><small>Бүх account-д харагдах нэг удмын эх сонгох</small><b>→</b></button>}
               <button type="button" onClick={() => show('announcements')}><span>📣</span><strong>Мэдэгдэл</strong><small>Нийтлэх, засах, ноорог хадгалах</small><b>→</b></button>
               {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => show('audit')}><span>🕘</span><strong>Өөрчлөлтийн түүх</strong><small>Хийсэн үйлдлийг шалгах</small><b>→</b></button>}
             </div>

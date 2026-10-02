@@ -303,6 +303,84 @@ class Family(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class SharedAncestry(Base):
+    """The single account-wide ancestry root configured by a super admin."""
+
+    __tablename__ = "shared_ancestry"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_shared_ancestry_singleton"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    root_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class SharedAncestryPerson(Base):
+    """A Person that its linked account explicitly shares in the common tree."""
+
+    __tablename__ = "shared_ancestry_persons"
+    __table_args__ = (Index("ix_shared_ancestry_person_family", "family_id"),)
+
+    person_id: Mapped[UUID] = mapped_column(
+        ForeignKey("persons.id", ondelete="CASCADE"), primary_key=True
+    )
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    added_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    shared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class SharedAncestryRelationship(Base):
+    """Explicit parent-child edges in the account-wide shared tree."""
+
+    __tablename__ = "shared_ancestry_relationships"
+    __table_args__ = (
+        UniqueConstraint("parent_id", "child_id", name="uq_shared_ancestry_parent_child"),
+        CheckConstraint("parent_id <> child_id", name="ck_shared_ancestry_not_self"),
+        CheckConstraint(
+            "relationship_type IN ('biological', 'adoptive', 'step')",
+            name="ck_shared_ancestry_relationship_type",
+        ),
+        Index("ix_shared_ancestry_relationship_child", "child_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    parent_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    child_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    relationship_type: Mapped[str] = mapped_column(String(16), default="biological")
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class SharedDonationInfo(Base):
+    """Public, account-wide bank transfer and optional QR instructions."""
+
+    __tablename__ = "shared_donation_info"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_shared_donation_info_singleton"),
+        CheckConstraint("length(currency) = 3", name="ck_shared_donation_currency"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    title: Mapped[str] = mapped_column(String(180))
+    purpose: Mapped[str] = mapped_column(Text)
+    currency: Mapped[str] = mapped_column(String(3), default="MNT")
+    bank_name: Mapped[str] = mapped_column(String(120), default="")
+    account_name: Mapped[str] = mapped_column(String(180), default="")
+    account_number: Mapped[str] = mapped_column(String(80), default="")
+    qr_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    is_published: Mapped[bool] = mapped_column(default=False)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
 class Lineage(Base):
     """An explicit ancestral/descent lineage within one Family."""
 

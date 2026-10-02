@@ -1345,7 +1345,7 @@ function TreePageContent() {
                             <button type="button" className="tree-button tree-button--secondary" onClick={() => beginRelation('spouse')}>+ Гэрлэлт</button>
                           </div>
                           <button type="button" className="tree-button tree-button--danger" onClick={() => void detachPerson(selectedPerson.id)}>
-                            Гэр бүлээс салгах
+                            Энэ модноос салгах
                           </button>
                         </>
                       )}
@@ -1476,12 +1476,13 @@ function TreePageContent() {
             <form onSubmit={addRelation} className="tree-modal-form">
               <div className="tree-mode-switch" role="group" aria-label="Хүн сонгох эсвэл шинээр нэмэх">
                 <button type="button" className={relationMode === 'existing' ? 'is-active' : ''} onClick={() => { setRelationMode('existing'); setRelationPersonId(''); }}>
-                  Бүртгэлтэй хүн
+                  Бүртгэлтэй хүн холбох
                 </button>
                 <button type="button" className={relationMode === 'new' ? 'is-active' : ''} onClick={() => { setRelationMode('new'); setRelationPersonId(''); }}>
-                  Шинэ хүн нэмэх
+                  Шинэ хүн бүртгээд холбох
                 </button>
               </div>
+              <p className="tree-modal-hint">Холбоосыг хасахад хүний бүртгэл үлдэнэ. Бүртгэлтэй хүн олдохгүй бол шинээр бүртгээд энэ холбоонд оруулна.</p>
 
               {relationMode === 'existing' ? (
                 <>

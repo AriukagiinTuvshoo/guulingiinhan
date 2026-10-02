@@ -22,9 +22,10 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
 import { FamilyContext } from './family-context';
+import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
-  key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
+  key: 'dashboard' | 'ancestry' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -34,6 +35,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
+  { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
@@ -49,6 +51,7 @@ function isShellRoute(pathname: string) {
     pathname.startsWith('/people/') ||
     pathname === '/tree' ||
     pathname.startsWith('/tree/') ||
+    pathname === '/ancestry' ||
     pathname === '/stories' ||
     pathname.startsWith('/stories/') ||
     pathname === '/memories' ||
@@ -72,6 +75,7 @@ function isDashboardRoute(pathname: string) {
 function activeKey(pathname: string): NavItem['key'] | null {
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
+  if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
   if (pathname === '/people' || pathname.startsWith('/people/')) return 'people';
   if (pathname === '/stories' || pathname.startsWith('/stories/')) return 'stories';
   if (pathname === '/memories' || pathname.startsWith('/memories/')) return 'memories';
@@ -478,6 +482,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       )}
 
       {user && <AnnouncementBanner userId={user.id} />}
+      {user && <SharedDonationBanner userId={user.id} />}
 
       <div className="app-shell__body">
         <button
