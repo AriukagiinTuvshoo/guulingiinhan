@@ -284,6 +284,7 @@ export default function Tree3DScene({
           if (!active) { texture.dispose(); portrait.material.dispose(); return; }
           scene.add(portrait);
           nextObjects.push(portrait);
+          if (cameraRef.current) rendererRef.current?.render(scene, cameraRef.current);
         })
         .catch(() => undefined);
     }
