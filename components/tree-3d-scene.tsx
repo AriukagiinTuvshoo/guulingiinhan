@@ -18,31 +18,52 @@ type Props = {
   onFallback: () => void;
 };
 
-function makeLabel(person: TreePerson, color: string): THREE.Sprite {
+function lifeSummary(person: TreePerson) {
+  const birth = person.birth_date?.slice(0, 4);
+  const death = !person.is_alive ? person.death_date?.slice(0, 4) : null;
+  if (birth && death) return `${birth} – ${death}`;
+  if (birth) return person.is_alive ? `${birth} – одоо` : `${birth} – ?`;
+  return 'Огноо тодорхойгүй';
+}
+
+function generationLabel(generation: number) {
+  return generation === 0 ? 'Төв үе' : generation < 0 ? `${Math.abs(generation)} үеийн өмнө` : `${generation} үеийн үргэлжлэл`;
+}
+
+function makeLabel(person: TreePerson, color: string, generation?: number | null): THREE.Sprite {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
-  canvas.height = 96;
+  canvas.height = 144;
   const context = canvas.getContext('2d');
   if (context) {
     context.fillStyle = 'rgba(15, 38, 31, 0.88)';
     context.beginPath();
-    context.roundRect(4, 4, 504, 88, 22);
+    context.roundRect(4, 4, 504, 136, 22);
     context.fill();
     context.strokeStyle = color;
     context.lineWidth = 3;
     context.stroke();
     context.fillStyle = '#f5efdc';
-    context.font = '600 32px Georgia, serif';
+    context.font = '600 31px Georgia, serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     const name = personName(person) || 'Нэргүй хүн';
-    context.fillText(name.length > 27 ? name.slice(0, 26) + '…' : name, 256, 49, 475);
+    context.fillText(name.length > 27 ? name.slice(0, 26) + '…' : name, 256, 42, 475);
+    context.fillStyle = '#e3d7b3';
+    context.font = '500 23px Arial, sans-serif';
+    context.fillText(lifeSummary(person), 256, 83, 475);
+    if (generation !== null && generation !== undefined) {
+      context.fillStyle = '#dfc578';
+      context.font = '600 19px Arial, sans-serif';
+      context.fillText(generationLabel(generation), 256, 119, 475);
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
-  sprite.scale.set(7.1, 1.34, 1);
-  sprite.position.y = 1.65;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }));
+  sprite.scale.set(7.4, 2.08, 1);
+  sprite.position.y = 2.1;
+  sprite.renderOrder = 20;
   return sprite;
 }
 
@@ -83,6 +104,10 @@ export default function Tree3DScene({
   const [ready, setReady] = useState(false);
   const [selectedContext, setSelectedContext] = useState('');
   const [generationChoices, setGenerationChoices] = useState<Array<{ generation: number; personId: string; count: number }>>([]);
+  const hasConfirmedRoot = Boolean(
+    canonicalRootId && data.persons.some((person) => person.id === canonicalRootId)
+    && data.lineage_root_person_id === canonicalRootId,
+  );
 
   useEffect(() => {
     const host = hostRef.current;
@@ -249,9 +274,10 @@ export default function Tree3DScene({
           bitmap.close();
           const texture = new THREE.CanvasTexture(canvas);
           texture.colorSpace = THREE.SRGBColorSpace;
-          const portrait = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+          const portrait = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }));
           portrait.scale.set(1.8, 1.8, 1);
-          portrait.position.set(point.x, point.y, point.z + 1.05);
+          portrait.position.set(point.x, point.y + 0.15, point.z + 0.95);
+          portrait.renderOrder = 19;
           portrait.userData.personId = person.id;
           if (!active) { texture.dispose(); portrait.material.dispose(); return; }
           scene.add(portrait);
@@ -332,6 +358,9 @@ export default function Tree3DScene({
       if (marriage.person_1_id === selectedPersonId) labeledPeople.add(marriage.person_2_id);
       if (marriage.person_2_id === selectedPersonId) labeledPeople.add(marriage.person_1_id);
     }
+    if (visiblePeople.length <= 48) {
+      for (const person of visiblePeople) labeledPeople.add(person.id);
+    }
     const labelsToShow = new Set([...labeledPeople].filter((id) => personIds.has(id)).slice(0, 72));
 
     const rootPeople = visiblePeople.filter((person) => person.id === canonicalRootId && positions.has(person.id));
@@ -385,7 +414,8 @@ export default function Tree3DScene({
       const isRoot = person.id === canonicalRootId;
       const isSelected = person.id === selectedPersonId;
       if (labelsToShow.has(person.id) && labelsCreated < 72) {
-        const label = makeLabel(person, isRoot ? '#e9ca71' : isSelected ? '#fff0cc' : '#819f87');
+        const label = makeLabel(person, isRoot ? '#e9ca71' : isSelected ? '#fff0cc' : '#819f87',
+          hasConfirmedRoot ? generations.get(person.id) : null);
         label.position.set(point.x, point.y + 1.45, point.z);
         label.userData.personId = person.id;
         scene.add(label);
@@ -533,8 +563,8 @@ export default function Tree3DScene({
             <button type="button" className="tree-3d-focus" onClick={focusSelected}>Сонгосон хүнийг төвлөрүүлэх</button>
             <button type="button" className="tree-3d-focus" onClick={focusWholeTree}>Бүх модыг харах</button>
           </div>
-          {generationChoices.length > 1 && <div className="tree-3d-generations" aria-label={data.root_person_id === canonicalRootId ? 'Удмын эхээс үе сонгох' : 'Одоогийн фокусаас үе сонгох'}>
-            <strong>{data.root_person_id === canonicalRootId ? 'Үе · удмын эхээс' : 'Үе · одоогийн фокусаас'}</strong>
+          {hasConfirmedRoot && generationChoices.length > 1 && <div className="tree-3d-generations" aria-label="Удмын эхээс үе сонгох">
+            <strong>Үе · удмын эхээс</strong>
             <div>{generationChoices.map((choice) => <button key={choice.generation} type="button" onClick={() => onSelect(choice.personId)} aria-label={`${choice.generation === 0 ? 'Төв үе' : choice.generation < 0 ? Math.abs(choice.generation) + ' үеийн өмнө' : choice.generation + ' үеийн дараа'}, ${choice.count} хүн`}>
               {choice.generation === 0 ? 'Төв үе' : choice.generation < 0 ? `${Math.abs(choice.generation)} үеийн өмнө` : `${choice.generation} үеийн дараа`} · {choice.count}
             </button>)}</div>

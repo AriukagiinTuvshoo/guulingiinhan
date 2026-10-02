@@ -41,7 +41,13 @@ try {
     start_date: null,
     end_date: null,
   }));
-  const data = { persons, parent_child_relationships: parentChild, marriages, root_person_id: 'synthetic-0' };
+  const data = {
+    persons,
+    parent_child_relationships: parentChild,
+    marriages,
+    root_person_id: 'synthetic-0',
+    lineage_root_person_id: 'synthetic-0',
+  };
   const timings = [];
   let result;
   for (let iteration = 0; iteration < 7; iteration += 1) {
@@ -65,7 +71,19 @@ try {
     root_person_id: 'root',
   });
   assert.equal(disconnected.generations.get('unknown'), null, 'disconnected people do not receive a fabricated generation');
+  assert.equal(disconnected.generations.get('root'), null, 'a family-only root is not a confirmed shared-lineage root');
   assert.ok(disconnected.positions.get('unknown').y > disconnected.positions.get('root').y, 'unlinked people get a separate visual lane');
+  const unrooted = layoutTree3D({
+    persons: [
+      { id: 'first', first_name: 'First', last_name: 'Fixture' },
+      { id: 'child', first_name: 'Child', last_name: 'Fixture' },
+    ],
+    parent_child_relationships: [{ id: 'edge', parent_id: 'first', child_id: 'child' }],
+    marriages: [],
+  });
+  assert.equal(unrooted.positions.size, 2, 'unrooted people can still be spatially arranged');
+  assert.ok([...unrooted.generations.values()].every((generation) => generation === null),
+    'an unconfirmed layout seed never creates public generation labels');
   console.log(JSON.stringify({
     syntheticPeople: count,
     parentChildEdges: parentChild.length,

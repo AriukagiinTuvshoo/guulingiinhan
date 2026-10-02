@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.models import AdminGrant, SharedAncestryPerson, SharedAncestryRelationship
+from app.models import AdminGrant, AuditLog, Family, SharedAncestryPerson, SharedAncestryRelationship
 from tests.conftest import register_verified
 
 PASSWORD = "shared-ancestry-passphrase-123"
@@ -76,7 +76,7 @@ def test_super_admin_sets_shared_root_and_users_opt_in(client, database, email_p
     assert client.get(f"/api/v1/families/{family['id']}/persons/{person['id']}").status_code in {200, 404}
 
 
-def test_shared_ancestry_root_is_singleton_and_cannot_be_overwritten(client, database, email_provider):
+def test_shared_ancestry_root_can_be_corrected_without_losing_people_or_edges(client, database, email_provider):
     admin_id = _login(client, email_provider, "ancestry-singleton@example.com")
     with database.begin() as db:
         db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
@@ -84,10 +84,44 @@ def test_shared_ancestry_root_is_singleton_and_cannot_be_overwritten(client, dat
     people = [client.post(f"/api/v1/families/{family['id']}/persons", json={
         "first_name": f"Хүн {index}", "birth_date": "1950-01-01",
     }).json() for index in (1, 2)]
+    family_root_id = UUID(family["id"])
+    with database() as db:
+        family_root_before = db.get(Family, family_root_id).root_person_id
     assert client.put("/api/v1/admin/shared-lineage/root", json={"person_id": people[0]["id"]}).status_code == 200
-    conflict = client.put("/api/v1/admin/shared-lineage/root", json={"person_id": people[1]["id"]})
-    assert conflict.status_code == 409
-    assert client.get("/api/v1/shared-lineage").json()["root_person_id"] == people[0]["id"]
+
+    _login(client, email_provider, "ancestry-root-member@example.com")
+    member_family = client.post("/api/v1/families", json={"name": "Салбар удам"}).json()
+    member_person = client.post(f"/api/v1/families/{member_family['id']}/persons", json={
+        "first_name": "Салбарын хүн", "birth_date": "1990-01-01",
+    }).json()
+    assert client.post(f"/api/v1/families/{member_family['id']}/persons/{member_person['id']}/link-me").status_code == 204
+    joined = client.post("/api/v1/shared-lineage/join", json={
+        "person_id": member_person["id"], "parent_person_id": people[0]["id"],
+        "relationship_type": "biological", "share_consent": True,
+    })
+    assert joined.status_code == 201
+
+    assert client.post("/api/v1/auth/login", json={
+        "email": "ancestry-singleton@example.com", "password": PASSWORD,
+    }).status_code == 200
+    stale = client.put("/api/v1/admin/shared-lineage/root", json={"person_id": people[1]["id"]})
+    assert stale.status_code == 409
+    replaced = client.put("/api/v1/admin/shared-lineage/root", json={
+        "person_id": people[1]["id"], "expected_root_person_id": people[0]["id"],
+    })
+    assert replaced.status_code == 200
+    result = replaced.json()
+    assert result["root_person_id"] == people[1]["id"]
+    assert {row["id"] for row in result["persons"]} >= {people[0]["id"], people[1]["id"], member_person["id"]}
+    assert any(edge["parent_id"] == people[0]["id"] and edge["child_id"] == member_person["id"]
+               for edge in result["relationships"])
+    with database() as db:
+        assert db.get(SharedAncestryPerson, UUID(people[0]["id"])) is not None
+        assert db.get(Family, family_root_id).root_person_id == family_root_before
+        actions = {row.action for row in db.query(AuditLog).filter(
+            AuditLog.action.in_(("shared_ancestry.root_replaced_from", "shared_ancestry.root_replaced_to"))
+        )}
+        assert actions == {"shared_ancestry.root_replaced_from", "shared_ancestry.root_replaced_to"}
 
 
 def test_global_donation_details_are_admin_controlled_and_visible_to_all_accounts(client, database, email_provider):

@@ -19,29 +19,37 @@ export function layoutTree3D(data: TreeData): Tree3DLayout {
     adjacency.get(marriage.person_2_id)?.push({ id: marriage.person_1_id, generationDelta: 0 });
   }
 
-  const rootId = data.root_person_id && personIds.has(data.root_person_id)
-    ? data.root_person_id
-    : data.persons[0]?.id;
+  // A family-level root is useful for its private household tree, but only an
+  // explicitly assigned shared-lineage root defines public generation numbers.
+  const confirmedRootId = data.lineage_root_person_id && personIds.has(data.lineage_root_person_id)
+    ? data.lineage_root_person_id
+    : undefined;
+  // A deterministic fallback is needed to place an unrooted graph in space,
+  // but it must never be presented as a confirmed generation.
+  const layoutRootId = confirmedRootId ?? data.persons[0]?.id;
   const generations = new Map<string, number | null>();
-  if (!rootId) return { positions: new Map(), generations };
-  generations.set(rootId, 0);
-  const queue = [rootId];
+  if (!layoutRootId) return { positions: new Map(), generations };
+  const layoutGenerations = new Map<string, number>();
+  layoutGenerations.set(layoutRootId, 0);
+  const queue = [layoutRootId];
   for (let cursor = 0; cursor < queue.length; cursor += 1) {
     const id = queue[cursor];
-    const generation = generations.get(id) ?? 0;
+    const generation = layoutGenerations.get(id) ?? 0;
     for (const edge of adjacency.get(id) ?? []) {
-      if (generations.has(edge.id)) continue;
-      generations.set(edge.id, generation + edge.generationDelta);
+      if (layoutGenerations.has(edge.id)) continue;
+      layoutGenerations.set(edge.id, generation + edge.generationDelta);
       queue.push(edge.id);
     }
   }
-  for (const person of data.persons) if (!generations.has(person.id)) generations.set(person.id, null);
+  for (const person of data.persons) {
+    generations.set(person.id, confirmedRootId ? layoutGenerations.get(person.id) ?? null : null);
+  }
   const branches = [...new Set(data.persons.map((person) => person.branch_id ?? person.lineage_id ?? ''))]
     .filter(Boolean).sort();
   const branchSlot = new Map(branches.map((id, index) => [id, index]));
   const generationRows = new Map<number | null, TreePerson[]>();
   for (const person of data.persons) {
-    const generation = generations.get(person.id) ?? null;
+    const generation = layoutGenerations.get(person.id) ?? null;
     let row = generationRows.get(generation);
     if (!row) {
       row = [];

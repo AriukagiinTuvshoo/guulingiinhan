@@ -24,9 +24,19 @@ export default function SharedAncestryAdminPage() {
   useEffect(() => { void load(); }, [load]);
   async function save() {
     if (!selected || saving) return;
-    if (tree?.root_person_id && selected !== tree.root_person_id) { setError('Үндсэн удмын эхийг өөрчлөх аюулгүй шилжүүлгийн урсгал хараахан байхгүй.'); return; }
+    if (tree?.root_person_id && selected !== tree.root_person_id) {
+      const previous = candidates.find((person) => person.id === tree.root_person_id)?.name || 'одоогийн удмын эх';
+      const next = candidates.find((person) => person.id === selected)?.name || 'сонгосон хүн';
+      if (!window.confirm(`${previous} хүнийг ${next} хүнээр солих уу? Одоогийн холбоос, айл бүрийн мод хэвээр үлдэж, энэ өөрчлөлт админы түүхэнд бүртгэгдэнэ.`)) return;
+    }
     setSaving(true); setError(''); setNotice('');
-    try { const changed = await api<Tree>('/admin/shared-lineage/root', { method: 'PUT', body: JSON.stringify({ person_id: selected }) }); setTree(changed); setNotice('Үндсэн удмын эхийг бүх account-д нийтлэг мод болголоо.'); }
+    try {
+      const changed = await api<Tree>('/admin/shared-lineage/root', {
+        method: 'PUT', body: JSON.stringify({ person_id: selected, expected_root_person_id: tree?.root_person_id || null }),
+      });
+      setTree(changed);
+      setNotice(tree?.root_person_id ? 'Үндсэн удмын эхийг шинэчиллээ. Өмнөх хүн болон бүх салааны холбоос хадгалагдсан.' : 'Үндсэн удмын эхийг бүх account-д нийтлэг мод болголоо.');
+    }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Үндсэн модыг хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
@@ -42,10 +52,9 @@ export default function SharedAncestryAdminPage() {
       {error && <div role="alert" className={styles.error}>{error}</div>}{notice && <div role="status" className={styles.notice}>{notice}</div>}
       {busy ? <p role="status" className={styles.state}>Ачаалж байна…</p> : <div className={styles.panel}>
         <h3>Нэг эх модыг бүх account-д харуулах</h3><p className={styles.muted}>Энд зөвхөн бодит, насанд хүрсэн, гэр бүлд харагдах Person сонгоно. Сонголт нийтлэг удмын модны эх болно. Хуучин айл тус бүрийн мэдээлэл хэвээр үлдэнэ.</p>
-        {tree?.root_person_id ? <p className={styles.notice}>Үндсэн эх тохируулагдсан. Одоо {tree.persons.length} хүн зөвшөөрлөөр нийтлэг модонд харагдаж байна. Одоогийн хувилбарт эхийг сольж болохгүй.</p> : <>
-          {candidates.length ? <label className={styles.profileEditor}>Удмын эхийн хүнийг сонгох<select value={selected} onChange={(event) => setSelected(event.target.value)}><option value="">Хүн сонгох</option>{candidates.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.family_name}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label> : <p className={styles.state}>Сонгох боломжтой хүн алга. “Гэр бүл, удам” хэсгээс бодит эх хүний бүртгэл үүсгээд энд сонгоно уу.</p>}
-          <div className={styles.panelActions}><button disabled={!selected || saving} onClick={() => void save()}>{saving ? 'Хадгалж байна…' : 'Нийтлэг эх мод үүсгэх'}</button><Link href="/admin">Хүмүүсээ админ удирдлагаас бэлдэх →</Link></div>
-        </>}
+        {tree?.root_person_id && <p className={styles.notice}>Үндсэн эх одоо тохируулагдсан. {tree.persons.length} зөвшөөрөгдсөн хүн нийтлэг модонд байна. Шинэ эх сонгоход хуучин хүн, салааны холбоос болон айл бүрийн мод хэвээр үлдэнэ.</p>}
+        {candidates.length ? <label className={styles.profileEditor}>Удмын эхийн хүнийг сонгох<select value={selected} onChange={(event) => setSelected(event.target.value)}><option value="">Хүн сонгох</option>{candidates.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.family_name}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label> : <p className={styles.state}>Сонгох боломжтой хүн алга. “Гэр бүл, удам” хэсгээс бодит эх хүний бүртгэл үүсгээд энд сонгоно уу.</p>}
+        <div className={styles.panelActions}><button disabled={!selected || selected === tree?.root_person_id || saving} onClick={() => void save()}>{saving ? 'Хадгалж байна…' : tree?.root_person_id ? 'Үндсэн эхийг шинэчлэх' : 'Нийтлэг эх мод үүсгэх'}</button><Link href="/admin">Хүмүүсээ админ удирдлагаас бэлдэх →</Link></div>
       </div>}
       <div className={styles.panel}><h3>Салаа нэмж холбох дүрэм</h3><ol><li>Хэрэглэгч өөрийн аккаунттай холбосон хүнийг сонгоно.</li><li>Өөрийн хүн бусад account-д харагдах зөвшөөрлийг өөрөө өгнө.</li><li>Нийтлэг модонд байгаа эцэг/эхийг сонговол түүний салбар болж холбоно. Сонгохгүй бол одоогоор холбоогүй салаа хэвээр байна.</li><li>Хэрэглэгч салбараа салгахад зөвхөн нийтлэг модны холбоос арилна; өөрийн гэр бүлийн мод ба профайл хэвээр.</li></ol></div>
       <form className={styles.panel} onSubmit={(event) => void saveDonation(event)}><h3>💚 Бүх гишүүнд харагдах хандив</h3><p className={styles.muted}>Энд оруулсан банк, дансны дугаар болон QR бүх нэвтэрсэн account-ийн дээд хэсэгт харагдана. Нууц мэдээлэл оруулахгүй.</p><div className={styles.formGrid}>
