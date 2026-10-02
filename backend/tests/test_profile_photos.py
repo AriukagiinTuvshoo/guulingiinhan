@@ -54,6 +54,12 @@ def test_profile_photo_upload_get_replace_and_delete(client, database):
     assert uploaded.status_code == 201, uploaded.text
     url = uploaded.json()["profile_photo_url"]
     assert url.startswith(endpoint.removeprefix("/api/v1") + "?v=")
+    tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={person['id']}")
+    assert tree.status_code == 200
+    assert tree.json()["persons"][0]["profile_photo_url"] == url
+    directory = client.get(f"/api/v1/families/{family_id}/people")
+    assert directory.status_code == 200
+    assert directory.json()["items"][0]["profile_photo_url"] == url
     assert "profile-photos/" not in url
     assert len(storage.objects) == 1
     content = client.get("/api/v1" + url)
@@ -76,6 +82,8 @@ def test_profile_photo_upload_get_replace_and_delete(client, database):
     assert client.get("/api/v1" + current_url).status_code == 200
 
     assert client.delete(endpoint).status_code == 204
+    tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={person['id']}")
+    assert tree.json()["persons"][0]["profile_photo_url"] is None
     assert storage.objects == {}
     assert client.get("/api/v1" + current_url).status_code == 404
     with database() as db:

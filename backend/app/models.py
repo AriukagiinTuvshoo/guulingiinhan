@@ -652,7 +652,7 @@ class ParentChildRelationship(Base):
         UniqueConstraint("parent_id", "child_id", name="uq_parent_child"),
         CheckConstraint("parent_id <> child_id", name="ck_parent_child_not_self"),
         CheckConstraint(
-            "relationship_type IN ('biological', 'adoptive')", name="ck_parent_child_type"
+            "relationship_type IN ('biological', 'adoptive', 'step')", name="ck_parent_child_type"
         ),
         Index("ix_parent_child_child", "child_id"),
     )

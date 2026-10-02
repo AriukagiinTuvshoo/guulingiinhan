@@ -10,6 +10,8 @@ import {
   ArchiveListPage,
   Marriage,
   MemoryListItem,
+  LineageSummary,
+  BranchSummary,
   PersonProfile,
   StoryListPage,
   ProfileRelationPerson,
@@ -76,6 +78,11 @@ function ProfilePageContent() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
+  const [editingIsAlive, setEditingIsAlive] = useState(true);
+  const [lineages, setLineages] = useState<LineageSummary[]>([]);
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [selectedLineageId, setSelectedLineageId] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState('');
   const [loading, setLoading] = useState(true);
 
   async function load(fid: string, pid: string, requestId?: number) {
@@ -94,6 +101,8 @@ function ProfilePageContent() {
     if (requestId !== undefined && requestId !== profileRequestRef.current) return;
 
     setPerson(profile);
+    setSelectedLineageId(profile.lineage_id ?? '');
+    setSelectedBranchId(profile.branch_id ?? '');
     setLoading(false);
 
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
@@ -154,6 +163,46 @@ function ProfilePageContent() {
       setArchiveState('restricted');
     } else {
       setArchiveState('error');
+    }
+  }
+
+  useEffect(() => {
+    if (!family) return;
+    let active = true;
+    api<LineageSummary[]>(`/families/${family}/lineages`)
+      .then((items) => { if (active) setLineages(items); })
+      .catch(() => { if (active) setLineages([]); });
+    return () => { active = false; };
+  }, [family]);
+
+  useEffect(() => {
+    if (!selectedLineageId) { setBranches([]); return; }
+    let active = true;
+    api<BranchSummary[]>(`/lineages/${selectedLineageId}/branches`)
+      .then((items) => { if (active) setBranches(items); })
+      .catch(() => { if (active) setBranches([]); });
+    return () => { active = false; };
+  }, [selectedLineageId]);
+
+  async function saveLineageAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!family || !id || mutationBusy || !currentFamily || !['owner', 'editor'].includes(currentFamily.role)) return;
+    setMutationBusy(true);
+    setError('');
+    try {
+      const endpoint = `/families/${family}/persons/${id}/lineage-assignment`;
+      if (selectedLineageId) {
+        await api(endpoint, { method: 'PUT', body: JSON.stringify({ lineage_id: selectedLineageId, branch_id: selectedBranchId || null }) });
+      } else if (person?.lineage_id) {
+        await api(endpoint, { method: 'DELETE' });
+      }
+      const refreshId = ++profileRequestRef.current;
+      await load(family, id, refreshId);
+      setNotice('Удам, салааны хуваарилалт хадгалагдлаа.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Хуваарилалтыг хадгалж чадсангүй.');
+    } finally {
+      setMutationBusy(false);
     }
   }
 
@@ -315,9 +364,9 @@ function ProfilePageContent() {
           gender: values.get('gender'),
           birth_date: values.get('birth_date') || null,
           birth_place: values.get('birth_place') || null,
-          is_alive: values.get('is_alive') === 'true',
-          death_date: values.get('death_date') || null,
-          death_place: values.get('death_place') || null,
+          is_alive: editingIsAlive,
+          death_date: editingIsAlive ? null : values.get('death_date') || null,
+          death_place: editingIsAlive ? null : values.get('death_place') || null,
           visibility: values.get('visibility'),
         }),
       });
@@ -520,7 +569,7 @@ function ProfilePageContent() {
                 Удмын модонд харах
               </Link>
               {person.can_edit_profile && (
-                <button type="button" onClick={() => setEditing((value) => !value)}>
+                <button type="button" onClick={() => { setEditingIsAlive(person.is_alive); setEditing((value) => !value); }}>
                   {editing ? 'Засахыг хаах' : 'Профайл засах'}
                 </button>
               )}
@@ -538,7 +587,7 @@ function ProfilePageContent() {
               <div><dt>Хүйс</dt><dd>{person.gender === 'female' ? 'Эмэгтэй' : person.gender === 'male' ? 'Эрэгтэй' : person.gender === 'other' ? 'Бусад' : 'Тодорхойгүй'}</dd></div>
               <div><dt>Төрсөн</dt><dd>{person.birth_date ?? 'Мэдээлэл оруулаагүй байна'}</dd></div>
               <div><dt>Төрсөн газар</dt><dd>{person.birth_place ?? 'Мэдээлэл оруулаагүй байна'}</dd></div>
-              <div><dt>Нас барсан</dt><dd>{person.is_alive ? 'Амьд' : person.death_date ?? 'Огноо тодорхойгүй'}</dd></div>
+              {!person.is_alive && <div><dt>Нас барсан</dt><dd>{person.death_date ?? 'Огноо тодорхойгүй'}</dd></div>}
               {!person.is_alive && <div><dt>Нас барсан газар</dt><dd>{person.death_place ?? 'Мэдээлэл оруулаагүй байна'}</dd></div>}
               <div><dt>Нууцлал</dt><dd>{person.visibility === 'private' ? 'Хувийн' : person.visibility === 'public' ? 'Нийтийн' : 'Гэр бүлийн'}</dd></div>
             </dl>
@@ -553,6 +602,11 @@ function ProfilePageContent() {
               <div><dt>Салаа</dt><dd>{person.branch_name ?? 'Томилогдоогүй'}</dd></div>
             </dl>
             <p className="profile-note">Удам, салаа нь зөвхөн explicit assignment-аас харагдана. Бусад мэдээллээс автоматаар таамаглахгүй.</p>
+            {currentFamily && ['owner', 'editor'].includes(currentFamily.role) && <form className="profile-lineage-form" onSubmit={saveLineageAssignment}>
+              <label>Удам угсаа<select value={selectedLineageId} onChange={(event) => { setSelectedLineageId(event.target.value); setSelectedBranchId(''); }}><option value="">Томилохгүй</option>{lineages.map((lineage) => <option key={lineage.id} value={lineage.id}>{lineage.name}</option>)}</select></label>
+              <label>Салаа<select value={selectedBranchId} onChange={(event) => setSelectedBranchId(event.target.value)} disabled={!selectedLineageId}><option value="">Салаа сонгоогүй</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+              <button type="submit" disabled={mutationBusy}>Хуваарилалт хадгалах</button>
+            </form>}
           </section>
 
           <section className="card profile-card profile-relationships">
@@ -745,9 +799,9 @@ function ProfilePageContent() {
                 <label>Хүйс<select name="gender" defaultValue={person.gender}><option value="unknown">Тодорхойгүй</option><option value="female">Эмэгтэй</option><option value="male">Эрэгтэй</option><option value="other">Бусад</option></select></label>
                 <label>Төрсөн огноо<input name="birth_date" type="date" defaultValue={person.birth_date ?? ''} /></label>
                 <label>Төрсөн газар<input name="birth_place" defaultValue={person.birth_place ?? ''} maxLength={240} /></label>
-                <label>Амьд эсэх<select name="is_alive" defaultValue={String(person.is_alive)}><option value="true">Амьд</option><option value="false">Нас барсан</option></select></label>
-                <label>Нас барсан огноо<input name="death_date" type="date" defaultValue={person.death_date ?? ''} /></label>
-                <label>Нас барсан газар<input name="death_place" defaultValue={person.death_place ?? ''} maxLength={240} /></label>
+                <label>Амьд эсэх<select name="is_alive" value={String(editingIsAlive)} onChange={(event) => setEditingIsAlive(event.target.value === 'true')}><option value="true">Амьд</option><option value="false">Нас барсан</option></select></label>
+                {!editingIsAlive && <><label>Нас барсан огноо<input name="death_date" type="date" defaultValue={person.death_date ?? ''} /></label>
+                <label>Нас барсан газар<input name="death_place" defaultValue={person.death_place ?? ''} maxLength={240} /></label></>}
                 <label>Нууцлал<select name="visibility" defaultValue={person.visibility}><option value="private">Зөвхөн би</option><option value="family">Гэр бүлийнхэн</option><option value="public">Нийтийн</option></select></label>
               </div>
               <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Профайл хадгалах"}</button>

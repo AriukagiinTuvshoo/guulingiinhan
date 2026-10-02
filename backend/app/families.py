@@ -179,8 +179,8 @@ class PersonCreate(BaseModel):
             raise ValueError("Төрсөн огноо ирээдүйд байж болохгүй.")
         if self.death_date and self.birth_date and self.death_date < self.birth_date:
             raise ValueError("Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй.")
-        if self.is_alive and self.death_date:
-            raise ValueError("Амьд хүний нас барсан огноог бөглөж болохгүй.")
+        if self.is_alive and (self.death_date or self.death_place):
+            raise ValueError("Амьд хүний нас барсны мэдээллийг бөглөж болохгүй.")
         return self
 
 
@@ -272,6 +272,7 @@ class PersonDirectoryItem(BaseModel):
     is_alive: bool
     death_date: date | None
     death_place: str | None
+    profile_photo_url: str | None = None
     short_description: str | None
     visibility: str
     created_at: datetime
@@ -298,6 +299,7 @@ class TreePersonOut(BaseModel):
     birth_date: date | None
     is_alive: bool
     death_date: date | None
+    profile_photo_url: str | None = None
     lineage_id: UUID | None = None
     lineage_name: str | None = None
     branch_id: UUID | None = None
@@ -373,11 +375,11 @@ class GuardianshipOut(BaseModel):
 class ParentChildCreate(BaseModel):
     parent_id: UUID
     child_id: UUID
-    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive)$")
+    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive|step)$")
 
 
 class ParentChildPatch(BaseModel):
-    relationship_type: str = Field(pattern="^(biological|adoptive)$")
+    relationship_type: str = Field(pattern="^(biological|adoptive|step)$")
 
 
 class MarriageCreate(BaseModel):
@@ -1250,6 +1252,10 @@ def list_people_directory(
         items.append(
             PersonDirectoryItem(
                 **result.model_dump(),
+                profile_photo_url=(
+                    None if person_is_minor(person) and "view_profile" not in scopes.get(person.id, set())
+                    else _person_profile_photo_url(family_id, person)
+                ),
                 lineage_id=row_lineage_id,
                 lineage_name=row_lineage_name,
                 branch_id=row_branch_id,
@@ -1511,6 +1517,7 @@ def update_person(
     data = body.model_dump(exclude_unset=True)
     candidate_birth = data.get("birth_date", person.birth_date)
     candidate_death = data.get("death_date", person.death_date)
+    candidate_death_place = data.get("death_place", person.death_place)
     candidate_alive = data.get("is_alive", person.is_alive)
     is_minor_record = person_is_minor(person) or is_minor(candidate_birth) is True
     linked_to_user = db.scalar(
@@ -1535,8 +1542,8 @@ def update_person(
         raise HTTPException(
             status_code=422, detail="Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй."
         )
-    if candidate_alive and candidate_death:
-        raise HTTPException(status_code=422, detail="Амьд хүний нас барсан огноог бөглөж болохгүй.")
+    if candidate_alive and (candidate_death or candidate_death_place):
+        raise HTTPException(status_code=422, detail="Амьд хүний нас барсны мэдээллийг бөглөж болохгүй.")
     for key, value in data.items():
         setattr(
             person, key, value.strip() if key in {"first_name", "last_name"} and value else value
@@ -3475,6 +3482,7 @@ def family_tree(
     family_id: UUID,
     person_id: UUID | None = Query(default=None, description="Контекстийн гол хүн."),
     depth: int = Query(default=2, ge=0, le=5, description="Холбооны гүн, хамгийн ихдээ 5."),
+    scope: str = Query(default="context", pattern="^(context|all)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -3521,6 +3529,59 @@ def family_tree(
     truncated = False
     node_limit = 300
     edge_limit = 1200
+
+    if scope == "all":
+        family_rows = list(db.scalars(
+            select(Person)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(
+                FamilyPerson.family_id == family_id,
+                Person.id != root.id,
+                or_(
+                    Person.visibility != "private",
+                    Person.created_by == user.id,
+                    Person.id == own_person_id,
+                ),
+            )
+            .order_by(Person.search_last_name, Person.search_first_name, Person.id)
+            .limit(node_limit)
+        ).all())
+        if len(family_rows) >= node_limit:
+            truncated = True
+            family_rows = family_rows[:node_limit - 1]
+        scopes.update(active_guardian_scopes(db, user.id, family_id, [row.id for row in family_rows]))
+        people.update({
+            row.id: row for row in family_rows
+            if not person_is_minor(row) or "view_profile" in scopes.get(row.id, set())
+        })
+        visible_ids = set(people)
+        if visible_ids:
+            parent_rows = list(db.scalars(
+                select(ParentChildRelationship)
+                .where(
+                    ParentChildRelationship.parent_id.in_(visible_ids),
+                    ParentChildRelationship.child_id.in_(visible_ids),
+                )
+                .order_by(ParentChildRelationship.id)
+                .limit(edge_limit + 1)
+            ).all())
+            marriage_rows = list(db.scalars(
+                select(Marriage)
+                .where(
+                    Marriage.deleted_at.is_(None),
+                    Marriage.person_1_id.in_(visible_ids),
+                    Marriage.person_2_id.in_(visible_ids),
+                )
+                .order_by(*_marriage_order())
+                .limit(edge_limit + 1)
+            ).all())
+            if len(parent_rows) + len(marriage_rows) > edge_limit:
+                truncated = True
+            for edge in parent_rows[:edge_limit]:
+                parent_edges[edge.id] = edge
+            for marriage in marriage_rows[:max(0, edge_limit - len(parent_edges))]:
+                marriages[marriage.id] = marriage
+        frontier = set()
 
     for _level in range(depth):
         if not frontier:
@@ -3670,6 +3731,9 @@ def family_tree(
                 birth_date=None if restricted else person.birth_date,
                 is_alive=person.is_alive,
                 death_date=None if restricted else person.death_date,
+                profile_photo_url=(
+                    None if restricted else _person_profile_photo_url(family_id, person)
+                ),
                 lineage_id=None if restricted or lineage is None else lineage.id,
                 lineage_name=None if restricted or lineage is None else lineage.name,
                 branch_id=None if restricted or branch is None else branch.id,

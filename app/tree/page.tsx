@@ -23,6 +23,7 @@ import {
   TreePerson,
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import ProfilePhoto from '../../components/profile-photo';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -79,6 +80,10 @@ function lifeSummary(person: TreePerson) {
 
 function generationLabel(generation: number) {
   return generation === 0 ? 'Төв үе' : generation < 0 ? Math.abs(generation) + ' үеийн өмнө' : generation + ' үеийн үргэлжлэл';
+}
+
+function parentLinkLabel(type: string) {
+  return type === 'step' ? 'Дагавар холбоо' : type === 'adoptive' ? 'Үрчилсэн холбоо' : 'Төрсөн холбоо';
 }
 
 function treeFriendlyError(cause: unknown, fallback: string) {
@@ -219,6 +224,7 @@ function TreePageContent() {
   const [selectedId, setSelectedId] = useState('');
   const [depth, setDepth] = useState(3);
   const [viewMode, setViewMode] = useState<'full' | 'close'>('full');
+  const viewModeRef = useRef<'full' | 'close'>('full');
   const [treeView, setTreeView] = useState<'2d' | '3d'>('2d');
   const [zoom, setZoom] = useState(0.9);
   const [loading, setLoading] = useState(true);
@@ -253,6 +259,7 @@ function TreePageContent() {
   const [relationPersonId, setRelationPersonId] = useState('');
   const [relationPersonBusy, setRelationPersonBusy] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [editingPersonIsAlive, setEditingPersonIsAlive] = useState(true);
   const [editPersonError, setEditPersonError] = useState('');
   const [editPersonBusy, setEditPersonBusy] = useState(false);
 
@@ -292,7 +299,8 @@ function TreePageContent() {
       try {
         if (!family || family.id !== id) return;
         let treeData: TreeData;
-        const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth);
+        const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth)
+          + '&scope=' + (viewModeRef.current === 'full' ? 'all' : 'context');
         try {
           const query = preferredPersonId
             ? treeBase + '&person_id=' + encodeURIComponent(preferredPersonId)
@@ -568,6 +576,7 @@ function TreePageContent() {
       return;
     }
     setViewMode(mode);
+    viewModeRef.current = mode;
     const focus = mode === 'close' ? tree.linked_person_id : tree.lineage_root_person_id;
     void loadTree(familyId, focus || undefined, mode === 'close' ? 2 : 5);
     setDepth(mode === 'close' ? 2 : 5);
@@ -750,6 +759,7 @@ function TreePageContent() {
         '/families/' + encodeURIComponent(familyId) + '/persons/' + encodeURIComponent(personId),
       );
       setEditingPerson(profile);
+      setEditingPersonIsAlive(profile.is_alive);
     } catch (cause) {
       setError(treeFriendlyError(cause, 'Хүний мэдээллийг нээж чадсангүй.'));
     } finally {
@@ -813,13 +823,13 @@ function TreePageContent() {
     }
   }
 
-  async function updateParentChild(edge: TreeData['parent_child_relationships'][number]) {
+  async function updateParentChild(edge: TreeData['parent_child_relationships'][number], relationshipType: string) {
     try {
       await api(
         '/families/' + encodeURIComponent(familyId) + '/relationships/parent-child/' + encodeURIComponent(edge.id),
         {
           method: 'PATCH',
-          body: JSON.stringify({ relationship_type: edge.relationship_type === 'biological' ? 'adoptive' : 'biological' }),
+          body: JSON.stringify({ relationship_type: relationshipType }),
         },
       );
       await loadTree(familyId, selectedId, depth);
@@ -1259,9 +1269,7 @@ function TreePageContent() {
                             aria-label={personName(person) + ' хүнийг сонгох'}
                             onClick={() => selectPerson(person.id)}
                           >
-                            <span className="tree-person-avatar" aria-hidden="true">
-                              {initials(person)}
-                            </span>
+                            <ProfilePhoto className="tree-person-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />
                             <strong>{personName(person) || 'Нэргүй хүн'}</strong>
                             <span>{lifeSummary(person)}</span>
                             <em>{tree.lineage_root_person_id && viewMode === 'full' ? generationLabel(node.generation) : 'Үе тогтоогоогүй'}</em>
@@ -1299,9 +1307,7 @@ function TreePageContent() {
                 {selectedPerson ? (
                   <>
                     <div className="tree-selected-heading">
-                      <div className="tree-selected-avatar" aria-hidden="true">
-                        {initials(selectedPerson)}
-                      </div>
+                      <ProfilePhoto className="tree-selected-avatar" url={selectedPerson.profile_photo_url} name={personName(selectedPerson)} fallback={initials(selectedPerson)} />
                       <div>
                         <p className="tree-eyebrow">СОНГОГДСОН ХҮН</p>
                         <h2>{personName(selectedPerson) || 'Нэргүй хүн'}</h2>
@@ -1353,9 +1359,9 @@ function TreePageContent() {
                           return (
                             <div className="tree-relation-row" key={edge.id}>
                               <strong>{parent ? personName(parent) : 'Хүний мэдээлэл харагдахгүй байна'}</strong>
-                              <span>{edge.relationship_type === 'adoptive' ? 'Үрчилсэн холбоо' : 'Төрсөн холбоо'}</span>
+                              <span>{parentLinkLabel(edge.relationship_type)}</span>
                               {canManageTree && <div className="tree-relation-actions">
-                                <button type="button" onClick={() => void updateParentChild(edge)}>{edge.relationship_type === 'adoptive' ? 'Төрсөн болгох' : 'Үрчилсэн болгох'}</button>
+                                <select aria-label="Эцэг эхийн холбооны төрөл" value={edge.relationship_type} onChange={(event) => void updateParentChild(edge, event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select>
                                 <button type="button" className="is-danger" onClick={() => void removeParentChild(edge)}>Холбоос хасах</button>
                               </div>}
                             </div>
@@ -1370,9 +1376,9 @@ function TreePageContent() {
                           return (
                             <div className="tree-relation-row" key={edge.id}>
                               <strong>{child ? personName(child) : 'Хүний мэдээлэл харагдахгүй байна'}</strong>
-                              <span>{edge.relationship_type === 'adoptive' ? 'Үрчилсэн холбоо' : 'Төрсөн холбоо'}</span>
+                              <span>{parentLinkLabel(edge.relationship_type)}</span>
                               {canManageTree && <div className="tree-relation-actions">
-                                <button type="button" onClick={() => void updateParentChild(edge)}>{edge.relationship_type === 'adoptive' ? 'Төрсөн болгох' : 'Үрчилсэн болгох'}</button>
+                                <select aria-label="Хүүхдийн холбооны төрөл" value={edge.relationship_type} onChange={(event) => void updateParentChild(edge, event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select>
                                 <button type="button" className="is-danger" onClick={() => void removeParentChild(edge)}>Холбоос хасах</button>
                               </div>}
                             </div>
@@ -1544,6 +1550,7 @@ function TreePageContent() {
                   <select name="relationship_type" defaultValue="biological">
                     <option value="biological">Төрсөн</option>
                     <option value="adoptive">Үрчилсэн</option>
+                    <option value="step">Дагавар (ханьтай гэрлэснээр өөрийн төрсөн хүүхэд болохгүй)</option>
                   </select>
                 </label>
               )}
@@ -1580,9 +1587,9 @@ function TreePageContent() {
               <label><span>Хүйс</span><select name="gender" defaultValue={editingPerson.gender}><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>
               <label><span>Төрсөн огноо</span><input name="birth_date" type="date" defaultValue={editingPerson.birth_date ?? ''} /></label>
               <label><span>Төрсөн газар</span><input name="birth_place" defaultValue={editingPerson.birth_place ?? ''} maxLength={240} /></label>
-              <label><span>Амьд эсэх</span><select name="is_alive" defaultValue={String(editingPerson.is_alive)}><option value="true">Амьд</option><option value="false">Нас барсан</option></select></label>
-              <label><span>Нас барсан огноо</span><input name="death_date" type="date" defaultValue={editingPerson.death_date ?? ''} /></label>
-              <label><span>Нас барсан газар</span><input name="death_place" defaultValue={editingPerson.death_place ?? ''} maxLength={240} /></label>
+              <label><span>Амьд эсэх</span><select name="is_alive" value={String(editingPersonIsAlive)} onChange={(event) => setEditingPersonIsAlive(event.target.value === 'true')}><option value="true">Амьд</option><option value="false">Нас барсан</option></select></label>
+              {!editingPersonIsAlive && <><label><span>Нас барсан огноо</span><input name="death_date" type="date" defaultValue={editingPerson.death_date ?? ''} /></label>
+              <label><span>Нас барсан газар</span><input name="death_place" defaultValue={editingPerson.death_place ?? ''} maxLength={240} /></label></>}
               <label><span>Харагдах хүрээ</span><select name="visibility" defaultValue={editingPerson.visibility}><option value="family">Гэр бүл</option><option value="private">Хувийн</option><option value="public">Нийтэд</option></select></label>
               <label className="tree-editor-wide"><span>Товч намтар</span><textarea name="short_description" defaultValue={editingPerson.short_description ?? ''} maxLength={1000} rows={3} /></label>
               <div className="tree-modal-actions tree-editor-wide">

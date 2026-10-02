@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Marriage, personName, TreeData, TreePerson } from '../lib/api';
+import { API_BASE } from '../lib/api';
 import { layoutTree3D, Point3 } from '../lib/tree-3d-layout';
 
 type Props = {
@@ -88,7 +89,7 @@ export default function Tree3DScene({
     if (!host) return;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
     } catch {
       setWebglError(true);
       return;
@@ -97,7 +98,7 @@ export default function Tree3DScene({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setSize(host.clientWidth, host.clientHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setClearColor(0x102b23, 1);
+    renderer.setClearColor(0x102b23, 0);
     host.appendChild(renderer.domElement);
     renderer.domElement.setAttribute('aria-hidden', 'true');
     renderer.domElement.style.display = 'block';
@@ -105,7 +106,7 @@ export default function Tree3DScene({
     renderer.domElement.style.height = '100%';
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x102b23);
+    scene.background = null;
     scene.fog = new THREE.Fog(0x102b23, 250, 1200);
     scene.add(new THREE.HemisphereLight(0xe8dfc5, 0x203c31, 2.1));
     const keyLight = new THREE.DirectionalLight(0xffe5a4, 2.4);
@@ -181,6 +182,7 @@ export default function Tree3DScene({
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
+    let active = true;
     for (const object of objectsRef.current) {
       scene.remove(object);
       object.traverse((child) => {
@@ -217,6 +219,45 @@ export default function Tree3DScene({
       const rows = generationGroups.get(generation) ?? [];
       rows.push(person.id);
       generationGroups.set(generation, rows);
+    }
+
+    // The tree API exposes only an authorized, versioned photo route. Never put
+    // private storage keys or raw image URLs into the scene.
+    for (const person of visiblePeople.filter((item) => item.profile_photo_url).slice(0, 96)) {
+      const point = positions.get(person.id);
+      if (!point || !API_BASE || !person.profile_photo_url) continue;
+      const url = person.profile_photo_url.startsWith('/')
+        ? `${API_BASE}${person.profile_photo_url}` : person.profile_photo_url;
+      void fetch(url, { credentials: person.profile_photo_url.startsWith('/') ? 'include' : 'omit', cache: 'no-store' })
+        .then(async (response) => {
+          if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) return null;
+          return createImageBitmap(await response.blob());
+        })
+        .then((bitmap) => {
+          if (!bitmap) return;
+          if (!active) { bitmap.close(); return; }
+          const canvas = document.createElement('canvas');
+          canvas.width = 128;
+          canvas.height = 128;
+          const context = canvas.getContext('2d');
+          if (!context) { bitmap.close(); return; }
+          context.beginPath();
+          context.arc(64, 64, 59, 0, Math.PI * 2);
+          context.clip();
+          const side = Math.min(bitmap.width, bitmap.height);
+          context.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, 128, 128);
+          bitmap.close();
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          const portrait = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+          portrait.scale.set(1.8, 1.8, 1);
+          portrait.position.set(point.x, point.y, point.z + 1.05);
+          portrait.userData.personId = person.id;
+          if (!active) { texture.dispose(); portrait.material.dispose(); return; }
+          scene.add(portrait);
+          nextObjects.push(portrait);
+        })
+        .catch(() => undefined);
     }
     setGenerationChoices([...generationGroups.entries()]
       .sort(([left], [right]) => left - right)
@@ -363,6 +404,7 @@ export default function Tree3DScene({
     objectsRef.current = nextObjects;
     if (cameraRef.current) rendererRef.current?.render(scene, cameraRef.current);
     if (selectedPersonId && personIds.has(selectedPersonId)) setSelectedContext(byId.get(selectedPersonId)?.branch_name ?? '');
+    return () => { active = false; };
   }, [canonicalRootId, data, focusedBranchId, selectedPersonId]);
 
   useEffect(() => {

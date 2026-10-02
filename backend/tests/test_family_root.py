@@ -71,3 +71,21 @@ def test_detach_preserves_historical_relationships(client, email_provider):
     assert len(tree["persons"]) == 3
     assert len(tree["parent_child_relationships"]) == 1
     assert len(tree["marriages"]) == 1
+
+
+def test_full_family_tree_includes_unconnected_authorized_people(client, email_provider):
+    assert register_verified(client, "full-tree-owner@example.com", "strong-password-123", email_provider).status_code == 201
+    family_id = client.post("/api/v1/families", json={"name": "Бүтэн мод"}).json()["id"]
+    people = [client.post(
+        f"/api/v1/families/{family_id}/persons", json={"first_name": name}
+    ).json()["id"] for name in ("Эх", "Хүүхэд", "Салангид хүн")]
+    assert client.post(
+        f"/api/v1/families/{family_id}/relationships/parent-child",
+        json={"parent_id": people[0], "child_id": people[1]},
+    ).status_code == 201
+    context = client.get(f"/api/v1/families/{family_id}/tree?person_id={people[0]}&depth=2")
+    full = client.get(f"/api/v1/families/{family_id}/tree?person_id={people[0]}&scope=all")
+    assert context.status_code == full.status_code == 200
+    assert {person["id"] for person in context.json()["persons"]} == set(people[:2])
+    assert {person["id"] for person in full.json()["persons"]} == set(people)
+    assert len(full.json()["parent_child_relationships"]) == 1

@@ -226,6 +226,13 @@ def test_family_tree_relationships_can_be_corrected_and_person_detached(client, 
     assert changed.json()["relationship_type"] == "adoptive"
     assert client.get(f"{base}/tree").json()["parent_child_relationships"][0]["relationship_type"] == "adoptive"
 
+    step = client.patch(
+        f"{base}/relationships/parent-child/{relationship_id}",
+        json={"relationship_type": "step"},
+    )
+    assert step.status_code == 200
+    assert client.get(f"{base}/tree").json()["parent_child_relationships"][0]["relationship_type"] == "step"
+
     assert client.delete(f"{base}/relationships/parent-child/{relationship_id}").status_code == 204
     assert client.get(f"{base}/tree").json()["parent_child_relationships"] == []
 

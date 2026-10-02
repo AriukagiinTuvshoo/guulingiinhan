@@ -369,7 +369,7 @@ function MemoriesPageContent() {
               <label>
                 <span>Зураг</span>
                 <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="memory-photo-help" />
-                <small id="memory-photo-help">JPEG, PNG, WebP. Серверийн upload/security validation нь эцсийн эрх мэдэлтэй.</small>
+                <small id="memory-photo-help">JPEG, PNG эсвэл WebP зураг сонгоно уу.</small>
               </label>
               <label>
                 <span>Харагдах байдал</span>
@@ -387,7 +387,7 @@ function MemoriesPageContent() {
                   placeholder="Нэрээр хайх…"
                   aria-describedby="memory-person-help"
                 />
-                <small id="memory-person-help">Харагдах боломжтой хүмүүсийг backend-ийн existing search contract-аар сонгоно.</small>
+                <small id="memory-person-help">Дурсамжтай холбоотой хүмүүсийг нэрээр хайж сонгоно уу.</small>
               </label>
               {selectedPeople.length > 0 && (
                 <div className="memory-selected-people" aria-label="Сонгосон хүмүүс">
