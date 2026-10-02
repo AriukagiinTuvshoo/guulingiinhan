@@ -9,6 +9,10 @@ import { ApiError, api, User } from '../../lib/api';
 type Mode = 'email' | 'phone';
 type Challenge = { challenge_id: string; expires_in: number; resend_after: number };
 
+function composeDisplayName(surname: string, givenName: string) {
+  return [surname.trim(), givenName.trim()].filter(Boolean).join(' ');
+}
+
 function registerError(cause: unknown) {
   if (cause instanceof ApiError) {
     if (cause.status === 409) return 'Энэ бүртгэлийг одоогоор үүсгэх боломжгүй байна. Мэдээллээ шалгаад дахин оролдоно уу.';
@@ -29,6 +33,8 @@ export default function RegisterPage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [phone, setPhone] = useState('');
   const [phoneName, setPhoneName] = useState('');
+  const [surname, setSurname] = useState('');
+  const [givenName, setGivenName] = useState('');
   const [resendSeconds, setResendSeconds] = useState(0);
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [error, setError] = useState('');
@@ -64,9 +70,17 @@ export default function RegisterPage() {
     setBusy(true);
     try {
       const email = String(values.get('email') ?? '').trim();
+      const displayName = composeDisplayName(
+        String(values.get('surname') ?? ''),
+        String(values.get('given_name') ?? ''),
+      );
+      if (!displayName || displayName.length > 120) {
+        setError('Овог, нэрээ шалгана уу. Нийлсэн нэр 120 тэмдэгтээс хэтрэхгүй байх ёстой.');
+        return;
+      }
       const result = await api<{ message: string }>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password, display_name: values.get('name') }),
+        body: JSON.stringify({ email, password, display_name: displayName }),
       });
       setRegisteredEmail(email);
       setNotice(result.message);
@@ -83,9 +97,11 @@ export default function RegisterPage() {
     setNotice('');
     const values = new FormData(event.currentTarget);
     const requestedPhone = String(values.get('phone') ?? '').trim();
-    const requestedName = String(values.get('name') ?? '').trim();
-    if (!requestedName) {
-      setError('Нэрээ оруулна уу.');
+    const requestedSurname = String(values.get('surname') ?? '');
+    const requestedGivenName = String(values.get('given_name') ?? '');
+    const requestedName = composeDisplayName(requestedSurname, requestedGivenName);
+    if (!requestedSurname.trim() || !requestedGivenName.trim() || requestedName.length > 120) {
+      setError('Овог, нэрээ шалгана уу. Нийлсэн нэр 120 тэмдэгтээс хэтрэхгүй байх ёстой.');
       return;
     }
     if (!requestedPhone) {
@@ -100,6 +116,8 @@ export default function RegisterPage() {
       });
       setPhone(requestedPhone);
       setPhoneName(requestedName);
+      setSurname(requestedSurname);
+      setGivenName(requestedGivenName);
       setChallenge(result);
       setResendSeconds(result.resend_after);
       setNotice('Хэрэв энэ дугаараар бүртгэлгүй бол бүртгэл үүсгэх код илгээгдлээ.');
@@ -221,8 +239,10 @@ export default function RegisterPage() {
             </div>
           ) : mode === 'email' ? (
             <form className="authv2-form" onSubmit={submitEmail}>
-              <label htmlFor="register-name">Нэр</label>
-              <input id="register-name" name="name" autoComplete="name" minLength={1} maxLength={120} required />
+              <label htmlFor="register-surname">Овог</label>
+              <input id="register-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required />
+              <label htmlFor="register-given-name">Нэр</label>
+              <input id="register-given-name" name="given_name" autoComplete="given-name" minLength={1} maxLength={59} required />
               <label htmlFor="register-email">Имэйл</label>
               <input id="register-email" name="email" type="email" autoComplete="email" maxLength={320} required />
               <label htmlFor="register-password">Нууц үг</label>
@@ -240,8 +260,10 @@ export default function RegisterPage() {
             </form>
           ) : !challenge ? (
             <form className="authv2-form" onSubmit={requestPhoneCode}>
-              <label htmlFor="register-phone-name">Нэр</label>
-              <input id="register-phone-name" name="name" autoComplete="name" minLength={1} maxLength={120} required value={phoneName} onChange={(event) => setPhoneName(event.target.value)} />
+              <label htmlFor="register-phone-surname">Овог</label>
+              <input id="register-phone-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required value={surname} onChange={(event) => setSurname(event.target.value)} />
+              <label htmlFor="register-phone-given-name">Нэр</label>
+              <input id="register-phone-given-name" name="given_name" autoComplete="given-name" minLength={1} maxLength={59} required value={givenName} onChange={(event) => setGivenName(event.target.value)} />
               <label htmlFor="register-phone">Утасны дугаар</label>
               <input id="register-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+976 99112233" required maxLength={20} value={phone} onChange={(event) => setPhone(event.target.value)} />
               <span className="authv2-help">+976 99112233 эсвэл 99112233 гэж оруулж болно.</span>
