@@ -83,6 +83,7 @@ class CandidateOut(BaseModel):
 
 class RootInput(BaseModel):
     person_id: UUID
+    expected_root_person_id: UUID | None = None
 
 
 class DonationInfoInput(BaseModel):
@@ -337,7 +338,7 @@ def shared_root_candidates(_: tuple[User, AdminRole] = Depends(require_super_adm
         select(Person, Family.name)
         .join(FamilyPerson, FamilyPerson.person_id == Person.id)
         .join(Family, Family.id == FamilyPerson.family_id)
-        .where(Person.visibility != "private")
+        .where(Person.visibility != "private", Family.archived_at.is_(None))
         .order_by(Person.last_name, Person.first_name, Family.name, Person.id)
     ).all()
     seen: set[UUID] = set()
@@ -358,20 +359,45 @@ def shared_root_candidates(_: tuple[User, AdminRole] = Depends(require_super_adm
 def set_shared_root(body: RootInput, current: tuple[User, AdminRole] = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
     person = db.scalar(select(Person).join(FamilyPerson, FamilyPerson.person_id == Person.id)
-                        .where(Person.id == body.person_id, Person.visibility != "private"))
+                        .join(Family, Family.id == FamilyPerson.family_id)
+                        .where(Person.id == body.person_id, Person.visibility != "private",
+                               Family.archived_at.is_(None)))
     if person is None or person_is_minor(person):
         raise HTTPException(status_code=422, detail="Үндсэн модонд нийтлэх боломжтой насанд хүрсэн хүн сонгоно уу.")
-    row = _tree_row(db)
-    if row and row.root_person_id and row.root_person_id != person.id:
-        raise HTTPException(status_code=409, detail="Үндсэн удмын эхийг солих тусгай audit урсгал одоогоор байхгүй.")
+    row = db.scalar(select(SharedAncestry).where(SharedAncestry.id == 1).with_for_update())
+    previous_root_id = row.root_person_id if row else None
+    if previous_root_id != body.expected_root_person_id:
+        raise HTTPException(status_code=409, detail="Үндсэн удмын эх өөрчлөгдсөн байна. Хуудсыг шинэчлээд дахин оролдоно уу.")
+    if previous_root_id == person.id:
+        return read_shared_tree(current[0], db)
     if row is None:
         row = SharedAncestry(id=1, root_person_id=person.id, created_by=current[0].id)
         db.add(row)
     else:
+        # Keep the former admin-designated root visible so existing global edges remain intact.
+        previous_root = db.get(Person, previous_root_id) if previous_root_id else None
+        if previous_root_id and db.get(SharedAncestryPerson, previous_root_id) is None:
+            previous_family_id = db.scalar(
+                select(FamilyPerson.family_id).where(FamilyPerson.person_id == previous_root_id)
+                .order_by(FamilyPerson.created_at, FamilyPerson.family_id).limit(1)
+            )
+            if previous_root is None or previous_family_id is None:
+                raise HTTPException(status_code=409, detail="Өмнөх удмын эхийг нийтлэг модонд хадгалж чадсангүй.")
+            db.add(SharedAncestryPerson(
+                person_id=previous_root_id, family_id=previous_family_id, added_by=current[0].id,
+            ))
         row.root_person_id = person.id
         row.updated_at = datetime.now(UTC)
-    db.add(AuditLog(actor_id=current[0].id, family_id=None,
-                    action="shared_ancestry.root_set", target_type="person", target_id=person.id))
+    if previous_root_id:
+        db.add(AuditLog(actor_id=current[0].id, family_id=None,
+                        action="shared_ancestry.root_replaced_from", target_type="person",
+                        target_id=previous_root_id))
+        db.add(AuditLog(actor_id=current[0].id, family_id=None,
+                        action="shared_ancestry.root_replaced_to", target_type="person",
+                        target_id=person.id))
+    else:
+        db.add(AuditLog(actor_id=current[0].id, family_id=None,
+                        action="shared_ancestry.root_set", target_type="person", target_id=person.id))
     db.commit()
     return read_shared_tree(current[0], db)
 

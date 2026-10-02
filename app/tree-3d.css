@@ -6,7 +6,7 @@
 .tree-branch-control select{max-width:190px}
 .tree-map-layout--3d{grid-template-columns:minmax(0,1fr) 285px}
 .tree-3d-panel{min-width:0;overflow:hidden;border:1px solid #c7bda9;border-radius:12px;background:#102b23;box-shadow:inset 0 0 0 1px rgba(255,250,240,.08)}
-.tree-3d-stage{position:relative;width:100%;height:clamp(430px,62vh,760px);overflow:hidden;background:radial-gradient(ellipse at 50% 28%,#355c47,#19392f 56%,#102b23)}
+.tree-3d-stage{position:relative;width:100%;height:clamp(430px,62vh,760px);overflow:hidden;background:linear-gradient(180deg,rgba(10,37,29,.36),rgba(9,39,30,.72)),url('/guulingiinhan-forest.svg') center/cover no-repeat,#102b23}
 .tree-3d-canvas{position:absolute;inset:0}
 .tree-3d-stage canvas{cursor:grab;touch-action:none}.tree-3d-stage canvas:active{cursor:grabbing}
 .tree-3d-overlay{position:absolute;inset:0;pointer-events:none}
@@ -39,3 +39,10 @@
 .tree-3d-generations{position:absolute;left:50%;bottom:12px;z-index:2;transform:translateX(-50%);max-height:106px;overflow:auto;pointer-events:auto}
 @media(max-width:760px){.tree-3d-actions{right:8px;bottom:8px;gap:4px}.tree-3d-actions .tree-3d-focus{font-size:7px;padding-inline:9px}.tree-3d-generations{bottom:58px;max-width:calc(100% - 16px);max-height:90px;padding:6px 8px}}
 @media(max-width:430px){.tree-3d-actions{left:auto;right:8px}.tree-3d-actions .tree-3d-focus{left:auto;right:auto}.tree-3d-generations{left:8px;right:8px;bottom:60px;transform:none;max-width:none}}
+.tree-selected-heading>div{min-width:0;flex:1 1 auto}
+.tree-selected-heading h2{max-width:100%;overflow-wrap:anywhere;word-break:normal}
+.tree-selected-heading span{display:block;overflow-wrap:anywhere}
+.tree-map-layout--3d{grid-template-columns:minmax(0,1fr) 300px}
+@media(max-width:1020px){.tree-map-layout--3d{grid-template-columns:minmax(0,1fr)}.tree-map-layout--3d .tree-selected-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:16px}.tree-map-layout--3d .tree-selected-heading,.tree-map-layout--3d .tree-selected-context,.tree-map-layout--3d .tree-selected-actions{grid-column:1}.tree-map-layout--3d .tree-selected-relations{grid-column:2;grid-row:1/span 3;margin-top:0}}
+@media(max-width:760px){.tree-map-layout--3d .tree-selected-panel{display:block}.tree-map-layout--3d .tree-selected-relations{margin-top:16px}.tree-map-layout--3d .tree-3d-stage{height:min(58vh,520px);min-height:420px}.tree-map-layout--3d .tree-3d-accessible-list{max-height:92px}.tree-map-layout--3d .tree-3d-legend{max-width:min(210px,58vw);font-size:8px}}
+@media(max-width:430px){.tree-map-layout--3d .tree-3d-stage{height:480px}.tree-map-layout--3d .tree-3d-hint{display:none}.tree-map-layout--3d .tree-3d-actions{left:auto;right:8px;bottom:8px;display:grid;justify-items:end}.tree-map-layout--3d .tree-3d-actions .tree-3d-focus{min-height:34px;font-size:8px}.tree-map-layout--3d .tree-3d-generations{left:8px;right:8px;bottom:82px;max-width:none;transform:none}}

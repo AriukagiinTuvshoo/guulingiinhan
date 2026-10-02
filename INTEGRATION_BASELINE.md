@@ -18,6 +18,12 @@ The original #92 migrations for `person_link_requests` and `families.root_person
 
 The original #93 OpenNext files were excluded because this repo's staging frontend uses Vinext. Keeping both deploy adapters would let a build use the wrong Worker configuration.
 
+The shared ancestry join remains a separate, explicit opt-in: an account must be a family member, link itself to an existing Person, grant sharing consent, and select its own placement; the shared root is set once by a super admin. The family page now explains the invitation → owner-approved Person link → shared-tree opt-in sequence when an account has no family memberships. Registration gathers surname and given name separately but composes the existing `display_name` API field, preserving the backend contract.
+
+The #92 pending Person-link uniqueness protection was missing from the combined migration chain. It is restored as the additive migration `e84b05c7a96d`, with a duplicate-data preflight that aborts without deleting or rewriting requests. The ORM uses the same partial unique index, and the request endpoint converts a concurrent uniqueness conflict to HTTP 409. Do not edit the already applied staging migration history.
+
+The #92 PWA service worker was deliberately not copied: its cache includes `/`, which the integrated app uses for authenticated dashboard content. Public caching of that route would risk storing private family data in a shared browser cache.
+
 ## Regression gate
 
 The `verify` workflow now builds both Next and Vinext, checks TypeScript, opens the core routes, exercises the 3D layout, runs backend tests and Ruff, and upgrades/downgrades the database schema. The backend suite includes creation, correction and removal of tree relationships and person detach. A green workflow is required before staging deployment. Cloudflare's two staging build triggers must include only this integration branch so an old PR branch cannot overwrite it.

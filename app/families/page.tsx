@@ -248,7 +248,19 @@ function FamiliesContent() {
         {loading ? <p role="status" aria-live="polite">Гэр бүлүүдийг ачаалж байна…</p> :
         error ? <div className="error" role="alert"><p>{error}</p><button type="button" onClick={() => void loadFamilies()}>Дахин оролдох</button></div> :
         invalid ? <div className="error" role="alert"><h2>Гэр бүл олдсонгүй</h2><p>Энэ Family ID таны authorized family context-д байхгүй байна.</p><button type="button" onClick={() => router.replace('/families')}>Гэр бүлүүд рүү буцах</button></div> :
-        families.length === 0 ? <div className="card" style={{ marginTop: 20 }}><h2>Ургийн модоо эхлүүлээрэй</h2><p>Танд одоогоор идэвхтэй family membership алга.</p><Link className="button" href="/onboarding">Гэр бүл үүсгэх</Link></div> :
+        families.length === 0 ? <div className="cards" style={{ marginTop: 20 }}>
+          <section className="card" aria-labelledby="join-family-title">
+            <h2 id="join-family-title">Миний гэр бүлд нэгдэх</h2>
+            <p>Гэр бүлийн эзэмшигч таны бүртгэлтэй имэйл рүү урилга илгээнэ. Имэйл дэх холбоосоор орж нэвтрээд урилгаа баталгаажуулснаар тухайн гэр бүлийн гишүүн болно.</p>
+            <p>Гишүүн болсныхоо дараа Удмын мод хэсгээс өөрийн бодит хүнийг хайж, “Энэ бол би” хүсэлт илгээнэ. Гэр бүлийн эзэн таны хүсэлтийг шалгаж батална. Нэрээр автоматаар холбохгүй.</p>
+            <Link className="button" href="/ancestry">Нийтлэг их модыг харах →</Link>
+          </section>
+          <section className="card" aria-labelledby="create-family-title">
+            <h2 id="create-family-title">Шинэ гэр бүл үүсгэх</h2>
+            <p>Танд урилга байхгүй бол өөрийн гэр бүлийн орчныг үүсгээд, бусад гишүүнийг урьж болно.</p>
+            <Link className="button" href="/onboarding">Гэр бүл үүсгэх</Link>
+          </section>
+        </div> :
         <div className="row" style={{ alignItems: 'flex-start', gap: 20, marginTop: 20 }}>
           <aside style={{ minWidth: 240, flex: '0 1 280px' }} aria-label="Гэр бүл сонгох">
             <h2>Гэр бүлүүд</h2>

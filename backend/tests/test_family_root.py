@@ -1,6 +1,9 @@
 from uuid import UUID
 
-from app.models import FamilyMember
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from app.models import FamilyMember, PersonLinkRequest
 from tests.conftest import register_verified
 
 
@@ -51,6 +54,33 @@ def test_existing_person_link_requires_owner_approval(client, database, email_pr
     client.post("/api/v1/auth/login", json={"email": member_email, "password": password})
     assert client.get("/api/v1/auth/me").json()["person_id"] == person_id
     assert client.get(f"/api/v1/families/{family_id}/tree").json()["linked_person_id"] == person_id
+
+
+def test_pending_person_link_request_is_unique_per_user_and_family(client, database, email_provider):
+    assert register_verified(
+        client, "unique-link-owner@example.com", "strong-password-123", email_provider
+    ).status_code == 201
+    owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    family_id = UUID(client.post("/api/v1/families", json={"name": "Unique link requests"}).json()["id"])
+    persons = [
+        UUID(client.post(
+            f"/api/v1/families/{family_id}/persons",
+            json={"first_name": name, "last_name": "", "gender": "unknown"},
+        ).json()["id"])
+        for name in ("First person", "Second person")
+    ]
+
+    with pytest.raises(IntegrityError), database.begin() as db:
+        db.add_all([
+            PersonLinkRequest(
+                family_id=family_id,
+                person_id=person_id,
+                user_id=owner_id,
+                status="pending",
+            )
+            for person_id in persons
+        ])
+        db.flush()
 
 
 def test_detach_preserves_historical_relationships(client, email_provider):
