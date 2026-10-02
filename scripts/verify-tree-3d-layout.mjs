@@ -73,6 +73,19 @@ try {
   assert.equal(disconnected.generations.get('unknown'), null, 'disconnected people do not receive a fabricated generation');
   assert.equal(disconnected.generations.get('root'), null, 'a family-only root is not a confirmed shared-lineage root');
   assert.ok(disconnected.positions.get('unknown').y > disconnected.positions.get('root').y, 'unlinked people get a separate visual lane');
+  const privateFamily = layoutTree3D({
+    persons: [
+      { id: 'family-root', first_name: 'Family', last_name: 'Root' },
+      { id: 'family-child', first_name: 'Family', last_name: 'Child' },
+    ],
+    parent_child_relationships: [{ id: 'family-edge', parent_id: 'family-root', child_id: 'family-child' }],
+    marriages: [],
+    root_person_id: 'family-root',
+  });
+  assert.ok(privateFamily.positions.get('family-root').y > privateFamily.positions.get('family-child').y,
+    'family-only root still anchors household layout');
+  assert.ok([...privateFamily.generations.values()].every((generation) => generation === null),
+    'family-only roots never assert shared generation numbers');
   const unrooted = layoutTree3D({
     persons: [
       { id: 'first', first_name: 'First', last_name: 'Fixture' },

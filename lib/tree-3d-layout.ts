@@ -24,9 +24,12 @@ export function layoutTree3D(data: TreeData): Tree3DLayout {
   const confirmedRootId = data.lineage_root_person_id && personIds.has(data.lineage_root_person_id)
     ? data.lineage_root_person_id
     : undefined;
-  // A deterministic fallback is needed to place an unrooted graph in space,
-  // but it must never be presented as a confirmed generation.
-  const layoutRootId = confirmedRootId ?? data.persons[0]?.id;
+  // A family root can anchor a private tree's layout without asserting public
+  // generations. Unrooted data uses a deterministic spatial seed only.
+  const familyRootId = data.root_person_id && personIds.has(data.root_person_id)
+    ? data.root_person_id
+    : undefined;
+  const layoutRootId = confirmedRootId ?? familyRootId ?? data.persons[0]?.id;
   const generations = new Map<string, number | null>();
   if (!layoutRootId) return { positions: new Map(), generations };
   const layoutGenerations = new Map<string, number>();

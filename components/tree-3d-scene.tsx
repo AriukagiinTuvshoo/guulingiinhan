@@ -91,8 +91,10 @@ function peopleInFocusedBranch(data: TreeData, branchId: string | null | undefin
 }
 
 export default function Tree3DScene({
-  data, selectedPersonId, currentPersonId, canonicalRootId, focusedBranchId, focusRequest = 0, onSelect, onFallback,
+  data, selectedPersonId, currentPersonId, canonicalRootId: requestedRootId, focusedBranchId, focusRequest = 0, onSelect, onFallback,
 }: Props) {
+  const canonicalRootId = requestedRootId && data.lineage_root_person_id === requestedRootId
+    && data.persons.some((person) => person.id === requestedRootId) ? requestedRootId : null;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);

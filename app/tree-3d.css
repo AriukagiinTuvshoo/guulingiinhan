@@ -6,7 +6,7 @@
 .tree-branch-control select{max-width:190px}
 .tree-map-layout--3d{grid-template-columns:minmax(0,1fr) 285px}
 .tree-3d-panel{min-width:0;overflow:hidden;border:1px solid #c7bda9;border-radius:12px;background:#102b23;box-shadow:inset 0 0 0 1px rgba(255,250,240,.08)}
-.tree-3d-stage{position:relative;width:100%;height:clamp(430px,62vh,760px);overflow:hidden;background:radial-gradient(ellipse at 50% 28%,#355c47,#19392f 56%,#102b23)}
+.tree-3d-stage{position:relative;width:100%;height:clamp(430px,62vh,760px);overflow:hidden;background:linear-gradient(180deg,rgba(10,37,29,.36),rgba(9,39,30,.72)),url('/guulingiinhan-forest.svg') center/cover no-repeat,#102b23}
 .tree-3d-canvas{position:absolute;inset:0}
 .tree-3d-stage canvas{cursor:grab;touch-action:none}.tree-3d-stage canvas:active{cursor:grabbing}
 .tree-3d-overlay{position:absolute;inset:0;pointer-events:none}
