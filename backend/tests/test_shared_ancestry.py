@@ -82,6 +82,44 @@ def test_super_admin_sets_shared_root_and_users_opt_in(client, database, email_p
     assert client.get(f"/api/v1/families/{family['id']}/persons/{person['id']}").status_code in {200, 404}
 
 
+def test_admin_can_correct_consented_shared_branches_without_changing_family_tree(client, database, email_provider):
+    admin_id = _login(client, email_provider, "ancestry-editor@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    family = client.post("/api/v1/families", json={"name": "Нэг үндэс"}).json()
+    root = client.post(f"/api/v1/families/{family['id']}/persons", json={
+        "first_name": "Гуулин", "birth_date": "1940-01-01",
+    }).json()
+    assert client.put("/api/v1/admin/shared-lineage/root", json={"person_id": root["id"]}).status_code == 200
+    _login(client, email_provider, "ancestry-branch@example.com")
+    branch_family = client.post("/api/v1/families", json={"name": "Салаа"}).json()
+    branch_person = client.post(f"/api/v1/families/{branch_family['id']}/persons", json={
+        "first_name": "Хүүхэд", "birth_date": "1980-01-01",
+    }).json()
+    assert client.post(f"/api/v1/families/{branch_family['id']}/persons/{branch_person['id']}/link-me").status_code == 204
+    assert client.post("/api/v1/shared-lineage/join", json={
+        "person_id": branch_person["id"], "share_consent": True,
+    }).status_code == 201
+    assert client.get(f"/api/v1/families/{branch_family['id']}/tree?scope=all").status_code == 200
+    assert client.post("/api/v1/admin/shared-lineage/relationships", json={
+        "parent_person_id": root["id"], "child_person_id": branch_person["id"],
+    }).status_code == 403
+    assert client.post("/api/v1/auth/login", json={
+        "email": "ancestry-editor@example.com", "password": PASSWORD,
+    }).status_code == 200
+    added = client.post("/api/v1/admin/shared-lineage/relationships", json={
+        "parent_person_id": root["id"], "child_person_id": branch_person["id"],
+        "relationship_type": "biological",
+    })
+    assert added.status_code == 201
+    edge_id = added.json()["relationships"][0]["id"]
+    assert client.post("/api/v1/admin/shared-lineage/relationships", json={
+        "parent_person_id": branch_person["id"], "child_person_id": root["id"],
+    }).status_code == 422
+    assert client.delete(f"/api/v1/admin/shared-lineage/relationships/{edge_id}").status_code == 200
+    assert client.get("/api/v1/shared-lineage").json()["relationships"] == []
+
+
 def test_shared_ancestry_root_can_be_corrected_without_losing_people_or_edges(client, database, email_provider):
     admin_id = _login(client, email_provider, "ancestry-singleton@example.com")
     with database.begin() as db:

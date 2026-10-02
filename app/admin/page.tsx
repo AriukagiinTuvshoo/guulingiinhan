@@ -228,6 +228,7 @@ export default function AdminPage() {
           <button aria-current={section === 'overview' ? 'page' : undefined} onClick={() => show('overview')}><span aria-hidden="true">⌂</span> Ерөнхий</button>
           <button aria-current={section === 'users' || section === 'user_detail' ? 'page' : undefined} onClick={() => show('users')}><span aria-hidden="true">♙</span> Хэрэглэгчид</button>
           <button aria-current={section === 'families' || section === 'family_studio' ? 'page' : undefined} onClick={() => show('families')}><span aria-hidden="true">♧</span> Гэр бүл, удам</button>
+          {identity?.role === 'SUPER_ADMIN' && <button onClick={() => router.push('/admin/ancestry')}><span aria-hidden="true">♥</span> Эх мод · хандив</button>}
           <button aria-current={section === 'announcements' ? 'page' : undefined} onClick={() => show('announcements')}><span aria-hidden="true">✦</span> Мэдэгдэл</button>
           {identity?.role === 'SUPER_ADMIN' && <button aria-current={section === 'audit' ? 'page' : undefined} onClick={() => show('audit')}><span aria-hidden="true">◷</span> Өөрчлөлтийн түүх</button>}
           {identity?.role === 'SUPER_ADMIN' && <button aria-current={section === 'admins' ? 'page' : undefined} onClick={() => show('admins')}><span aria-hidden="true">⚙</span> Админ эрхүүд</button>}
@@ -249,7 +250,7 @@ export default function AdminPage() {
             <div className={styles.overviewActions}>
               <button type="button" onClick={() => show('users')}><span>👥</span><strong>Хэрэглэгчид</strong><small>Аккаунт харах, урих, блоклох</small><b>→</b></button>
               <button type="button" onClick={() => show('families')}><span>🌳</span><strong>Гэр бүл ба удам</strong><small>Хүн, холбоос, түүхийг удирдах</small><b>→</b></button>
-              {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => router.push('/admin/ancestry')}><span>🌲</span><strong>Нийтлэг эх мод</strong><small>Бүх account-д харагдах нэг удмын эх сонгох</small><b>→</b></button>}
+              {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => router.push('/admin/ancestry')}><span>🌲</span><strong>Нийтлэг эх мод · хандив</strong><small>Нэг удмын эх, бүх гишүүнд харагдах данс ба QR</small><b>→</b></button>}
               <button type="button" onClick={() => show('announcements')}><span>📣</span><strong>Мэдэгдэл</strong><small>Нийтлэх, засах, ноорог хадгалах</small><b>→</b></button>
               {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => show('audit')}><span>🕘</span><strong>Өөрчлөлтийн түүх</strong><small>Хийсэн үйлдлийг шалгах</small><b>→</b></button>}
             </div>

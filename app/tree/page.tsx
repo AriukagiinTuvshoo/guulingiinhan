@@ -1059,7 +1059,11 @@ function TreePageContent() {
                 >
                   +
                 </button>
-                <button type="button" onClick={() => setZoom(0.9)}>Тааруулах</button>
+                <button type="button" onClick={() => {
+                  const available = Math.max(280, (scrollRef.current?.clientWidth || window.innerWidth) - 28);
+                  setZoom(Math.max(0.3, Math.min(1, Number((available / layout.width).toFixed(2)))));
+                  scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+                }}>Тааруулах</button>
               </div>
             </div>
           </div>
