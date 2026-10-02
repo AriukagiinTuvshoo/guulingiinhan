@@ -55,7 +55,10 @@ def test_super_admin_sets_shared_root_and_users_opt_in(client, database, email_p
     shared = client.get("/api/v1/shared-lineage").json()
     assert {row["id"] for row in shared["persons"]} == {root["id"], person["id"]}
 
-    _login(client, email_provider, "ancestry-member@example.com")
+    signed_in = client.post("/api/v1/auth/login", json={
+        "email": "ancestry-member@example.com", "password": PASSWORD,
+    })
+    assert signed_in.status_code == 200
     unlinked = client.put("/api/v1/shared-lineage/relationships/me", json={
         "parent_person_id": None, "relationship_type": "biological",
     })
