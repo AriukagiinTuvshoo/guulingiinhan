@@ -70,18 +70,17 @@ def test_pending_person_link_request_is_unique_per_user_and_family(client, datab
         for name in ("First person", "Second person")
     ]
 
-    with pytest.raises(IntegrityError):
-        with database.begin() as db:
-            db.add_all([
-                PersonLinkRequest(
-                    family_id=family_id,
-                    person_id=person_id,
-                    user_id=owner_id,
-                    status="pending",
-                )
-                for person_id in persons
-            ])
-            db.flush()
+    with pytest.raises(IntegrityError), database.begin() as db:
+        db.add_all([
+            PersonLinkRequest(
+                family_id=family_id,
+                person_id=person_id,
+                user_id=owner_id,
+                status="pending",
+            )
+            for person_id in persons
+        ])
+        db.flush()
 
 
 def test_detach_preserves_historical_relationships(client, email_provider):
