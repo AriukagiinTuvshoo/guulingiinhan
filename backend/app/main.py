@@ -15,8 +15,8 @@ from app.admin import router as admin_router
 from app.admin_workspace import public_router as announcements_router
 from app.admin_workspace import router as admin_workspace_router
 from app.auth import router as auth_router
-from app.config import get_settings
 from app.community import router as community_router
+from app.config import get_settings
 from app.db import engine
 from app.families import invitations_router, lineages_router
 from app.families import router as families_router
