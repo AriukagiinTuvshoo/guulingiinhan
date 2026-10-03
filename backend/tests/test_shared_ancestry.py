@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.models import (
     AdminGrant,
@@ -90,42 +90,131 @@ def test_super_admin_sets_shared_root_and_users_opt_in(client, database, email_p
         "relationship_type": "biological", "share_consent": False,
     })
     assert no_consent.status_code == 422
-    joined = client.post("/api/v1/shared-lineage/join", json={
-        "person_id": person["id"], "parent_person_id": root["id"],
+    request = client.post(f"/api/v1/families/{family['id']}/root-connection", json={
+        "person_id": person["id"], "target_person_id": root["id"],
         "relationship_type": "biological", "share_consent": True,
     })
-    assert joined.status_code == 201
-    assert {row["id"] for row in joined.json()["persons"]} == {root["id"], person["id"]}
-    assert joined.json()["relationships"][0]["parent_id"] == root["id"]
+    assert request.status_code == 200, request.text
+    assert request.json()["status"] == "pending"
+    assert client.post(f"/api/v1/families/{family['id']}/root-connection", json={
+        "person_id": person["id"], "target_person_id": root["id"],
+        "relationship_type": "biological", "share_consent": True,
+    }).json()["status"] == "pending"
+    assert client.post("/api/v1/auth/login", json={
+        "email": "ancestry-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    approved = client.post(f"/api/v1/admin/shared-lineage/connections/{family['id']}/decision",
+                           json={"approve": True})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "approved"
     with database() as db:
         assert db.get(SharedAncestryPerson, UUID(person["id"])) is not None
-        assert db.query(SharedAncestryRelationship).count() == 1
+        assert db.query(SharedAncestryRelationship).count() == 0
+        assert db.query(ParentChildRelationship).count() == 1
 
     # The family tree remains separately available, while other accounts see only opted-in people.
-    assert client.get(f"/api/v1/families/{family['id']}/tree?scope=all").status_code == 200
+    assert client.get(f"/api/v1/families/{family['id']}/tree?scope=all").status_code == 403
     _login(client, email_provider, "ancestry-observer@example.com")
     shared = client.get("/api/v1/shared-lineage").json()
     assert {row["id"] for row in shared["persons"]} == {root["id"], person["id"]}
+    assert all(len(row["birth_date"]) == 4 for row in shared["persons"])
+    assert all("profile_photo" not in row for row in shared["persons"])
+    assert client.get(f"/api/v1/families/{family['id']}/root-connection").status_code == 404
 
     signed_in = client.post("/api/v1/auth/login", json={
         "email": "ancestry-member@example.com", "password": PASSWORD,
     })
     assert signed_in.status_code == 200
-    unlinked = client.put("/api/v1/shared-lineage/relationships/me", json={
-        "parent_person_id": None, "relationship_type": "biological",
-    })
+    unlinked = client.delete(f"/api/v1/families/{family['id']}/root-connection")
     assert unlinked.status_code == 200
-    assert unlinked.json()["relationships"] == []
-    assert {row["id"] for row in unlinked.json()["persons"]} == {root["id"], person["id"]}
-    corrected = client.put("/api/v1/shared-lineage/relationships/me", json={
-        "parent_person_id": root["id"], "relationship_type": "adoptive",
+    assert unlinked.json()["status"] == "disconnected"
+    assert client.get("/api/v1/shared-lineage").json()["relationships"] == []
+    corrected = client.post(f"/api/v1/families/{family['id']}/root-connection", json={
+        "person_id": person["id"], "target_person_id": root["id"],
+        "relationship_type": "biological", "share_consent": True,
     })
     assert corrected.status_code == 200
-    assert corrected.json()["relationships"][0]["relationship_type"] == "adoptive"
+    assert corrected.json()["status"] == "pending"
+    assert client.post("/api/v1/auth/login", json={
+        "email": "ancestry-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert client.post(f"/api/v1/admin/shared-lineage/connections/{family['id']}/decision",
+                       json={"approve": True}).json()["status"] == "approved"
+    assert client.post("/api/v1/auth/login", json={
+        "email": "ancestry-member@example.com", "password": PASSWORD,
+    }).status_code == 200
     assert client.delete("/api/v1/shared-lineage/people/me").status_code == 204
     with database() as db:
         assert db.get(SharedAncestryPerson, UUID(person["id"])) is None
     assert client.get(f"/api/v1/families/{family['id']}/persons/{person['id']}").status_code in {200, 404}
+
+
+def test_root_connection_requires_real_person_explicit_consent_and_admin_review(
+    client, database, email_provider,
+):
+    admin_id = _login(client, email_provider, "root-flow-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    ancestor_family = client.post("/api/v1/families", json={"name": "Ancestor"}).json()
+    ancestor = client.post(f"/api/v1/families/{ancestor_family['id']}/persons", json={
+        "first_name": "Ancestor", "birth_date": "1910-01-01", "is_alive": False,
+        "death_date": "1980-01-01",
+    }).json()
+    assert client.put("/api/v1/admin/shared-lineage/root", json={
+        "person_id": ancestor["id"],
+    }).status_code == 200
+
+    _login(client, email_provider, "root-flow-member@example.com")
+    family = client.post("/api/v1/families", json={"name": "My family"}).json()
+    person = client.post(f"/api/v1/families/{family['id']}/persons", json={
+        "first_name": "Member", "birth_date": "1990-01-01",
+    }).json()
+    assert client.post(f"/api/v1/families/{family['id']}/persons/{person['id']}/link-me").status_code == 204
+    endpoint = f"/api/v1/families/{family['id']}/root-connection"
+    payload = {"person_id": person["id"], "target_person_id": ancestor["id"],
+               "relationship_type": "biological", "share_consent": True}
+    assert client.get(endpoint).json()["status"] == "not_connected"
+    assert client.post(endpoint, json={**payload, "share_consent": False}).status_code == 422
+    assert client.post(endpoint, json={**payload, "target_person_id": str(uuid4())}).status_code == 404
+    assert client.post(endpoint, json=payload).json()["status"] == "pending"
+    assert client.post(endpoint, json=payload).json()["status"] == "pending"
+    assert client.post(f"/api/v1/admin/shared-lineage/connections/{family['id']}/decision",
+                       json={"approve": True}).status_code == 403
+
+    _login(client, email_provider, "root-flow-outsider@example.com")
+    assert client.get(endpoint).status_code == 404
+    assert client.post(endpoint, json=payload).status_code == 404
+    assert client.get(f"/api/v1/families/{family['id']}/tree?scope=all").status_code == 403
+
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-flow-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert len(client.get("/api/v1/admin/shared-lineage/connections").json()) == 1
+    decision = f"/api/v1/admin/shared-lineage/connections/{family['id']}/decision"
+    assert client.post(decision, json={"approve": False}).json()["status"] == "rejected"
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 0
+
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-flow-member@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert client.post(endpoint, json=payload).json()["status"] == "pending"
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-flow-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert client.post(decision, json={"approve": True}).json()["status"] == "approved"
+    assert client.post(decision, json={"approve": True}).status_code == 409
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 1
+        assert db.query(SharedAncestryRelationship).count() == 0
+
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-flow-member@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert client.delete(endpoint).json()["status"] == "disconnected"
+    assert client.get("/api/v1/shared-lineage").json()["relationships"] == []
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 1
 
 
 def test_admin_can_correct_consented_shared_branches_without_changing_family_tree(client, database, email_provider):
@@ -185,15 +274,19 @@ def test_shared_ancestry_root_can_be_corrected_without_losing_people_or_edges(cl
         "first_name": "Салбарын хүн", "birth_date": "1990-01-01",
     }).json()
     assert client.post(f"/api/v1/families/{member_family['id']}/persons/{member_person['id']}/link-me").status_code == 204
-    joined = client.post("/api/v1/shared-lineage/join", json={
-        "person_id": member_person["id"], "parent_person_id": people[0]["id"],
+    joined = client.post(f"/api/v1/families/{member_family['id']}/root-connection", json={
+        "person_id": member_person["id"], "target_person_id": people[0]["id"],
         "relationship_type": "biological", "share_consent": True,
     })
-    assert joined.status_code == 201
+    assert joined.status_code == 200
 
     assert client.post("/api/v1/auth/login", json={
         "email": "ancestry-singleton@example.com", "password": PASSWORD,
     }).status_code == 200
+    assert client.post(
+        f"/api/v1/admin/shared-lineage/connections/{member_family['id']}/decision",
+        json={"approve": True},
+    ).status_code == 200
     stale = client.put("/api/v1/admin/shared-lineage/root", json={"person_id": people[1]["id"]})
     assert stale.status_code == 409
     replaced = client.put("/api/v1/admin/shared-lineage/root", json={

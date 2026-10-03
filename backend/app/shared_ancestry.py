@@ -20,6 +20,7 @@ from app.models import (
     FamilyPerson,
     ParentChildRelationship,
     Person,
+    RootConnection,
     SharedAncestry,
     SharedAncestryPerson,
     SharedAncestryRelationship,
@@ -32,6 +33,7 @@ from app.relationships import RelationshipError, assert_parent_child_is_acyclic
 
 router = APIRouter(prefix="/shared-lineage", tags=["shared lineage"])
 admin_router = APIRouter(prefix="/admin/shared-lineage", tags=["admin shared lineage"])
+family_router = APIRouter(prefix="/families", tags=["root connection"])
 
 
 class SharedPersonOut(BaseModel):
@@ -60,6 +62,29 @@ class SharedTreeOut(BaseModel):
     persons: list[SharedPersonOut]
     relationships: list[SharedEdgeOut]
     my_person_id: UUID | None
+
+
+class RootConnectionInput(BaseModel):
+    person_id: UUID
+    target_person_id: UUID
+    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive|step)$")
+    share_consent: bool
+
+
+class RootConnectionOut(BaseModel):
+    family_id: UUID
+    family_name: str | None = None
+    status: str
+    person_id: UUID | None = None
+    person_name: str | None = None
+    target_person_id: UUID | None = None
+    target_name: str | None = None
+    relationship_type: str | None = None
+    can_request: bool
+
+
+class RootConnectionDecision(BaseModel):
+    approve: bool
 
 
 class JoinTreeInput(BaseModel):
@@ -167,9 +192,10 @@ def _person_shared_data(person: Person, shared_by_me: bool) -> SharedPersonOut:
     return SharedPersonOut(
         id=person.id, first_name=person.first_name, last_name=person.last_name,
         middle_name=person.middle_name, gender=person.gender,
-        birth_date=person.birth_date.isoformat() if person.birth_date else None,
+        # Shared context needs generation context, not exact personal dates.
+        birth_date=str(person.birth_date.year) if person.birth_date else None,
         is_alive=person.is_alive,
-        death_date=person.death_date.isoformat() if person.death_date else None,
+        death_date=str(person.death_date.year) if person.death_date else None,
         shared_by_me=shared_by_me,
     )
 
@@ -205,6 +231,21 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
         SharedAncestryRelationship.parent_id.in_(visible_ids),
         SharedAncestryRelationship.child_id.in_(visible_ids),
     ).order_by(SharedAncestryRelationship.created_at, SharedAncestryRelationship.id)).all() if visible_ids else []
+    family_by_person = {person.id: family_id for person, family_id, _ in rows}
+    connections = {row.family_id: row for row in db.scalars(
+        select(RootConnection).where(RootConnection.family_id.in_(set(family_by_person.values())))
+    ).all()} if family_by_person else {}
+
+    def projection_allows(edge) -> bool:
+        child_family = family_by_person.get(edge.child_id)
+        parent_family = family_by_person.get(edge.parent_id)
+        connection = connections.get(child_family)
+        if connection and connection.person_id == edge.child_id and parent_family != child_family:
+            return connection.status == "approved" and connection.target_person_id == edge.parent_id
+        return True
+
+    canonical_edges = [edge for edge in canonical_edges if projection_allows(edge)]
+    legacy_edges = [edge for edge in legacy_edges if projection_allows(edge)]
     canonical_pairs = {(edge.parent_id, edge.child_id) for edge in canonical_edges}
     edges = [*canonical_edges, *(edge for edge in legacy_edges
                                 if (edge.parent_id, edge.child_id) not in canonical_pairs)]
@@ -240,24 +281,17 @@ def join_shared_tree(body: JoinTreeInput, user: User = Depends(get_current_user)
     if db.get(SharedAncestryPerson, linked.id):
         raise HTTPException(status_code=409, detail="Та нийтлэг модонд аль хэдийн холбогдсон байна.")
 
-    db.add(SharedAncestryPerson(person_id=linked.id, family_id=family_row.family_id, added_by=user.id))
     if body.parent_person_id:
-        parent = db.get(Person, body.parent_person_id)
-        parent_member = db.get(SharedAncestryPerson, body.parent_person_id)
-        root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
-        if parent is None or parent.visibility == "private" or person_is_minor(parent) or not (parent_member or parent.id == root_id):
-            db.rollback()
-            raise HTTPException(status_code=404, detail="Нийтлэг модонд байгаа хүн олдсонгүй.")
-        current_edges = db.execute(select(
-            SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id
-        )).all()
-        try:
-            assert_parent_child_is_acyclic(current_edges, body.parent_person_id, linked.id)
-        except RelationshipError as error:
-            db.rollback()
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        db.add(SharedAncestryRelationship(parent_id=body.parent_person_id, child_id=linked.id,
-                                          relationship_type=body.relationship_type, created_by=user.id))
+        _shared_target(db, body.parent_person_id)
+        if not _person_in_family(db, family_row.family_id, body.parent_person_id):
+            raise HTTPException(status_code=409, detail="Бусад гэр бүлийн салбарт холбогдох хүсэлт илгээнэ үү.")
+        edge = db.scalar(select(ParentChildRelationship).where(
+            ParentChildRelationship.parent_id == body.parent_person_id,
+            ParentChildRelationship.child_id == linked.id,
+        ))
+        if edge is None or edge.relationship_type != body.relationship_type:
+            raise HTTPException(status_code=422, detail="Энэ эцэг/эхийн бодит холбоог гэр бүлийн модонд эхлээд баталгаажуулна уу.")
+    db.add(SharedAncestryPerson(person_id=linked.id, family_id=family_row.family_id, added_by=user.id))
     db.add(AuditLog(actor_id=user.id, family_id=family_row.family_id,
                     action="shared_ancestry.person_joined", target_type="person", target_id=linked.id))
     try:
@@ -287,28 +321,21 @@ def change_my_shared_placement(
         SharedAncestryRelationship.child_id == person.id,
     )).all()
     if body.parent_person_id is not None:
-        parent = db.get(Person, body.parent_person_id)
-        parent_member = db.get(SharedAncestryPerson, body.parent_person_id)
-        if parent is None or parent.visibility == "private" or person_is_minor(parent) or not (
-            parent_member or parent.id == root_id
-        ):
-            raise HTTPException(status_code=404, detail="Нийтлэг модонд байгаа хүн олдсонгүй.")
-        edges = db.execute(select(
-            SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id
-        ).where(SharedAncestryRelationship.child_id != person.id)).all()
-        try:
-            assert_parent_child_is_acyclic(edges, body.parent_person_id, person.id)
-        except RelationshipError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+        _shared_target(db, body.parent_person_id)
+        if not _person_in_family(db, association.family_id, body.parent_person_id):
+            raise HTTPException(status_code=409, detail="Бусад гэр бүлийн салбарт холбогдох хүсэлт илгээнэ үү.")
+        edge = db.scalar(select(ParentChildRelationship).where(
+            ParentChildRelationship.parent_id == body.parent_person_id,
+            ParentChildRelationship.child_id == person.id,
+        ))
+        if edge is None or edge.relationship_type != body.relationship_type:
+            raise HTTPException(status_code=422, detail="Бодит эцэг/эхийн холбоо бүртгэгдээгүй байна.")
 
     for relation in existing:
         db.delete(relation)
     db.flush()
-    if body.parent_person_id is not None:
-        db.add(SharedAncestryRelationship(
-            parent_id=body.parent_person_id, child_id=person.id,
-            relationship_type=body.relationship_type, created_by=user.id,
-        ))
+    # Legacy placement edges can be removed. New ancestry edges always come
+    # from ParentChildRelationship, never a second genealogy graph.
     db.add(AuditLog(
         actor_id=user.id, family_id=association.family_id,
         action="shared_ancestry.placement_changed", target_type="person", target_id=person.id,
@@ -338,6 +365,11 @@ def leave_shared_tree(user: User = Depends(get_current_user), db: Session = Depe
         or_(SharedAncestryRelationship.parent_id == person.id, SharedAncestryRelationship.child_id == person.id)
     ))
     db.delete(association)
+    connection = db.get(RootConnection, association.family_id)
+    if connection and connection.person_id == person.id and connection.status in {"pending", "approved"}:
+        connection.status = "disconnected"
+        connection.decided_by = user.id
+        connection.decided_at = datetime.now(UTC)
     db.add(AuditLog(actor_id=user.id, family_id=association.family_id,
                     action="shared_ancestry.person_left", target_type="person", target_id=person.id))
     db.commit()
@@ -403,6 +435,253 @@ def publish_existing_person(
                     action="shared_ancestry.person_published", target_type="person", target_id=person.id))
     db.commit()
     return read_shared_tree(current[0], db)
+
+
+def _shared_target(db: Session, person_id: UUID) -> Person:
+    root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+    person = db.get(Person, person_id)
+    if person is None or person.visibility == "private" or person_is_minor(person) or not (
+        person_id == root_id or db.get(SharedAncestryPerson, person_id)
+    ):
+        raise HTTPException(status_code=404, detail="Үндэс модны зөвшөөрөгдсөн хүн олдсонгүй.")
+    if root_id is None:
+        raise HTTPException(status_code=409, detail="Үндэс модны эх хүн хараахан батлагдаагүй байна.")
+    shared_rows = db.execute(
+        select(Person, SharedAncestryPerson.family_id)
+        .join(SharedAncestryPerson, SharedAncestryPerson.person_id == Person.id)
+        .where(Person.visibility != "private")
+    ).all()
+    family_by_person = {shared.id: family_id for shared, family_id in shared_rows
+                        if not person_is_minor(shared)}
+    visible = set(family_by_person)
+    visible.add(root_id)
+    connections = {row.family_id: row for row in db.scalars(
+        select(RootConnection).where(RootConnection.family_id.in_(set(family_by_person.values())))
+    ).all()} if family_by_person else {}
+    canonical = db.execute(select(
+        ParentChildRelationship.parent_id, ParentChildRelationship.child_id,
+    ).where(ParentChildRelationship.parent_id.in_(visible),
+            ParentChildRelationship.child_id.in_(visible))).all()
+    legacy = db.execute(select(
+        SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id,
+    ).where(SharedAncestryRelationship.parent_id.in_(visible),
+            SharedAncestryRelationship.child_id.in_(visible))).all()
+    children: dict[UUID, set[UUID]] = {}
+    for parent_id, child_id in [*canonical, *legacy]:
+        child_family = family_by_person.get(child_id)
+        connection = connections.get(child_family)
+        if (connection and connection.person_id == child_id
+                and family_by_person.get(parent_id) != child_family
+                and (connection.status != "approved" or connection.target_person_id != parent_id)):
+            continue
+        children.setdefault(parent_id, set()).add(child_id)
+    seen = {root_id}
+    frontier = [root_id]
+    while frontier:
+        current = frontier.pop()
+        for child_id in children.get(current, ()):
+            if child_id not in seen:
+                seen.add(child_id)
+                frontier.append(child_id)
+    if person_id not in seen:
+        raise HTTPException(status_code=422, detail="Зөвхөн үндэс модны баталгаатай салбарыг сонгоно уу.")
+    return person
+
+
+def _family_member(db: Session, family_id: UUID, user: User) -> FamilyMember:
+    family = db.get(Family, family_id)
+    member = db.scalar(select(FamilyMember).where(
+        FamilyMember.family_id == family_id, FamilyMember.user_id == user.id,
+    ))
+    if family is None or family.archived_at is not None or member is None:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй эсвэл танд хандах эрхгүй.")
+    return member
+
+
+def _person_in_family(db: Session, family_id: UUID, person_id: UUID) -> bool:
+    return db.scalar(select(FamilyPerson.id).where(
+        FamilyPerson.family_id == family_id, FamilyPerson.person_id == person_id,
+    ).limit(1)) is not None
+
+
+def _connection_out(db: Session, family_id: UUID, user: User) -> RootConnectionOut:
+    row = db.get(RootConnection, family_id)
+    family = db.get(Family, family_id)
+    linked = _my_linked_person(db, user)
+    can_request = bool(linked and _person_in_family(db, family_id, linked.id))
+    if row is None:
+        return RootConnectionOut(family_id=family_id, family_name=family.name if family else None,
+                                 status="not_connected", can_request=can_request)
+    person = db.get(Person, row.person_id)
+    target = db.get(Person, row.target_person_id)
+    name = lambda value: " ".join(filter(None, (value.last_name, value.first_name))) if value else None
+    return RootConnectionOut(
+        family_id=family_id, family_name=family.name if family else None,
+        status=row.status, person_id=row.person_id,
+        person_name=name(person), target_person_id=row.target_person_id,
+        target_name=name(target), relationship_type=row.relationship_type,
+        can_request=can_request,
+    )
+
+
+@family_router.get("/{family_id}/root-connection", response_model=RootConnectionOut)
+def read_root_connection(family_id: UUID, user: User = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    _family_member(db, family_id, user)
+    return _connection_out(db, family_id, user)
+
+
+@family_router.post("/{family_id}/root-connection", response_model=RootConnectionOut)
+def request_root_connection(family_id: UUID, body: RootConnectionInput,
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _family_member(db, family_id, user)
+    if not body.share_consent:
+        raise HTTPException(status_code=422, detail="Үндэс модонд харуулах зөвшөөрөл шаардлагатай.")
+    person = _my_linked_person(db, user)
+    if person is None or person.id != body.person_id or not _person_in_family(db, family_id, body.person_id):
+        raise HTTPException(status_code=403, detail="Зөвхөн өөрийн баталгаажсан хүнийг холбож болно.")
+    if person.visibility == "private" or person_is_minor(person):
+        raise HTTPException(status_code=422, detail="Хувийн эсвэл насанд хүрээгүй хүнийг холбох боломжгүй.")
+    if body.person_id == body.target_person_id:
+        raise HTTPException(status_code=422, detail="Хүнийг өөртэй нь холбох боломжгүй.")
+    _shared_target(db, body.target_person_id)
+    row = db.scalar(select(RootConnection).where(
+        RootConnection.family_id == family_id,
+    ).with_for_update())
+    if row and row.status in {"pending", "approved"}:
+        if (row.person_id, row.target_person_id, row.relationship_type) == (
+            body.person_id, body.target_person_id, body.relationship_type
+        ):
+            return _connection_out(db, family_id, user)
+        raise HTTPException(status_code=409, detail="Энэ гэр бүлийн холболт аль хэдийн хүсэгдсэн эсвэл батлагдсан.")
+    if row is None:
+        row = RootConnection(
+            family_id=family_id, person_id=body.person_id,
+            target_person_id=body.target_person_id,
+            relationship_type=body.relationship_type, status="pending", requested_by=user.id,
+        )
+        db.add(row)
+    else:
+        row.person_id = body.person_id
+        row.target_person_id = body.target_person_id
+        row.relationship_type = body.relationship_type
+        row.status = "pending"
+        row.requested_by = user.id
+        row.consented_at = datetime.now(UTC)
+        row.requested_at = datetime.now(UTC)
+        row.decided_by = None
+        row.decided_at = None
+        row.canonical_edge_id = None
+    db.add(AuditLog(actor_id=user.id, family_id=family_id,
+                    action="root_connection.requested", target_type="person", target_id=person.id))
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Холболтын хүсэлт аль хэдийн бүртгэгдсэн.") from error
+    return _connection_out(db, family_id, user)
+
+
+@family_router.delete("/{family_id}/root-connection", response_model=RootConnectionOut)
+def disconnect_root_connection(family_id: UUID, user: User = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    member = _family_member(db, family_id, user)
+    row = db.scalar(select(RootConnection).where(
+        RootConnection.family_id == family_id,
+    ).with_for_update())
+    if row is None:
+        return _connection_out(db, family_id, user)
+    if member.role != "owner" and row.requested_by != user.id:
+        raise HTTPException(status_code=403, detail="Холболтыг зөвхөн хүсэлт гаргасан хүн эсвэл гэр бүлийн эзэн салгана.")
+    if row.status != "disconnected":
+        row.status = "disconnected"
+        row.decided_by = user.id
+        row.decided_at = datetime.now(UTC)
+        db.add(AuditLog(actor_id=user.id, family_id=family_id,
+                        action="root_connection.disconnected", target_type="person", target_id=row.person_id))
+        db.commit()
+    return _connection_out(db, family_id, user)
+
+
+@admin_router.get("/connections", response_model=list[RootConnectionOut])
+def list_root_connections(current: tuple[User, AdminRole] = Depends(require_super_admin),
+                          db: Session = Depends(get_db)):
+    rows = db.scalars(select(RootConnection).where(RootConnection.status == "pending")
+                      .order_by(RootConnection.requested_at)).all()
+    return [_connection_out(db, row.family_id, current[0]) for row in rows]
+
+
+@admin_router.post("/connections/{family_id}/decision", response_model=RootConnectionOut)
+def decide_root_connection(family_id: UUID, body: RootConnectionDecision,
+                           current: tuple[User, AdminRole] = Depends(require_super_admin),
+                           db: Session = Depends(get_db)):
+    row = db.scalar(select(RootConnection).where(
+        RootConnection.family_id == family_id,
+    ).with_for_update())
+    if row is None or row.status != "pending":
+        raise HTTPException(status_code=409, detail="Шалгах идэвхтэй хүсэлт алга.")
+    if body.approve:
+        requester = db.get(User, row.requested_by)
+        if requester is None:
+            raise HTTPException(status_code=409, detail="Хүсэлт гаргасан аккаунт олдсонгүй.")
+        _family_member(db, family_id, requester)
+        linked = _my_linked_person(db, requester)
+        if linked is None or linked.id != row.person_id or not _person_in_family(db, family_id, row.person_id):
+            raise HTTPException(status_code=409, detail="Хүсэлт гаргасан хүний баталгаажсан холбоос өөрчлөгдсөн.")
+        if linked.visibility == "private" or person_is_minor(linked):
+            raise HTTPException(status_code=422, detail="Энэ хүнийг нийтлэг модонд харуулах боломжгүй.")
+        _shared_target(db, row.target_person_id)
+        db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
+        edges = db.execute(select(
+            ParentChildRelationship.parent_id, ParentChildRelationship.child_id,
+        )).all()
+        legacy_pairs = db.execute(select(
+            SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id,
+        )).all()
+        graph_edges = list({*edges, *legacy_pairs})
+        try:
+            assert_parent_child_is_acyclic(graph_edges, row.target_person_id, row.person_id)
+        except RelationshipError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        existing = db.scalar(select(ParentChildRelationship).where(
+            ParentChildRelationship.parent_id == row.target_person_id,
+            ParentChildRelationship.child_id == row.person_id,
+        ))
+        if existing is None:
+            if sum(child_id == row.person_id for parent_id, child_id in graph_edges
+                   if parent_id != row.target_person_id) >= 2:
+                raise HTTPException(status_code=409, detail="Энэ хүн хоёр эцэг/эхийн холбоотой байна.")
+            existing = ParentChildRelationship(
+                parent_id=row.target_person_id, child_id=row.person_id,
+                relationship_type=row.relationship_type, created_by=current[0].id,
+            )
+            db.add(existing)
+            db.flush()
+        elif existing.relationship_type != row.relationship_type:
+            raise HTTPException(status_code=409, detail="Одоогийн бодит холбооны төрөл хүсэлтээс өөр байна.")
+        for legacy in db.scalars(select(SharedAncestryRelationship).where(
+            SharedAncestryRelationship.parent_id == row.target_person_id,
+            SharedAncestryRelationship.child_id == row.person_id,
+        )).all():
+            db.delete(legacy)
+        if db.get(SharedAncestryPerson, row.person_id) is None:
+            db.add(SharedAncestryPerson(person_id=row.person_id, family_id=family_id,
+                                        added_by=row.requested_by))
+        row.canonical_edge_id = existing.id
+        row.status = "approved"
+    else:
+        row.status = "rejected"
+    row.decided_by = current[0].id
+    row.decided_at = datetime.now(UTC)
+    db.add(AuditLog(actor_id=current[0].id, family_id=family_id,
+                    action="root_connection.approved" if body.approve else "root_connection.rejected",
+                    target_type="person", target_id=row.person_id))
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Холболт өөрчлөгдсөн байна. Дахин шалгана уу.") from error
+    return _connection_out(db, family_id, current[0])
 
 
 @admin_router.put("/root", response_model=SharedTreeOut)

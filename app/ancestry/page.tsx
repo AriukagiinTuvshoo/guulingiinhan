@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ApiError, api } from '../../lib/api';
+import { ApiError, api, Family } from '../../lib/api';
 import './shared-ancestry.css';
 
 type SharedPerson = { id: string; first_name: string; last_name: string; middle_name: string | null; gender: string; birth_date: string | null; is_alive: boolean; death_date: string | null; shared_by_me: boolean };
@@ -19,22 +19,42 @@ function years(person: SharedPerson) {
 
 export default function SharedAncestryPage() {
   const [tree, setTree] = useState<SharedTree | null>(null); const [busy, setBusy] = useState(true);
-  const [parentId, setParentId] = useState(''); const [relationshipType, setRelationshipType] = useState('biological');
-  const [consent, setConsent] = useState(false); const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+  const [context, setContext] = useState<{ family: Family; personId: string; targetName: string } | null>(null);
   const load = useCallback(async () => {
     setBusy(true); setError('');
     try {
       const loaded = await api<SharedTree>('/shared-lineage');
       setTree(loaded);
-      const ownEdge = loaded.relationships.find((edge) => edge.child_id === loaded.my_person_id);
-      setParentId(ownEdge?.parent_id ?? '');
-      setRelationshipType(ownEdge?.relationship_type ?? 'biological');
     }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модыг ачаалж чадсангүй.'); }
     finally { setBusy(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    const params = new URLSearchParams(window.location.search);
+    const familyId = params.get('family');
+    const focusId = params.get('focus');
+    if (!familyId || !focusId) return;
+    void Promise.all([
+      api<Family[]>('/families'),
+      api<{ status: string; person_id: string | null; target_name: string | null }>(`/families/${encodeURIComponent(familyId)}/root-connection`),
+    ]).then(([families, connection]) => {
+      const family = families.find((item) => item.id === familyId);
+      if (active && family && connection.status === 'approved' && connection.person_id === focusId) {
+        setContext({ family, personId: focusId, targetName: connection.target_name || 'Салбар' });
+      }
+    }).catch(() => { /* Invalid Family context stays empty. */ });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!tree) return;
+    const focusedId = new URLSearchParams(window.location.search).get('focus');
+    if (!focusedId || !tree.persons.some((person) => person.id === focusedId)) return;
+    const timer = window.setTimeout(() => document.getElementById(`shared-person-${focusedId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    return () => window.clearTimeout(timer);
+  }, [tree]);
   const personById = useMemo(() => new Map((tree?.persons ?? []).map((person) => [person.id, person])), [tree]);
   const children = useMemo(() => {
     const rows = new Map<string, SharedPerson[]>();
@@ -44,42 +64,10 @@ export default function SharedAncestryPage() {
   const linked = Boolean(tree?.my_person_id && tree.persons.some((person) => person.id === tree.my_person_id));
   const ownName = tree?.my_person_id ? personById.get(tree.my_person_id) : undefined;
 
-  async function join() {
-    if (!tree?.my_person_id || !consent || saving) return;
-    setSaving(true); setError(''); setNotice('');
-    try {
-      const updated = await api<SharedTree>('/shared-lineage/join', { method: 'POST', body: JSON.stringify({ person_id: tree.my_person_id, parent_person_id: parentId || null, relationship_type: relationshipType, share_consent: consent }) });
-      setTree(updated); setConsent(false); setParentId(''); setNotice('Таны хүн нийтлэг модонд нэмэгдлээ.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Холбоход алдаа гарлаа.'); }
-    finally { setSaving(false); }
-  }
-  async function savePlacement() {
-    if (saving) return;
-    const myPersonId = tree?.my_person_id;
-    const hasCurrentParent = tree?.relationships.some((edge) => edge.child_id === myPersonId);
-    if (!parentId && hasCurrentParent && !window.confirm('Таны үеийн холбоосыг арилгаж, нийтлэг модонд тусдаа салаа болгох уу? Хүний бүртгэл хадгалагдана.')) return;
-    setSaving(true); setError(''); setNotice('');
-    try {
-      const updated = await api<SharedTree>('/shared-lineage/relationships/me', {
-        method: 'PUT',
-        body: JSON.stringify({ parent_person_id: parentId || null, relationship_type: relationshipType }),
-      });
-      setTree(updated);
-      setNotice(parentId ? 'Таны үеийн холбоог шинэчиллээ.' : 'Таны хүн үндсэн модноос тусдаа салаа боллоо. Бүртгэл хэвээр үлдсэн.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Холбоог шинэчилж чадсангүй.'); }
-    finally { setSaving(false); }
-  }
-  async function leave() {
-    if (!window.confirm('Таны хүнийг нийтлэг модноос салгана. Гэр бүлийн өөрийн мод болон бүртгэл устахгүй. Үргэлжлүүлэх үү?')) return;
-    setSaving(true); setError(''); setNotice('');
-    try { await api<void>('/shared-lineage/people/me', { method: 'DELETE' }); await load(); setNotice('Таны хүнийг нийтлэг модноос салгалаа.'); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Салгах боломжгүй байна.'); }
-    finally { setSaving(false); }
-  }
   function renderPerson(person: SharedPerson, depth: number, trail: Set<string>): React.ReactNode {
     if (trail.has(person.id)) return null; const nextTrail = new Set(trail); nextTrail.add(person.id);
     const next = children.get(person.id) ?? [];
-    return <li key={person.id} className="shared-tree__node"><article className={'shared-person' + (person.id === tree?.root_person_id ? ' is-root' : '')}>
+    return <li key={person.id} className="shared-tree__node"><article id={`shared-person-${person.id}`} className={'shared-person' + (person.id === tree?.root_person_id ? ' is-root' : '') + (person.id === context?.personId ? ' is-focused' : '')}>
       <span className="shared-person__generation">{person.id === tree?.root_person_id ? 'УДМЫН ЭХ' : depth === 0 ? 'ХОЛБООГҮЙ САЛАА' : `${depth} · ҮЕ`}</span>
       <span className="shared-person__avatar" aria-hidden="true">{(person.last_name || person.first_name).slice(0, 1).toLocaleUpperCase('mn-MN')}</span>
       <strong>{label(person)}</strong><small>{years(person)}</small>
@@ -89,16 +77,10 @@ export default function SharedAncestryPage() {
   }
 
   return <main className="shared-ancestry">
-    <header className="shared-ancestry__hero"><div><span>🌳 НЭГ УДАМ · ОЛОН САЛАА</span><h1>Гуулингийнхны их мод</h1><p>Системийн admin үндсэн удмын эхийг тогтооно. Гишүүн бүр өөрийн хүнийг нэмэх, холбоосоо сонгох эрхтэй.</p></div><div className="shared-ancestry__count"><strong>{tree?.persons.length ?? 0}</strong><span>зөвшөөрсөн хүн</span></div></header>
-    {error && <p className="shared-ancestry__alert" role="alert">{error}</p>}{notice && <p className="shared-ancestry__notice" role="status">{notice}</p>}
+    <header className="shared-ancestry__hero"><div><span>🌳 НЭГ УДАМ · ОЛОН САЛАА</span><h1>Гуулингийнхны их мод</h1><p>Нийтлэг үндэс ба гэр бүлийн мод бодит хүмүүсийн баталгаажсан холбоогоор холбогдоно.</p></div><div className="shared-ancestry__count"><strong>{tree?.persons.length ?? 0}</strong><span>зөвшөөрсөн хүн</span></div></header>
+    {context && tree && <nav className="shared-ancestry__context" aria-label="Удмын зам"><span>Үндэс мод</span><span aria-hidden="true">/</span><span>{context.targetName} салбар</span><span aria-hidden="true">/</span><Link href={`/tree?family=${encodeURIComponent(context.family.id)}`}>{context.family.name}</Link><span aria-hidden="true">/</span><Link href={`/profile?family=${encodeURIComponent(context.family.id)}&person=${encodeURIComponent(context.personId)}`}>{personById.has(context.personId) ? label(personById.get(context.personId)!) : 'Холбогдсон хүн'}</Link><Link href={`/tree?family=${encodeURIComponent(context.family.id)}`}>← Гэр бүлийн мод руу буцах</Link></nav>}
+    {error && <p className="shared-ancestry__alert" role="alert">{error}</p>}
     {busy ? <p className="shared-ancestry__empty" role="status">Модыг ачаалж байна…</p> : !tree?.root_person_id ? <section className="shared-ancestry__empty"><span>🪴</span><h2>Үндсэн удмын эхийг тохируулж байна</h2><p>Системийн admin бодит хүнийг эх болгон сонгосны дараа нийтлэг мод энд харагдана.</p></section> : <section className="shared-tree" aria-label="Гуулингийнхны нийтлэг удмын мод"><div className="shared-tree__legend"><span>Үе хоорондын холбоо баталгаатай эцэг/эх, хүүхдийн бүртгэлээр зурна.</span><span>Холбоогүй салбар үндсэн модноос тусдаа байна.</span></div><ul className="shared-tree__roots">{tree.persons.filter((person) => person.id === tree.root_person_id).map((person) => renderPerson(person, 0, new Set()))}</ul>{tree.persons.some((person) => person.id !== tree.root_person_id && !tree.relationships.some((edge) => edge.child_id === person.id)) && <section className="shared-tree__unlinked" aria-label="Үндсэн модонд холбоогүй салаа"><h2>Үндсэн модонд холбоогүй салаа 🌱</h2><p>Эдгээр хүмүүс нийтлэг санд зөвшөөрлөөр орсон боловч үеийн холбоогоо сонгоогүй байна.</p><ul className="shared-tree__roots">{tree.persons.filter((person) => person.id !== tree.root_person_id && !tree.relationships.some((edge) => edge.child_id === person.id)).map((person) => renderPerson(person, 0, new Set()))}</ul></section>}</section>}
-    <section className="shared-join"><div><span>🌱 ТАНЫ САЛАА</span><h2>{linked ? 'Та нийтлэг модонд холбогдсон байна' : 'Өөрийн хүнийг модонд нэмэх'}</h2><p>Өөрийн account-тай холбосон хүнийг л нийтлэг модонд оруулна. Хувийн архив, дурсамж болон гэр бүлийн тусдаа мод хэвээр үлдэнэ.</p></div>
-      {linked ? <div className="shared-join__form"><strong>{ownName ? label(ownName) : 'Таны бүртгэлтэй хүн'} · нийтлэг модонд орсон</strong><label>Хэний үр удам гэж холбох вэ?<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Үеийн холбоогүй салбар болгох</option>{tree?.persons.filter((person) => person.id !== tree.my_person_id).map((person) => <option key={person.id} value={person.id}>{label(person)}</option>)}</select></label>{parentId && <label>Холбооны төрөл<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select></label>}<button type="button" disabled={saving} onClick={() => void savePlacement()}>{saving ? 'Хадгалж байна…' : '🌿 Холбоогоо шинэчлэх'}</button><button type="button" disabled={saving} className="shared-join__danger" onClick={() => void leave()}>{saving ? 'Ажиллаж байна…' : 'Нийтлэг модноос гарах'}</button><small>Буруу эцэг/эх сонгосон бол эндээс өөрчилнө. Салбараа салгахад таны гэр бүлийн бүртгэл устахгүй.</small></div> : !tree?.my_person_id ? <div className="shared-join__empty">Таны account хүнтэй холбогдоогүй байна. Эхлээд өөрийн гэр бүлийн мод → Хүмүүс хэсгээс бүртгэлтэй хүнтэйгээ холбогдоорой. <Link href="/tree">Өөрийн мод руу →</Link></div> : <div className="shared-join__form">
-        <label>Нийтлэг модонд байгаа эцэг/эх (заавал биш)<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Одоохондоо холбоосгүй салаа</option>{tree.persons.filter((person) => person.id !== tree.my_person_id).map((person) => <option key={person.id} value={person.id}>{label(person)}</option>)}</select></label>
-        {parentId && <label>Холбооны төрөл<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select></label>}
-        <label className="shared-join__consent"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>Миний нэр, удмын товч мэдээлэл болон сонгосон холбоос энэ сайтад нэвтэрсэн бүх account-д харагдахыг зөвшөөрч байна.</span></label>
-        <button type="button" disabled={saving || !consent} onClick={() => void join()}>{saving ? 'Холбож байна…' : '🌿 Нийтлэг модонд нэмэх'}</button>
-      </div>}
-    </section><p className="shared-ancestry__privacy">Энэ үйлдэл таны Family-г нэгтгэхгүй. Бүртгэл болон хувийн түүхээ өөрийн гэр бүлийн орчноос удирдана.</p>
+    <section className="shared-join"><div><span>ТАНЫ ГЭР БҮЛИЙН САЛБАР</span><h2>Гэр бүлийн модоо үндэс модтой холбох</h2><p>{linked && ownName ? `${label(ownName)} нийтлэг модонд зөвшөөрөгдсөн байна. ` : ''}Холболтыг таны бодит хүн, сонгосон эцэг/эх, зөвшөөрөл болон админы шалгалтаар батална. Гэр бүлийн хувийн түүх, архив тусдаа хэвээр үлдэнэ.</p></div><div className="shared-join__form"><Link href="/ancestry/connect">Үндэс модтой холбох →</Link><Link href="/tree">Өөрийн гэр бүлийн мод →</Link></div></section><p className="shared-ancestry__privacy">Үндэс модны салбарт харагдах нь бусад гэр бүлийн хувийн мэдээлэлд хандах эрх олгохгүй.</p>
   </main>;
 }
