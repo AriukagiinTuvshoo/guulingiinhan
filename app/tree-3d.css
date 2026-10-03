@@ -61,3 +61,7 @@
 .tree-3d-world-card img{width:38px;height:38px;object-fit:cover;border:2px solid #e1c678;border-radius:50%}
 .tree-3d-world-card strong{overflow:hidden;max-width:100%;text-overflow:ellipsis;font:700 12px Georgia,serif}
 .tree-3d-world-card small{color:#d9d3b9;font-size:10px}
+.tree-3d-panel{position:relative}
+.tree-3d-overlay{inset:0 0 auto;height:clamp(430px,62vh,760px)}
+@media(max-width:760px){.tree-3d-overlay{height:min(58vh,520px);min-height:420px}}
+@media(max-width:430px){.tree-3d-overlay{height:480px}}
