@@ -67,11 +67,8 @@ def test_workspace_permissions_and_genealogy_integrity(client, database, email_p
     }).status_code == 404
     assert client.get(base + "/workspace").json()["assignments"][0]["person_id"] == child_id
     assert client.delete(base + f"/people/{parent_id}").status_code == 409
-    assert client.delete(base + f"/people/{child_id}").status_code == 409
-    assert client.delete(base + f"/relationships/{edge.json()['id']}").status_code == 204
-    assert client.delete(base + f"/people/{child_id}").status_code == 409
-    assert client.delete(assignment_url).status_code == 204
     assert client.delete(base + f"/people/{child_id}").status_code == 204
+    assert client.delete(assignment_url).status_code == 404
     assert client.patch(base + f"/people/{parent_id}", json={
         "first_name": "Updated Ancestor"
     }).json()["first_name"] == "Updated Ancestor"

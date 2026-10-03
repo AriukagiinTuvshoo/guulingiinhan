@@ -18,6 +18,7 @@ from app.models import (
     Family,
     FamilyMember,
     FamilyPerson,
+    ParentChildRelationship,
     Person,
     SharedAncestry,
     SharedAncestryPerson,
@@ -77,6 +78,7 @@ class CandidateOut(BaseModel):
     id: UUID
     name: str
     family_name: str
+    family_id: UUID
     birth_date: str | None
     is_alive: bool
 
@@ -90,6 +92,11 @@ class AdminSharedRelationshipInput(BaseModel):
     parent_person_id: UUID
     child_person_id: UUID
     relationship_type: str = Field(default="biological", pattern="^(biological|adoptive|step)$")
+
+
+class AdminPublishPersonInput(BaseModel):
+    person_id: UUID
+    family_id: UUID
 
 
 class DonationInfoInput(BaseModel):
@@ -190,10 +197,17 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
                     for person in people]
     rows = [row for row in rows if not person_is_minor(row[0]) and row[0].visibility != "private"]
     visible_ids = {row[0].id for row in rows}
-    edges = db.scalars(select(SharedAncestryRelationship).where(
+    canonical_edges = db.scalars(select(ParentChildRelationship).where(
+        ParentChildRelationship.parent_id.in_(visible_ids),
+        ParentChildRelationship.child_id.in_(visible_ids),
+    ).order_by(ParentChildRelationship.created_at, ParentChildRelationship.id)).all() if visible_ids else []
+    legacy_edges = db.scalars(select(SharedAncestryRelationship).where(
         SharedAncestryRelationship.parent_id.in_(visible_ids),
         SharedAncestryRelationship.child_id.in_(visible_ids),
     ).order_by(SharedAncestryRelationship.created_at, SharedAncestryRelationship.id)).all() if visible_ids else []
+    canonical_pairs = {(edge.parent_id, edge.child_id) for edge in canonical_edges}
+    edges = [*canonical_edges, *(edge for edge in legacy_edges
+                                if (edge.parent_id, edge.child_id) not in canonical_pairs)]
     linked = _my_linked_person(db, user)
     return SharedTreeOut(
         name="Гуулингийнхан",
@@ -341,7 +355,7 @@ def read_donation_info(_: User = Depends(get_current_user), db: Session = Depend
 @admin_router.get("/candidates", response_model=list[CandidateOut])
 def shared_root_candidates(_: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db)):
     rows = db.execute(
-        select(Person, Family.name)
+        select(Person, Family.name, Family.id)
         .join(FamilyPerson, FamilyPerson.person_id == Person.id)
         .join(Family, Family.id == FamilyPerson.family_id)
         .where(Person.visibility != "private", Family.archived_at.is_(None))
@@ -349,16 +363,46 @@ def shared_root_candidates(_: tuple[User, AdminRole] = Depends(require_super_adm
     ).all()
     seen: set[UUID] = set()
     result = []
-    for person, family_name in rows:
+    for person, family_name, family_id in rows:
         if person.id in seen or person_is_minor(person):
             continue
         seen.add(person.id)
         result.append(CandidateOut(
             id=person.id, name=" ".join(part for part in (person.last_name, person.first_name, person.middle_name) if part),
-            family_name=family_name, birth_date=person.birth_date.isoformat() if person.birth_date else None,
+            family_name=family_name, family_id=family_id,
+            birth_date=person.birth_date.isoformat() if person.birth_date else None,
             is_alive=person.is_alive,
         ))
     return result
+
+
+@admin_router.post("/people", response_model=SharedTreeOut, status_code=201)
+def publish_existing_person(
+    body: AdminPublishPersonInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Publish a real, existing non-account ancestor; never fabricate genealogy records."""
+    person = db.scalar(
+        select(Person).join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .join(Family, Family.id == FamilyPerson.family_id)
+        .where(Person.id == body.person_id, FamilyPerson.family_id == body.family_id,
+               Family.archived_at.is_(None))
+    )
+    if person is None or person.visibility == "private" or person_is_minor(person):
+        raise HTTPException(status_code=422, detail="Нийтлэг модонд нийтлэх боломжтой бодит хүн сонгоно уу.")
+    if person.is_alive and person.visibility != "public":
+        raise HTTPException(status_code=422, detail="Амьд хүнийг нийтлэхийн өмнө харагдах хүрээг нь нийтийн болгож, зөвшөөрлийг нь шалгана уу.")
+    if db.scalar(select(UserPersonLink.user_id).where(UserPersonLink.person_id == person.id)):
+        raise HTTPException(status_code=403, detail="Аккаунттай холбогдсон хүн зөвшөөрлөө өөрөө өгч нийтлэг модонд орно.")
+    if db.get(SharedAncestryPerson, person.id):
+        raise HTTPException(status_code=409, detail="Энэ хүн нийтлэг модонд аль хэдийн байна.")
+    db.add(SharedAncestryPerson(person_id=person.id, family_id=body.family_id,
+                                added_by=current[0].id))
+    db.add(AuditLog(actor_id=current[0].id, family_id=body.family_id,
+                    action="shared_ancestry.person_published", target_type="person", target_id=person.id))
+    db.commit()
+    return read_shared_tree(current[0], db)
 
 
 @admin_router.put("/root", response_model=SharedTreeOut)
@@ -425,8 +469,11 @@ def add_shared_relationship(
         ):
             raise HTTPException(status_code=404, detail="Нийтлэг модонд зөвшөөрлөөр орсон хүн олдсонгүй.")
     edges = db.execute(select(
-        SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id
+        ParentChildRelationship.parent_id, ParentChildRelationship.child_id
     )).all()
+    edges = list({*edges, *db.execute(select(
+        SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id
+    )).all()})
     try:
         assert_parent_child_is_acyclic(edges, body.parent_person_id, body.child_person_id)
     except RelationshipError as error:
@@ -435,7 +482,7 @@ def add_shared_relationship(
         raise HTTPException(status_code=409, detail="Энэ хоёр хүн аль хэдийн холбогдсон байна.")
     if sum(child == body.child_person_id for _, child in edges) >= 2:
         raise HTTPException(status_code=409, detail="Нэг хүнд хоёр хүртэлх эцэг эх холбож болно.")
-    edge = SharedAncestryRelationship(
+    edge = ParentChildRelationship(
         parent_id=body.parent_person_id, child_id=body.child_person_id,
         relationship_type=body.relationship_type, created_by=current[0].id,
     )
@@ -453,9 +500,19 @@ def remove_shared_relationship(
     current: tuple[User, AdminRole] = Depends(require_super_admin),
     db: Session = Depends(get_db),
 ):
-    edge = db.get(SharedAncestryRelationship, relationship_id)
+    edge = db.get(ParentChildRelationship, relationship_id)
+    legacy_edge = db.get(SharedAncestryRelationship, relationship_id)
+    edge = edge or legacy_edge
     if edge is None:
         raise HTTPException(status_code=404, detail="Нийтлэг модны холбоос олдсонгүй.")
+    # A canonical relationship is also shown in the family's own tree. The UI
+    # explicitly confirms that both views will change before this endpoint runs.
+    if isinstance(edge, ParentChildRelationship):
+        for duplicate in db.scalars(select(SharedAncestryRelationship).where(
+            SharedAncestryRelationship.parent_id == edge.parent_id,
+            SharedAncestryRelationship.child_id == edge.child_id,
+        )).all():
+            db.delete(duplicate)
     db.delete(edge)
     db.add(AuditLog(actor_id=current[0].id, family_id=None,
                     action="shared_ancestry.relationship_removed", target_type="relationship", target_id=relationship_id))

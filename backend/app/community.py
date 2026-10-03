@@ -1,0 +1,148 @@
+"""Authenticated, cross-family feed of explicitly public heritage records."""
+
+from datetime import date, datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.auth import get_current_user
+from app.db import get_db
+from app.memory_photos import _expected_object_keys
+from app.models import (
+    Archive,
+    Family,
+    Memory,
+    MemoryPersonTag,
+    Person,
+    Photo,
+    PhotoPersonTag,
+    Story,
+    User,
+)
+from app.privacy import is_minor
+from app.storage import ObjectStorage, get_storage
+
+router = APIRouter(prefix="/community", tags=["community"])
+
+
+class PublicPost(BaseModel):
+    id: UUID
+    kind: str
+    family_id: UUID
+    family_name: str
+    author_name: str
+    title: str
+    content: str
+    event_date: date | None
+    created_at: datetime
+    thumbnail_url: str | None = None
+
+
+class PublicFeed(BaseModel):
+    items: list[PublicPost]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
+def _public_photo(db: Session, photo_id: UUID) -> Photo | None:
+    photo = db.scalar(
+        select(Photo).join(Memory, Memory.id == Photo.memory_id)
+        .join(Family, Family.id == Photo.family_id)
+        .where(Photo.id == photo_id, Photo.storage_status == "ready",
+               Memory.visibility == "public", Family.archived_at.is_(None))
+    )
+    if photo is None or photo.memory_id is None or photo.mime_type not in {
+        "image/jpeg", "image/png", "image/webp",
+    }:
+        return None
+    # Photo tags are an explicit publication boundary. Untagged pictures cannot
+    # be checked for a minor or private subject, so they stay family-only.
+    photo_people = db.scalars(select(Person).join(
+        PhotoPersonTag, PhotoPersonTag.person_id == Person.id,
+    ).where(PhotoPersonTag.photo_id == photo.id)).all()
+    memory_people = db.scalars(select(Person).join(
+        MemoryPersonTag, MemoryPersonTag.person_id == Person.id,
+    ).where(MemoryPersonTag.memory_id == photo.memory_id)).all()
+    if not photo_people or any(
+        person.visibility != "public" or is_minor(person.birth_date) is not False
+        for person in [*photo_people, *memory_people]
+    ):
+        return None
+    return photo
+
+
+@router.get("/feed", response_model=PublicFeed)
+def public_feed(
+    page: int = Query(default=1, ge=1, le=1000),
+    page_size: int = Query(default=12, ge=1, le=30),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Show public posts from every active family; never expose family/private records."""
+    models = (
+        ("story", Story, Story.body, Story.event_date),
+        ("memory", Memory, Memory.description, Memory.memory_date),
+        ("archive", Archive, Archive.description, Archive.document_date),
+    )
+    total = 0
+    candidates: list[PublicPost] = []
+    per_kind_limit = page * page_size
+    for kind, model, content_column, date_column in models:
+        scope = (model.visibility == "public", Family.archived_at.is_(None))
+        total += db.scalar(
+            select(func.count()).select_from(model).join(Family, Family.id == model.family_id).where(*scope)
+        ) or 0
+        rows = db.execute(
+            select(model.id, model.family_id, Family.name, User.display_name,
+                   model.title, content_column, date_column, model.created_at)
+            .join(Family, Family.id == model.family_id)
+            .join(User, User.id == model.created_by)
+            .where(*scope)
+            .order_by(model.created_at.desc(), model.id.desc())
+            .limit(per_kind_limit)
+        ).all()
+        candidates.extend(PublicPost(
+            id=row[0], kind=kind, family_id=row[1], family_name=row[2],
+            author_name=row[3], title=row[4], content=row[5] or "",
+            event_date=row[6], created_at=row[7],
+        ) for row in rows)
+    candidates.sort(key=lambda item: (item.created_at.replace(tzinfo=None), str(item.id)), reverse=True)
+    start = (page - 1) * page_size
+    items = candidates[start:start + page_size]
+    for item in items:
+        if item.kind != "memory":
+            continue
+        photos = db.scalars(select(Photo).where(
+            Photo.memory_id == item.id, Photo.storage_status == "ready",
+        ).order_by(Photo.created_at.desc(), Photo.id.desc()).limit(12)).all()
+        approved = next((photo for photo in photos if _public_photo(db, photo.id)), None)
+        if approved:
+            item.thumbnail_url = f"/community/photos/{approved.id}/thumbnail"
+    return PublicFeed(items=items, page=page,
+                      page_size=page_size, total=total, has_next=page * page_size < total)
+
+
+@router.get("/photos/{photo_id}/thumbnail")
+def public_thumbnail(
+    photo_id: UUID,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    photo = _public_photo(db, photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail="Нийтийн зураг олдсонгүй.")
+    _, thumbnail_key = _expected_object_keys(photo)
+    try:
+        data = storage.get(thumbnail_key)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Зургийг ачаалж чадсангүй.") from error
+    return Response(content=data, media_type="image/jpeg", headers={
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+    })

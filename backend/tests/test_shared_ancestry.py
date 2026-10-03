@@ -4,12 +4,58 @@ from app.models import (
     AdminGrant,
     AuditLog,
     Family,
+    ParentChildRelationship,
     SharedAncestryPerson,
     SharedAncestryRelationship,
 )
 from tests.conftest import register_verified
 
 PASSWORD = "shared-ancestry-passphrase-123"
+
+
+def test_admin_publishes_existing_ancestor_children_using_canonical_edges(client, database, email_provider):
+    admin_id = _login(client, email_provider, "ancestry-canonical-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    family_id = client.post("/api/v1/families", json={"name": "Canonical family"}).json()["id"]
+    base = f"/api/v1/admin/families/{family_id}"
+    root = client.post(base + "/people", json={
+        "first_name": "Root", "birth_date": "1880-01-01", "is_alive": False,
+        "death_date": "1950-01-01",
+    }).json()
+    children = [client.post(base + "/people", json={
+        "first_name": f"Child {index}", "birth_date": "1920-01-01", "is_alive": False,
+        "death_date": "1990-01-01",
+    }).json() for index in range(4)]
+    assert client.put("/api/v1/admin/shared-lineage/root", json={
+        "person_id": root["id"], "expected_root_person_id": None,
+    }).status_code == 200
+    candidates = client.get("/api/v1/admin/shared-lineage/candidates").json()
+    assert all(any(row["id"] == child["id"] and row["family_id"] == family_id
+                   for row in candidates) for child in children)
+    for child in children:
+        published = client.post("/api/v1/admin/shared-lineage/people", json={
+            "person_id": child["id"], "family_id": family_id,
+        })
+        assert published.status_code == 201, published.text
+        linked = client.post("/api/v1/admin/shared-lineage/relationships", json={
+            "parent_person_id": root["id"], "child_person_id": child["id"],
+        })
+        assert linked.status_code == 201, linked.text
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 4
+        assert db.query(SharedAncestryRelationship).count() == 0
+
+    _login(client, email_provider, "ancestry-canonical-viewer@example.com")
+    shared = client.get("/api/v1/shared-lineage").json()
+    assert shared["root_person_id"] == root["id"]
+    assert {person["id"] for person in shared["persons"]} == {
+        root["id"], *(child["id"] for child in children),
+    }
+    assert {edge["child_id"] for edge in shared["relationships"]} == {
+        child["id"] for child in children
+    }
+    assert client.get(f"/api/v1/families/{family_id}/tree?scope=all").status_code == 403
 
 
 def _login(client, provider, email):
