@@ -485,6 +485,18 @@ function TreePageContent() {
     [layout],
   );
 
+  useEffect(() => {
+    if (!tree?.persons.length || loading || treeView !== '2d') return;
+    const frame = window.requestAnimationFrame(() => {
+      const viewport = scrollRef.current;
+      if (!viewport) return;
+      const width = Math.max(280, viewport.clientWidth - 28);
+      const height = Math.max(320, Math.min(window.innerHeight * 0.72, 760) - 24);
+      setZoom(Math.max(0.3, Math.min(1, Number(Math.min(width / layout.width, height / layout.height).toFixed(2)))));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tree, treeView, loading, layout.width, layout.height]);
+
   const selectedPerson = selectedId
     ? tree?.persons.find((person) => person.id === selectedId) ?? null
     : null;
@@ -1046,7 +1058,7 @@ function TreePageContent() {
               <div className="tree-zoom" aria-label="Модны хэмжээ">
                 <button
                   type="button"
-                  onClick={() => setZoom((value) => Math.max(0.65, Number((value - 0.1).toFixed(2))))}
+                  onClick={() => setZoom((value) => Math.max(0.3, Number((value - 0.1).toFixed(2))))}
                   aria-label="Жижигрүүлэх"
                 >
                   −
@@ -1061,7 +1073,8 @@ function TreePageContent() {
                 </button>
                 <button type="button" onClick={() => {
                   const available = Math.max(280, (scrollRef.current?.clientWidth || window.innerWidth) - 28);
-                  setZoom(Math.max(0.3, Math.min(1, Number((available / layout.width).toFixed(2)))));
+                  const availableHeight = Math.max(320, Math.min(window.innerHeight * 0.72, 760) - 24);
+                  setZoom(Math.max(0.3, Math.min(1, Number(Math.min(available / layout.width, availableHeight / layout.height).toFixed(2)))));
                   scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
                 }}>Тааруулах</button>
               </div>

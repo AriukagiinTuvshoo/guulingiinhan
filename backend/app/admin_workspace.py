@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,20 +25,19 @@ from app.models import (
     Announcement,
     ArchivePerson,
     AuditLog,
-    Biography,
     Branch,
     Family,
     FamilyMember,
     FamilyPerson,
-    LifeEvent,
     Lineage,
-    Marriage,
+    Memory,
     MemoryPersonTag,
     ParentChildRelationship,
     Person,
-    PersonGuardianship,
     PersonLineageAssignment,
     PersonLinkRequest,
+    SharedAncestry,
+    SharedAncestryPerson,
     Story,
     StoryPerson,
     User,
@@ -430,22 +429,28 @@ def detach_person(
     _person(db, family_id, person_id)
     if family.root_person_id == person_id:
         raise HTTPException(status_code=409, detail="Эхлээд удмын эхийг солино уу.")
-    references = (
-        (ParentChildRelationship, or_(ParentChildRelationship.parent_id == person_id,
-                                      ParentChildRelationship.child_id == person_id)),
-        (Marriage, or_(Marriage.person_1_id == person_id, Marriage.person_2_id == person_id)),
-        (UserPersonLink, UserPersonLink.person_id == person_id),
-        (StoryPerson, StoryPerson.person_id == person_id),
-        (ArchivePerson, ArchivePerson.person_id == person_id),
-        (MemoryPersonTag, MemoryPersonTag.person_id == person_id),
-        (PersonGuardianship, PersonGuardianship.person_id == person_id),
-        (PersonLineageAssignment, PersonLineageAssignment.person_id == person_id),
-        (PersonLinkRequest, PersonLinkRequest.person_id == person_id),
-        (Biography, Biography.person_id == person_id),
-        (LifeEvent, LifeEvent.person_id == person_id),
-    )
-    if any(db.scalar(select(model.id).where(condition).limit(1)) for model, condition in references):
-        raise HTTPException(status_code=409, detail="Энэ хүн холбоос, түүх эсвэл бүртгэлтэй. Холбоосыг эхлээд цэгцэлнэ үү.")
+    if db.scalar(select(UserPersonLink.user_id).where(UserPersonLink.person_id == person_id)):
+        raise HTTPException(status_code=409, detail="Энэ хүн аккаунттай холбогдсон байна. Эхлээд аккаунтын холбоосыг цэгцэлнэ үү.")
+    if db.get(SharedAncestryPerson, person_id) or db.scalar(select(SharedAncestry.id).where(
+        SharedAncestry.root_person_id == person_id
+    )):
+        raise HTTPException(status_code=409, detail="Энэ хүн нийтлэг модонд байна. Эхлээд нийтлэг модны холбоосыг цэгцэлнэ үү.")
+    if db.scalar(select(PersonLinkRequest.id).where(PersonLinkRequest.person_id == person_id)):
+        raise HTTPException(status_code=409, detail="Энэ хүнд аккаунт холбох хүсэлт байна. Эхлээд хүсэлтийг шийднэ үү.")
+    # Detach only this family's associations. The Person, biography and source
+    # records survive; relationships can be restored by re-adding the Person.
+    db.execute(delete(StoryPerson).where(StoryPerson.family_id == family_id,
+                                         StoryPerson.person_id == person_id))
+    db.execute(delete(ArchivePerson).where(ArchivePerson.family_id == family_id,
+                                           ArchivePerson.person_id == person_id))
+    db.execute(delete(MemoryPersonTag).where(
+        MemoryPersonTag.person_id == person_id,
+        MemoryPersonTag.memory_id.in_(select(Memory.id).where(Memory.family_id == family_id)),
+    ))
+    db.execute(delete(PersonLineageAssignment).where(
+        PersonLineageAssignment.person_id == person_id,
+        PersonLineageAssignment.lineage_id.in_(select(Lineage.id).where(Lineage.family_id == family_id)),
+    ))
     link = db.scalar(select(FamilyPerson).where(
         FamilyPerson.family_id == family_id, FamilyPerson.person_id == person_id))
     db.delete(link)

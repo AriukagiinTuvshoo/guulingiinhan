@@ -15,6 +15,7 @@ from app.admin import router as admin_router
 from app.admin_workspace import public_router as announcements_router
 from app.admin_workspace import router as admin_workspace_router
 from app.auth import router as auth_router
+from app.community import router as community_router
 from app.config import get_settings
 from app.db import engine
 from app.families import invitations_router, lineages_router
@@ -161,6 +162,7 @@ app.include_router(admin_router, prefix="/api/v1")
 app.include_router(admin_workspace_router, prefix="/api/v1")
 app.include_router(admin_shared_ancestry_router, prefix="/api/v1")
 app.include_router(shared_ancestry_router, prefix="/api/v1")
+app.include_router(community_router, prefix="/api/v1")
 app.include_router(announcements_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
