@@ -104,6 +104,7 @@ export default function Tree3DScene({
   const labelRendererRef = useRef<CSS2DRenderer | null>(null);
   const objectsRef = useRef<THREE.Object3D[]>([]);
   const positionsRef = useRef<Map<string, Point3>>(new Map());
+  const lastFocusedPersonRef = useRef(selectedPersonId);
   const [webglError, setWebglError] = useState(false);
   const [ready, setReady] = useState(false);
   const [selectedContext, setSelectedContext] = useState('');
@@ -375,9 +376,8 @@ export default function Tree3DScene({
       if (marriage.person_1_id === selectedPersonId) labeledPeople.add(marriage.person_2_id);
       if (marriage.person_2_id === selectedPersonId) labeledPeople.add(marriage.person_1_id);
     }
-    if (visiblePeople.length <= 48) {
-      for (const person of visiblePeople) labeledPeople.add(person.id);
-    }
+    // Screen-space cards have a fixed readable size. Label the selected person's
+    // immediate family; the portrait strip below remains the complete navigator.
     const labelsToShow = new Set([...labeledPeople].filter((id) => personIds.has(id)).slice(0, 72));
 
     const rootPeople = visiblePeople.filter((person) => person.id === canonicalRootId && positions.has(person.id));
@@ -479,6 +479,8 @@ export default function Tree3DScene({
   }, [canonicalRootId, data, focusedBranchId, selectedPersonId]);
 
   useEffect(() => {
+    if (lastFocusedPersonRef.current === selectedPersonId) return;
+    lastFocusedPersonRef.current = selectedPersonId;
     const controls = controlsRef.current;
     const camera = cameraRef.current;
     const point = positionsRef.current.get(selectedPersonId);
