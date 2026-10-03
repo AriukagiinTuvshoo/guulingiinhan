@@ -9,6 +9,10 @@ import { ApiError, api, User } from '../../lib/api';
 type Mode = 'email' | 'phone';
 type Challenge = { challenge_id: string; expires_in: number; resend_after: number };
 
+function composeDisplayName(surname: string, givenName: string) {
+  return [surname.trim(), givenName.trim()].filter(Boolean).join(' ');
+}
+
 function registerError(cause: unknown) {
   if (cause instanceof ApiError) {
     if (cause.status === 409) return 'Энэ бүртгэлийг одоогоор үүсгэх боломжгүй байна. Мэдээллээ шалгаад дахин оролдоно уу.';
@@ -29,17 +33,21 @@ export default function RegisterPage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [phone, setPhone] = useState('');
   const [phoneName, setPhoneName] = useState('');
+  const [surname, setSurname] = useState('');
+  const [givenName, setGivenName] = useState('');
   const [resendSeconds, setResendSeconds] = useState(0);
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [phoneEnabled, setPhoneEnabled] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     api<{ enabled: boolean }>('/auth/phone/config').then((result) => setPhoneEnabled(result.enabled)).catch(() => setPhoneEnabled(false));
+    api<{ enabled: boolean }>('/auth/email/config').then((result) => setEmailEnabled(result.enabled)).catch(() => setEmailEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -62,9 +70,17 @@ export default function RegisterPage() {
     setBusy(true);
     try {
       const email = String(values.get('email') ?? '').trim();
+      const displayName = composeDisplayName(
+        String(values.get('surname') ?? ''),
+        String(values.get('given_name') ?? ''),
+      );
+      if (!displayName || displayName.length > 120) {
+        setError('Овог, нэрээ шалгана уу. Нийлсэн нэр 120 тэмдэгтээс хэтрэхгүй байх ёстой.');
+        return;
+      }
       const result = await api<{ message: string }>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password, display_name: values.get('name') }),
+        body: JSON.stringify({ email, password, display_name: displayName }),
       });
       setRegisteredEmail(email);
       setNotice(result.message);
@@ -81,9 +97,11 @@ export default function RegisterPage() {
     setNotice('');
     const values = new FormData(event.currentTarget);
     const requestedPhone = String(values.get('phone') ?? '').trim();
-    const requestedName = String(values.get('name') ?? '').trim();
-    if (!requestedName) {
-      setError('Нэрээ оруулна уу.');
+    const requestedSurname = String(values.get('surname') ?? '');
+    const requestedGivenName = String(values.get('given_name') ?? '');
+    const requestedName = composeDisplayName(requestedSurname, requestedGivenName);
+    if (!requestedSurname.trim() || !requestedGivenName.trim() || requestedName.length > 120) {
+      setError('Овог, нэрээ шалгана уу. Нийлсэн нэр 120 тэмдэгтээс хэтрэхгүй байх ёстой.');
       return;
     }
     if (!requestedPhone) {
@@ -98,6 +116,8 @@ export default function RegisterPage() {
       });
       setPhone(requestedPhone);
       setPhoneName(requestedName);
+      setSurname(requestedSurname);
+      setGivenName(requestedGivenName);
       setChallenge(result);
       setResendSeconds(result.resend_after);
       setNotice('Хэрэв энэ дугаараар бүртгэлгүй бол бүртгэл үүсгэх код илгээгдлээ.');
@@ -195,20 +215,22 @@ export default function RegisterPage() {
             <p>Гэр бүлийнхээ хувийн орчноо эхлүүлье.</p>
           </div>
 
-          {phoneEnabled && (
-            <>
-              <div className="authv2-method-heading">Утасны дугаар ашиглах уу?</div>
-              <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
-                <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
-                <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны дугаар</button>
-              </div>
-            </>
-          )}
+          <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
+            <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйлээр</button>
+            <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')} disabled={!phoneEnabled}>Утасны дугаараар{!phoneEnabled && <span className="authv2-tab-status">Түр хаалттай</span>}</button>
+          </div>
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
           {error && <div className="authv2-message authv2-message--error" role="alert">{error}</div>}
 
-          {registeredEmail && mode === 'email' ? (
+          {emailEnabled === null ? (
+            <p className="authv2-availability" role="status">Бүртгэлийн боломжийг шалгаж байна…</p>
+          ) : mode === 'email' && !emailEnabled ? (
+            <div className="authv2-unavailable" role="status">
+              <strong>Имэйл бүртгэл түр хаалттай</strong>
+              <p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна. Тохируулсны дараа эндээс бүртгүүлж болно.</p>
+            </div>
+          ) : registeredEmail && mode === 'email' ? (
             <div className="authv2-complete">
               <span className="authv2-complete-mark" aria-hidden="true">✓</span>
               <h3>Бүртгэлийн хүсэлт хүлээн авлаа.</h3>
@@ -217,8 +239,10 @@ export default function RegisterPage() {
             </div>
           ) : mode === 'email' ? (
             <form className="authv2-form" onSubmit={submitEmail}>
-              <label htmlFor="register-name">Нэр</label>
-              <input id="register-name" name="name" autoComplete="name" minLength={1} maxLength={120} required />
+              <label htmlFor="register-surname">Овог</label>
+              <input id="register-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required />
+              <label htmlFor="register-given-name">Нэр</label>
+              <input id="register-given-name" name="given_name" autoComplete="given-name" minLength={1} maxLength={59} required />
               <label htmlFor="register-email">Имэйл</label>
               <input id="register-email" name="email" type="email" autoComplete="email" maxLength={320} required />
               <label htmlFor="register-password">Нууц үг</label>
@@ -236,8 +260,10 @@ export default function RegisterPage() {
             </form>
           ) : !challenge ? (
             <form className="authv2-form" onSubmit={requestPhoneCode}>
-              <label htmlFor="register-phone-name">Нэр</label>
-              <input id="register-phone-name" name="name" autoComplete="name" minLength={1} maxLength={120} required value={phoneName} onChange={(event) => setPhoneName(event.target.value)} />
+              <label htmlFor="register-phone-surname">Овог</label>
+              <input id="register-phone-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required value={surname} onChange={(event) => setSurname(event.target.value)} />
+              <label htmlFor="register-phone-given-name">Нэр</label>
+              <input id="register-phone-given-name" name="given_name" autoComplete="given-name" minLength={1} maxLength={59} required value={givenName} onChange={(event) => setGivenName(event.target.value)} />
               <label htmlFor="register-phone">Утасны дугаар</label>
               <input id="register-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+976 99112233" required maxLength={20} value={phone} onChange={(event) => setPhone(event.target.value)} />
               <span className="authv2-help">+976 99112233 эсвэл 99112233 гэж оруулж болно.</span>

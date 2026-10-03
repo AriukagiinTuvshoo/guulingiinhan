@@ -101,6 +101,18 @@ class UserOutput(BaseModel):
     person_id: UUID | None = None
 
 
+class AccountProfileInput(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str) -> str:
+        name = " ".join(value.split())
+        if not name:
+            raise ValueError("Дэлгэцийн нэр хоосон байж болохгүй.")
+        return name
+
+
 class LoginIdentityOutput(BaseModel):
     id: UUID
     provider: str
@@ -233,7 +245,7 @@ def _otp_secret() -> bytes:
     configured = get_settings().otp_hash_secret
     if configured:
         return configured.encode()
-    if get_settings().app_env.lower() == "production":
+    if get_settings().app_env.lower() in {"production", "staging"}:
         raise RuntimeError("OTP_HASH_SECRET is required")
     return _OTP_DEV_SECRET
 
@@ -415,6 +427,7 @@ def _audit(db: Session, user_id: UUID, action: str, challenge: PhoneOtpChallenge
 
 def set_session_cookie(db: Session, response: Response, user_id: UUID) -> None:
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     token = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
     db.execute(delete(UserSession).where(UserSession.expires_at < now))
@@ -431,20 +444,21 @@ def set_session_cookie(db: Session, response: Response, user_id: UUID) -> None:
         token,
         max_age=SESSION_SECONDS,
         httponly=True,
-        secure=settings.app_env.lower() == "production",
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        secure=hosted_env,
+        samesite="none" if hosted_env else "lax",
         path="/",
     )
 
 
 def clear_session_cookie(response: Response) -> None:
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     response.delete_cookie(
         settings.session_cookie_name,
         path="/",
-        secure=settings.app_env.lower() == "production",
+        secure=hosted_env,
         httponly=True,
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        samesite="none" if hosted_env else "lax",
     )
 
 
@@ -651,7 +665,7 @@ def _google_state_secret() -> bytes:
     if settings.google_oidc_state_secret:
         return settings.google_oidc_state_secret.encode()
     # Development-only process fallback; production settings reject a missing secret.
-    if settings.app_env.lower() == "production":
+    if settings.app_env.lower() in {"production", "staging"}:
         raise RuntimeError("GOOGLE_OIDC_STATE_SECRET is required")
     return _OTP_DEV_SECRET
 
@@ -719,7 +733,7 @@ def _start_google(
         cookie,
         max_age=GOOGLE_STATE_SECONDS,
         httponly=True,
-        secure=settings.app_env.lower() == "production",
+        secure=settings.app_env.lower() in {"production", "staging"},
         samesite="lax",
         path="/api/v1/auth/google/callback",
     )
@@ -1171,6 +1185,21 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return _user_output(db, user)
 
 
+@router.patch("/me", response_model=UserOutput)
+def update_account_profile(
+    body: AccountProfileInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.display_name != body.display_name:
+        user.display_name = body.display_name
+        db.add(AuditLog(actor_id=user.id, action="user.display_name_updated",
+                        target_type="user", target_id=user.id))
+        db.commit()
+        db.refresh(user)
+    return _user_output(db, user)
+
+
 @router.get("/me/identities", response_model=list[LoginIdentityOutput])
 def list_login_identities(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     identities = db.scalars(
@@ -1289,6 +1318,17 @@ def cancel_identity_link_request(
     return Response(status_code=204)
 
 
+@router.get("/email/config")
+def email_auth_config():
+    """Expose email delivery availability without revealing provider credentials."""
+    settings = get_settings()
+    enabled = settings.email_provider.lower() == "smtp" and all(
+        (settings.email_from, settings.email_smtp_host,
+         settings.email_smtp_username, settings.email_smtp_password)
+    )
+    return {"enabled": bool(enabled)}
+
+
 @router.get("/phone/config")
 def phone_auth_config():
     """Expose only whether real SMS delivery is configured for auth UI."""
@@ -1343,6 +1383,7 @@ def verify_phone_link(
     body: PhoneOtpVerifyInput,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     challenge = _matching_otp(
         db,
@@ -1417,6 +1458,7 @@ def verify_phone_registration(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
         raise HTTPException(
@@ -1526,6 +1568,7 @@ def verify_phone_login(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
         raise HTTPException(
@@ -1579,6 +1622,7 @@ def request_phone_recovery(
 def confirm_phone_recovery(
     body: PasswordRecoveryInput,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     challenge = _matching_otp(
         db,

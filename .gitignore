@@ -1,6 +1,11 @@
 node_modules/
+.npm-cache/
+backend/.pytest-tmp/
 dist/
 .next/
+.open-next/
+.wrangler/
+worker-configuration.d.ts
 next-env.d.ts
 .env
 .venv/
@@ -15,3 +20,5 @@ backend/*.egg-info/
 .vinext/
 .cloudflare/
 *.tsbuildinfo
+backend/worker-configuration.d.ts
+backend/.wrangler-staging-build/

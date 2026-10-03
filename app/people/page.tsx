@@ -13,6 +13,7 @@ import {
   personName,
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import ProfilePhoto from '../../components/profile-photo';
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -384,9 +385,7 @@ function PeoplePageContent() {
                   aria-label={`${personName(person) || 'Нэргүй хүн'} профайлыг нээх`}
                 >
                   <div className="people-card-top">
-                    <span className="personavatar people-avatar" aria-hidden="true">
-                      {initials(person)}
-                    </span>
+                    <ProfilePhoto className="personavatar people-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />
                     <div className="people-card-identity">
                       <h2>{personName(person) || 'Нэргүй хүн'}</h2>
                       <span>{lifeSummary(person)}</span>

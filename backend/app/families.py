@@ -3,7 +3,7 @@
 import hashlib
 import secrets
 from datetime import UTC, date, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
@@ -36,6 +36,7 @@ from app.models import (
     Person,
     PersonGuardianship,
     PersonLineageAssignment,
+    PersonLinkRequest,
     Photo,
     Story,
     StoryPerson,
@@ -178,8 +179,8 @@ class PersonCreate(BaseModel):
             raise ValueError("Төрсөн огноо ирээдүйд байж болохгүй.")
         if self.death_date and self.birth_date and self.death_date < self.birth_date:
             raise ValueError("Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй.")
-        if self.is_alive and self.death_date:
-            raise ValueError("Амьд хүний нас барсан огноог бөглөж болохгүй.")
+        if self.is_alive and (self.death_date or self.death_place):
+            raise ValueError("Амьд хүний нас барсны мэдээллийг бөглөж болохгүй.")
         return self
 
 
@@ -235,6 +236,7 @@ class ProfileRelationPersonOut(BaseModel):
 
 class PersonProfileOut(PersonOut):
     profile_photo_url: str | None = None
+    can_edit_profile: bool = False
     lineage_id: UUID | None = None
     lineage_name: str | None = None
     branch_id: UUID | None = None
@@ -270,6 +272,7 @@ class PersonDirectoryItem(BaseModel):
     is_alive: bool
     death_date: date | None
     death_place: str | None
+    profile_photo_url: str | None = None
     short_description: str | None
     visibility: str
     created_at: datetime
@@ -296,6 +299,7 @@ class TreePersonOut(BaseModel):
     birth_date: date | None
     is_alive: bool
     death_date: date | None
+    profile_photo_url: str | None = None
     lineage_id: UUID | None = None
     lineage_name: str | None = None
     branch_id: UUID | None = None
@@ -313,10 +317,30 @@ class TreeParentChildOut(BaseModel):
 
 class TreeOut(BaseModel):
     root_person_id: UUID | None
+    lineage_root_person_id: UUID | None = None
+    linked_person_id: UUID | None = None
     persons: list[TreePersonOut]
     parent_child_relationships: list[TreeParentChildOut]
     marriages: list["MarriageOut"]
     meta: dict[str, int | bool]
+
+
+class FamilyRootInput(BaseModel):
+    person_id: UUID
+
+
+class FamilyRootOut(BaseModel):
+    person_id: UUID | None
+
+
+class PersonLinkRequestOut(BaseModel):
+    id: UUID
+    person_id: UUID
+    user_id: UUID
+    user_name: str
+    person_name: str
+    status: str
+    created_at: datetime
 
 
 class GuardianshipCreate(BaseModel):
@@ -351,7 +375,11 @@ class GuardianshipOut(BaseModel):
 class ParentChildCreate(BaseModel):
     parent_id: UUID
     child_id: UUID
-    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive)$")
+    relationship_type: str = Field(default="biological", pattern="^(biological|adoptive|step)$")
+
+
+class ParentChildPatch(BaseModel):
+    relationship_type: str = Field(pattern="^(biological|adoptive|step)$")
 
 
 class MarriageCreate(BaseModel):
@@ -1224,6 +1252,10 @@ def list_people_directory(
         items.append(
             PersonDirectoryItem(
                 **result.model_dump(),
+                profile_photo_url=(
+                    None if person_is_minor(person) and "view_profile" not in scopes.get(person.id, set())
+                    else _person_profile_photo_url(family_id, person)
+                ),
                 lineage_id=row_lineage_id,
                 lineage_name=row_lineage_name,
                 branch_id=row_branch_id,
@@ -1320,6 +1352,34 @@ def search_persons(
     )
 
 
+def _person_profile_photo_url(family_id: UUID, person: Person) -> str | None:
+    key = person.profile_photo_key
+    if key:
+        prefix = f"profile-photos/{person.id}/"
+        if key.startswith(prefix) and key.endswith(".jpg"):
+            version = key[len(prefix):-4]
+            if len(version) == 36:
+                return f"/families/{family_id}/persons/{person.id}/profile-photo?v={version}"
+            return None
+    return person.profile_photo_url
+
+
+def _can_edit_person_profile(db: Session, family_id: UUID, person: Person, user: User) -> bool:
+    member = db.scalar(
+        select(FamilyMember).where(
+            FamilyMember.family_id == family_id, FamilyMember.user_id == user.id
+        )
+    )
+    linked = db.scalar(
+        select(UserPersonLink.id).where(
+            UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
+        )
+    ) is not None
+    if person_is_minor(person):
+        return has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
+    return (member is not None and member.role in {"owner", "editor"}) or linked
+
+
 def _person_profile_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonProfileOut:
     """Build one family-scoped profile payload without inferring genealogy data."""
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
@@ -1327,10 +1387,11 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
     result = PersonProfileOut(
         **base.model_dump(),
         profile_photo_url=(
-            person.profile_photo_url
+            _person_profile_photo_url(family_id, person)
             if not person_is_minor(person) or "view_profile" in scopes
             else None
         ),
+        can_edit_profile=_can_edit_person_profile(db, family_id, person, user),
     )
     if person_is_minor(person) and "view_profile" not in scopes:
         return result
@@ -1413,7 +1474,9 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
 
     def relation_items(ids: list[UUID]) -> list[ProfileRelationPersonOut]:
         return [
-            ProfileRelationPersonOut.model_validate(visible[item_id])
+            ProfileRelationPersonOut.model_validate(visible[item_id]).model_copy(
+                update={"profile_photo_url": _person_profile_photo_url(family_id, visible[item_id])}
+            )
             for item_id in ids
             if item_id in visible
         ]
@@ -1454,6 +1517,7 @@ def update_person(
     data = body.model_dump(exclude_unset=True)
     candidate_birth = data.get("birth_date", person.birth_date)
     candidate_death = data.get("death_date", person.death_date)
+    candidate_death_place = data.get("death_place", person.death_place)
     candidate_alive = data.get("is_alive", person.is_alive)
     is_minor_record = person_is_minor(person) or is_minor(candidate_birth) is True
     linked_to_user = db.scalar(
@@ -1478,8 +1542,8 @@ def update_person(
         raise HTTPException(
             status_code=422, detail="Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй."
         )
-    if candidate_alive and candidate_death:
-        raise HTTPException(status_code=422, detail="Амьд хүний нас барсан огноог бөглөж болохгүй.")
+    if candidate_alive and (candidate_death or candidate_death_place):
+        raise HTTPException(status_code=422, detail="Амьд хүний нас барсны мэдээллийг бөглөж болохгүй.")
     for key, value in data.items():
         setattr(
             person, key, value.strip() if key in {"first_name", "last_name"} and value else value
@@ -1686,13 +1750,38 @@ def remove_person_from_family(
     db: Session = Depends(get_db),
 ):
     """Detach from this family; preserve the person and relationship history."""
-    _member(db, family_id, user, {"owner", "editor"})
+    _, family = _member(db, family_id, user, {"owner", "editor"})
+    if family.root_person_id == person_id:
+        raise HTTPException(status_code=409, detail="Удмын эхийг гэр бүлээс салгах боломжгүй.")
     _person_in_family(db, family_id, person_id)
     association = db.scalar(
         select(FamilyPerson).where(
             FamilyPerson.family_id == family_id, FamilyPerson.person_id == person_id
         )
     )
+    if association.added_by != user.id and user.id != family.created_by:
+        raise HTTPException(status_code=403, detail="Өөр хүний нэмсэн холбоосыг салгах эрхгүй.")
+    referenced = any((
+        db.scalar(select(ParentChildRelationship.id).where(or_(
+            ParentChildRelationship.parent_id == person_id,
+            ParentChildRelationship.child_id == person_id,
+        )).limit(1)),
+        db.scalar(select(Marriage.id).where(or_(
+            Marriage.person_1_id == person_id, Marriage.person_2_id == person_id,
+        ), Marriage.deleted_at.is_(None)).limit(1)),
+        db.scalar(select(UserPersonLink.id).where(UserPersonLink.person_id == person_id).limit(1)),
+        db.scalar(select(StoryPerson.id).where(StoryPerson.family_id == family_id,
+                                               StoryPerson.person_id == person_id).limit(1)),
+        db.scalar(select(ArchivePerson.id).where(ArchivePerson.family_id == family_id,
+                                                 ArchivePerson.person_id == person_id).limit(1)),
+        db.scalar(select(MemoryPersonTag.id).where(MemoryPersonTag.person_id == person_id).limit(1)),
+        db.scalar(select(PersonGuardianship.id).where(
+            PersonGuardianship.family_id == family_id,
+            PersonGuardianship.person_id == person_id,
+        ).limit(1)),
+    ))
+    if referenced:
+        raise HTTPException(status_code=409, detail="Энэ хүн түүхэн холбоос эсвэл дурсамжтай тул салгах боломжгүй.")
     assignments = db.scalars(
         select(PersonLineageAssignment)
         .join(Lineage, Lineage.id == PersonLineageAssignment.lineage_id)
@@ -1728,6 +1817,8 @@ def link_me(
     person = _person_in_family(db, family_id, person_id)
     if person_is_minor(person):
         raise HTTPException(status_code=403, detail="Энэ хүнийг бүртгэлтэй хэрэглэгчтэй холбох боломжгүй.")
+    if person.created_by != user.id:
+        raise HTTPException(status_code=403, detail="Байгаа хүнтэй холбогдох хүсэлтийг гэр бүлийн эзэн батална.")
     if db.scalar(select(UserPersonLink).where(UserPersonLink.user_id == user.id)):
         raise HTTPException(
             status_code=409, detail="Таны бүртгэл хүнтэй аль хэдийн холбогдсон байна."
@@ -1736,6 +1827,87 @@ def link_me(
         raise HTTPException(status_code=409, detail="Энэ хүн өөр бүртгэлтэй холбогдсон байна.")
     db.add(UserPersonLink(user_id=user.id, person_id=person_id, linked_by=user.id))
     _commit(db, "Энэ хүн өөр бүртгэлтэй холбогдсон байна.")
+    return Response(status_code=204)
+
+
+@router.post("/{family_id}/persons/{person_id}/link-request", response_model=PersonLinkRequestOut, status_code=201)
+def request_person_link(
+    family_id: UUID, person_id: UUID,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    if person_is_minor(person) or db.scalar(select(UserPersonLink.id).where(
+        or_(UserPersonLink.user_id == user.id, UserPersonLink.person_id == person_id)
+    )):
+        raise HTTPException(status_code=409, detail="Энэ хүнийг холбох боломжгүй байна.")
+    pending = db.scalar(select(PersonLinkRequest).where(
+        PersonLinkRequest.family_id == family_id,
+        PersonLinkRequest.user_id == user.id,
+        PersonLinkRequest.status == "pending",
+    ))
+    if pending:
+        raise HTTPException(status_code=409, detail="Холбох хүсэлт аль хэдийн хүлээгдэж байна.")
+    row = PersonLinkRequest(id=uuid4(), family_id=family_id, person_id=person_id,
+                            user_id=user.id, status="pending")
+    db.add(row)
+    _audit(db, user, family_id, "person.link_requested", "person", person_id)
+    _commit(db, "Холбох хүсэлт аль хэдийн хүлээгдэж байна.")
+    return PersonLinkRequestOut(id=row.id, person_id=person_id, user_id=user.id,
+                                user_name=user.display_name,
+                                person_name=f"{person.last_name} {person.first_name}".strip(),
+                                status=row.status, created_at=row.created_at)
+
+
+@router.get("/{family_id}/link-requests", response_model=list[PersonLinkRequestOut])
+def list_person_link_requests(
+    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    rows = db.execute(
+        select(PersonLinkRequest, User, Person)
+        .join(User, User.id == PersonLinkRequest.user_id)
+        .join(Person, Person.id == PersonLinkRequest.person_id)
+        .where(PersonLinkRequest.family_id == family_id, PersonLinkRequest.status == "pending")
+        .order_by(PersonLinkRequest.created_at, PersonLinkRequest.id)
+    ).all()
+    return [PersonLinkRequestOut(id=r.id, person_id=r.person_id, user_id=r.user_id,
+                                 user_name=u.display_name,
+                                 person_name=f"{p.last_name} {p.first_name}".strip(),
+                                 status=r.status, created_at=r.created_at)
+            for r, u, p in rows]
+
+
+@router.post("/{family_id}/link-requests/{request_id}/approve", status_code=204)
+def approve_person_link_request(
+    family_id: UUID, request_id: UUID,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    row = db.scalar(select(PersonLinkRequest).where(
+        PersonLinkRequest.id == request_id, PersonLinkRequest.family_id == family_id,
+        PersonLinkRequest.status == "pending",
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(status_code=404, detail="Хүлээгдэж буй хүсэлт олдсонгүй.")
+    person = _person_in_family(db, family_id, row.person_id)
+    if person_is_minor(person):
+        raise HTTPException(status_code=409, detail="Насанд хүрээгүй хүний аккаунтын холбоосыг эндээс батлах боломжгүй.")
+    requester = db.get(User, row.user_id)
+    if requester is None or not requester.is_active:
+        raise HTTPException(status_code=409, detail="Хүсэлт гаргасан аккаунт идэвхгүй байна.")
+    _member(db, family_id, requester)
+    if db.scalar(select(UserPersonLink.id).where(or_(
+        UserPersonLink.user_id == row.user_id, UserPersonLink.person_id == row.person_id
+    ))):
+        raise HTTPException(status_code=409, detail="Хүн эсвэл аккаунт аль хэдийн холбогдсон байна.")
+    db.add(UserPersonLink(user_id=row.user_id, person_id=row.person_id, linked_by=user.id))
+    row.status = "approved"
+    row.decided_by = user.id
+    row.decided_at = datetime.now(UTC)
+    _audit(db, user, family_id, "person.link_approved", "person", row.person_id)
+    _commit(db, "Энэ хүн өөр аккаунттай холбогдсон байна.")
     return Response(status_code=204)
 
 
@@ -1780,6 +1952,70 @@ def add_parent_child(
         "child_id": edge.child_id,
         "relationship_type": edge.relationship_type,
     }
+
+
+@router.patch("/{family_id}/relationships/parent-child/{relationship_id}")
+def update_parent_child(
+    family_id: UUID,
+    relationship_id: UUID,
+    body: ParentChildPatch,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    edge = db.scalar(
+        select(ParentChildRelationship).where(
+            ParentChildRelationship.id == relationship_id,
+            ParentChildRelationship.parent_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+            ParentChildRelationship.child_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+        )
+    )
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.parent_id), user)
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.child_id), user)
+    edge.relationship_type = body.relationship_type
+    _audit(db, user, family_id, "relationship.parent_child.updated", "parent_child", edge.id)
+    db.commit()
+    return {
+        "id": edge.id,
+        "parent_id": edge.parent_id,
+        "child_id": edge.child_id,
+        "relationship_type": edge.relationship_type,
+    }
+
+
+@router.delete("/{family_id}/relationships/parent-child/{relationship_id}", status_code=204)
+def remove_parent_child(
+    family_id: UUID,
+    relationship_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner", "editor"})
+    edge = db.scalar(
+        select(ParentChildRelationship).where(
+            ParentChildRelationship.id == relationship_id,
+            ParentChildRelationship.parent_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+            ParentChildRelationship.child_id.in_(
+                select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
+            ),
+        )
+    )
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.parent_id), user)
+    _assert_person_visible(db, _person_in_family(db, family_id, edge.child_id), user)
+    _audit(db, user, family_id, "relationship.parent_child.deleted", "parent_child", edge.id)
+    db.delete(edge)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/{family_id}/marriages", status_code=201)
@@ -3212,23 +3448,53 @@ def accept_invitation(
     return {"family_id": invitation.family_id, "role": invitation.role}
 
 
+@router.get("/{family_id}/root", response_model=FamilyRootOut)
+def get_family_root(
+    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    _, family = _member(db, family_id, user)
+    if family.root_person_id:
+        _assert_person_visible(db, _person_in_family(db, family_id, family.root_person_id), user)
+    return FamilyRootOut(person_id=family.root_person_id)
+
+
+@router.put("/{family_id}/root", response_model=FamilyRootOut)
+def set_family_root(
+    family_id: UUID, body: FamilyRootInput,
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    _, family = _member(db, family_id, user, {"owner"})
+    person = _person_in_family(db, family_id, body.person_id)
+    _assert_person_visible(db, person, user)
+    if person.visibility == "private" or person_is_minor(person):
+        raise HTTPException(status_code=422, detail="Удмын эх бүх эрхтэй гишүүнд харагдах насанд хүрсэн хүн байх ёстой.")
+    if family.root_person_id is not None and family.root_person_id != person.id:
+        raise HTTPException(status_code=409, detail="Удмын эхийг солиход тусгай хяналт шаардлагатай.")
+    if family.root_person_id is None:
+        family.root_person_id = person.id
+        _audit(db, user, family_id, "family.lineage_root_set", "person", person.id)
+        db.commit()
+    return FamilyRootOut(person_id=person.id)
+
+
 @router.get("/{family_id}/tree", response_model=TreeOut)
 def family_tree(
     family_id: UUID,
     person_id: UUID | None = Query(default=None, description="Контекстийн гол хүн."),
     depth: int = Query(default=2, ge=0, le=5, description="Холбооны гүн, хамгийн ихдээ 5."),
+    scope: str = Query(default="context", pattern="^(context|all)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Return a family-authorized tree neighborhood capped at 300 people and 1,200 edges."""
-    _member(db, family_id, user)
+    _, family = _member(db, family_id, user)
+    linked_person_id = db.scalar(
+        select(UserPersonLink.person_id)
+        .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
+        .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == family_id)
+    )
     if person_id is None:
-        linked_person_id = db.scalar(
-            select(UserPersonLink.person_id)
-            .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
-            .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == family_id)
-        )
-        person_id = linked_person_id or db.scalar(
+        person_id = family.root_person_id or linked_person_id or db.scalar(
             select(Person.id)
             .join(FamilyPerson, FamilyPerson.person_id == Person.id)
             .where(
@@ -3241,6 +3507,8 @@ def family_tree(
     if person_id is None:
         return {
             "root_person_id": None,
+            "lineage_root_person_id": family.root_person_id,
+            "linked_person_id": linked_person_id,
             "persons": [],
             "parent_child_relationships": [],
             "marriages": [],
@@ -3261,6 +3529,59 @@ def family_tree(
     truncated = False
     node_limit = 300
     edge_limit = 1200
+
+    if scope == "all":
+        family_rows = list(db.scalars(
+            select(Person)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(
+                FamilyPerson.family_id == family_id,
+                Person.id != root.id,
+                or_(
+                    Person.visibility != "private",
+                    Person.created_by == user.id,
+                    Person.id == own_person_id,
+                ),
+            )
+            .order_by(Person.search_last_name, Person.search_first_name, Person.id)
+            .limit(node_limit)
+        ).all())
+        if len(family_rows) >= node_limit:
+            truncated = True
+            family_rows = family_rows[:node_limit - 1]
+        scopes.update(active_guardian_scopes(db, user.id, family_id, [row.id for row in family_rows]))
+        people.update({
+            row.id: row for row in family_rows
+            if not person_is_minor(row) or "view_profile" in scopes.get(row.id, set())
+        })
+        visible_ids = set(people)
+        if visible_ids:
+            parent_rows = list(db.scalars(
+                select(ParentChildRelationship)
+                .where(
+                    ParentChildRelationship.parent_id.in_(visible_ids),
+                    ParentChildRelationship.child_id.in_(visible_ids),
+                )
+                .order_by(ParentChildRelationship.id)
+                .limit(edge_limit + 1)
+            ).all())
+            marriage_rows = list(db.scalars(
+                select(Marriage)
+                .where(
+                    Marriage.deleted_at.is_(None),
+                    Marriage.person_1_id.in_(visible_ids),
+                    Marriage.person_2_id.in_(visible_ids),
+                )
+                .order_by(*_marriage_order())
+                .limit(edge_limit + 1)
+            ).all())
+            if len(parent_rows) + len(marriage_rows) > edge_limit:
+                truncated = True
+            for edge in parent_rows[:edge_limit]:
+                parent_edges[edge.id] = edge
+            for marriage in marriage_rows[:max(0, edge_limit - len(parent_edges))]:
+                marriages[marriage.id] = marriage
+        frontier = set()
 
     for _level in range(depth):
         if not frontier:
@@ -3410,6 +3731,9 @@ def family_tree(
                 birth_date=None if restricted else person.birth_date,
                 is_alive=person.is_alive,
                 death_date=None if restricted else person.death_date,
+                profile_photo_url=(
+                    None if restricted else _person_profile_photo_url(family_id, person)
+                ),
                 lineage_id=None if restricted or lineage is None else lineage.id,
                 lineage_name=None if restricted or lineage is None else lineage.name,
                 branch_id=None if restricted or branch is None else branch.id,
@@ -3420,6 +3744,8 @@ def family_tree(
     return {
         "persons": tree_persons,
         "root_person_id": root.id,
+        "lineage_root_person_id": family.root_person_id,
+        "linked_person_id": linked_person_id,
         "parent_child_relationships": list(parent_edges.values()),
         "marriages": list(marriages.values()),
         "meta": {

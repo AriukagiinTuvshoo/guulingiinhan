@@ -10,13 +10,22 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.admin import bootstrap_admin_roles
+from app.admin import router as admin_router
+from app.admin_workspace import public_router as announcements_router
+from app.admin_workspace import router as admin_workspace_router
 from app.auth import router as auth_router
+from app.community import router as community_router
 from app.config import get_settings
 from app.db import engine
 from app.families import invitations_router, lineages_router
 from app.families import router as families_router
+from app.family_activities import router as family_activities_router
 from app.memory_photos import router as memory_photos_router
 from app.observability import configure_logging, error_classification, request_id_context
+from app.profile_photos import router as profile_photos_router
+from app.shared_ancestry import admin_router as admin_shared_ancestry_router
+from app.shared_ancestry import router as shared_ancestry_router
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.app_env)
@@ -24,6 +33,7 @@ configure_logging(settings.log_level, settings.app_env)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    bootstrap_admin_roles()
     yield
     engine.dispose()
 
@@ -32,8 +42,8 @@ app = FastAPI(
     title="Гуулингийнхан API",
     version="0.1.0",
     description="Гэр бүлийн мод, хүмүүс болон удам угсааны түүхийн API.",
-    docs_url=None if settings.app_env.lower() == "production" else "/docs",
-    redoc_url=None if settings.app_env.lower() == "production" else "/redoc",
+    docs_url=None if settings.app_env.lower() in {"production", "staging"} else "/docs",
+    redoc_url=None if settings.app_env.lower() in {"production", "staging"} else "/redoc",
     lifespan=lifespan,
 )
 
@@ -148,7 +158,15 @@ async def request_context(request: Request, call_next):
 
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
+app.include_router(admin_workspace_router, prefix="/api/v1")
+app.include_router(admin_shared_ancestry_router, prefix="/api/v1")
+app.include_router(shared_ancestry_router, prefix="/api/v1")
+app.include_router(community_router, prefix="/api/v1")
+app.include_router(announcements_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")
+app.include_router(profile_photos_router, prefix="/api/v1")
+app.include_router(family_activities_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(lineages_router, prefix="/api/v1")
 app.include_router(invitations_router, prefix="/api/v1")

@@ -51,9 +51,18 @@ export default function LoginPage() {
     return () => window.clearInterval(timer);
   }, [challenge, resendSeconds]);
 
-  function moveToApp() {
+  async function moveToApp() {
     const invite = new URLSearchParams(window.location.hash.slice(1)).get('invite');
-    router.push(invite ? `/invite#token=${encodeURIComponent(invite)}` : '/dashboard');
+    if (invite) {
+      router.push(`/invite#token=${encodeURIComponent(invite)}`);
+      return;
+    }
+    try {
+      await api('/admin/me');
+      router.push('/admin');
+    } catch {
+      router.push('/dashboard');
+    }
   }
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -64,7 +73,7 @@ export default function LoginPage() {
     const values = new FormData(event.currentTarget);
     try {
       await api<User>('/auth/login', { method: 'POST', body: JSON.stringify({ email: values.get('email'), password: values.get('password') }) });
-      moveToApp();
+      await moveToApp();
     } catch (cause) {
       setError(authError(cause));
     } finally {
@@ -125,7 +134,7 @@ export default function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ phone, challenge_id: challenge.challenge_id, code: values.get('code') }),
       });
-      moveToApp();
+      await moveToApp();
     } catch (cause) {
       setError(authError(cause));
     } finally {
@@ -175,12 +184,10 @@ export default function LoginPage() {
             <p>Гэр бүлийнхээ түүхийг үргэлжлүүлэн хадгалаарай.</p>
           </div>
 
-          {phoneEnabled && (
-            <div className="authv2-tabs" role="tablist" aria-label="Нэвтрэх арга">
-              <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйл</button>
-              <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')}>Утасны код</button>
-            </div>
-          )}
+          <div className="authv2-tabs" role="tablist" aria-label="Нэвтрэх арга">
+            <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйлээр</button>
+            <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')} disabled={!phoneEnabled}>Утасны дугаараар{!phoneEnabled && <span className="authv2-tab-status">Түр хаалттай</span>}</button>
+          </div>
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
           {error && <div className="authv2-message authv2-message--error" role="alert">{error}</div>}

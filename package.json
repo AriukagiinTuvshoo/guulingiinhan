@@ -7,11 +7,14 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "next typegen && tsc --noEmit",
+    "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
+    "regression:routes": "node scripts/verify-core-routes.mjs",
     "start": "next start --hostname 0.0.0.0",
     "dev:vinext": "vite dev --port 3001",
     "build:vinext": "node scripts/verify-production-env.mjs && vite build",
     "start:vinext": "vite preview",
-    "deploy:vinext": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy"
+    "deploy:vinext": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy",
+    "deploy:staging": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy"
   },
   "dependencies": {
     "@vinext/cloudflare": "^1.0.0",
@@ -20,6 +23,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-server-dom-webpack": "^19.3.0",
+    "three": "^0.186.1",
     "vinext": "^1.0.0"
   },
   "devDependencies": {
@@ -27,6 +31,7 @@
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.35",
     "cf": "^1.0.0-beta.5",

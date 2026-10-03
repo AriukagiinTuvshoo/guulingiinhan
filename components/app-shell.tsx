@@ -4,12 +4,15 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
   BookOpen,
+  CalendarDays,
   GitFork,
   Globe2,
+  Newspaper,
   Home,
   LogOut,
   Menu,
   Settings,
+  ShieldCheck,
   TreeDeciduous,
   UserRound,
   Users,
@@ -19,9 +22,11 @@ import Link from 'next/link';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
+import { FamilyContext } from './family-context';
+import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
-  key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'settings';
+  key: 'dashboard' | 'ancestry' | 'community' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -31,11 +36,14 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
+  { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
+  { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
   { key: 'memories', label: 'Дурсамж', description: 'Хадгалсан дурсамж', icon: Globe2, path: '/memories', needsFamily: true },
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
+  { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
   { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
 ];
 
@@ -45,12 +53,16 @@ function isShellRoute(pathname: string) {
     pathname.startsWith('/people/') ||
     pathname === '/tree' ||
     pathname.startsWith('/tree/') ||
+    pathname === '/ancestry' ||
+    pathname === '/community' ||
     pathname === '/stories' ||
     pathname.startsWith('/stories/') ||
     pathname === '/memories' ||
     pathname.startsWith('/memories/') ||
     pathname === '/archives' ||
     pathname.startsWith('/archives/') ||
+    pathname === '/activities' ||
+    pathname.startsWith('/activities/') ||
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
     pathname === '/account/security' ||
@@ -66,10 +78,13 @@ function isDashboardRoute(pathname: string) {
 function activeKey(pathname: string): NavItem['key'] | null {
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
+  if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
+  if (pathname === '/community') return 'community';
   if (pathname === '/people' || pathname.startsWith('/people/')) return 'people';
   if (pathname === '/stories' || pathname.startsWith('/stories/')) return 'stories';
   if (pathname === '/memories' || pathname.startsWith('/memories/')) return 'memories';
   if (pathname === '/archives' || pathname.startsWith('/archives/')) return 'archives';
+  if (pathname === '/activities' || pathname.startsWith('/activities/')) return 'activities';
   if (
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
@@ -97,6 +112,26 @@ export type AppShellContextValue = {
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
+type PublishedNotice = { id: string; title: string; body: string };
+
+function AnnouncementBanner({ userId }: { userId: string }) {
+  const [notice, setNotice] = useState<PublishedNotice | null>(null);
+  const [dismissed, setDismissed] = useState('');
+  useEffect(() => {
+    let active = true;
+    void api<PublishedNotice[]>('/announcements?limit=1')
+      .then((rows) => { if (active) setNotice(rows[0] ?? null); })
+      .catch(() => { if (active) setNotice(null); });
+    return () => { active = false; };
+  }, [userId]);
+  if (!notice || dismissed === notice.id) return null;
+  return <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
+    <span aria-hidden="true">✦</span>
+    <div><strong>{notice.title}</strong><p>{notice.body}</p></div>
+    <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
+  </aside>;
+}
+
 export function useAppShellContext() {
   const context = useContext(AppShellContext);
   if (!context) throw new Error('useAppShellContext must be used inside AppShell');
@@ -111,6 +146,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const requestedFamilyId = searchParams.get('family') ?? '';
 
   const [user, setUser] = useState<User | null>(null);
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [contextLoading, setContextLoading] = useState(false);
@@ -137,6 +173,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setContextLoaded(false);
     setContextError('');
     setUser(null);
+    setIsGlobalAdmin(false);
     setFamilies([]);
     setFamilyId('');
     try {
@@ -148,6 +185,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setUser(me);
       setFamilies(familyData);
       setContextLoaded(true);
+      void api('/admin/me')
+        .then(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(true);
+        })
+        .catch(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(false);
+        });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         setContextLoaded(true);
@@ -158,6 +202,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextError(
         cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
       );
+      setIsGlobalAdmin(false);
       setContextLoaded(true);
     } finally {
       if (requestId === contextRequestRef.current) setContextLoading(false);
@@ -170,6 +215,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextLoaded(false);
       setContextError('');
       setUser(null);
+      setIsGlobalAdmin(false);
       setFamilies([]);
       setFamilyId('');
       setMobileOpen(false);
@@ -399,6 +445,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   Миний профайл
                 </Link>
               ) : null}
+              {isGlobalAdmin ? (
+                <Link role="menuitem" href="/admin" onClick={() => setAccountOpen(false)}>
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  Админ удирдлага
+                </Link>
+              ) : null}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>
                 Гэр бүлүүд
               </Link>
@@ -432,6 +484,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
       )}
+
+      {user && <AnnouncementBanner userId={user.id} />}
+      {user && <SharedDonationBanner userId={user.id} />}
 
       <div className="app-shell__body">
         <button
@@ -513,8 +568,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
             </div>
           ) : null}
-          <div key={familyId || requestedFamilyId || 'no-family-context'}>
-            {children}
+          <div key={requestedFamilyId || familyId || 'no-family-context'}>
+            <FamilyContext.Provider value={{
+              family: currentFamily,
+              user,
+              loading: contextLoading || !contextLoaded || familySwitching,
+              error: contextError,
+              retry: retryContext,
+            }}>
+              {children}
+            </FamilyContext.Provider>
           </div>
         </div>
       </div>

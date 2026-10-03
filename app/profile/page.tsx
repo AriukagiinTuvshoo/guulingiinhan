@@ -1,20 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Camera, Trash2 } from 'lucide-react';
 import {
   ApiError,
   api,
   ArchiveListPage,
   Marriage,
   MemoryListItem,
+  LineageSummary,
+  BranchSummary,
   PersonProfile,
   StoryListPage,
   ProfileRelationPerson,
   personName,
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import ProfilePhoto from '../../components/profile-photo';
 
 type EventItem = {
   id: string;
@@ -54,6 +58,7 @@ function ProfilePageContent() {
   const memoryRequestRef = useRef(0);
   const mutationRequestRef = useRef(0);
   const profileAbortRef = useRef<AbortController | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
   const [id, setId] = useState('');
   const [person, setPerson] = useState<PersonProfile | null>(null);
@@ -73,6 +78,11 @@ function ProfilePageContent() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
+  const [editingIsAlive, setEditingIsAlive] = useState(true);
+  const [lineages, setLineages] = useState<LineageSummary[]>([]);
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [selectedLineageId, setSelectedLineageId] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState('');
   const [loading, setLoading] = useState(true);
 
   async function load(fid: string, pid: string, requestId?: number) {
@@ -91,6 +101,8 @@ function ProfilePageContent() {
     if (requestId !== undefined && requestId !== profileRequestRef.current) return;
 
     setPerson(profile);
+    setSelectedLineageId(profile.lineage_id ?? '');
+    setSelectedBranchId(profile.branch_id ?? '');
     setLoading(false);
 
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
@@ -151,6 +163,46 @@ function ProfilePageContent() {
       setArchiveState('restricted');
     } else {
       setArchiveState('error');
+    }
+  }
+
+  useEffect(() => {
+    if (!family) return;
+    let active = true;
+    api<LineageSummary[]>(`/families/${family}/lineages`)
+      .then((items) => { if (active) setLineages(items); })
+      .catch(() => { if (active) setLineages([]); });
+    return () => { active = false; };
+  }, [family]);
+
+  useEffect(() => {
+    if (!selectedLineageId) { setBranches([]); return; }
+    let active = true;
+    api<BranchSummary[]>(`/lineages/${selectedLineageId}/branches`)
+      .then((items) => { if (active) setBranches(items); })
+      .catch(() => { if (active) setBranches([]); });
+    return () => { active = false; };
+  }, [selectedLineageId]);
+
+  async function saveLineageAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!family || !id || mutationBusy || !currentFamily || !['owner', 'editor'].includes(currentFamily.role)) return;
+    setMutationBusy(true);
+    setError('');
+    try {
+      const endpoint = `/families/${family}/persons/${id}/lineage-assignment`;
+      if (selectedLineageId) {
+        await api(endpoint, { method: 'PUT', body: JSON.stringify({ lineage_id: selectedLineageId, branch_id: selectedBranchId || null }) });
+      } else if (person?.lineage_id) {
+        await api(endpoint, { method: 'DELETE' });
+      }
+      const refreshId = ++profileRequestRef.current;
+      await load(family, id, refreshId);
+      setNotice('Удам, салааны хуваарилалт хадгалагдлаа.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Хуваарилалтыг хадгалж чадсангүй.');
+    } finally {
+      setMutationBusy(false);
     }
   }
 
@@ -312,9 +364,9 @@ function ProfilePageContent() {
           gender: values.get('gender'),
           birth_date: values.get('birth_date') || null,
           birth_place: values.get('birth_place') || null,
-          is_alive: values.get('is_alive') === 'true',
-          death_date: values.get('death_date') || null,
-          death_place: values.get('death_place') || null,
+          is_alive: editingIsAlive,
+          death_date: editingIsAlive ? null : values.get('death_date') || null,
+          death_place: editingIsAlive ? null : values.get('death_place') || null,
           visibility: values.get('visibility'),
         }),
       });
@@ -326,6 +378,64 @@ function ProfilePageContent() {
       setNotice('Профайл хадгалагдлаа.');
     } catch (cause) {
       if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) setError(cause instanceof ApiError && [401,403,404,409,422].includes(cause.status) ? cause.message : 'Профайлыг хадгалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (mutationId === mutationRequestRef.current) setMutationBusy(false);
+    }
+  }
+
+  async function uploadProfilePhoto(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !family || !id || mutationBusy) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Зураг 10 MB-аас бага байх ёстой.');
+      return;
+    }
+    const requestId = profileRequestRef.current;
+    const mutationId = ++mutationRequestRef.current;
+    setMutationBusy(true);
+    setError('');
+    try {
+      const result = await api<{ profile_photo_url: string }>(
+        `/families/${family}/persons/${id}/profile-photo`,
+        {
+          method: 'POST',
+          body: file,
+          headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
+        },
+      );
+      if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
+      setPerson((current) => current ? { ...current, profile_photo_url: result.profile_photo_url } : current);
+      setNotice('Профайл зургийг шинэчиллээ.');
+    } catch (cause) {
+      if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) {
+        setError(cause instanceof ApiError && [401, 403, 404, 413, 415, 422, 429].includes(cause.status)
+          ? cause.message
+          : 'Зургийг хадгалж чадсангүй. Дахин оролдоно уу.');
+      }
+    } finally {
+      if (mutationId === mutationRequestRef.current) setMutationBusy(false);
+    }
+  }
+
+  async function removeProfilePhoto() {
+    if (!family || !id || !person?.profile_photo_url || mutationBusy) return;
+    const requestId = profileRequestRef.current;
+    const mutationId = ++mutationRequestRef.current;
+    setMutationBusy(true);
+    setError('');
+    try {
+      await api<void>(`/families/${family}/persons/${id}/profile-photo`, { method: 'DELETE' });
+      if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
+      setPerson((current) => current ? { ...current, profile_photo_url: null } : current);
+      setNotice('Профайл зургийг устгалаа.');
+    } catch (cause) {
+      if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) {
+        setError(cause instanceof ApiError && [401, 403, 404].includes(cause.status)
+          ? cause.message
+          : 'Зургийг устгаж чадсангүй. Дахин оролдоно уу.');
+      }
     } finally {
       if (mutationId === mutationRequestRef.current) setMutationBusy(false);
     }
@@ -410,17 +520,45 @@ function ProfilePageContent() {
         {notice && <div className="success profile-alert" role="status">{notice}</div>}
 
         <header className="profile-hero">
-          {person.profile_photo_url ? (
-            <img
-              className="personavatar profile-photo"
-              src={person.profile_photo_url}
-              alt={`${personName(person)}-ийн хөрөг`}
+          <div className="profile-portrait">
+            <ProfilePhoto
+              className="personavatar large profile-photo profile-photo-object"
+              url={person.profile_photo_url}
+              name={personName(person) || 'Нэргүй хүн'}
+              fallback={initials(person)}
             />
-          ) : (
-            <span className="personavatar large" aria-hidden="true">{initials(person)}</span>
-          )}
+            {editing && person.can_edit_profile && (
+              <div className="profile-photo-tools">
+                <label className="profile-photo-upload" htmlFor="person-profile-photo">
+                  <Camera size={15} aria-hidden="true" />
+                  <span>{mutationBusy ? 'Хадгалж байна…' : 'Зураг оруулах'}</span>
+                  <input
+                    ref={photoInputRef}
+                    id="person-profile-photo"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => void uploadProfilePhoto(event)}
+                    disabled={mutationBusy}
+                    aria-label="JPEG, PNG эсвэл WebP зураг сонгох"
+                  />
+                </label>
+                {person.profile_photo_url && (
+                  <button
+                    className="profile-photo-remove"
+                    type="button"
+                    onClick={() => void removeProfilePhoto()}
+                    disabled={mutationBusy}
+                    aria-label="Профайл зургийг устгах"
+                    title="Зураг устгах"
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="profile-identity">
-            <p className="eyebrow">ГУУЛИНГИЙНХАН · PERSON PROFILE</p>
+            <p className="eyebrow">ГУУЛИНГИЙНХАН · ХҮНИЙ ТОВЧОО</p>
             <h1>{personName(person) || 'Нэргүй хүн'}</h1>
             <p className="profile-life">
               {birthDeath || 'Амьдралын огноо бүртгэгдээгүй'}
@@ -430,9 +568,11 @@ function ProfilePageContent() {
               <Link className="button primary" href={`/tree?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>
                 Удмын модонд харах
               </Link>
-              <button type="button" onClick={() => setEditing((value) => !value)}>
-                {editing ? 'Засахыг хаах' : 'Профайл засах'}
-              </button>
+              {person.can_edit_profile && (
+                <button type="button" onClick={() => { setEditingIsAlive(person.is_alive); setEditing((value) => !value); }}>
+                  {editing ? 'Засахыг хаах' : 'Профайл засах'}
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -440,14 +580,14 @@ function ProfilePageContent() {
         <div className="profile-grid">
           <section className="card profile-card">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">IDENTITY</p><h2>Үндсэн мэдээлэл</h2></div>
+              <div><p className="eyebrow">ҮНДСЭН МЭДЭЭЛЭЛ</p><h2>Үндсэн мэдээлэл</h2></div>
             </div>
             <dl className="profile-facts">
               <div><dt>Нэр</dt><dd>{personName(person) || 'Нэргүй'}</dd></div>
               <div><dt>Хүйс</dt><dd>{person.gender === 'female' ? 'Эмэгтэй' : person.gender === 'male' ? 'Эрэгтэй' : person.gender === 'other' ? 'Бусад' : 'Тодорхойгүй'}</dd></div>
               <div><dt>Төрсөн</dt><dd>{person.birth_date ?? 'Мэдээлэл оруулаагүй байна'}</dd></div>
               <div><dt>Төрсөн газар</dt><dd>{person.birth_place ?? 'Мэдээлэл оруулаагүй байна'}</dd></div>
-              <div><dt>Нас барсан</dt><dd>{person.is_alive ? 'Амьд' : person.death_date ?? 'Огноо тодорхойгүй'}</dd></div>
+              {!person.is_alive && <div><dt>Нас барсан</dt><dd>{person.death_date ?? 'Огноо тодорхойгүй'}</dd></div>}
               {!person.is_alive && <div><dt>Нас барсан газар</dt><dd>{person.death_place ?? 'Мэдээлэл оруулаагүй байна'}</dd></div>}
               <div><dt>Нууцлал</dt><dd>{person.visibility === 'private' ? 'Хувийн' : person.visibility === 'public' ? 'Нийтийн' : 'Гэр бүлийн'}</dd></div>
             </dl>
@@ -455,25 +595,30 @@ function ProfilePageContent() {
 
           <section className="card profile-card">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">LINEAGE</p><h2>Удам угсаа</h2></div>
+              <div><p className="eyebrow">УДАМ УГСАА</p><h2>Удам угсаа</h2></div>
             </div>
             <dl className="profile-facts">
               <div><dt>Удам</dt><dd>{person.lineage_name ?? 'Томилогдоогүй'}</dd></div>
               <div><dt>Салаа</dt><dd>{person.branch_name ?? 'Томилогдоогүй'}</dd></div>
             </dl>
             <p className="profile-note">Удам, салаа нь зөвхөн explicit assignment-аас харагдана. Бусад мэдээллээс автоматаар таамаглахгүй.</p>
+            {currentFamily && ['owner', 'editor'].includes(currentFamily.role) && <form className="profile-lineage-form" onSubmit={saveLineageAssignment}>
+              <label>Удам угсаа<select value={selectedLineageId} onChange={(event) => { setSelectedLineageId(event.target.value); setSelectedBranchId(''); }}><option value="">Томилохгүй</option>{lineages.map((lineage) => <option key={lineage.id} value={lineage.id}>{lineage.name}</option>)}</select></label>
+              <label>Салаа<select value={selectedBranchId} onChange={(event) => setSelectedBranchId(event.target.value)} disabled={!selectedLineageId}><option value="">Салаа сонгоогүй</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
+              <button type="submit" disabled={mutationBusy}>Хуваарилалт хадгалах</button>
+            </form>}
           </section>
 
           <section className="card profile-card profile-relationships">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">FAMILY RELATIONSHIPS</p><h2>Гэр бүлийн холбоо</h2></div>
+              <div><p className="eyebrow">ГЭР БҮЛИЙН ХОЛБОО</p><h2>Гэр бүлийн холбоо</h2></div>
             </div>
             <div className="relationship-columns">
               <div>
                 <h3>Эцэг, эх</h3>
                 {person.parents.length ? person.parents.map((item) => (
                   <Link className="relationship-item" key={item.id} href={`/profile?family=${encodeURIComponent(family)}&person=${encodeURIComponent(item.id)}`}>
-                    <span className="personavatar small" aria-hidden="true">{initials(item)}</span>
+                    <ProfilePhoto className="personavatar small" url={item.profile_photo_url} name={relationName(item)} fallback={initials(item)} />
                     <span><strong>{relationName(item)}</strong><small>{relationLife(item)}</small></span>
                   </Link>
                 )) : <p className="profile-empty">Мэдээлэл оруулаагүй байна</p>}
@@ -482,7 +627,7 @@ function ProfilePageContent() {
                 <h3>Хань</h3>
                 {person.spouses.length ? person.spouses.map((item) => (
                   <Link className="relationship-item" key={item.id} href={`/profile?family=${encodeURIComponent(family)}&person=${encodeURIComponent(item.id)}`}>
-                    <span className="personavatar small" aria-hidden="true">{initials(item)}</span>
+                    <ProfilePhoto className="personavatar small" url={item.profile_photo_url} name={relationName(item)} fallback={initials(item)} />
                     <span><strong>{relationName(item)}</strong><small>{relationLife(item)}</small></span>
                   </Link>
                 )) : <p className="profile-empty">Мэдээлэл оруулаагүй байна</p>}
@@ -491,7 +636,7 @@ function ProfilePageContent() {
                 <h3>Хүүхдүүд</h3>
                 {person.children.length ? person.children.map((item) => (
                   <Link className="relationship-item" key={item.id} href={`/profile?family=${encodeURIComponent(family)}&person=${encodeURIComponent(item.id)}`}>
-                    <span className="personavatar small" aria-hidden="true">{initials(item)}</span>
+                    <ProfilePhoto className="personavatar small" url={item.profile_photo_url} name={relationName(item)} fallback={initials(item)} />
                     <span><strong>{relationName(item)}</strong><small>{relationLife(item)}</small></span>
                   </Link>
                 )) : <p className="profile-empty">Мэдээлэл оруулаагүй байна</p>}
@@ -501,7 +646,7 @@ function ProfilePageContent() {
 
           <section className="card profile-card">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">FAMILY ARCHIVE</p><h2>Энэ хүнтэй холбоотой архив</h2></div>
+              <div><p className="eyebrow">ГЭР БҮЛИЙН АРХИВ</p><h2>Энэ хүнтэй холбоотой архив</h2></div>
               <Link href={`/archives?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
             </div>
             {archiveState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Архивыг ачаалж байна…</p>}
@@ -521,7 +666,7 @@ function ProfilePageContent() {
 
           <section className="card profile-card">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">FAMILY STORY</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
+              <div><p className="eyebrow">ГЭР БҮЛИЙН ТҮҮХ</p><h2>Энэ хүнтэй холбоотой түүхүүд</h2></div>
               <Link href={`/stories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
             </div>
             {storyState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Түүхүүдийг ачаалж байна…</p>}
@@ -541,7 +686,7 @@ function ProfilePageContent() {
 
           <section className="card profile-card">
             <div className="profile-card-heading">
-              <div><p className="eyebrow">FAMILY MEMORIES</p><h2>Энэ хүнтэй холбоотой дурсамж</h2></div>
+              <div><p className="eyebrow">ГЭР БҮЛИЙН ДУРСАМЖ</p><h2>Энэ хүнтэй холбоотой дурсамж</h2></div>
               <Link href={`/memories?family=${encodeURIComponent(family)}`}>Бүгд →</Link>
             </div>
 
@@ -586,7 +731,7 @@ function ProfilePageContent() {
           </section>
 
           <section className="card profile-card">
-            <div className="profile-card-heading"><div><p className="eyebrow">LIFE HISTORY</p><h2>Намтар</h2></div></div>
+            <div className="profile-card-heading"><div><p className="eyebrow">АМЬДРАЛЫН ТОВЧОО</p><h2>Намтар</h2></div></div>
             {biographyState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Намтрыг ачаалж байна…</p>}
             {biographyState === 'restricted' && <p className="profile-private" role="status">Энэ хүний намтар одоогоор харагдахгүй байна.</p>}
             {biographyState === 'error' && <div className="profile-inline-error" role="alert"><p>Намтрыг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
@@ -602,7 +747,7 @@ function ProfilePageContent() {
           </section>
 
           <section className="card profile-card">
-            <div className="profile-card-heading"><div><p className="eyebrow">MARRIAGE</p><h2>Гэрлэлтийн түүх</h2></div></div>
+            <div className="profile-card-heading"><div><p className="eyebrow">ГЭРЛЭЛТ</p><h2>Гэрлэлтийн түүх</h2></div></div>
             {marriageState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Гэрлэлтийн түүхийг ачаалж байна…</p>}
             {marriageState === 'restricted' && <p className="profile-private" role="status">Энэ хүний гэрлэлтийн мэдээлэл одоогоор харагдахгүй байна.</p>}
             {marriageState === 'error' && <div className="profile-inline-error" role="alert"><p>Гэрлэлтийн мэдээллийг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
@@ -619,7 +764,7 @@ function ProfilePageContent() {
           </section>
 
           <section className="card profile-card">
-            <div className="profile-card-heading"><div><p className="eyebrow">TIMELINE</p><h2>Амьдралын үйл явдал</h2></div></div>
+            <div className="profile-card-heading"><div><p className="eyebrow">АМЬДРАЛЫН ҮЙЛ ЯВДАЛ</p><h2>Амьдралын үйл явдал</h2></div></div>
             {eventState === 'loading' && <p className="profile-empty" role="status" aria-live="polite">Амьдралын үйл явдлыг ачаалж байна…</p>}
             {eventState === 'restricted' && <p className="profile-private" role="status">Энэ хүний амьдралын үйл явдал одоогоор харагдахгүй байна.</p>}
             {eventState === 'error' && <div className="profile-inline-error" role="alert"><p>Амьдралын үйл явдлыг ачаалж чадсангүй.</p><button type="button" onClick={() => void retry()}>Дахин оролдох</button></div>}
@@ -646,7 +791,7 @@ function ProfilePageContent() {
 
         {editing && (
           <section className="card profile-card profile-editor">
-            <div className="profile-card-heading"><div><p className="eyebrow">EDIT</p><h2>Хувийн мэдээлэл</h2></div></div>
+            <div className="profile-card-heading"><div><p className="eyebrow">ЗАСВАРЛАХ</p><h2>Хувийн мэдээлэл</h2></div></div>
             <form onSubmit={saveProfile}>
               <div className="profile-form-grid">
                 <label>Нэр<input name="first_name" defaultValue={person.first_name} required maxLength={120} /></label>
@@ -654,9 +799,9 @@ function ProfilePageContent() {
                 <label>Хүйс<select name="gender" defaultValue={person.gender}><option value="unknown">Тодорхойгүй</option><option value="female">Эмэгтэй</option><option value="male">Эрэгтэй</option><option value="other">Бусад</option></select></label>
                 <label>Төрсөн огноо<input name="birth_date" type="date" defaultValue={person.birth_date ?? ''} /></label>
                 <label>Төрсөн газар<input name="birth_place" defaultValue={person.birth_place ?? ''} maxLength={240} /></label>
-                <label>Амьд эсэх<select name="is_alive" defaultValue={String(person.is_alive)}><option value="true">Амьд</option><option value="false">Нас барсан</option></select></label>
-                <label>Нас барсан огноо<input name="death_date" type="date" defaultValue={person.death_date ?? ''} /></label>
-                <label>Нас барсан газар<input name="death_place" defaultValue={person.death_place ?? ''} maxLength={240} /></label>
+                <label>Амьд эсэх<select name="is_alive" value={String(editingIsAlive)} onChange={(event) => setEditingIsAlive(event.target.value === 'true')}><option value="true">Амьд</option><option value="false">Нас барсан</option></select></label>
+                {!editingIsAlive && <><label>Нас барсан огноо<input name="death_date" type="date" defaultValue={person.death_date ?? ''} /></label>
+                <label>Нас барсан газар<input name="death_place" defaultValue={person.death_place ?? ''} maxLength={240} /></label></>}
                 <label>Нууцлал<select name="visibility" defaultValue={person.visibility}><option value="private">Зөвхөн би</option><option value="family">Гэр бүлийнхэн</option><option value="public">Нийтийн</option></select></label>
               </div>
               <button className="primary" type="submit" disabled={mutationBusy}>{mutationBusy ? "Хадгалж байна…" : "Профайл хадгалах"}</button>

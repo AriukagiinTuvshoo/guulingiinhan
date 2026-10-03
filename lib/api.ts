@@ -37,7 +37,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     let code: string | null = null;
     let requestId = response.headers.get('X-Request-ID');
     try {
-      const payload = await response.json();
+      const parsed: unknown = await response.json();
+      const payload = parsed && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : {};
       code = typeof payload.error_code === 'string' ? payload.error_code : null;
       requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
       message =
@@ -48,7 +51,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
         response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
         response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
-        payload.detail ?? message;
+        typeof payload.detail === 'string' ? payload.detail : message;
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
@@ -81,9 +84,11 @@ export type TreeData = {
   parent_child_relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[];
   marriages: Marriage[];
   root_person_id?: string | null;
+  lineage_root_person_id?: string | null;
+  linked_person_id?: string | null;
   meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
-export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'> & {
+export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'> & {
   lineage_id?: string | null;
   lineage_name?: string | null;
   branch_id?: string | null;
@@ -95,6 +100,7 @@ export type ProfileRelationPerson = Pick<
   'id' | 'first_name' | 'last_name' | 'middle_name' | 'nickname' | 'gender' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'
 >;
 export type PersonProfile = Person & {
+  can_edit_profile: boolean;
   lineage_id: string | null;
   lineage_name: string | null;
   branch_id: string | null;

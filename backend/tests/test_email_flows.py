@@ -214,3 +214,22 @@ def test_email_provider_failure_logs_no_message_or_token(client, monkeypatch, ca
         assert "#token=" not in caplog.text
     finally:
         app.dependency_overrides.pop(get_email_provider, None)
+
+
+def test_email_provider_failure_logs_safe_cause_type(caplog):
+    from app.email import send_email_safely
+    from app.observability import JsonLogFormatter
+
+    class FailingProvider:
+        def send_verification_email(self, recipient, link):
+            try:
+                raise TimeoutError("private SMTP diagnostic")
+            except TimeoutError as cause:
+                raise EmailDeliveryError("Email delivery failed") from cause
+
+    send_email_safely(FailingProvider(), "send_verification_email", ("a@example.com", "secret"), None)
+    assert "private SMTP diagnostic" not in caplog.text
+    assert caplog.records[-1].cause_type == "TimeoutError"
+    formatted = JsonLogFormatter("staging").format(caplog.records[-1])
+    assert '"cause_type":"TimeoutError"' in formatted
+    assert "private SMTP diagnostic" not in formatted
