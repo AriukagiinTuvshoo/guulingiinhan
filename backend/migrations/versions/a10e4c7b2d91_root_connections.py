@@ -29,6 +29,16 @@ def upgrade() -> None:
     )
     op.create_index("ix_root_connection_target", "root_connections", ["target_person_id"])
     op.create_index("ix_root_connection_status", "root_connections", ["status"])
+    if op.get_bind().dialect.name == "postgresql":
+        # FastAPI uses the database owner. Data API roles must never read or
+        # write connection requests, even if default grants change later.
+        op.execute("ALTER TABLE root_connections ENABLE ROW LEVEL SECURITY")
+        for role in ("anon", "authenticated", "service_role"):
+            exists = op.get_bind().execute(
+                sa.text("SELECT 1 FROM pg_roles WHERE rolname = :role"), {"role": role}
+            ).scalar()
+            if exists:
+                op.execute(f'REVOKE ALL ON TABLE root_connections FROM "{role}"')
 
 
 def downgrade() -> None:
