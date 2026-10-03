@@ -499,7 +499,9 @@ export default function Tree3DScene({
     const box = new THREE.Box3().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, point.z)));
     const center = box.getCenter(new THREE.Vector3());
     const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const distance = Math.max(28, Math.min(850, sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.08));
+    // Include the portrait and label sprites in the framing, especially on a
+    // narrow screen where fitting only the node centres clips the top row.
+    const distance = Math.max(36, Math.min(850, (sphere.radius + 5) / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.35));
     const direction = new THREE.Vector3(0.62, 0.45, 0.82).normalize();
     controls.target.copy(center);
     camera.position.copy(center.clone().add(direction.multiplyScalar(distance)));
@@ -582,7 +584,13 @@ export default function Tree3DScene({
       <div className="tree-3d-accessible-list" aria-label="3D модны хүртээмжтэй жагсаалт">
           {accessiblePeople.map((person) => (
           <button key={person.id} type="button" aria-pressed={person.id === selectedPersonId} onClick={() => onSelect(person.id)}>
-            {person.id === canonicalRootId ? 'Удмын эх · ' : ''}{person.id === currentPersonId ? 'Миний хүн · ' : ''}{personName(person)}
+            <span className="tree-3d-person-photo" aria-hidden="true">
+              {person.profile_photo_url ? <img src={person.profile_photo_url.startsWith('/') ? `${API_BASE}${person.profile_photo_url}` : person.profile_photo_url} alt="" loading="lazy" /> : (personName(person) || '?').slice(0, 1)}
+            </span>
+            <span className="tree-3d-person-details">
+              <strong>{person.id === canonicalRootId ? 'Удмын эх · ' : ''}{person.id === currentPersonId ? 'Миний хүн · ' : ''}{personName(person)}</strong>
+              <small>{lifeSummary(person)}</small>
+            </span>
           </button>
         ))}
       </div>
