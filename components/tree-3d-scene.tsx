@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Marriage, personName, TreeData, TreePerson } from '../lib/api';
 import { API_BASE } from '../lib/api';
 import { layoutTree3D, Point3 } from '../lib/tree-3d-layout';
@@ -100,6 +101,7 @@ export default function Tree3DScene({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const labelRendererRef = useRef<CSS2DRenderer | null>(null);
   const objectsRef = useRef<THREE.Object3D[]>([]);
   const positionsRef = useRef<Map<string, Point3>>(new Map());
   const [webglError, setWebglError] = useState(false);
@@ -131,6 +133,11 @@ export default function Tree3DScene({
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(host.clientWidth, host.clientHeight);
+    labelRenderer.domElement.className = 'tree-3d-html-labels';
+    host.appendChild(labelRenderer.domElement);
+    labelRendererRef.current = labelRenderer;
 
     const scene = new THREE.Scene();
     scene.background = null;
@@ -164,6 +171,7 @@ export default function Tree3DScene({
       camera.aspect = host.clientWidth / host.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight, false);
+      labelRenderer.setSize(host.clientWidth, host.clientHeight);
       invalidate();
     });
     resize.observe(host);
@@ -173,6 +181,7 @@ export default function Tree3DScene({
       frame = 0;
       controls.update();
       renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
     };
     const invalidate = () => {
       if (!frame) frame = window.requestAnimationFrame(render);
@@ -197,11 +206,13 @@ export default function Tree3DScene({
       });
       renderer.dispose();
       renderer.domElement.remove();
+      labelRenderer.domElement.remove();
       objectsRef.current = [];
       sceneRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
       rendererRef.current = null;
+      labelRendererRef.current = null;
       setReady(false);
     };
   }, []);
@@ -284,7 +295,10 @@ export default function Tree3DScene({
           if (!active) { texture.dispose(); portrait.material.dispose(); return; }
           scene.add(portrait);
           nextObjects.push(portrait);
-          if (cameraRef.current) rendererRef.current?.render(scene, cameraRef.current);
+          if (cameraRef.current) {
+            rendererRef.current?.render(scene, cameraRef.current);
+            labelRendererRef.current?.render(scene, cameraRef.current);
+          }
         })
         .catch(() => undefined);
     }
@@ -417,8 +431,29 @@ export default function Tree3DScene({
       const isRoot = person.id === canonicalRootId;
       const isSelected = person.id === selectedPersonId;
       if (labelsToShow.has(person.id) && labelsCreated < 72) {
-        const label = makeLabel(person, isRoot ? '#e9ca71' : isSelected ? '#fff0cc' : '#819f87',
-          hasConfirmedRoot ? generations.get(person.id) : null);
+        const card = document.createElement('div');
+        card.className = `tree-3d-world-card${isSelected ? ' tree-3d-world-card--selected' : ''}`;
+        if (person.profile_photo_url) {
+          const photo = document.createElement('img');
+          photo.src = person.profile_photo_url.startsWith('/') ? `${API_BASE}${person.profile_photo_url}` : person.profile_photo_url;
+          photo.alt = '';
+          photo.loading = 'lazy';
+          card.append(photo);
+        }
+        const name = document.createElement('strong');
+        name.textContent = personName(person) || 'Нэргүй хүн';
+        const dates = document.createElement('small');
+        dates.textContent = lifeSummary(person);
+        card.append(name, dates);
+        if (hasConfirmedRoot) {
+          const generation = generations.get(person.id);
+          if (generation !== undefined && generation !== null) {
+            const generationText = document.createElement('small');
+            generationText.textContent = generationLabel(generation);
+            card.append(generationText);
+          }
+        }
+        const label = new CSS2DObject(card);
         label.position.set(point.x, point.y + 1.45, point.z);
         label.userData.personId = person.id;
         scene.add(label);
@@ -435,7 +470,10 @@ export default function Tree3DScene({
     nextObjects.push(floor);
 
     objectsRef.current = nextObjects;
-    if (cameraRef.current) rendererRef.current?.render(scene, cameraRef.current);
+    if (cameraRef.current) {
+      rendererRef.current?.render(scene, cameraRef.current);
+      labelRendererRef.current?.render(scene, cameraRef.current);
+    }
     if (selectedPersonId && personIds.has(selectedPersonId)) setSelectedContext(byId.get(selectedPersonId)?.branch_name ?? '');
     return () => { active = false; };
   }, [canonicalRootId, data, focusedBranchId, selectedPersonId]);
@@ -465,6 +503,7 @@ export default function Tree3DScene({
       controls.target.lerpVectors(startTarget, destination, amount);
       camera.position.lerpVectors(startPosition, endPosition, amount);
       rendererRef.current?.render(sceneRef.current!, camera);
+      labelRendererRef.current?.render(sceneRef.current!, camera);
       if (raw < 1) frame = window.requestAnimationFrame(animate);
       else controls.update();
     };
@@ -509,6 +548,10 @@ export default function Tree3DScene({
     camera.updateProjectionMatrix();
     controls.update();
   }
+
+  useEffect(() => {
+    if (ready) focusWholeTree();
+  }, [ready, data, focusedBranchId]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

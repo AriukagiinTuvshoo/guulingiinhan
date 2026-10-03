@@ -55,3 +55,9 @@
 .tree-3d-person-details strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;font-size:12px}
 .tree-3d-person-details small{color:#c8d5c5;font-size:10px;white-space:nowrap}
 @media(max-width:760px){.tree-map-layout--3d .tree-3d-accessible-list{max-height:none;padding:10px}.tree-3d-accessible-list button{min-width:168px}}
+.tree-3d-html-labels{position:absolute;inset:0;pointer-events:none;z-index:1}
+.tree-3d-world-card{display:grid;justify-items:center;gap:3px;min-width:116px;max-width:152px;padding:7px 10px;border:1px solid #d7bb74;border-radius:12px;background:rgba(10,38,30,.96);box-shadow:0 6px 20px rgba(0,0,0,.35);color:#fff3d5;text-align:center;white-space:nowrap}
+.tree-3d-world-card--selected{border-width:2px;border-color:#f5d782;background:#1b4a39}
+.tree-3d-world-card img{width:38px;height:38px;object-fit:cover;border:2px solid #e1c678;border-radius:50%}
+.tree-3d-world-card strong{overflow:hidden;max-width:100%;text-overflow:ellipsis;font:700 12px Georgia,serif}
+.tree-3d-world-card small{color:#d9d3b9;font-size:10px}
