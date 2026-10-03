@@ -5,6 +5,7 @@ import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Check, Globe2, LogOut, Mail, Phone, RefreshCw, ShieldCheck, TreeDeciduous, UserRound, UsersRound } from 'lucide-react';
 import { API_BASE, ApiError, api, Family, User } from '../../lib/api';
+import RootConnectionCard from '../../components/root-connection-card';
 
 type Identity = {
   id: string;
@@ -492,6 +493,8 @@ function SettingsContent() {
                 {selectedFamily && <div className="settings-lineage-links"><div><strong>Удмын мод</strong><p>{user?.person_id ? 'Таны профайл удмын хүнтэй холбогдсон.' : 'Таны бүртгэл удмын хүнтэй хараахан холбогдоогүй.'}</p></div><Link className="settings-button settings-button--light" href={'/tree?family=' + encodeURIComponent(selectedFamily.id)}>Бүх удмыг харах →</Link></div>}
               </div>
             </section>
+
+            {selectedFamily && <RootConnectionCard familyId={selectedFamily.id} />}
 
             <section id="privacy" className="settings-section" aria-labelledby="settings-privacy-title">
               <div className="settings-section__head">

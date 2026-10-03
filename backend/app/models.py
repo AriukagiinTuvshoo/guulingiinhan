@@ -358,6 +358,47 @@ class SharedAncestryRelationship(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class RootConnection(Base):
+    """Explicit, reviewed Family projection into the shared ancestry.
+
+    Person and parent-child identity remain in their canonical tables. This row
+    records consent and approval for showing a Family at a chosen root anchor.
+    """
+
+    __tablename__ = "root_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'disconnected')",
+            name="ck_root_connection_status",
+        ),
+        CheckConstraint(
+            "relationship_type IN ('biological', 'adoptive', 'step')",
+            name="ck_root_connection_relationship_type",
+        ),
+        CheckConstraint("person_id <> target_person_id", name="ck_root_connection_not_self"),
+        Index("ix_root_connection_target", "target_person_id"),
+        Index("ix_root_connection_status", "status"),
+    )
+
+    family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), primary_key=True
+    )
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"))
+    target_person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"))
+    relationship_type: Mapped[str] = mapped_column(String(16), default="biological")
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    canonical_edge_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("parent_child_relationships.id", ondelete="SET NULL"), nullable=True
+    )
+    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SharedDonationInfo(Base):
     """Public, account-wide bank transfer and optional QR instructions."""
 

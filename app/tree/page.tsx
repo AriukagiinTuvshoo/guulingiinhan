@@ -997,6 +997,9 @@ function TreePageContent() {
             >
               Хүмүүс
             </Link>
+            <Link className="tree-button tree-button--secondary" href={'/ancestry/connect?family=' + encodeURIComponent(familyId)}>
+              Үндэс модтой холбох
+            </Link>
             <button type="button" className="tree-button tree-button--secondary" onClick={focusSelected} disabled={!selectedId}>
               Сонгосон хүнийг төвд
             </button>

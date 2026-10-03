@@ -25,6 +25,7 @@ from app.memory_photos import router as memory_photos_router
 from app.observability import configure_logging, error_classification, request_id_context
 from app.profile_photos import router as profile_photos_router
 from app.shared_ancestry import admin_router as admin_shared_ancestry_router
+from app.shared_ancestry import family_router as family_root_connection_router
 from app.shared_ancestry import router as shared_ancestry_router
 
 settings = get_settings()
@@ -162,6 +163,7 @@ app.include_router(admin_router, prefix="/api/v1")
 app.include_router(admin_workspace_router, prefix="/api/v1")
 app.include_router(admin_shared_ancestry_router, prefix="/api/v1")
 app.include_router(shared_ancestry_router, prefix="/api/v1")
+app.include_router(family_root_connection_router, prefix="/api/v1")
 app.include_router(community_router, prefix="/api/v1")
 app.include_router(announcements_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")

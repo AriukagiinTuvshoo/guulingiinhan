@@ -8,11 +8,13 @@ import styles from '../admin.module.css';
 type Candidate = { id: string; name: string; family_name: string; family_id: string; birth_date: string | null; is_alive: boolean };
 type Tree = { root_person_id: string | null; persons: { id: string; first_name: string; last_name: string; birth_date: string | null }[]; relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[] };
 type DonationInfo = { id?: number; title: string; purpose: string; currency: string; bank_name: string; account_name: string; account_number: string; qr_image_url: string | null; is_published: boolean };
+type RootConnection = { family_id: string; family_name: string | null; status: string; person_id: string; person_name: string; target_person_id: string; target_name: string; relationship_type: string };
 const emptyDonation: DonationInfo = { title: '', purpose: '', currency: 'MNT', bank_name: '', account_name: '', account_number: '', qr_image_url: null, is_published: false };
 
 export default function SharedAncestryAdminPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]); const [tree, setTree] = useState<Tree | null>(null);
   const [donation, setDonation] = useState<DonationInfo>(emptyDonation);
+  const [connections, setConnections] = useState<RootConnection[]>([]);
   const [selected, setSelected] = useState(''); const [busy, setBusy] = useState(true); const [saving, setSaving] = useState(false);
   const [parentId, setParentId] = useState(''); const [childId, setChildId] = useState('');
   const [publishId, setPublishId] = useState('');
@@ -20,7 +22,7 @@ export default function SharedAncestryAdminPage() {
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const load = useCallback(async () => {
     setBusy(true); setError('');
-    try { const [options, current, payment] = await Promise.all([api<Candidate[]>('/admin/shared-lineage/candidates'), api<Tree>('/shared-lineage'), api<DonationInfo | null>('/admin/shared-lineage/donation-info')]); setCandidates(options); setTree(current); setSelected(current.root_person_id || ''); setDonation(payment ? { ...payment } : emptyDonation); }
+    try { const [options, current, payment, pending] = await Promise.all([api<Candidate[]>('/admin/shared-lineage/candidates'), api<Tree>('/shared-lineage'), api<DonationInfo | null>('/admin/shared-lineage/donation-info'), api<RootConnection[]>('/admin/shared-lineage/connections')]); setCandidates(options); setTree(current); setSelected(current.root_person_id || ''); setDonation(payment ? { ...payment } : emptyDonation); setConnections(pending); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модны тохиргоог ачаалж чадсангүй.'); }
     finally { setBusy(false); }
   }, []);
@@ -73,6 +75,21 @@ export default function SharedAncestryAdminPage() {
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хүнийг нийтлэг модонд оруулж чадсангүй.'); }
     finally { setSaving(false); }
   }
+  async function decideConnection(familyId: string, approve: boolean) {
+    if (saving || !window.confirm(approve ? 'Энэ хүний бодит эцэг/эхийн холбоог шалгаад батлах уу?' : 'Энэ холболтын хүсэлтийг татгалзах уу?')) return;
+    setSaving(true); setError(''); setNotice('');
+    try {
+      await api(`/admin/shared-lineage/connections/${encodeURIComponent(familyId)}/decision`, {
+        method: 'POST', body: JSON.stringify({ approve }),
+      });
+      const [pending, updated] = await Promise.all([
+        api<RootConnection[]>('/admin/shared-lineage/connections'), api<Tree>('/shared-lineage'),
+      ]);
+      setConnections(pending); setTree(updated);
+      setNotice(approve ? 'Гэр бүлийн салбар баталгаажлаа.' : 'Хүсэлт татгалзагдлаа.');
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хүсэлтийг шийдвэрлэж чадсангүй.'); }
+    finally { setSaving(false); }
+  }
   const sharedName = (id: string) => { const person = tree?.persons.find((item) => item.id === id); return person ? `${person.last_name} ${person.first_name}`.trim() : 'Хүн олдсонгүй'; };
   return <main className={styles.page}><div className={styles.shell}>
     <header className={styles.header}><div><Link className={styles.brand} href="/admin">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>НИЙТЛЭГ УДМЫН МОД</span></div><div className={styles.headerActions}><Link className={styles.back} href="/admin">← Админ руу буцах</Link></div></header>
@@ -85,6 +102,7 @@ export default function SharedAncestryAdminPage() {
         <div className={styles.panelActions}><button disabled={!selected || selected === tree?.root_person_id || saving} onClick={() => void save()}>{saving ? 'Хадгалж байна…' : tree?.root_person_id ? 'Үндсэн эхийг шинэчлэх' : 'Нийтлэг эх мод үүсгэх'}</button><Link href="/admin">Хүмүүсээ админ удирдлагаас бэлдэх →</Link></div>
       </div>}
       <div className={styles.panel}><h3>Салаа нэмж холбох дүрэм</h3><ol><li>Хэрэглэгч өөрийн аккаунттай холбосон хүнийг сонгоно.</li><li>Өөрийн хүн бусад account-д харагдах зөвшөөрлийг өөрөө өгнө.</li><li>Нийтлэг модонд байгаа эцэг/эхийг сонговол түүний салбар болж холбоно. Сонгохгүй бол одоогоор холбоогүй салаа хэвээр байна.</li><li>Хэрэглэгч салбараа салгахад зөвхөн нийтлэг модны холбоос арилна; өөрийн гэр бүлийн мод ба профайл хэвээр.</li></ol></div>
+      <div className={styles.panel}><h3>Гэр бүлүүдийн холболтын хүсэлт</h3><p className={styles.muted}>Хүсэлт бүрийг бодит хүн, зөв салбар, зөвшөөрөлтэй нь тулгаж шалгана. Баталбал нэг бодит эцэг/эх–хүүхдийн холбоо хадгалагдана.</p>{connections.length ? <div className={styles.linkList}>{connections.map((row) => <div key={row.family_id}><span><b>{row.person_name}</b> → <b>{row.target_name}</b><small>{row.relationship_type === 'step' ? 'Дагавар' : row.relationship_type === 'adoptive' ? 'Үрчилсэн' : 'Төрсөн'} · {row.family_name || row.family_id.slice(0, 8)}</small></span><button type="button" disabled={saving} onClick={() => void decideConnection(row.family_id, true)}>Батлах</button><button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void decideConnection(row.family_id, false)}>Татгалзах</button></div>)}</div> : <p className={styles.state}>Шалгах хүсэлт алга.</p>}</div>
       <div className={styles.panel}><h3>Гуулингийн бодит хүүхдүүдийг сонгож нэмэх</h3><p className={styles.muted}>Дөрвөн хүүхдийн нэрийг эндээс таамгаар үүсгэхгүй. “Гэр бүл, удам” хэсэгт хүнээ бүртгээд, энэ жагсаалтаас нэг нэгээр нь нийтлэг модонд оруулж, доор Гуулинтай эцэг–хүүхдийн холбоос үүсгэнэ. Амьд хүний нийтлэх зөвшөөрөл болон харагдах хүрээг шалгана.</p><div className={styles.formGrid}><label>Одоо байгаа бодит хүн<select value={publishId} onChange={(event) => setPublishId(event.target.value)}><option value="">Хүн сонгох</option>{candidates.filter((person) => !tree?.persons.some((item) => item.id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.name} · {person.family_name}</option>)}</select></label></div><div className={styles.panelActions}><button type="button" disabled={!publishId || saving} onClick={() => void publishPerson()}>Нийтлэг модонд оруулах</button></div></div>
       <div className={styles.panel}><h3>🌿 Нийтлэг модны салаа холбох</h3><p className={styles.muted}>Энд үүсгэсэн эцэг–хүүхдийн холбоо бодит хүний бүртгэлд хадгалагдаж, өөрийн гэр бүлийн мод болон нийтлэг модонд ижил харагдана. Гуулингийн хүүхдүүдийг эхлээд холбоод, дараагийн үеийг тухайн хүүхдийн доор холбоно.</p><div className={styles.formGrid}>
         <label>Эцэг / эх<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Хүн сонгох</option>{tree?.persons.map((person) => <option key={person.id} value={person.id}>{sharedName(person.id)}{person.id === tree.root_person_id ? ' · Үндсэн эх' : ''}</option>)}</select></label>
