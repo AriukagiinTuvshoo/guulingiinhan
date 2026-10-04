@@ -10,4 +10,6 @@ COPY alembic.ini ./
 EXPOSE 8000
 RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app
 USER app
-CMD ["sh", "-c", "if [ \"$APP_ENV\" = staging ]; then /app/.venv/bin/alembic upgrade head || exit 1; fi; exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log"]
+# Apply migrations in the controlled staging deployment step before releasing
+# this image. The runtime app role deliberately has no schema DDL privileges.
+CMD ["/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
