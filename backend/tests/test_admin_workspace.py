@@ -30,6 +30,7 @@ def test_workspace_permissions_and_genealogy_integrity(client, database, email_p
     family_id = client.post("/api/v1/families", json={"name": "Private genealogy"}).json()["id"]
     base = f"/api/v1/admin/families/{family_id}"
     assert client.get(base + "/workspace").status_code == 403
+    assert client.get(base + f"/people/{ordinary}/dependencies").status_code == 403
     assert client.post(base + "/people", json={"first_name": "Denied"}).status_code == 403
     _login(client, "workspace-operator@example.com")
     assert client.get(base + "/workspace").status_code == 403
@@ -46,10 +47,14 @@ def test_workspace_permissions_and_genealogy_integrity(client, database, email_p
     assert parent.status_code == child.status_code == 201
     parent_id, child_id = parent.json()["id"], child.json()["id"]
     assert client.put(base + "/root", json={"person_id": parent_id}).status_code == 200
+    assert client.get(base + f"/people/{parent_id}/dependencies").json()["family_root"] is True
     edge = client.post(base + "/relationships", json={
         "parent_id": parent_id, "child_id": child_id
     })
     assert edge.status_code == 201
+    preview = client.get(base + f"/people/{child_id}/dependencies").json()
+    assert preview["can_detach"] is True
+    assert preview["parent_child_count"] == 1
     assert client.post(base + "/relationships", json={
         "parent_id": child_id, "child_id": parent_id
     }).status_code == 422
@@ -82,6 +87,7 @@ def test_workspace_permissions_and_genealogy_integrity(client, database, email_p
         )) is not None
     _login(client, "workspace-member@example.com")
     assert client.get(base + "/workspace").status_code == 403
+    assert client.get(base + f"/people/{parent_id}/dependencies").status_code == 403
     assert ordinary != root
 
 

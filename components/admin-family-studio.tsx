@@ -16,6 +16,12 @@ type Event = { id: string; action: string; target_type: string; target_id: strin
 type Lineage = { id: string; name: string; description: string | null };
 type Branch = { id: string; lineage_id: string; name: string };
 type Assignment = { person_id: string; lineage_id: string; branch_id: string | null };
+type PersonDependencies = {
+  account_link: boolean; parent_child_count: number; marriage_count: number;
+  story_count: number; memory_count: number; archive_count: number;
+  in_shared_ancestry: boolean; root_connection: boolean; pending_claim: boolean;
+  family_root: boolean; shared_root: boolean; can_detach: boolean;
+};
 type Workspace = {
   family: { id: string; name: string; description: string | null; root_person_id: string | null; people_count: number; relationship_count: number; story_count: number; members_count: number };
   people: Person[]; relationships: Edge[]; stories: Story[]; history: Event[];
@@ -63,6 +69,8 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
   const [familyName, setFamilyName] = useState('');
   const [familyDescription, setFamilyDescription] = useState('');
   const [selectedId, setSelectedId] = useState('');
+  const [dependencies, setDependencies] = useState<PersonDependencies | null>(null);
+  const [dependencyError, setDependencyError] = useState('');
   const [personForm, setPersonForm] = useState<PersonForm>(emptyPerson);
   const [rootId, setRootId] = useState('');
   const [parentId, setParentId] = useState('');
@@ -98,6 +106,16 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, [familyId]);
+
+  useEffect(() => {
+    if (!selectedId) { setDependencies(null); setDependencyError(''); return; }
+    let active = true;
+    setDependencies(null); setDependencyError('');
+    void api<PersonDependencies>(`/admin/families/${familyId}/people/${selectedId}/dependencies`)
+      .then((value) => { if (active) setDependencies(value); })
+      .catch((cause) => { if (active) setDependencyError(message(cause)); });
+    return () => { active = false; };
+  }, [familyId, selectedId, data]);
 
   async function run(action: () => Promise<unknown>, success: string) {
     if (saving) return;
@@ -170,8 +188,13 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
           {!personForm.is_alive && <label>Нас барсан огноо<input type="date" value={personForm.death_date} onChange={(event) => setPersonForm({ ...personForm, death_date: event.target.value })} /></label>}
           <label className={styles.wide}>Товч тайлбар<textarea rows={4} maxLength={1000} value={personForm.short_description} onChange={(event) => setPersonForm({ ...personForm, short_description: event.target.value })} /></label>
         </div>
-        {selectedPerson && <p className={styles.muted}>{selectedLinks.length ? `Энэ хүн ${selectedLinks.length} эцэг эх, хүүхдийн холбоостой. Эхлээд “Удмын мод” хэсэгт холболтуудыг шалгана уу.` : 'Энэ хүнийг зөвхөн гэр бүлийн жагсаалтаас салгана. Үндсэн бүртгэлийг устгахгүй.'}</p>}
-        <div className={styles.panelActions}><button type="button" disabled={saving} onClick={() => void savePerson()}>{saving ? 'Хадгалж байна…' : selectedPerson ? 'Өөрчлөлт хадгалах' : 'Хүн нэмэх'}</button>{selectedPerson && selectedLinks.length > 0 && <button type="button" className={styles.secondaryButton} onClick={() => { setParentId(selectedId); setTab('links'); }}>Холбоосыг шалгах →</button>}{selectedPerson && <button type="button" className={styles.outlineDanger} disabled={saving || selectedId === data.family.root_person_id} onClick={() => { if (window.confirm(`${displayName(selectedPerson)}-г энэ гэр бүлээс салгах уу? Энэ гэр бүл дэх түүх, дурсамж, архивын хүний тэмдэглэгээ арилна. Хүн, агуулга, аккаунт болон бусад гэр бүлийн мэдээлэл хадгалагдана.`)) void run(() => api(`/admin/families/${familyId}/people/${selectedId}`, { method: 'DELETE' }).then(() => selectPerson(null)), 'Хүнийг гэр бүлээс салгалаа.'); }}>Гэр бүлээс салгах</button>}</div>
+        {selectedPerson && <div className={styles.muted} role="status">
+          {dependencyError ? `Холбоотой мэдээллийг шалгаж чадсангүй: ${dependencyError}` : !dependencies ? 'Холбоотой мэдээллийг шалгаж байна…' : <>
+            <p>Эцэг эх/хүүхдийн холбоос {dependencies.parent_child_count}, гэрлэлт {dependencies.marriage_count}, түүх {dependencies.story_count}, дурсамж {dependencies.memory_count}, архив {dependencies.archive_count}.</p>
+            <p>{dependencies.can_detach ? 'Гэр бүлээс салгавал энэ гэр бүлийн түүх, дурсамж, архивын хүний тэмдэглэгээ арилна. Хүний үндсэн бүртгэл болон бодит холбоос хадгалагдана.' : `Салгахын өмнө хамгаалалттай холбоосыг цэгцэлнэ үү: ${[dependencies.family_root && 'гэр бүлийн эх', dependencies.shared_root && 'нийтлэг модны эх', dependencies.account_link && 'аккаунт', dependencies.in_shared_ancestry && 'нийтлэг мод', dependencies.root_connection && 'үндэс модны хүсэлт', dependencies.pending_claim && 'аккаунт холбох хүсэлт'].filter(Boolean).join(', ')}.`}</p>
+          </>}
+        </div>}
+        <div className={styles.panelActions}><button type="button" disabled={saving} onClick={() => void savePerson()}>{saving ? 'Хадгалж байна…' : selectedPerson ? 'Өөрчлөлт хадгалах' : 'Хүн нэмэх'}</button>{selectedPerson && selectedLinks.length > 0 && <button type="button" className={styles.secondaryButton} onClick={() => { setParentId(selectedId); setTab('links'); }}>Холбоосыг шалгах →</button>}{selectedPerson && <button type="button" className={styles.outlineDanger} disabled={saving || !dependencies?.can_detach} onClick={() => { if (window.confirm(`${displayName(selectedPerson)}-г энэ гэр бүлээс салгах уу? Энэ гэр бүл дэх түүх, дурсамж, архивын хүний тэмдэглэгээ арилна. Хүн, агуулга, аккаунт болон бусад гэр бүлийн мэдээлэл хадгалагдана.`)) void run(() => api(`/admin/families/${familyId}/people/${selectedId}`, { method: 'DELETE' }).then(() => selectPerson(null)), 'Хүнийг гэр бүлээс салгалаа.'); }}>Гэр бүлээс салгах</button>}</div>
       </section>
     </div>}
     {tab === 'links' && <div className={styles.studioGrid}>
