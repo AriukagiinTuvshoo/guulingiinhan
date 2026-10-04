@@ -54,6 +54,7 @@ function isShellRoute(pathname: string) {
     pathname === '/tree' ||
     pathname.startsWith('/tree/') ||
     pathname === '/ancestry' ||
+    pathname.startsWith('/ancestry/') ||
     pathname === '/community' ||
     pathname === '/stories' ||
     pathname.startsWith('/stories/') ||
