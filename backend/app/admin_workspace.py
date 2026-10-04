@@ -30,12 +30,14 @@ from app.models import (
     FamilyMember,
     FamilyPerson,
     Lineage,
+    Marriage,
     Memory,
     MemoryPersonTag,
     ParentChildRelationship,
     Person,
     PersonLineageAssignment,
     PersonLinkRequest,
+    RootConnection,
     SharedAncestry,
     SharedAncestryPerson,
     Story,
@@ -129,6 +131,21 @@ class FamilyWorkspace(BaseModel):
     lineages: list[WorkspaceLineage]
     branches: list[WorkspaceBranch]
     assignments: list[WorkspaceAssignment]
+
+
+class PersonDependencyPreview(BaseModel):
+    account_link: bool
+    parent_child_count: int
+    marriage_count: int
+    story_count: int
+    memory_count: int
+    archive_count: int
+    in_shared_ancestry: bool
+    root_connection: bool
+    pending_claim: bool
+    family_root: bool
+    shared_root: bool
+    can_detach: bool
 
 
 class RootInput(BaseModel):
@@ -420,6 +437,50 @@ def edit_person(
     return _person_out(person)
 
 
+@router.get("/families/{family_id}/people/{person_id}/dependencies",
+            response_model=PersonDependencyPreview)
+def person_dependencies(
+    family_id: UUID, person_id: UUID,
+    _: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    family = _family(db, family_id)
+    _person(db, family_id, person_id)
+    count = lambda statement: db.scalar(statement) or 0
+    account_link = db.scalar(select(UserPersonLink.user_id).where(
+        UserPersonLink.person_id == person_id).limit(1)) is not None
+    parent_child_count = count(select(func.count()).select_from(ParentChildRelationship).where(
+        or_(ParentChildRelationship.parent_id == person_id,
+            ParentChildRelationship.child_id == person_id)))
+    marriage_count = count(select(func.count()).select_from(Marriage).where(
+        or_(Marriage.person_1_id == person_id, Marriage.person_2_id == person_id),
+        Marriage.deleted_at.is_(None)))
+    story_count = count(select(func.count()).select_from(StoryPerson).where(
+        StoryPerson.family_id == family_id, StoryPerson.person_id == person_id))
+    memory_count = count(select(func.count()).select_from(MemoryPersonTag).join(
+        Memory, Memory.id == MemoryPersonTag.memory_id).where(
+        Memory.family_id == family_id, MemoryPersonTag.person_id == person_id))
+    archive_count = count(select(func.count()).select_from(ArchivePerson).where(
+        ArchivePerson.family_id == family_id, ArchivePerson.person_id == person_id))
+    in_shared_ancestry = db.get(SharedAncestryPerson, person_id) is not None
+    shared_root = db.scalar(select(SharedAncestry.id).where(
+        SharedAncestry.root_person_id == person_id).limit(1)) is not None
+    root_connection = db.scalar(select(RootConnection.family_id).where(
+        or_(RootConnection.person_id == person_id, RootConnection.target_person_id == person_id),
+        RootConnection.status.in_(("pending", "approved"))).limit(1)) is not None
+    pending_claim = db.scalar(select(PersonLinkRequest.id).where(
+        PersonLinkRequest.person_id == person_id).limit(1)) is not None
+    family_root = family.root_person_id == person_id
+    return PersonDependencyPreview(
+        account_link=account_link, parent_child_count=parent_child_count,
+        marriage_count=marriage_count, story_count=story_count,
+        memory_count=memory_count, archive_count=archive_count,
+        in_shared_ancestry=in_shared_ancestry, root_connection=root_connection,
+        pending_claim=pending_claim, family_root=family_root, shared_root=shared_root,
+        can_detach=not any((account_link, in_shared_ancestry, root_connection,
+                            pending_claim, family_root, shared_root)),
+    )
+
+
 @router.delete("/families/{family_id}/people/{person_id}", status_code=204)
 def detach_person(
     family_id: UUID, person_id: UUID,
@@ -435,6 +496,10 @@ def detach_person(
         SharedAncestry.root_person_id == person_id
     )):
         raise HTTPException(status_code=409, detail="Энэ хүн нийтлэг модонд байна. Эхлээд нийтлэг модны холбоосыг цэгцэлнэ үү.")
+    if db.scalar(select(RootConnection.family_id).where(
+        or_(RootConnection.person_id == person_id, RootConnection.target_person_id == person_id),
+        RootConnection.status.in_(("pending", "approved"))).limit(1)):
+        raise HTTPException(status_code=409, detail="Энэ хүн үндэс модны идэвхтэй холболттой байна. Эхлээд холболтыг салгана уу.")
     if db.scalar(select(PersonLinkRequest.id).where(PersonLinkRequest.person_id == person_id)):
         raise HTTPException(status_code=409, detail="Энэ хүнд аккаунт холбох хүсэлт байна. Эхлээд хүсэлтийг шийднэ үү.")
     # Detach only this family's associations. The Person, biography and source
@@ -518,6 +583,11 @@ def delete_relationship(
         ParentChildRelationship.child_id.in_(person_ids)))
     if edge is None:
         raise HTTPException(status_code=404, detail="Холбоос олдсонгүй.")
+    if db.scalar(select(RootConnection.family_id).where(
+        RootConnection.canonical_edge_id == relationship_id,
+        RootConnection.status == "approved",
+    ).limit(1)):
+        raise HTTPException(status_code=409, detail="Энэ бодит холбоос үндэс модонд батлагдсан байна. Эхлээд үндэс модны холболтыг салгана уу.")
     db.delete(edge)
     _audit(db, current[0], family_id, "admin.relationship_deleted", "parent_child", relationship_id)
     db.commit()

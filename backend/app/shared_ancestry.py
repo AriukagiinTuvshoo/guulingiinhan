@@ -54,6 +54,7 @@ class SharedEdgeOut(BaseModel):
     parent_id: UUID
     child_id: UUID
     relationship_type: str
+    source: str = "canonical"
 
 
 class SharedTreeOut(BaseModel):
@@ -80,11 +81,18 @@ class RootConnectionOut(BaseModel):
     target_person_id: UUID | None = None
     target_name: str | None = None
     relationship_type: str | None = None
+    requested_by_name: str | None = None
+    requested_at: datetime | None = None
+    decided_at: datetime | None = None
     can_request: bool
 
 
 class RootConnectionDecision(BaseModel):
     approve: bool
+
+
+class CanonicalRelationshipDelete(BaseModel):
+    confirmation: str = Field(pattern="^DELETE_CANONICAL_RELATIONSHIP$")
 
 
 class JoinTreeInput(BaseModel):
@@ -255,7 +263,11 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
         root_person_id=ancestry.root_person_id if ancestry else None,
         persons=[_person_shared_data(person, added_by == user.id)
                  for person, family_id, added_by in rows],
-        relationships=[SharedEdgeOut.model_validate(edge, from_attributes=True) for edge in edges],
+        relationships=[SharedEdgeOut(
+            id=edge.id, parent_id=edge.parent_id, child_id=edge.child_id,
+            relationship_type=edge.relationship_type,
+            source="canonical" if (edge.parent_id, edge.child_id) in canonical_pairs else "legacy_projection",
+        ) for edge in edges],
         my_person_id=linked.id if linked else None,
     )
 
@@ -514,12 +526,15 @@ def _connection_out(db: Session, family_id: UUID, user: User) -> RootConnectionO
                                  status="not_connected", can_request=can_request)
     person = db.get(Person, row.person_id)
     target = db.get(Person, row.target_person_id)
+    requester = db.get(User, row.requested_by)
     name = lambda value: " ".join(filter(None, (value.last_name, value.first_name))) if value else None
     return RootConnectionOut(
         family_id=family_id, family_name=family.name if family else None,
         status=row.status, person_id=row.person_id,
         person_name=name(person), target_person_id=row.target_person_id,
         target_name=name(target), relationship_type=row.relationship_type,
+        requested_by_name=requester.display_name if requester else None,
+        requested_at=row.requested_at, decided_at=row.decided_at,
         can_request=can_request,
     )
 
@@ -604,11 +619,37 @@ def disconnect_root_connection(family_id: UUID, user: User = Depends(get_current
 
 
 @admin_router.get("/connections", response_model=list[RootConnectionOut])
-def list_root_connections(current: tuple[User, AdminRole] = Depends(require_super_admin),
+def list_root_connections(status: str = "pending",
+                          current: tuple[User, AdminRole] = Depends(require_super_admin),
                           db: Session = Depends(get_db)):
-    rows = db.scalars(select(RootConnection).where(RootConnection.status == "pending")
-                      .order_by(RootConnection.requested_at)).all()
+    if status not in {"pending", "approved", "rejected", "disconnected"}:
+        raise HTTPException(status_code=422, detail="Холболтын төлөв буруу байна.")
+    rows = db.scalars(select(RootConnection).where(RootConnection.status == status)
+                      .order_by(RootConnection.requested_at.desc()).limit(100)).all()
     return [_connection_out(db, row.family_id, current[0]) for row in rows]
+
+
+@admin_router.delete("/connections/{family_id}", response_model=RootConnectionOut)
+def disconnect_root_connection_as_admin(
+    family_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    row = db.scalar(select(RootConnection).where(
+        RootConnection.family_id == family_id,
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(status_code=404, detail="Гэр бүлийн холболт олдсонгүй.")
+    if row.status not in {"pending", "approved"}:
+        raise HTTPException(status_code=409, detail="Салгах идэвхтэй холболт алга.")
+    row.status = "disconnected"
+    row.decided_by = current[0].id
+    row.decided_at = datetime.now(UTC)
+    db.add(AuditLog(actor_id=current[0].id, family_id=family_id,
+                    action="root_connection.admin_disconnected", target_type="person",
+                    target_id=row.person_id))
+    db.commit()
+    return _connection_out(db, family_id, current[0])
 
 
 @admin_router.post("/connections/{family_id}/decision", response_model=RootConnectionOut)
@@ -779,22 +820,43 @@ def remove_shared_relationship(
     current: tuple[User, AdminRole] = Depends(require_super_admin),
     db: Session = Depends(get_db),
 ):
-    edge = db.get(ParentChildRelationship, relationship_id)
+    canonical_edge = db.get(ParentChildRelationship, relationship_id)
     legacy_edge = db.get(SharedAncestryRelationship, relationship_id)
-    edge = edge or legacy_edge
-    if edge is None:
+    if canonical_edge is None and legacy_edge is None:
         raise HTTPException(status_code=404, detail="Нийтлэг модны холбоос олдсонгүй.")
-    # A canonical relationship is also shown in the family's own tree. The UI
-    # explicitly confirms that both views will change before this endpoint runs.
-    if isinstance(edge, ParentChildRelationship):
-        for duplicate in db.scalars(select(SharedAncestryRelationship).where(
-            SharedAncestryRelationship.parent_id == edge.parent_id,
-            SharedAncestryRelationship.child_id == edge.child_id,
-        )).all():
-            db.delete(duplicate)
-    db.delete(edge)
+    if canonical_edge is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Энэ бол гэр бүлийн бодит холбоос. Үндэс модны холболтыг салгах эсвэл гэр бүлийн модны эрхтэй орчноос тусад нь засна уу.",
+        )
+    db.delete(legacy_edge)
     db.add(AuditLog(actor_id=current[0].id, family_id=None,
-                    action="shared_ancestry.relationship_removed", target_type="relationship", target_id=relationship_id))
+                    action="shared_ancestry.legacy_projection_removed", target_type="relationship", target_id=relationship_id))
+    db.commit()
+    return read_shared_tree(current[0], db)
+
+
+@admin_router.post("/canonical-relationships/{relationship_id}/delete", response_model=SharedTreeOut)
+def delete_canonical_shared_relationship(
+    relationship_id: UUID, body: CanonicalRelationshipDelete,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Explicit correction of real genealogy, separate from Root projection removal."""
+    edge = db.scalar(select(ParentChildRelationship).where(
+        ParentChildRelationship.id == relationship_id,
+    ).with_for_update())
+    if edge is None:
+        raise HTTPException(status_code=404, detail="Бодит холбоос олдсонгүй.")
+    if db.scalar(select(RootConnection.family_id).where(
+        RootConnection.canonical_edge_id == relationship_id,
+        RootConnection.status == "approved",
+    ).limit(1)) is not None:
+        raise HTTPException(status_code=409, detail="Эхлээд батлагдсан үндэс модны холболтыг салгана уу.")
+    db.add(AuditLog(actor_id=current[0].id, family_id=None,
+                    action="shared_ancestry.canonical_relationship_deleted",
+                    target_type="relationship", target_id=relationship_id))
+    db.delete(edge)
     db.commit()
     return read_shared_tree(current[0], db)
 

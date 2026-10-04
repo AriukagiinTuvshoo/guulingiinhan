@@ -190,6 +190,7 @@ def test_root_connection_requires_real_person_explicit_consent_and_admin_review(
         "email": "root-flow-admin@example.com", "password": PASSWORD,
     }).status_code == 200
     assert len(client.get("/api/v1/admin/shared-lineage/connections").json()) == 1
+    assert client.get("/api/v1/admin/shared-lineage/connections?status=invalid").status_code == 422
     decision = f"/api/v1/admin/shared-lineage/connections/{family['id']}/decision"
     assert client.post(decision, json={"approve": False}).json()["status"] == "rejected"
     with database() as db:
@@ -207,6 +208,19 @@ def test_root_connection_requires_real_person_explicit_consent_and_admin_review(
     with database() as db:
         assert db.query(ParentChildRelationship).count() == 1
         assert db.query(SharedAncestryRelationship).count() == 0
+        approved_edge_id = db.query(ParentChildRelationship).one().id
+    assert client.post(f"/api/v1/admin/shared-lineage/canonical-relationships/{approved_edge_id}/delete",
+                       json={"confirmation": "DELETE_CANONICAL_RELATIONSHIP"}).status_code == 409
+
+    approved = client.get("/api/v1/admin/shared-lineage/connections?status=approved").json()
+    assert len(approved) == 1
+    assert approved[0]["requested_by_name"]
+    assert approved[0]["requested_at"]
+    assert approved[0]["decided_at"]
+    assert client.delete(f"/api/v1/admin/shared-lineage/connections/{family['id']}").json()["status"] == "disconnected"
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 1
+    assert client.get("/api/v1/shared-lineage").json()["relationships"] == []
 
     assert client.post("/api/v1/auth/login", json={
         "email": "root-flow-member@example.com", "password": PASSWORD,
@@ -239,6 +253,8 @@ def test_admin_can_correct_consented_shared_branches_without_changing_family_tre
     assert client.post("/api/v1/admin/shared-lineage/relationships", json={
         "parent_person_id": root["id"], "child_person_id": branch_person["id"],
     }).status_code == 403
+    assert client.post(f"/api/v1/admin/shared-lineage/canonical-relationships/{uuid4()}/delete",
+                       json={"confirmation": "DELETE_CANONICAL_RELATIONSHIP"}).status_code == 403
     assert client.post("/api/v1/auth/login", json={
         "email": "ancestry-editor@example.com", "password": PASSWORD,
     }).status_code == 200
@@ -251,8 +267,16 @@ def test_admin_can_correct_consented_shared_branches_without_changing_family_tre
     assert client.post("/api/v1/admin/shared-lineage/relationships", json={
         "parent_person_id": branch_person["id"], "child_person_id": root["id"],
     }).status_code == 422
-    assert client.delete(f"/api/v1/admin/shared-lineage/relationships/{edge_id}").status_code == 200
-    assert client.get("/api/v1/shared-lineage").json()["relationships"] == []
+    assert client.delete(f"/api/v1/admin/shared-lineage/relationships/{edge_id}").status_code == 409
+    with database() as db:
+        assert db.get(ParentChildRelationship, UUID(edge_id)) is not None
+    correction = f"/api/v1/admin/shared-lineage/canonical-relationships/{edge_id}/delete"
+    assert client.post(correction, json={"confirmation": "wrong"}).status_code == 422
+    assert client.post(correction, json={
+        "confirmation": "DELETE_CANONICAL_RELATIONSHIP",
+    }).status_code == 200
+    with database() as db:
+        assert db.get(ParentChildRelationship, UUID(edge_id)) is None
 
 
 def test_shared_ancestry_root_can_be_corrected_without_losing_people_or_edges(client, database, email_provider):
