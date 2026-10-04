@@ -21,7 +21,7 @@ The Supabase database needs a connection string with the correct password and TL
 The Dockerfile now starts Uvicorn only. Migrations are a **separate** operator step against the dedicated staging database:
 
 1. Verify the connection points to Supabase project `gzwekdfuxngtukskzelp`, confirm a staging backup, then run `alembic heads` and inspect pending migrations.
-2. Run `alembic upgrade head` once from a controlled environment with that staging `DATABASE_URL`.
+2. Run `alembic upgrade head` from a controlled environment with a migration-capable staging `DATABASE_URL` before every backend image deploy, and verify `alembic current` equals the image's head revision. The Container does not run DDL at startup; its dedicated database role has only application data privileges.
 3. Run `alembic current` and `alembic check`; record the revision. Do not run migrations from every Container startup.
 4. Set Worker secrets, then from `backend/` run `npm ci` and `npm run deploy:staging`. A Docker-compatible builder is required for local deployment from the Dockerfile. Workers Builds may build the image remotely if configured for this staging Worker.
    For a remote build, connect **only** `guulingiinhan-backend-staging` to this repository with root directory `backend/` and staging branch `cloudflare-backend-staging-p8-4r` as that Worker's production branch. Set Build command to `npm ci` and Deploy command to `npm run deploy:staging`. A non-production branch's default `wrangler versions upload` does not publish the Container image. Never connect this deploy command to the production `guulingiinhan` Worker.

@@ -40,23 +40,28 @@ function RootConnectionContent() {
   const [step, setStep] = useState(1);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(true);
+  const [familyLoadFailed, setFamilyLoadFailed] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     async function load() {
-      try {
-        const [familyRows, shared] = await Promise.all([
-          api<Family[]>('/families'), api<SharedTree>('/shared-lineage'),
-        ]);
-        if (!active) return;
-        setFamilies(familyRows);
-        setTree(shared);
-        setFamilyId(requestedFamily || familyRows[0]?.id || '');
-      } catch (cause) {
-        if (active) setError(cause instanceof ApiError ? cause.message : 'Холболтын мэдээллийг ачаалж чадсангүй.');
-      } finally { if (active) setBusy(false); }
+      const [familyResult, treeResult] = await Promise.allSettled([
+        api<Family[]>('/families'), api<SharedTree>('/shared-lineage'),
+      ]);
+      if (!active) return;
+      if (familyResult.status === 'fulfilled') {
+        setFamilies(familyResult.value);
+        setFamilyId(requestedFamily || familyResult.value[0]?.id || '');
+      } else {
+        setFamilyLoadFailed(true);
+        setError(familyResult.reason instanceof ApiError ? familyResult.reason.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
+      }
+      if (treeResult.status === 'fulfilled') setTree(treeResult.value);
+      else setError(treeResult.reason instanceof ApiError ? treeResult.reason.message : 'Үндэс модыг ачаалж чадсангүй.');
+      setBusy(false);
     }
     void load();
     return () => { active = false; };
@@ -75,15 +80,16 @@ function RootConnectionContent() {
   useEffect(() => {
     let active = true;
     setConnection(null);
+    setConnectionError(false);
     if (!familyId || !families.some((family) => family.id === familyId)) return;
     void api<Connection>(`/families/${encodeURIComponent(familyId)}/root-connection`)
       .then((value) => { if (active) setConnection(value); })
-      .catch((cause) => { if (active) setError(cause instanceof ApiError ? cause.message : 'Холболтын төлөвийг ачаалж чадсангүй.'); });
+      .catch((cause) => { if (active) { setConnectionError(true); setError(cause instanceof ApiError ? cause.message : 'Холболтын төлөвийг ачаалж чадсангүй.'); } });
     return () => { active = false; };
   }, [familyId, families]);
 
   const family = families.find((item) => item.id === familyId);
-  const invalidFamily = !busy && Boolean(requestedFamily) && !families.some((item) => item.id === requestedFamily);
+  const invalidFamily = !busy && !familyLoadFailed && Boolean(requestedFamily) && !families.some((item) => item.id === requestedFamily);
   const people = useMemo(() => new Map((tree?.persons || []).map((person) => [person.id, person])), [tree]);
   const targets = useMemo(() => {
     if (!tree?.root_person_id) return [];
@@ -131,12 +137,14 @@ function RootConnectionContent() {
     <div className={styles.layout}>
       <aside className={styles.aside}><h2>Холболтын зам</h2><ol><li>Миний хүн</li><li>Үндэс модны хүн</li><li>Бодит холбоо</li><li>Шалгаж илгээх</li></ol><Link href={familyId ? `/tree?family=${encodeURIComponent(familyId)}` : '/tree'}>← Гэр бүлийн мод</Link><Link href="/ancestry">Нийтлэг модыг харах →</Link></aside>
       <section className={styles.panel} aria-busy={busy || saving}>
-        {busy ? <p role="status">Ачаалж байна…</p> : invalidFamily ? <div role="alert"><h2>Гэр бүл олдсонгүй</h2><p>Энэ гэр бүлд хандах эрх алга.</p></div> : !family ? <p>Эхлээд гэр бүл үүсгэх эсвэл урилгаар нэгдэнэ үү. <Link href="/families">Гэр бүлүүд →</Link></p> : <>
+        {busy ? <p role="status">Ачаалж байна…</p> : familyLoadFailed ? <div role="alert"><h2>Гэр бүлийн мэдээлэл ачаалагдсангүй</h2><p>{error}</p></div> : invalidFamily ? <div role="alert"><h2>Гэр бүл олдсонгүй</h2><p>Энэ гэр бүлд хандах эрх алга.</p></div> : !family ? <p>Эхлээд гэр бүл үүсгэх эсвэл урилгаар нэгдэнэ үү. <Link href="/families">Гэр бүлүүд →</Link></p> : <>
           {families.length > 1 && <label>Миний гэр бүл<select value={familyId} onChange={(event) => { setFamilyId(event.target.value); setTargetId(''); setConsent(false); setStep(1); }}><option value="">Сонгох</option>{families.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
           {error && <p className={styles.error} role="alert">{error}</p>}
           {connection?.status === 'pending' ? <div role="status"><span className={styles.kicker}>ХҮЛЭЭГДЭЖ БАЙНА</span><h2>Холболтын хүсэлтийг шалгаж байна</h2><p>{connection.person_name} хүнийг {connection.target_name} хүний салбарт холбох хүсэлтийг эрх бүхий админ шалгана.</p></div> :
           connection?.status === 'approved' ? <div><span className={styles.kicker}>ХОЛБОГДСОН</span><h2>{family.name} · үндэс модны салбар</h2><p>Холбогдсон хүн: <strong>{connection.person_name}</strong></p><p>Салбарын эх: <strong>{connection.target_name}</strong></p><div className={styles.actions}><Link className={styles.primary} href={`/ancestry?focus=${encodeURIComponent(connection.person_id || '')}&family=${encodeURIComponent(familyId)}`}>Салбараа харах →</Link><Link href={`/tree?family=${encodeURIComponent(familyId)}`}>Гэр бүлийн мод →</Link><button type="button" disabled={saving} onClick={() => void disconnect()}>Холболтыг салгах</button></div></div> :
-          !tree?.root_person_id ? <div><h2>Үндэс модны эхийг тохируулж байна</h2><p>Админ бодит эх хүнийг баталсны дараа салбар сонгож болно.</p></div> :
+          !tree ? <div><h2>Үндэс мод ачаалагдсангүй</h2><p>Түр хүлээгээд хуудсыг дахин ачаална уу.</p></div> :
+          connectionError ? <div><h2>Холболтын төлөв ачаалагдсангүй</h2><p>Түр хүлээгээд хуудсыг дахин ачаална уу.</p></div> :
+          !tree.root_person_id ? <div><h2>Үндэс модны эхийг тохируулж байна</h2><p>Админ бодит эх хүнийг баталсны дараа салбар сонгож болно.</p></div> :
           !tree.my_person_id || !connection?.can_request ? <div><span className={styles.kicker}>ЗӨВШӨӨРӨЛ ШААРДЛАГАТАЙ</span><h2>Эхлээд өөрийн хүнтэй холбогдоно уу</h2><p>Гэр бүлийн модонд өөрийн хүнийг сонгож “Энэ бол би” хүсэлт илгээнэ. Гэр бүлийн эзэн баталсны дараа эндээс үргэлжлүүлнэ.</p><Link href={`/tree?family=${encodeURIComponent(familyId)}`}>Өөрийн хүнээ холбох →</Link></div> :
           <div>
             {connection?.status === 'rejected' && <p className={styles.error}>Өмнөх хүсэлт зөвшөөрөгдөөгүй. Зөв салбар сонгоод дахин илгээж болно.</p>}
