@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api } from '../lib/api';
+import StoryContent from './story-content';
 import styles from '../app/admin/admin.module.css';
 
 type Person = {
@@ -83,6 +84,7 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
   const [assignmentPersonId, setAssignmentPersonId] = useState('');
   const [storyTitle, setStoryTitle] = useState('');
   const [storyBody, setStoryBody] = useState('');
+  const [storyVisibility, setStoryVisibility] = useState('family');
   const [editingStoryId, setEditingStoryId] = useState('');
 
   const reload = useCallback(async () => {
@@ -203,8 +205,26 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
       <section className={`${styles.panel} ${styles.fullWidth}`}><h3>Бүртгэлтэй холбоосууд</h3>{data.relationships.length ? <div className={styles.linkList}>{data.relationships.map((edge) => <div key={edge.id}><span><b>{displayName(data.people.find((person) => person.id === edge.parent_id)!)}</b> → <b>{displayName(data.people.find((person) => person.id === edge.child_id)!)}</b><small>{edge.relationship_type === 'step' ? 'Дагавар' : edge.relationship_type === 'adoptive' ? 'Үрчилсэн' : 'Төрсөн'}</small></span><button className={styles.outlineDanger} disabled={saving} onClick={() => { if (window.confirm('Энэ эцэг эх, хүүхдийн холбоосыг салгах уу?')) void run(() => api(`/admin/families/${familyId}/relationships/${edge.id}`, { method: 'DELETE' }), 'Холбоос салгагдлаа.'); }}>Салгах</button></div>)}</div> : <p className={styles.state}>Холбоос бүртгээгүй байна.</p>}</section>
     </div>}
     {tab === 'stories' && <div className={styles.studioGrid}>
-      <section className={styles.panel}><span className={styles.eyebrow}>📜 ТҮҮХЭН САН</span><h3>{editingStoryId ? 'Түүх засах' : 'Түүх оруулах'}</h3><label>Гарчиг<input value={storyTitle} maxLength={180} onChange={(event) => setStoryTitle(event.target.value)} /></label><label>Агуулга<textarea rows={10} maxLength={100000} value={storyBody} onChange={(event) => setStoryBody(event.target.value)} /></label><div className={styles.panelActions}><button disabled={saving || !storyTitle.trim() || !storyBody.trim()} onClick={() => void run(async () => { if (editingStoryId) await api(`/admin/stories/${editingStoryId}`, { method: 'PUT', body: JSON.stringify({ title: storyTitle.trim(), body: storyBody.trim() }) }); else await api(`/admin/families/${familyId}/stories`, { method: 'POST', body: JSON.stringify({ title: storyTitle.trim(), body: storyBody.trim(), visibility: 'family' }) }); setStoryTitle(''); setStoryBody(''); setEditingStoryId(''); }, 'Түүх хадгалагдлаа.')}>{editingStoryId ? 'Засварыг хадгалах' : 'Түүх нийтлэх'}</button>{editingStoryId && <button className={styles.secondaryButton} onClick={() => { setEditingStoryId(''); setStoryTitle(''); setStoryBody(''); }}>Болих</button>}</div></section>
-      <section className={styles.panel}><span className={styles.eyebrow}>📚 БҮРТГЭЛТЭЙ ТҮҮХ</span><h3>Гэр бүлийн түүхүүд</h3>{data.stories.length ? <div className={styles.storyStack}>{data.stories.map((story) => <article key={story.id}><small>{new Date(story.created_at).toLocaleDateString('mn-MN')} · {story.visibility}</small><h4>{story.title}</h4><p>{story.body}</p><button onClick={() => { setEditingStoryId(story.id); setStoryTitle(story.title); setStoryBody(story.body); }}>Бичвэр засах →</button></article>)}</div> : <p className={styles.state}>Түүх оруулаагүй байна.</p>}</section>
+      <section className={styles.panel}>
+        <span className={styles.eyebrow}>📜 ТҮҮХЭН САН</span><h3>{editingStoryId ? 'Түүх засах' : 'Түүх оруулах'}</h3>
+        <p className={styles.muted}>Түүхийн гарчиг, агуулга, харагдах хүрээг энд удирдана. Зөвхөн “Нийтийн” гэж сонгосон түүх бусад гэр бүлд харагдана.</p>
+        <label>Гарчиг<input value={storyTitle} maxLength={180} onChange={(event) => setStoryTitle(event.target.value)} /></label>
+        <label>Харагдах хүрээ<select value={storyVisibility} onChange={(event) => setStoryVisibility(event.target.value)}><option value="family">Зөвхөн гэр бүлд</option><option value="public">Нийтийн түүх</option>{storyVisibility === 'private' && <option value="private">Хувийн</option>}</select></label>
+        <div className={styles.panelActions} role="group" aria-label="Түүхийн бичвэр форматлах">
+          <button type="button" className={styles.secondaryButton} onClick={() => setStoryBody((text) => `${text}\n\n## Дэд гарчиг\n`)}>Дэд гарчиг</button>
+          <button type="button" className={styles.secondaryButton} onClick={() => setStoryBody((text) => `${text}\n\n> Ишлэл\n`)}>Ишлэл</button>
+          <button type="button" className={styles.secondaryButton} onClick={() => setStoryBody((text) => `${text}\n\n- Жагсаалтын мөр\n`)}>Жагсаалт</button>
+        </div>
+        <label>Агуулга<textarea rows={12} maxLength={100000} value={storyBody} onChange={(event) => setStoryBody(event.target.value)} /></label>
+        {storyBody.trim() && <div className={styles.muted}><strong>Урьдчилан харах</strong><StoryContent body={storyBody} familyId={familyId} /></div>}
+        <div className={styles.panelActions}><button type="button" disabled={saving || !storyTitle.trim() || !storyBody.trim()} onClick={() => void run(async () => {
+          const payload = { title: storyTitle.trim(), body: storyBody.trim(), visibility: storyVisibility };
+          if (editingStoryId) await api(`/admin/stories/${editingStoryId}`, { method: 'PUT', body: JSON.stringify(payload) });
+          else await api(`/admin/families/${familyId}/stories`, { method: 'POST', body: JSON.stringify(payload) });
+          setStoryTitle(''); setStoryBody(''); setStoryVisibility('family'); setEditingStoryId('');
+        }, storyVisibility === 'public' ? 'Нийтийн түүх хадгалагдлаа.' : 'Гэр бүлийн түүх хадгалагдлаа.')}>{editingStoryId ? 'Засварыг хадгалах' : storyVisibility === 'public' ? 'Нийтийн түүх нийтлэх' : 'Гэр бүлийн түүх хадгалах'}</button>{editingStoryId && <button type="button" className={styles.secondaryButton} onClick={() => { setEditingStoryId(''); setStoryTitle(''); setStoryBody(''); setStoryVisibility('family'); }}>Болих</button>}</div>
+      </section>
+      <section className={styles.panel}><span className={styles.eyebrow}>📚 БҮРТГЭЛТЭЙ ТҮҮХ</span><h3>Гэр бүлийн түүхүүд</h3>{data.stories.length ? <div className={styles.storyStack}>{data.stories.map((story) => <article key={story.id}><small>{new Date(story.created_at).toLocaleDateString('mn-MN')} · {story.visibility === 'public' ? 'Нийтийн' : story.visibility === 'private' ? 'Хувийн' : 'Гэр бүлд'}</small><h4>{story.title}</h4><p>{story.body.slice(0, 180)}{story.body.length > 180 ? '…' : ''}</p><button type="button" onClick={() => { setEditingStoryId(story.id); setStoryTitle(story.title); setStoryBody(story.body); setStoryVisibility(story.visibility); }}>Бичвэр засах →</button></article>)}</div> : <p className={styles.state}>Түүх оруулаагүй байна.</p>}</section>
     </div>}
     {tab === 'lineages' && <div className={styles.studioGrid}>
       <section className={styles.panel}><span className={styles.eyebrow}>🪴 НЭГ ҮНДЭС</span><h3>Гуулингийнхны нэг удам</h3><p className={styles.muted}>Үндсэн модны жинхэнэ салааллыг “Удмын мод” хэсэгт эцэг эх → хүүхдийн холбоосоор тогтооно. Энэ хэсгийн хуучин багцлалтыг зөвхөн бүртгэлийн шошго болгон хадгална.</p>{data.lineages.length === 0 && <><label>Хуучин багцлалтад ашиглах нэр<input maxLength={180} value={lineageName} onChange={(event) => setLineageName(event.target.value)} /></label><div className={styles.panelActions}><button disabled={saving || !lineageName.trim()} onClick={() => void run(async () => { await api(`/admin/families/${familyId}/lineages`, { method: 'POST', body: JSON.stringify({ name: lineageName.trim() }) }); setLineageName(''); }, 'Багцлалт бүртгэгдлээ.')}>Багцлалт нэмэх</button></div></>}

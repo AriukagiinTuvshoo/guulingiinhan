@@ -91,6 +91,37 @@ def test_workspace_permissions_and_genealogy_integrity(client, database, email_p
     assert ordinary != root
 
 
+def test_admin_story_publication_is_explicit_and_reversible(client, database, email_provider):
+    root = _account(client, email_provider, "heritage-admin@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Heritage family"}).json()["id"]
+    _account(client, email_provider, "other-family@example.com")
+    client.post("/api/v1/families", json={"name": "Other family"})
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=root, role="SUPER_ADMIN"))
+    _login(client, "heritage-admin@example.com")
+    base = f"/api/v1/admin/families/{family_id}/stories"
+    private = client.post(base, json={"title": "Family draft", "body": "Family only"})
+    assert private.status_code == 201, private.text
+    assert client.post(base, json={
+        "title": "Invalid public image", "body": "[[photo:00000000-0000-0000-0000-000000000001]]",
+        "visibility": "public",
+    }).status_code == 422
+    public = client.post(base, json={
+        "title": "Shared heritage", "body": "For the wider family", "visibility": "public",
+    })
+    assert public.status_code == 201, public.text
+    _login(client, "other-family@example.com")
+    items = client.get("/api/v1/community/feed?kind=story").json()["items"]
+    assert [item["title"] for item in items] == ["Shared heritage"]
+    _login(client, "heritage-admin@example.com")
+    edited = client.put(f"/api/v1/admin/stories/{public.json()['id']}", json={
+        "title": "Shared heritage", "body": "Back to family", "visibility": "family",
+    })
+    assert edited.status_code == 200, edited.text
+    _login(client, "other-family@example.com")
+    assert client.get("/api/v1/community/feed?kind=story").json()["items"] == []
+
+
 def test_announcements_profile_and_audit_permissions(client, database, email_provider):
     root = _account(client, email_provider, "notice-root@example.com")
     operator = _account(client, email_provider, "notice-operator@example.com")

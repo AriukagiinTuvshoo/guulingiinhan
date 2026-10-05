@@ -185,6 +185,9 @@ def test_account_inspection_block_and_story_privacy(client, database, email_prov
     assert edited.json()["body"] == "Reviewed body"
     assert edited.json()["visibility"] == "private"
     assert client.put(f"/api/v1/admin/stories/{story_id}", json={
+        "title": "Do not publish", "body": "Protected body", "visibility": "public",
+    }).status_code == 409
+    assert client.put(f"/api/v1/admin/stories/{story_id}", json={
         "title": "Invalid", "body": "Changed", "family_id": str(root_id),
     }).status_code == 422
     assert client.put(f"/api/v1/admin/users/{root_id}/status", json={"is_active": False}).status_code == 403
