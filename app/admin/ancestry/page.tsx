@@ -54,13 +54,19 @@ export default function SharedAncestryAdminPage() {
   const [createdPerson, setCreatedPerson] = useState<WorkspacePerson | null>(null);
   const [inspectedPersonId, setInspectedPersonId] = useState('');
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
+  const [loadReady, setLoadReady] = useState(false);
   const load = useCallback(async () => {
-    setBusy(true); setError('');
-    try { const [options, current, payment, rows, familyOptions] = await Promise.all([api<Candidate[]>('/admin/shared-lineage/candidates'), api<Tree>('/shared-lineage'), api<DonationInfo | null>('/admin/shared-lineage/donation-info'), api<RootConnection[]>(`/admin/shared-lineage/connections?status=${connectionStatus}`), listAdminFamilies()]); setCandidates(options); setTree(current); setSelected(current.root_person_id || ''); setRootDraftId((previous) => previous || current.root_person_id || ''); setRootPartnerDraftId((previous) => previous || current.root_partner_person_id || ''); setDonation(payment ? { ...payment } : emptyDonation); setConnections(rows); setFamilies(familyOptions); setAncestorFamilyId((previous) => previous || options.find((person) => person.id === current.root_person_id)?.family_id || (familyOptions.length === 1 ? familyOptions[0].id : '')); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модны тохиргоог ачаалж чадсангүй.'); }
+    setBusy(true); setLoadReady(false); setError('');
+    try { const [options, current, payment, rows, familyOptions] = await Promise.all([api<Candidate[]>('/admin/shared-lineage/candidates'), api<Tree>('/shared-lineage'), api<DonationInfo | null>('/admin/shared-lineage/donation-info'), api<RootConnection[]>(`/admin/shared-lineage/connections?status=${connectionStatus}`), listAdminFamilies()]); setCandidates(options); setTree(current); setSelected(current.root_person_id || ''); setRootDraftId((previous) => previous || current.root_person_id || ''); setRootPartnerDraftId((previous) => previous || current.root_partner_person_id || ''); setDonation(payment ? { ...payment } : emptyDonation); setConnections(rows); setFamilies(familyOptions); setLoadReady(true); setAncestorFamilyId((previous) => previous || options.find((person) => person.id === current.root_person_id)?.family_id || (familyOptions.length === 1 ? familyOptions[0].id : '')); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Нийтлэг модны тохиргоог ачаалж чадсангүй.'); }
     finally { setBusy(false); }
   }, [connectionStatus]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!error) return;
+    const alert = document.getElementById('ancestry-error');
+    alert?.focus({ preventScroll: true }); alert?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error]);
   useEffect(() => {
     if (!ancestorFamilyId) { setFamilyPeople([]); setFamilyPeopleReady(false); return; }
     let active = true;
@@ -115,7 +121,7 @@ export default function SharedAncestryAdminPage() {
       } catch {
         setNotice('Хүний бүртгэл амжилттай үүслээ. Жагсаалт шинэчлэгдэхгүй бол хуудсыг дахин ачаална уу. Дахин шинэ хүн үүсгэх шаардлагагүй.');
       }
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Өвөг дээдсийн бүртгэлийг хадгалж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Өвөг дээдсийн бүртгэлийг хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function save() {
@@ -133,7 +139,7 @@ export default function SharedAncestryAdminPage() {
       setTree(changed);
       setNotice(tree?.root_person_id ? 'Үндсэн удмын эхийг шинэчиллээ. Өмнөх хүн болон бүх салааны холбоос хадгалагдсан.' : 'Үндсэн удмын эхийг бүх account-д нийтлэг мод болголоо.');
     }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Үндсэн модыг хадгалж чадсангүй.'); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Үндсэн модыг хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function saveDonation(event: FormEvent<HTMLFormElement>) {
@@ -145,7 +151,7 @@ export default function SharedAncestryAdminPage() {
       is_published: donation.is_published,
     };
     try { const updated = await api<DonationInfo>('/admin/shared-lineage/donation-info', { method: 'PUT', body: JSON.stringify(payload) }); setDonation(updated); setNotice(updated.is_published ? 'Хандивын мэдээлэл бүх account-д харагдахаар нийтлэгдлээ.' : 'Хандивын мэдээллийг хадгаллаа. Одоогоор нийтлээгүй.'); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хандивын мэдээллийг хадгалж чадсангүй.'); }
+    catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хандивын мэдээллийг хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function changeRelationship(action: 'add' | 'remove', relationshipId?: string) {
@@ -156,7 +162,7 @@ export default function SharedAncestryAdminPage() {
         ...(action === 'add' ? { body: JSON.stringify({ parent_person_id: parentId, child_person_id: childId, relationship_type: relationshipType }) } : {}),
       });
       setTree(updated); setChildId(''); setNotice(action === 'add' ? 'Бодит эцэг/эх–хүүхдийн холбоос бүртгэгдлээ.' : 'Нийтлэг модны хуучин харагдацын холбоос салгагдлаа. Гэр бүлийн бодит холбоос хадгалагдсан.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Холбоосыг шинэчилж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Холбоосыг шинэчилж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function deleteCanonicalRelationship(relationshipId: string) {
@@ -169,7 +175,7 @@ export default function SharedAncestryAdminPage() {
         method: 'POST', body: JSON.stringify({ confirmation: 'DELETE_CANONICAL_RELATIONSHIP' }),
       });
       setTree(updated); setNotice('Бодит холбоосыг админы баталгаатай засвараар салгалаа. Гэр бүлийн модны холбоос мөн өөрчлөгдсөн.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Бодит холбоосыг салгаж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Бодит холбоосыг салгаж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function saveRootCouple() {
@@ -185,7 +191,7 @@ export default function SharedAncestryAdminPage() {
       });
       setTree(updated); setSelected(updated.root_person_id || '');
       setNotice('Үндсэн эхийн хоёр хүний холбоо баталгаажлаа. Одоо хүүхдүүдийг доорх урсгалаар эцэг/эхэд нь холбоно уу.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Үндсэн эхийн хосыг хадгалж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Үндсэн эхийн хосыг хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function saveGuidedConnection() {
@@ -199,7 +205,7 @@ export default function SharedAncestryAdminPage() {
       });
       setTree(updated); setConnectPersonId(''); setConnectRelatedId(''); setConnectSecondParentId(''); setConnectStep(1);
       setNotice(`${person.name} · ${relation} гэсэн бодит холбоо баталгаажлаа. Хувийн түүх, архив, аккаунтын мэдээлэл нийтлэгдээгүй.`);
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хүний холбоог хадгалж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хүний холбоог хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function detachPerson(personId: string) {
@@ -208,7 +214,7 @@ export default function SharedAncestryAdminPage() {
     try {
       setTree(await api<Tree>(`/admin/shared-lineage/people/${encodeURIComponent(personId)}`, { method: 'DELETE' }));
       setInspectedPersonId(''); setNotice('Зөвхөн Үндсэн модны холбоос саллаа. Хүний бүртгэл, гэр бүлийн бодит холбоо хадгалагдсан.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Үндсэн модноос салгаж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Үндсэн модноос салгаж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function decideConnection(familyId: string, approve: boolean) {
@@ -223,7 +229,7 @@ export default function SharedAncestryAdminPage() {
       ]);
       setConnections(rows); setTree(updated);
       setNotice(approve ? 'Гэр бүлийн салбар баталгаажлаа.' : 'Хүсэлт татгалзагдлаа.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хүсэлтийг шийдвэрлэж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хүсэлтийг шийдвэрлэж чадсангүй.'); }
     finally { setSaving(false); }
   }
   async function disconnectConnection(familyId: string) {
@@ -236,7 +242,7 @@ export default function SharedAncestryAdminPage() {
       ]);
       setConnections(rows); setTree(updated);
       setNotice('Зөвхөн нийтлэг модны холболт саллаа. Гэр бүлийн бодит холбоос хадгалагдсан.');
-    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модны холболтыг салгаж чадсангүй.'); }
+    } catch (cause) { setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Нийтлэг модны холболтыг салгаж чадсангүй.'); }
     finally { setSaving(false); }
   }
   const sharedName = (id: string) => { const person = tree?.persons.find((item) => item.id === id); return person ? `${person.last_name} ${person.first_name}`.trim() : 'Хүн олдсонгүй'; };
@@ -275,7 +281,9 @@ export default function SharedAncestryAdminPage() {
   return <main className={styles.page}><div className={styles.shell}>
     <header className={styles.header}><div><Link className={styles.brand} href="/admin">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>НИЙТЛЭГ УДМЫН МОД</span></div><div className={styles.headerActions}><Link className={styles.back} href="/admin">← Админ руу буцах</Link></div></header>
     <section className={styles.content}><div className={styles.heading}><div><span className={styles.eyebrow}>🌳 ГУУЛИНГИЙНХНЫ ИХ МОД</span><h1>Үндсэн удмын эх</h1></div></div>
-      {error && <div role="alert" className={styles.error}>{error}</div>}{notice && <div role="status" className={styles.notice}>{notice}</div>}
+      {error && <div id="ancestry-error" tabIndex={-1} role="alert" className={styles.error}>{error}</div>}{notice && <div role="status" className={styles.notice}>{notice}</div>}
+      {!loadReady && <div className={styles.panel} aria-busy={busy}>{busy ? <p role="status">Удмын эх, гэр бүлийн бүртгэл болон сангийн мэдээллийг ачаалж байна…</p> : <><h3>Бүртгэлийн мэдээлэл ачаалагдсангүй</h3><p className={styles.muted}>Одоогийн эх, хүмүүс болон дансны мэдээллийг шалгасны дараа засварлах боломж нээгдэнэ. Ачаалалт амжилтгүй болсон нь бүртгэл байхгүй гэсэн үг биш.</p><div className={styles.panelActions}><button type="button" onClick={() => void load()}>Дахин ачаалах</button><Link href="/login">Нэвтрэлтээ шалгах →</Link></div></>}</div>}
+      {loadReady && <>
       <div className={styles.ancestryHero}><span className={styles.eyebrow}>ҮНДСЭН ЭХ → САЛАА → ГЭР БҮЛ</span><h2>Нэг мод. Бодит хүмүүс. Баталгаатай холбоо.</h2><p>Эзний өгсөн Ядамсүрэн, Гүнд болон дөрвөн хүүхдийн нэрс бол бүртгэх чиглэл. Нэрээр нь автоматаар хүн үүсгэх, холбохгүй.</p><div className={styles.rootDiagram}><strong>Ядамсүрэн + Гүнд</strong><span>↓</span><div>{['Долгор', 'Нансалмаа', 'Баавай', 'Бадамдорж'].map((name) => <span key={name}>{name}</span>)}</div></div></div>
       <div className={styles.panel}><span className={styles.eyebrow}>01 · ҮНДСЭН ЭХ</span><h3>Үндсэн эхийн хоёр хүнийг батлах</h3><p className={styles.muted}>Эх хүн, ханийг гараар бүртгээд хоёр хүний холбоог шалгаж батална. Бүртгэлтэй хүн байвал дахин үүсгэхгүйгээр сонгоно.</p><label>Бүртгэлийн гэр бүл<select value={ancestorFamilyId} onChange={(event) => { setAncestorFamilyId(event.target.value); setRootDraftId(''); setRootPartnerDraftId(''); }}><option value="">Гэр бүл сонгох</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select></label><div className={styles.formGrid}>
         <label>Эх хүн<select value={rootDraftId} onChange={(event) => setRootDraftId(event.target.value)}><option value="">Хүн сонгох</option>{rootCandidates.map((person) => <option key={person.id} value={person.id}>{person.last_name} {person.first_name}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label>
@@ -345,6 +353,7 @@ export default function SharedAncestryAdminPage() {
         <label className={styles.checkbox}><input type="checkbox" checked={donation.is_published} onChange={(event) => setDonation({ ...donation, is_published: event.target.checked })} /> Бүх account-д нийтлэх</label>
         <label className={styles.wide}>Зориулалт<textarea maxLength={4000} rows={3} value={donation.purpose} onChange={(event) => setDonation({ ...donation, purpose: event.target.value })} /></label>
       </div><div className={styles.panelActions}><button disabled={saving}>{saving ? 'Хадгалж байна…' : donation.is_published ? 'Хадгалаад нийтлэх' : 'Хадгалах'}</button></div></form>
+      </>}
     </section>
   </div></main>;
 }

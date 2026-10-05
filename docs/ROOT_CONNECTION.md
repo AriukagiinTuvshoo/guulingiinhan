@@ -52,8 +52,10 @@ Super Admin writes:
   Person and their explicit child or spouse relationship in one transaction.
   The selected parent/spouse must be reachable through approved root links.
   A second parent is optional and must have a registered spouse relationship
-  to the first parent. Existing compatible parent edges can be reused; duplicate
-  submissions and conflicting relationship types are rejected.
+  to the first parent. Existing compatible parent or spouse links are reused
+  when the Person is not yet shared, including after safe detachment. No new
+  relationship row is needed for that publication. Repeated submissions for
+  an already shared Person and conflicting relationship types/statuses are rejected.
 - `DELETE /admin/shared-lineage/people/{person_id}` removes shared visibility
   and legacy projection links only. Person, Family, canonical parent-child and
   Marriage records, UserPersonLink, stories, memories and archives remain.

@@ -9,6 +9,7 @@ export class ApiError extends Error {
     message: string,
     public code: string | null = null,
     public requestId: string | null = null,
+    public validationMessage: string | null = null,
   ) {
     super(message);
   }
@@ -35,6 +36,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
     let code: string | null = null;
+    let validationMessage: string | null = null;
     let requestId = response.headers.get('X-Request-ID');
     try {
       const parsed: unknown = await response.json();
@@ -43,6 +45,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         : {};
       code = typeof payload.error_code === 'string' ? payload.error_code : null;
       requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
+      if ((response.status === 422 || response.status === 409) && typeof payload.detail === 'string' && payload.detail.length <= 300) {
+        validationMessage = payload.detail;
+      }
       message =
         response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
         response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
@@ -55,7 +60,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
-    throw new ApiError(response.status, message, code, requestId);
+    throw new ApiError(response.status, message, code, requestId, validationMessage);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
