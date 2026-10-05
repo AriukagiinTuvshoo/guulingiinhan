@@ -1,6 +1,6 @@
 # Cloudflare custom-domain readiness
 
-Audit date: 2026-10-02. This runbook describes the domain cutover after the domain owner confirms the exact domain and its Cloudflare zone is active. It does not modify DNS or Worker routes.
+Audit date: 2026-10-06 (Asia/Tokyo). This runbook describes the domain cutover after the domain owner confirms the exact domain and its Cloudflare zone is active. It does not modify DNS or Worker routes.
 
 ## Current account state
 
@@ -45,3 +45,22 @@ Production requires a separately verified production API and its own exact `NEXT
 - The prior `workers.dev` route and prior Worker version remain available for rollback until cutover is accepted.
 
 The current account evidence is not enough to identify `site.app` as the production domain or to prove its registrar nameserver change is complete. No DNS, Worker domain, production secret, or production deployment was changed during this audit.
+
+## Verified staging release before domain purchase
+
+- Application commit: `736dd58411c64829566c195b0bd6b4ed14d81a9b`, integration branch `codex/integration-regression-2026-10-02`.
+- Both staging Workers automatically build from this branch. Frontend and backend builds completed successfully and their versions reached 100% traffic. Pushing this branch does not deploy the production Worker.
+- Frontend version: `9653e842-a2e0-48b2-9817-d7cea5d968ea`; backend version: `80031606-6a0a-4888-9c04-eecc024ef5b3`.
+- Health and readiness return HTTP 200, database `ok`. Anonymous requests to Admin, shared ancestry, community, and private People APIs return HTTP 401.
+- Real email configuration is enabled. Phone and Google configuration are disabled. Configuration availability does not prove delivery; live email verification/reset delivery and SMS OTP still need provider checks before production.
+- Supabase staging is healthy, on PostgreSQL 17, with schema revision `b10c8e621f4a`. The connected organization is on the free plan. Automatic paid-plan backups must not be assumed; configure a protected database export and private R2 backup, then run an isolated restore drill.
+- Cloudflare still reports `site.app` as initializing, no Worker custom domains. Media bucket: `guulingiinhan-staging-media`. Do not infer ownership of `site.app` from its presence in the account.
+
+## Go-live order and rollback
+
+1. Buy and confirm the exact domain; activate its Cloudflare zone.
+2. Verify SMTP delivery, production-required Twilio OTP configuration, database backup, private media backup, and an isolated restore. Keep credentials in provider secret settings.
+3. Attach only the two staging Custom Domains first and apply the hostname settings above together.
+4. Test registration/verification, reset, login/reload/logout, private media, cross-family denial, root Admin, and new Memory form on those staging hosts.
+5. Record the accepted commit, Worker version IDs, configuration names, and backup/restore evidence. Obtain approval for the concrete production cutover.
+6. For a staging hostname rollback, restore the previous frontend API base and exact backend CORS/email origins, then deploy the previous staging versions. Keep `workers.dev` reachable during the transition. Never use a destructive database downgrade to roll back a frontend release.
