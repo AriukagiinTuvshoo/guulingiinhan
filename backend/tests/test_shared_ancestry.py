@@ -20,19 +20,35 @@ def test_admin_publishes_existing_ancestor_children_using_canonical_edges(client
     family_id = client.post("/api/v1/families", json={"name": "Canonical family"}).json()["id"]
     base = f"/api/v1/admin/families/{family_id}"
     root = client.post(base + "/people", json={
-        "first_name": "Root", "birth_date": "1880-01-01", "is_alive": False,
+        "first_name": "Ядамсүрэн", "birth_date": "1880-01-01", "is_alive": False,
         "death_date": "1950-01-01",
     }).json()
+    partner = client.post(base + "/people", json={
+        "first_name": "Гүнд", "birth_date": "1883-01-01", "is_alive": False,
+        "death_date": "1955-01-01",
+    }).json()
+    child_names = ("Долгор", "Нансалмаа", "Баавай", "Бадамдорж")
     children = [client.post(base + "/people", json={
-        "first_name": f"Child {index}", "birth_date": "1920-01-01", "is_alive": False,
+        "first_name": name, "birth_date": "1920-01-01", "is_alive": False,
         "death_date": "1990-01-01",
-    }).json() for index in range(4)]
+    }).json() for name in child_names]
     assert client.put("/api/v1/admin/shared-lineage/root", json={
         "person_id": root["id"], "expected_root_person_id": None,
     }).status_code == 200
     candidates = client.get("/api/v1/admin/shared-lineage/candidates").json()
     assert all(any(row["id"] == child["id"] and row["family_id"] == family_id
                    for row in candidates) for child in children)
+    partner_published = client.post("/api/v1/admin/shared-lineage/people", json={
+        "person_id": partner["id"], "family_id": family_id,
+    })
+    assert partner_published.status_code == 201, partner_published.text
+    partner_link = client.post("/api/v1/admin/shared-lineage/root-partner", json={
+        "person_id": partner["id"], "expected_root_person_id": root["id"],
+    })
+    assert partner_link.status_code == 201, partner_link.text
+    assert client.post("/api/v1/admin/shared-lineage/root-partner", json={
+        "person_id": partner["id"], "expected_root_person_id": str(uuid4()),
+    }).status_code == 409
     for child in children:
         published = client.post("/api/v1/admin/shared-lineage/people", json={
             "person_id": child["id"], "family_id": family_id,
@@ -50,7 +66,12 @@ def test_admin_publishes_existing_ancestor_children_using_canonical_edges(client
     shared = client.get("/api/v1/shared-lineage").json()
     assert shared["root_person_id"] == root["id"]
     assert {person["id"] for person in shared["persons"]} == {
-        root["id"], *(child["id"] for child in children),
+        root["id"], partner["id"], *(child["id"] for child in children),
+    }
+    assert shared["root_partner_person_id"] == partner["id"]
+    assert len(shared["spouses"]) == 1
+    assert {shared["spouses"][0]["person_1_id"], shared["spouses"][0]["person_2_id"]} == {
+        root["id"], partner["id"],
     }
     assert {edge["child_id"] for edge in shared["relationships"]} == {
         child["id"] for child in children

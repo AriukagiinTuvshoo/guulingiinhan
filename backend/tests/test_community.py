@@ -17,9 +17,12 @@ def _login(client, email):
 
 def test_public_feed_is_cross_account_and_respects_visibility(client, database, email_provider):
     assert client.get("/api/v1/community/feed").status_code == 401
+    assert client.get("/api/v1/community/story/00000000-0000-0000-0000-000000000001").status_code == 401
     assert register_verified(client, "community-a@example.com", PASSWORD, email_provider).status_code == 201
     family_a = client.post("/api/v1/families", json={"name": "First family"}).json()["id"]
     base_a = f"/api/v1/families/{family_a}"
+    public_records = {}
+    hidden_records = {}
     for kind, payload in (
         ("stories", {"title": "Public story", "body": "Shared text"}),
         ("memories", {"title": "Public memory", "description": "Shared moment"}),
@@ -27,10 +30,13 @@ def test_public_feed_is_cross_account_and_respects_visibility(client, database, 
     ):
         response = client.post(f"{base_a}/{kind}", json={**payload, "visibility": "public"})
         assert response.status_code == 201, response.text
+        route_kind = {"stories": "story", "memories": "memory", "archives": "archive"}[kind]
+        public_records[route_kind] = response.json()["id"]
         response = client.post(f"{base_a}/{kind}", json={
             **payload, "title": f"Hidden {kind}", "visibility": "family",
         })
         assert response.status_code == 201, response.text
+        hidden_records[route_kind] = response.json()["id"]
     assert client.post(f"{base_a}/stories", json={
         "title": "Private story", "body": "Secret", "visibility": "private",
     }).status_code == 201
@@ -52,7 +58,19 @@ def test_public_feed_is_cross_account_and_respects_visibility(client, database, 
     }
     assert {item["family_name"] for item in all_items} == {"First family", "Second family"}
     assert {item["kind"] for item in all_items} == {"story", "memory", "archive"}
+    stories_only = client.get("/api/v1/community/feed?kind=story").json()
+    assert stories_only["total"] == 2
+    assert {item["title"] for item in stories_only["items"]} == {"Public story", "Second public"}
+    memories_only = client.get("/api/v1/community/feed?kind=memory").json()
+    assert memories_only["total"] == 1
+    assert memories_only["items"][0]["title"] == "Public memory"
+    assert client.get("/api/v1/community/feed?kind=unknown").status_code == 422
     assert client.get(f"{base_a}/stories").status_code == 403
+    for kind in ("story", "memory", "archive"):
+        detail = client.get(f"/api/v1/community/{kind}/{public_records[kind]}")
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["family_name"] == "First family"
+        assert client.get(f"/api/v1/community/{kind}/{hidden_records[kind]}").status_code == 404
 
     # An archived family is removed from the shared feed without deleting content.
     with database.begin() as db:
@@ -84,9 +102,26 @@ def test_public_memory_thumbnail_requires_public_adult_photo_tags(client, email_
     assert client.put(f"/api/v1/families/{family_id}/photos/{photo_id}/tags", json={
         "person_ids": [person["id"]],
     }).status_code == 200
+    story = client.post(f"/api/v1/families/{family_id}/stories", json={
+        "title": "Shared illustrated history",
+        "body": f"An account of the day.\n\n[[photo:{photo_id}|Family portrait]]",
+        "visibility": "public",
+    })
+    assert story.status_code == 201, story.text
+    assert client.post(f"/api/v1/families/{family_id}/stories", json={
+        "title": "Bad reference", "body": "[[photo:00000000-0000-0000-0000-000000000001]]",
+        "visibility": "public",
+    }).status_code == 422
     assert register_verified(client, "public-photo-viewer@example.com", PASSWORD, email_provider).status_code == 201
-    item = client.get("/api/v1/community/feed").json()["items"][0]
+    item = next(item for item in client.get("/api/v1/community/feed").json()["items"] if item["kind"] == "memory")
     assert item["thumbnail_url"] == f"/community/photos/{photo_id}/thumbnail"
+    detail = client.get(f"/api/v1/community/memory/{memory['id']}").json()
+    assert detail["photos"] == [f"/community/photos/{photo_id}/thumbnail"]
+    story_detail = client.get(f"/api/v1/community/story/{story.json()['id']}")
+    assert story_detail.status_code == 200
+    assert story_detail.json()["photos"] == [f"/community/photos/{photo_id}/thumbnail"]
+    public_story = next(item for item in client.get("/api/v1/community/feed").json()["items"] if item["kind"] == "story")
+    assert public_story["thumbnail_url"] == f"/community/photos/{photo_id}/thumbnail"
     image = client.get("/api/v1" + item["thumbnail_url"])
     assert image.status_code == 200
     assert image.headers["cache-control"] == "private, no-store"
@@ -96,6 +131,8 @@ def test_public_memory_thumbnail_requires_public_adult_photo_tags(client, email_
         "visibility": "private",
     }).status_code == 200
     _login(client, "public-photo-viewer@example.com")
-    hidden = client.get("/api/v1/community/feed").json()["items"][0]
+    hidden = next(item for item in client.get("/api/v1/community/feed").json()["items"] if item["kind"] == "memory")
     assert hidden["thumbnail_url"] is None
+    assert client.get(f"/api/v1/community/memory/{memory['id']}").json()["photos"] == []
+    assert client.get(f"/api/v1/community/story/{story.json()['id']}").json()["photos"] == []
     assert client.get(f"/api/v1/community/photos/{photo_id}/thumbnail").status_code == 404

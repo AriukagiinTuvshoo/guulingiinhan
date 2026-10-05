@@ -112,11 +112,17 @@ def test_announcements_profile_and_audit_permissions(client, database, email_pro
         "title": "Service update", "body": "Testing", "is_published": False
     })
     assert draft.status_code == 201
+    assert client.get("/api/v1/admin/announcements/summary").json() == {
+        "published": 0, "drafts": 1, "archived": 0,
+    }
     assert client.get("/api/v1/announcements").json() == []
     published = client.put(f"/api/v1/admin/announcements/{draft.json()['id']}", json={
         "title": "Service update", "body": "Testing", "is_published": True
     })
     assert published.status_code == 200
+    assert client.get("/api/v1/admin/announcements/summary").json() == {
+        "published": 1, "drafts": 0, "archived": 0,
+    }
     assert client.put(f"/api/v1/admin/users/{member}/profile", json={
         "display_name": "  Better Name  "
     }).json()["display_name"] == "Better Name"
@@ -127,4 +133,6 @@ def test_announcements_profile_and_audit_permissions(client, database, email_pro
                for item in client.get("/api/v1/admin/audit").json())
     _login(client, "notice-member@example.com")
     assert len(client.get("/api/v1/announcements").json()) == 1
+    assert client.get("/api/v1/announcements?limit=12&offset=1").json() == []
     assert client.get("/api/v1/admin/announcements").status_code == 403
+    assert client.get("/api/v1/admin/announcements/summary").status_code == 403

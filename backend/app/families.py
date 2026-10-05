@@ -1,6 +1,7 @@
 """Authenticated family, person and relationship APIs."""
 
 import hashlib
+import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID, uuid4
@@ -642,6 +643,37 @@ class StoryListPage(BaseModel):
 class StoryOut(StoryListItem):
     body: str
     related_people: list[StoryPersonOut] = Field(default_factory=list)
+
+
+_STORY_PHOTO_TOKEN = re.compile(r"\[\[photo:([0-9a-fA-F-]{36})(?:\|([^\]\n]{0,180}))?\]\]")
+
+
+def _validate_story_photos(
+    db: Session, family_id: UUID, user: User, content: str, visibility: str,
+) -> None:
+    """Story images reuse access-controlled Memory photos, never arbitrary URLs."""
+    matches = list(_STORY_PHOTO_TOKEN.finditer(content))
+    if len(matches) != content.count("[[photo:") or len(matches) > 24:
+        raise HTTPException(status_code=422, detail="Түүхийн зургийн холбоос буруу эсвэл хэт олон байна.")
+    if not matches:
+        return
+    # Imported here because the photo routes depend on family visibility helpers.
+    from app.community import _public_photo
+
+    for match in matches:
+        photo = db.scalar(select(Photo).where(
+            Photo.id == UUID(match.group(1)), Photo.family_id == family_id,
+            Photo.storage_status == "ready",
+        ))
+        if photo is None or photo.memory_id is None:
+            raise HTTPException(status_code=422, detail="Түүхийн зураг олдсонгүй.")
+        memory = db.get(Memory, photo.memory_id)
+        if memory is None or memory.family_id != family_id:
+            raise HTTPException(status_code=422, detail="Түүхийн зураг олдсонгүй.")
+        if memory.visibility == "private" and (visibility != "private" or memory.created_by != user.id):
+            raise HTTPException(status_code=422, detail="Хувийн дурсамжийн зургийг энэ түүхэд оруулах боломжгүй.")
+        if visibility == "public" and _public_photo(db, photo.id) is None:
+            raise HTTPException(status_code=422, detail="Нийтийн түүхэнд зөвхөн нийтэд зөвшөөрсөн насанд хүрсэн хүний зураг оруулна.")
 
 
 def _member(db: Session, family_id: UUID, user: User, roles: set[str] | None = None):
@@ -2799,6 +2831,7 @@ def create_story(
 ):
     _member(db, family_id, user, {"owner", "editor"})
     people = _validate_story_people(db, family_id, body.person_ids, user)
+    _validate_story_photos(db, family_id, user, body.body, body.visibility)
     story = Story(
         family_id=family_id,
         title=body.title.strip(),
@@ -2874,6 +2907,11 @@ def update_story(
     if story is None or not _story_visible(db, story, user):
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
     updates = body.model_dump(exclude_unset=True, exclude={"person_ids"})
+    _validate_story_photos(
+        db, family_id, user,
+        updates.get("body") if updates.get("body") is not None else story.body,
+        updates.get("visibility") if updates.get("visibility") is not None else story.visibility,
+    )
     if "title" in updates and updates["title"] is not None:
         updates["title"] = updates["title"].strip()
     if "body" in updates and updates["body"] is not None:

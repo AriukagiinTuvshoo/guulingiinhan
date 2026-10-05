@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ApiError, api, Story } from '../../../lib/api';
 import { useAppShellContext } from '../../../components/app-shell';
+import StoryContent from '../../../components/story-content';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -175,7 +176,7 @@ function StoryDetailPageContent() {
         </header>
 
         <section className="story-reading" aria-labelledby="story-content-heading"><h2 id="story-content-heading" className="sr-only">Түүхийн агуулга</h2>
-          {story.body.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          <StoryContent body={story.body} familyId={familyId} />
         </section>
 
         <section className="card story-related" aria-labelledby="story-related-heading">

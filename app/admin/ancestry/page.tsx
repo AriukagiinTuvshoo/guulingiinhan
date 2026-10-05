@@ -6,7 +6,7 @@ import { ApiError, api } from '../../../lib/api';
 import styles from '../admin.module.css';
 
 type Candidate = { id: string; name: string; family_name: string; family_id: string; birth_date: string | null; is_alive: boolean };
-type Tree = { root_person_id: string | null; persons: { id: string; first_name: string; last_name: string; birth_date: string | null }[]; relationships: { id: string; parent_id: string; child_id: string; relationship_type: string; source: 'canonical' | 'legacy_projection' }[] };
+type Tree = { root_person_id: string | null; root_partner_person_id: string | null; persons: { id: string; first_name: string; last_name: string; birth_date: string | null }[]; relationships: { id: string; parent_id: string; child_id: string; relationship_type: string; source: 'canonical' | 'legacy_projection' }[] };
 type DonationInfo = { id?: number; title: string; purpose: string; currency: string; bank_name: string; account_name: string; account_number: string; qr_image_url: string | null; is_published: boolean };
 type RootConnection = { family_id: string; family_name: string | null; status: string; person_id: string; person_name: string; target_person_id: string; target_name: string; relationship_type: string; requested_by_name: string | null; requested_at: string | null };
 const emptyDonation: DonationInfo = { title: '', purpose: '', currency: 'MNT', bank_name: '', account_name: '', account_number: '', qr_image_url: null, is_published: false };
@@ -19,6 +19,7 @@ export default function SharedAncestryAdminPage() {
   const [selected, setSelected] = useState(''); const [busy, setBusy] = useState(true); const [saving, setSaving] = useState(false);
   const [parentId, setParentId] = useState(''); const [childId, setChildId] = useState('');
   const [publishId, setPublishId] = useState('');
+  const [partnerId, setPartnerId] = useState('');
   const [relationshipType, setRelationshipType] = useState('biological');
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const load = useCallback(async () => {
@@ -47,8 +48,14 @@ export default function SharedAncestryAdminPage() {
     finally { setSaving(false); }
   }
   async function saveDonation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError(''); setNotice('');
-    try { const updated = await api<DonationInfo>('/admin/shared-lineage/donation-info', { method: 'PUT', body: JSON.stringify(donation) }); setDonation(updated); setNotice(updated.is_published ? 'Хандивын мэдээлэл бүх account-д харагдахаар нийтлэгдлээ.' : 'Хандивын мэдээллийг хадгаллаа. Одоогоор нийтлээгүй.'); }
+    event.preventDefault(); if (saving) return; setSaving(true); setError(''); setNotice('');
+    const payload: Omit<DonationInfo, 'id'> = {
+      title: donation.title, purpose: donation.purpose, currency: donation.currency,
+      bank_name: donation.bank_name, account_name: donation.account_name,
+      account_number: donation.account_number, qr_image_url: donation.qr_image_url,
+      is_published: donation.is_published,
+    };
+    try { const updated = await api<DonationInfo>('/admin/shared-lineage/donation-info', { method: 'PUT', body: JSON.stringify(payload) }); setDonation(updated); setNotice(updated.is_published ? 'Хандивын мэдээлэл бүх account-д харагдахаар нийтлэгдлээ.' : 'Хандивын мэдээллийг хадгаллаа. Одоогоор нийтлээгүй.'); }
     catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хандивын мэдээллийг хадгалж чадсангүй.'); }
     finally { setSaving(false); }
   }
@@ -89,6 +96,19 @@ export default function SharedAncestryAdminPage() {
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Хүнийг нийтлэг модонд оруулж чадсангүй.'); }
     finally { setSaving(false); }
   }
+  async function connectPartner() {
+    if (!tree?.root_person_id || !partnerId || saving) return;
+    const partner = tree.persons.find((person) => person.id === partnerId);
+    if (!partner || !window.confirm(`${sharedName(tree.root_person_id)} болон ${sharedName(partnerId)} хоёрын бодит гэрлэлтийн холбоог бүртгэх үү? Энэ нь гэр бүлийн үндсэн бүртгэлд хадгалагдана.`)) return;
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const updated = await api<Tree>('/admin/shared-lineage/root-partner', {
+        method: 'POST', body: JSON.stringify({ person_id: partnerId, expected_root_person_id: tree.root_person_id }),
+      });
+      setTree(updated); setPartnerId(''); setNotice('Бодит гэрлэлтийн холбоо бүртгэгдлээ. Одоо хоёр эхийн хүүхдүүдийг бодит эцэг/эхийн холбоогоор нэмнэ үү.');
+    } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Үндсэн эхийн хосыг холбож чадсангүй.'); }
+    finally { setSaving(false); }
+  }
   async function decideConnection(familyId: string, approve: boolean) {
     if (saving || !window.confirm(approve ? 'Энэ хүний бодит эцэг/эхийн холбоог шалгаад батлах уу?' : 'Энэ холболтын хүсэлтийг татгалзах уу?')) return;
     setSaving(true); setError(''); setNotice('');
@@ -118,16 +138,20 @@ export default function SharedAncestryAdminPage() {
     finally { setSaving(false); }
   }
   const sharedName = (id: string) => { const person = tree?.persons.find((item) => item.id === id); return person ? `${person.last_name} ${person.first_name}`.trim() : 'Хүн олдсонгүй'; };
+  const firstGeneration = tree?.relationships.filter((edge) => edge.parent_id === tree.root_person_id || edge.parent_id === tree.root_partner_person_id).map((edge) => edge.child_id) ?? [];
+  const firstGenerationIds = [...new Set(firstGeneration)];
   return <main className={styles.page}><div className={styles.shell}>
     <header className={styles.header}><div><Link className={styles.brand} href="/admin">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>НИЙТЛЭГ УДМЫН МОД</span></div><div className={styles.headerActions}><Link className={styles.back} href="/admin">← Админ руу буцах</Link></div></header>
     <section className={styles.content}><div className={styles.heading}><div><span className={styles.eyebrow}>🌳 ГУУЛИНГИЙНХНЫ ИХ МОД</span><h1>Үндсэн удмын эх</h1></div></div>
       {error && <div role="alert" className={styles.error}>{error}</div>}{notice && <div role="status" className={styles.notice}>{notice}</div>}
+      <div className={styles.panel}><h3>Гэр бүлийн баталсан эхлэл</h3><p className={styles.muted}>Энэ нэрсийг эзэн өгсөн. Доорх бодит бүртгэл, гэрлэлт, эцэг/эх–хүүхдийн холбоог баталж байж нийтлэг модонд харагдана; зөвхөн ижил нэрээр автоматаар холбохгүй.</p><p><strong>Ядамсүрэн + Гүнд</strong> → Долгор · Нансалмаа · Баавай · Бадамдорж</p><p className={styles.muted}>Одоогийн баталгаажсан үндэс: <strong>{tree?.root_person_id ? sharedName(tree.root_person_id) : 'тохируулаагүй'}</strong>{tree?.root_partner_person_id ? ` + ${sharedName(tree.root_partner_person_id)}` : ' · хосын холбоо дутуу'}. Эхний үеийн бодит холбоотой хүн: {firstGenerationIds.length ? firstGenerationIds.map(sharedName).join(' · ') : 'одоогоор алга'}.</p></div>
       {busy ? <p role="status" className={styles.state}>Ачаалж байна…</p> : <div className={styles.panel}>
         <h3>Нэг эх модыг бүх account-д харуулах</h3><p className={styles.muted}>Энд зөвхөн бодит, насанд хүрсэн, гэр бүлд харагдах Person сонгоно. Сонголт нийтлэг удмын модны эх болно. Хуучин айл тус бүрийн мэдээлэл хэвээр үлдэнэ.</p>
         {tree?.root_person_id && <p className={styles.notice}>Үндсэн эх одоо тохируулагдсан. {tree.persons.length} зөвшөөрөгдсөн хүн нийтлэг модонд байна. Шинэ эх сонгоход хуучин хүн, салааны холбоос болон айл бүрийн мод хэвээр үлдэнэ.</p>}
         {candidates.length ? <label className={styles.profileEditor}>Удмын эхийн хүнийг сонгох<select value={selected} onChange={(event) => setSelected(event.target.value)}><option value="">Хүн сонгох</option>{candidates.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.family_name}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label> : <p className={styles.state}>Сонгох боломжтой хүн алга. “Гэр бүл, удам” хэсгээс бодит эх хүний бүртгэл үүсгээд энд сонгоно уу.</p>}
         <div className={styles.panelActions}><button disabled={!selected || selected === tree?.root_person_id || saving} onClick={() => void save()}>{saving ? 'Хадгалж байна…' : tree?.root_person_id ? 'Үндсэн эхийг шинэчлэх' : 'Нийтлэг эх мод үүсгэх'}</button><Link href="/admin">Хүмүүсээ админ удирдлагаас бэлдэх →</Link></div>
       </div>}
+      <div className={styles.panel}><h3>Үндсэн эхийн хосыг холбох</h3><p className={styles.muted}>Гүнд хүний бодит Person бүртгэлийг эхлээд нийтлэг модонд зөвшөөрлөөр оруулна. Дараа нь энд Ядамсүрэнгийн бодит хосоор сонгоно. Хоёр хүн нэг идэвхтэй гэр бүлд бүртгэлтэй байх ёстой.</p>{tree?.root_partner_person_id ? <p className={styles.notice}>Одоогийн баталгаажсан хос: {sharedName(tree.root_partner_person_id)}</p> : <div className={styles.formGrid}><label>Одоо байгаа хосын бүртгэл<select value={partnerId} onChange={(event) => setPartnerId(event.target.value)}><option value="">Хүн сонгох</option>{tree?.persons.filter((person) => person.id !== tree.root_person_id).map((person) => <option key={person.id} value={person.id}>{sharedName(person.id)}</option>)}</select></label><div className={styles.panelActions}><button type="button" disabled={!tree?.root_person_id || !partnerId || saving} onClick={() => void connectPartner()}>Бодит хосыг холбох</button></div></div>}</div>
       <div className={styles.panel}><h3>Салаа нэмж холбох дүрэм</h3><ol><li>Хэрэглэгч өөрийн аккаунттай холбосон хүнийг сонгоно.</li><li>Өөрийн хүн бусад account-д харагдах зөвшөөрлийг өөрөө өгнө.</li><li>Нийтлэг модонд байгаа эцэг/эхийг сонговол түүний салбар болж холбоно. Сонгохгүй бол одоогоор холбоогүй салаа хэвээр байна.</li><li>Хэрэглэгч салбараа салгахад зөвхөн нийтлэг модны холбоос арилна; өөрийн гэр бүлийн мод ба профайл хэвээр.</li></ol></div>
       <div className={styles.panel}>
         <h3>Гэр бүлүүдийн холболтын хяналт</h3>
@@ -139,8 +163,8 @@ export default function SharedAncestryAdminPage() {
           {connectionStatus === 'approved' && <button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void disconnectConnection(row.family_id)}>Зөвхөн үндэс модноос салгах</button>}
         </div>)}</div> : <p className={styles.state}>Энэ төлөвийн хүсэлт алга.</p>}
       </div>
-      <div className={styles.panel}><h3>Гуулингийн бодит хүүхдүүдийг сонгож нэмэх</h3><p className={styles.muted}>Дөрвөн хүүхдийн нэрийг эндээс таамгаар үүсгэхгүй. “Гэр бүл, удам” хэсэгт хүнээ бүртгээд, энэ жагсаалтаас нэг нэгээр нь нийтлэг модонд оруулж, доор Гуулинтай эцэг–хүүхдийн холбоос үүсгэнэ. Амьд хүний нийтлэх зөвшөөрөл болон харагдах хүрээг шалгана.</p><div className={styles.formGrid}><label>Одоо байгаа бодит хүн<select value={publishId} onChange={(event) => setPublishId(event.target.value)}><option value="">Хүн сонгох</option>{candidates.filter((person) => !tree?.persons.some((item) => item.id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.name} · {person.family_name}</option>)}</select></label></div><div className={styles.panelActions}><button type="button" disabled={!publishId || saving} onClick={() => void publishPerson()}>Нийтлэг модонд оруулах</button></div></div>
-      <div className={styles.panel}><h3>🌿 Нийтлэг модны салаа холбох</h3><p className={styles.muted}>Энд үүсгэсэн эцэг–хүүхдийн холбоо бодит хүний бүртгэлд хадгалагдаж, өөрийн гэр бүлийн мод болон нийтлэг модонд ижил харагдана. Гуулингийн хүүхдүүдийг эхлээд холбоод, дараагийн үеийг тухайн хүүхдийн доор холбоно.</p><div className={styles.formGrid}>
+      <div className={styles.panel}><h3>Дөрвөн үндсэн салааны бодит хүнийг сонгох</h3><p className={styles.muted}>Долгор, Нансалмаа, Баавай, Бадамдоржийн бүртгэлийг нэрээр нь таамаглахгүй. “Гэр бүл, удам” хэсэгт хүнээ шалгаад, нэг нэгээр нь нийтлэг модонд оруулж, доор Ядамсүрэн эсвэл Гүндтэй эцэг/эх–хүүхдийн бодит холбоо үүсгэнэ. Амьд хүний нийтлэх зөвшөөрлийг шалгана.</p><div className={styles.formGrid}><label>Одоо байгаа бодит хүн<select value={publishId} onChange={(event) => setPublishId(event.target.value)}><option value="">Хүн сонгох</option>{candidates.filter((person) => !tree?.persons.some((item) => item.id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.name} · {person.family_name}</option>)}</select></label></div><div className={styles.panelActions}><button type="button" disabled={!publishId || saving} onClick={() => void publishPerson()}>Нийтлэг модонд оруулах</button></div></div>
+      <div className={styles.panel}><h3>🌿 Нийтлэг модны салаа холбох</h3><p className={styles.muted}>Энд үүсгэсэн эцэг–хүүхдийн холбоо бодит хүний бүртгэлд хадгалагдаж, гэр бүлийн мод болон нийтлэг модонд ижил харагдана. Эхлээд дөрвөн хүүхдийг зөв эцэг/эхтэй нь холбоод, дараагийн үеийг тухайн хүүхдийн доор холбоно.</p><div className={styles.formGrid}>
         <label>Эцэг / эх<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Хүн сонгох</option>{tree?.persons.map((person) => <option key={person.id} value={person.id}>{sharedName(person.id)}{person.id === tree.root_person_id ? ' · Үндсэн эх' : ''}</option>)}</select></label>
         <label>Хүүхэд<select value={childId} onChange={(event) => setChildId(event.target.value)}><option value="">Хүн сонгох</option>{tree?.persons.filter((person) => person.id !== tree.root_person_id).map((person) => <option key={person.id} value={person.id}>{sharedName(person.id)}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label>
         <label>Холбооны төрөл<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select></label>
