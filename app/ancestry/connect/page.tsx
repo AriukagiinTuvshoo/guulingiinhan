@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ApiError, api, Family } from '../../../lib/api';
+import { sharedAncestryPaths } from '../../../lib/shared-ancestry';
 import styles from './root-connection.module.css';
 
 type Person = { id: string; first_name: string; last_name: string };
@@ -14,6 +15,7 @@ type SharedTree = {
   my_person_id: string | null;
   persons: SharedPerson[];
   relationships: { parent_id: string; child_id: string }[];
+  spouses: { person_1_id: string; person_2_id: string }[];
 };
 type Connection = {
   family_id: string;
@@ -93,16 +95,8 @@ function RootConnectionContent() {
   const invalidFamily = !busy && !familyLoadFailed && Boolean(requestedFamily) && !families.some((item) => item.id === requestedFamily);
   const people = useMemo(() => new Map((tree?.persons || []).map((person) => [person.id, person])), [tree]);
   const targets = useMemo(() => {
-    if (!tree?.root_person_id) return [];
-    const childIds = new Map<string, string[]>();
-    for (const edge of tree.relationships) childIds.set(edge.parent_id, [...(childIds.get(edge.parent_id) || []), edge.child_id]);
-    const roots = [tree.root_person_id, tree.root_partner_person_id].filter((id): id is string => Boolean(id));
-    const reachable = new Set<string>(roots);
-    const stack = [...roots];
-    while (stack.length) for (const child of childIds.get(stack.pop()!) || []) {
-      if (!reachable.has(child)) { reachable.add(child); stack.push(child); }
-    }
-    return tree.persons.filter((person) => reachable.has(person.id) && person.id !== tree.my_person_id);
+    const paths = sharedAncestryPaths(tree);
+    return tree?.persons.filter((person) => paths.has(person.id) && person.id !== tree.my_person_id) || [];
   }, [tree]);
   const target = people.get(targetId);
 
@@ -153,9 +147,9 @@ function RootConnectionContent() {
             {connection?.status === 'disconnected' && <p className={styles.note}>Өмнөх холболт салсан. Гэр бүлийн мод болон бодит холбоо хадгалагдсан.</p>}
             <span className={styles.kicker}>АЛХАМ {step} / 4</span>
             {step === 1 && <><h2>Та хэнийг холбож байна?</h2><p>Зөвхөн таны аккаунттай баталгаажсан бодит хүн.</p><div className={styles.selection}>{ownPerson ? personName(ownPerson) : 'Миний баталгаажсан хүн'}</div></>}
-            {step === 2 && <><h2>Үндэс модны аль салбарт вэ?</h2><p>Эх хүнээс бодит холбоогоор үргэлжилсэн хүнийг сонгоно. Систем нэр, нас, үеэр таамаглахгүй.</p><label>Салбарын хүн<select value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">Хүн сонгох</option>{targets.map((person) => <option key={person.id} value={person.id}>{personName(person)}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label></>}
-            {step === 3 && <><h2>Ямар бодит холбоо вэ?</h2><p>Сонгосон хүн таны эцэг эсвэл эх мөн гэдгийг админ шалгаж батална.</p><label>Холбооны төрөл<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select></label></>}
-            {step === 4 && <><h2>Хүсэлтээ шалгана уу</h2><div className={styles.path}><span>{family.name}</span><span>{ownPerson ? personName(ownPerson) : 'Миний хүн'}</span><span>{target ? personName(target) : 'Үндэс модны хүн'}</span></div><p>Баталсны дараа энэ бодит эцэг/хүүхдийн холбоо нийтлэг модонд харагдана. Гэр бүлийн хувийн түүх, зураг, архив нээгдэхгүй.</p><label className={styles.check}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> Миний нэр болон энэ удмын холбоог бусад нэвтэрсэн гишүүдэд харуулахыг зөвшөөрч байна.</label></>}
+            {step === 2 && <><h2>Та хэний хүүхэд вэ?</h2><p>Үндсэн модонд бүртгэлтэй өөрийн бодит эцэг эсвэл эхийг сонгоно. Өвөг дээдэстэй шууд хүүхдийн холбоо үүсгэхгүй; завсрын хүмүүсийн холбоог эхлээд бүртгүүлнэ.</p><label>Миний эцэг эсвэл эх<select value={targetId} onChange={(event) => { setTargetId(event.target.value); setConsent(false); }}><option value="">Өөрөө сонгоно уу</option>{targets.map((person) => <option key={person.id} value={person.id}>{personName(person)}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label>{target && <div className={styles.selection}>{personName(target)} → {ownPerson ? personName(ownPerson) : 'Миний хүн'}</div>}</>}
+            {step === 3 && <><h2>Ямар хүүхдийн холбоо вэ?</h2><p>Та <strong>{target ? personName(target) : 'сонгосон хүн'}</strong> хүний хүүхэд гэж хүсэлт гаргана. Энэ холбоог админ шалгаж батална.</p><label>Хүүхдийн холбоо<select value={relationshipType} onChange={(event) => setRelationshipType(event.target.value)}><option value="biological">Төрсөн хүүхэд</option><option value="adoptive">Үрчилсэн хүүхэд</option><option value="step">Дагавар хүүхэд</option></select></label></>}
+            {step === 4 && <><h2>Хүсэлтээ шалгана уу</h2><div className={styles.path}><span>{target ? personName(target) : 'Миний эцэг эсвэл эх'}</span><span>{ownPerson ? personName(ownPerson) : 'Миний хүн'} · {relationshipType === 'biological' ? 'Төрсөн хүүхэд' : relationshipType === 'adoptive' ? 'Үрчилсэн хүүхэд' : 'Дагавар хүүхэд'}</span></div><p>{family.name} гэр бүлийн таны бүртгэл дээр үндэслэн админд хүсэлт очно. Батлагдахаас өмнө таны байрлал модонд нэмэгдэхгүй. Гэр бүлийн хувийн түүх, зураг, архив нээгдэхгүй.</p><label className={styles.check}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> Миний нэр болон энэ удмын холбоог бусад нэвтэрсэн гишүүдэд харуулахыг зөвшөөрч байна.</label></>}
             <div className={styles.actions}>{step > 1 && <button type="button" onClick={() => setStep(step - 1)}>Өмнөх</button>}{step < 4 ? <button className={styles.primary} type="button" disabled={step === 2 && !targetId} onClick={() => setStep(step + 1)}>Дараах →</button> : <button className={styles.primary} type="button" disabled={!consent || saving} onClick={() => void submit()}>{saving ? 'Илгээж байна…' : 'Хүсэлт илгээх'}</button>}</div>
           </div>}
         </>}

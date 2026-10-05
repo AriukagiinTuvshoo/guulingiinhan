@@ -30,6 +30,8 @@ jobs:
         run: npm run regression:routes
       - name: 3D tree layout regression
         run: npm run test:tree-3d
+      - name: Root relationship paths regression
+        run: npm run test:root-linking
       - name: Cloudflare Worker build
         run: npm run build:vinext
 

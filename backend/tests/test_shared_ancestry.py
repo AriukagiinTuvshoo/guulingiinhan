@@ -1,12 +1,17 @@
 from uuid import UUID, uuid4
 
+import pytest
+
 from app.models import (
     AdminGrant,
     AuditLog,
     Family,
+    Marriage,
     ParentChildRelationship,
+    Person,
     SharedAncestryPerson,
     SharedAncestryRelationship,
+    UserPersonLink,
 )
 from tests.conftest import register_verified
 
@@ -79,9 +84,189 @@ def test_admin_publishes_existing_ancestor_children_using_canonical_edges(client
     assert client.get(f"/api/v1/families/{family_id}/tree?scope=all").status_code == 403
 
 
+def test_guided_root_couple_and_relationships_are_atomic(client, database, email_provider):
+    admin_id = _login(client, email_provider, "guided-root-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    family_id = client.post("/api/v1/families", json={"name": "Гуулингийнхэн"}).json()["id"]
+    base = f"/api/v1/admin/families/{family_id}/people"
+
+    def ancestor(name):
+        response = client.post(base, json={"first_name": name, "is_alive": False})
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    root_id = ancestor("Ядамсүрэн")
+    partner_id = ancestor("Гүнд")
+    children = {name: ancestor(name) for name in ("Долгор", "Нансалмаа", "Баавай", "Бадамдорж")}
+    grandchild_id = ancestor("Долгорын хүүхэд")
+    shared = "/api/v1/admin/shared-lineage"
+    assert client.put(shared + "/root-couple", json={
+        "root_person_id": root_id, "partner_person_id": partner_id,
+        "family_id": family_id, "expected_root_person_id": str(uuid4()),
+    }).status_code == 409
+    assert client.get("/api/v1/shared-lineage").json()["root_person_id"] is None
+    couple = client.put(shared + "/root-couple", json={
+        "root_person_id": root_id, "partner_person_id": partner_id,
+        "family_id": family_id, "expected_root_person_id": None,
+    })
+    assert couple.status_code == 200, couple.text
+    assert couple.json()["root_person_id"] == root_id
+    assert couple.json()["root_partner_person_id"] == partner_id
+    assert len(couple.json()["spouses"]) == 1
+    for name, person_id in children.items():
+        linked = client.post(shared + "/connect-person", json={
+            "person_id": person_id, "family_id": family_id,
+            "related_person_id": root_id, "second_parent_person_id": partner_id,
+            "connection_kind": "child", "relationship_type": "biological",
+        })
+        assert linked.status_code == 201, f"{name}: {linked.text}"
+        assert {edge["parent_id"] for edge in linked.json()["relationships"]
+                if edge["child_id"] == person_id} == {root_id, partner_id}
+    duplicate = client.post(shared + "/connect-person", json={
+        "person_id": children["Долгор"], "family_id": family_id,
+        "related_person_id": root_id, "second_parent_person_id": partner_id,
+        "connection_kind": "child",
+    })
+    assert duplicate.status_code == 409
+    grandchild = client.post(shared + "/connect-person", json={
+        "person_id": grandchild_id, "family_id": family_id,
+        "related_person_id": children["Долгор"], "connection_kind": "child",
+    })
+    assert grandchild.status_code == 201, grandchild.text
+    assert {edge["parent_id"] for edge in grandchild.json()["relationships"]
+            if edge["child_id"] == grandchild_id} == {children["Долгор"]}
+    assert client.post(shared + "/connect-person", json={
+        "person_id": root_id, "family_id": family_id,
+        "related_person_id": grandchild_id, "connection_kind": "child",
+    }).status_code == 422
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 9
+        assert db.query(SharedAncestryRelationship).count() == 0
+        assert db.query(SharedAncestryPerson).count() == 6
+    spouse_id = ancestor("Долгорын хань")
+    spouse = client.post(shared + "/connect-person", json={
+        "person_id": spouse_id, "family_id": family_id,
+        "related_person_id": children["Долгор"], "connection_kind": "spouse",
+    })
+    assert spouse.status_code == 201, spouse.text
+    assert not any(edge["child_id"] == spouse_id for edge in spouse.json()["relationships"])
+    assert client.post(shared + "/connect-person", json={
+        "person_id": spouse_id, "family_id": family_id,
+        "related_person_id": children["Долгор"], "connection_kind": "spouse",
+    }).status_code == 409
+    second_parent = client.post(shared + "/connect-person", json={
+        "person_id": grandchild_id, "family_id": family_id,
+        "related_person_id": spouse_id, "connection_kind": "child",
+    })
+    assert second_parent.status_code == 201, second_parent.text
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 10
+        assert db.query(Marriage).count() == 2
+    assert client.delete(shared + f"/people/{root_id}").status_code == 409
+    detached = client.delete(shared + f"/people/{children['Долгор']}")
+    assert detached.status_code == 200, detached.text
+    assert children["Долгор"] not in {row["id"] for row in detached.json()["persons"]}
+    with database() as db:
+        assert db.get(Person, UUID(children["Долгор"])) is not None
+        assert db.get(Family, UUID(family_id)) is not None
+        assert db.query(ParentChildRelationship).count() == 10
+        assert db.query(Marriage).count() == 2
+
+
+def test_guided_linking_enforces_consent_identity_and_connected_targets(client, database, email_provider):
+    admin_id = _login(client, email_provider, "guided-safety-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    family_id = client.post("/api/v1/families", json={"name": "Root test family"}).json()["id"]
+    base = f"/api/v1/admin/families/{family_id}/people"
+
+    def person(name, **fields):
+        response = client.post(base, json={"first_name": name, "is_alive": False, **fields})
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    root_id, partner_id = person("Root"), person("Partner")
+    shared = "/api/v1/admin/shared-lineage"
+    assert client.put(shared + "/root-couple", json={
+        "root_person_id": root_id, "partner_person_id": partner_id, "family_id": family_id,
+    }).status_code == 200
+    unlinked_id = person("Unlinked")
+    assert client.post(shared + "/people", json={
+        "person_id": unlinked_id, "family_id": family_id,
+    }).status_code == 201
+    living_id = person("Living", is_alive=True, birth_date="1990-01-01")
+    private_id = person("Private", visibility="private")
+    minor_id = person("Minor", is_alive=True, birth_date="2020-01-01", visibility="public")
+    for invalid_id in (living_id, private_id, minor_id):
+        rejected = client.post(shared + "/connect-person", json={
+            "person_id": invalid_id, "family_id": family_id,
+            "related_person_id": root_id, "connection_kind": "child",
+        })
+        assert rejected.status_code == 422, rejected.text
+    child_id = person("Valid child")
+    assert client.post(shared + "/connect-person", json={
+        "person_id": child_id, "family_id": family_id,
+        "related_person_id": unlinked_id, "connection_kind": "child",
+    }).status_code == 422
+    with database() as db:
+        assert db.query(ParentChildRelationship).count() == 0
+        assert db.get(SharedAncestryPerson, UUID(child_id)) is None
+
+    _login(client, email_provider, "guided-safety-member@example.com")
+    member_family = client.post("/api/v1/families", json={"name": "Member test family"}).json()["id"]
+    member_person = client.post(f"/api/v1/families/{member_family}/persons", json={
+        "first_name": "Member", "birth_date": "1990-01-01",
+    }).json()["id"]
+    assert client.post(f"/api/v1/families/{member_family}/persons/{member_person}/link-me").status_code == 204
+    assert client.post(shared + "/connect-person", json={
+        "person_id": member_person, "family_id": member_family,
+        "related_person_id": root_id, "connection_kind": "child",
+    }).status_code == 403
+    assert client.post(f"/api/v1/families/{member_family}/root-connection", json={
+        "person_id": member_person, "target_person_id": unlinked_id, "share_consent": True,
+    }).status_code == 422
+    request = client.post(f"/api/v1/families/{member_family}/root-connection", json={
+        "person_id": member_person, "target_person_id": root_id, "share_consent": True,
+    })
+    assert request.status_code == 200, request.text
+    assert request.json()["status"] == "pending"
+    assert member_person not in {row["id"] for row in client.get("/api/v1/shared-lineage").json()["persons"]}
+    assert client.post("/api/v1/auth/login", json={
+        "email": "guided-safety-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert client.post(shared + "/connect-person", json={
+        "person_id": member_person, "family_id": member_family,
+        "related_person_id": root_id, "connection_kind": "child",
+    }).status_code == 403
+    approved = client.post(shared + f"/connections/{member_family}/decision", json={"approve": True})
+    assert approved.status_code == 200, approved.text
+    assert client.delete(shared + f"/people/{member_person}").status_code == 200
+    with database() as db:
+        assert db.get(Person, UUID(member_person)) is not None
+        assert db.query(UserPersonLink).filter(UserPersonLink.person_id == UUID(member_person)).count() == 1
+        assert db.query(ParentChildRelationship).filter(ParentChildRelationship.child_id == UUID(member_person)).count() == 1
+
+
 def _login(client, provider, email):
     assert register_verified(client, email, PASSWORD, provider).status_code == 201
     return UUID(client.get("/api/v1/auth/me").json()["id"])
+
+
+@pytest.mark.parametrize("role", ["ADMIN", "MODERATOR"])
+def test_guided_root_writes_require_super_admin(client, database, email_provider, role):
+    user_id = _login(client, email_provider, f"guided-{role.lower()}@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=user_id, role=role))
+    root_id, partner_id, family_id = str(uuid4()), str(uuid4()), str(uuid4())
+    assert client.put("/api/v1/admin/shared-lineage/root-couple", json={
+        "root_person_id": root_id, "partner_person_id": partner_id, "family_id": family_id,
+    }).status_code == 403
+    assert client.post("/api/v1/admin/shared-lineage/connect-person", json={
+        "person_id": partner_id, "related_person_id": root_id,
+        "family_id": family_id, "connection_kind": "child",
+    }).status_code == 403
+    assert client.delete(f"/api/v1/admin/shared-lineage/people/{partner_id}").status_code == 403
 
 
 def test_super_admin_sets_shared_root_and_users_opt_in(client, database, email_provider):
