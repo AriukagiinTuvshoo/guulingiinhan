@@ -23,6 +23,7 @@ import Link from 'next/link';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
+import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
 import { FamilyContext } from './family-context';
 import SharedDonationBanner from './shared-donation-banner';
 
@@ -167,10 +168,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const firstNavRef = useRef<HTMLAnchorElement | null>(null);
   const accountRef = useRef<HTMLDivElement | null>(null);
   const contextRequestRef = useRef(0);
+  const scopedFamilyId = contextLoaded && !contextLoading
+    ? resolveFamilyScope(families, requestedFamilyId, needsExplicitFamily(pathname, searchParams.has('person'))).id
+    : '';
 
   const currentFamily = useMemo(
-    () => families.find((family) => family.id === familyId) ?? null,
-    [families, familyId],
+    () => families.find((family) => family.id === scopedFamilyId) ?? null,
+    [families, scopedFamilyId],
   );
 
   const retryContext = useCallback(async () => {
@@ -235,22 +239,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!shouldRenderShell || contextLoading) return;
-    if (!families.length) {
+    const scope = resolveFamilyScope(families, requestedFamilyId, needsExplicitFamily(pathname, searchParams.has('person')));
+    if (!scope.id) {
       setFamilyId('');
       setFamilySwitching(false);
+      setContextError(scope.error);
       return;
     }
-
-    const requested = families.find((family) => family.id === requestedFamilyId)?.id ?? null;
-
-    if (requestedFamilyId && !requested) {
-      setFamilyId('');
-      setFamilySwitching(false);
-      setContextError('Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.');
-      return;
-    }
-
-    const nextFamily = requested ?? families[0].id;
+    const nextFamily = scope.id;
     setContextError('');
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
     if (requestedFamilyId === nextFamily) setFamilySwitching(false);
@@ -352,8 +348,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }
 
   const shellContext = useMemo<AppShellContextValue>(
-    () => ({ user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError }),
-    [user, families, familyId, currentFamily, contextLoading, contextLoaded, contextError],
+    () => ({ user, families, familyId: scopedFamilyId, currentFamily, contextLoading, contextLoaded, contextError }),
+    [user, families, scopedFamilyId, currentFamily, contextLoading, contextLoaded, contextError],
   );
 
   if (!shouldRenderShell) {
@@ -391,7 +387,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="app-shell__context" aria-label="Одоогийн гэр бүлийн орчин">
           {contextLoading ? (
             <span className="app-shell__context-skeleton" aria-hidden="true" />
-          ) : families.length > 1 ? (
+          ) : (families.length > 1 || (families.length > 0 && !currentFamily)) ? (
             <>
               <label htmlFor="app-shell-family">Гэр бүл</label>
               <select
@@ -402,6 +398,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 aria-busy={familySwitching}
                 disabled={contextLoading || familySwitching}
               >
+                <option value="">Гэр бүл сонгох</option>
                 {families.map((family) => (
                   <option key={family.id} value={family.id}>
                     {family.name}

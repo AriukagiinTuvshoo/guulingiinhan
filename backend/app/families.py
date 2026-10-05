@@ -39,6 +39,9 @@ from app.models import (
     PersonLineageAssignment,
     PersonLinkRequest,
     Photo,
+    RootConnection,
+    SharedAncestry,
+    SharedAncestryPerson,
     Story,
     StoryPerson,
     User,
@@ -897,6 +900,15 @@ def archive_family(
     family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     _, family = _member(db, family_id, user, {"owner"})
+    shared_root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+    has_shared_root = bool(shared_root_id and db.scalar(select(FamilyPerson.id).where(
+        FamilyPerson.family_id == family_id, FamilyPerson.person_id == shared_root_id)))
+    shared_people = db.scalar(select(SharedAncestryPerson.person_id).where(
+        SharedAncestryPerson.family_id == family_id).limit(1))
+    active_connection = db.scalar(select(RootConnection.family_id).where(
+        RootConnection.family_id == family_id, RootConnection.status.in_(("pending", "approved"))))
+    if has_shared_root or shared_people or active_connection:
+        raise HTTPException(status_code=409, detail="Үндсэн модтой холбоотой гэр бүлийг эхлээд шалгаж цэгцэлнэ үү.")
     family.archived_at = datetime.now(UTC)
     _audit(db, user, family_id, "family.archived", "family", family.id)
     db.commit()

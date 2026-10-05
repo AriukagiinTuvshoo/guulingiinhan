@@ -7,6 +7,7 @@ import { ApiError, api } from '../../lib/api';
 import styles from './admin.module.css';
 import AdminFamilyStudio from '../../components/admin-family-studio';
 import AdminAnnouncements from '../../components/admin-announcements';
+import { ArchivedFamilies } from '../../components/admin-family-archive';
 
 type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MODERATOR';
 type Identity = { user_id: string; email: string | null; display_name: string; role: Role };
@@ -34,6 +35,7 @@ export default function AdminPage() {
   const [admins, setAdmins] = useState<AdminRow[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [offset, setOffset] = useState(0);
+  const [familyRevision, setFamilyRevision] = useState(0);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +90,7 @@ export default function AdminPage() {
         ? 'Энэ жагсаалтыг үзэх эрх хүрэхгүй.' : 'Мэдээллийг ачаалж чадсангүй.');
     }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [identity, section, offset]);
+  }, [identity, section, offset, familyRevision]);
 
   useEffect(() => {
     if (!confirmation) return;
@@ -276,10 +278,12 @@ export default function AdminPage() {
             {identity.role === 'SUPER_ADMIN' && <><h2 className={styles.subheading}>Нийтэлсэн түүхүүд</h2><p className={styles.intro}>Хувийн түүхийг үзэх, бичвэрийг засах үйлдэл аудит бүртгэлд хадгалагдана. Гэр бүлийн холбоос, харагдах хүрээ өөрчлөгдөхгүй.</p>{stories.length ? <div className={styles.list}>{stories.map((story) => <article className={styles.story} key={story.id}>{editingStoryId === story.id ? <div className={styles.storyEditor}><label>Гарчиг<input value={storyTitle} maxLength={180} onChange={(event) => setStoryTitle(event.target.value)} /></label><label>Агуулга<textarea value={storyBody} maxLength={100000} rows={8} onChange={(event) => setStoryBody(event.target.value)} /></label><div><button type="button" disabled={working} onClick={() => setEditingStoryId('')}>Болих</button><button type="button" disabled={working || !storyTitle.trim() || !storyBody.trim()} onClick={() => void saveStory()}>{working ? 'Хадгалж байна…' : 'Хадгалах'}</button></div></div> : <><strong>{story.title}</strong><small>{story.visibility} · {new Date(story.created_at).toLocaleDateString('mn-MN')}</small><p>{story.body}</p><button type="button" onClick={() => { setEditingStoryId(story.id); setStoryTitle(story.title); setStoryBody(story.body); }}>Бичвэр засах</button></>}</article>)}</div> : <p className={styles.state}>Энэ хэрэглэгчийн нийтэлсэн түүх алга.</p>}</>}
           </>}
           {!busy && identity && section === 'families' && <>
+            <p className={styles.muted}>Эдгээр нь гэр бүлийн ажлын орчин. Гуулингийнхны нийтлэг эх, дөрвөн үндсэн салааг <Link href="/admin/ancestry">Үндсэн удмын админ</Link>-аас удирдана. Туршилтын орчныг архивлаж, дараа сэргээж болно.</p>
             {families.length === 0 ? <p className={styles.state}>Идэвхтэй гэр бүл алга.</p> : <div className={styles.list}>{families.map((family) => <div className={styles.row} key={family.id}><div><strong>{family.name}</strong><small>{new Date(family.created_at).toLocaleDateString('mn-MN')}</small></div>{identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => { setSelectedFamilyId(family.id); show('family_studio'); }}>Удмыг удирдах →</button>}</div>)}</div>}
             <div className={styles.pagination}><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Өмнөх</button><span>{offset + 1}–{offset + families.length}</span><button disabled={families.length < pageSize} onClick={() => setOffset(offset + pageSize)}>Дараах</button></div>
           </>}
-          {!busy && identity?.role === 'SUPER_ADMIN' && section === 'family_studio' && selectedFamilyId && <AdminFamilyStudio familyId={selectedFamilyId} onBack={() => show('families')} />}
+          {identity?.role === 'SUPER_ADMIN' && section === 'families' && <ArchivedFamilies onRestored={() => { setFamilyRevision(value => value + 1); void api<Overview>('/admin/overview').then(setOverview).catch(() => {}); }} />}
+          {!busy && identity?.role === 'SUPER_ADMIN' && section === 'family_studio' && selectedFamilyId && <AdminFamilyStudio familyId={selectedFamilyId} onBack={() => { show('families'); void api<Overview>('/admin/overview').then(setOverview).catch(() => {}); }} />}
           {!busy && identity && section === 'announcements' && <AdminAnnouncements canEdit={identity.role === 'SUPER_ADMIN'} />}
           {!busy && identity?.role === 'SUPER_ADMIN' && section === 'audit' && <div className={styles.panel}><span className={styles.eyebrow}>СИСТЕМИЙН АУДИТ</span><h3>Сүүлийн үйлдлүүд</h3><p className={styles.muted}>Үйлдэл, хийсэн хүн, цаг болон зорилтот бүртгэл хадгалагдана.</p>{audit.length ? <div className={styles.timeline}>{audit.map((event) => <div key={event.id}><span className={styles.timelineDot}/><div><b>{event.action}</b><p>{event.actor_name} · {new Date(event.created_at).toLocaleString('mn-MN')}</p><small>{event.target_type}{event.target_id ? ` · ${event.target_id}` : ''}</small></div></div>)}</div> : <p className={styles.state}>Бүртгэл алга.</p>}</div>}
           {!busy && identity?.role === 'SUPER_ADMIN' && section === 'admins' && <>

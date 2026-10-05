@@ -23,6 +23,7 @@ from app.families import (
 )
 from app.models import (
     Announcement,
+    Archive,
     ArchivePerson,
     AuditLog,
     Branch,
@@ -37,6 +38,7 @@ from app.models import (
     Person,
     PersonLineageAssignment,
     PersonLinkRequest,
+    Photo,
     RootConnection,
     SharedAncestry,
     SharedAncestryPerson,
@@ -114,6 +116,38 @@ class WorkspaceBranch(BaseModel):
     id: UUID
     lineage_id: UUID
     name: str
+    description: str | None = None
+
+
+class WorkspaceLabelPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=180)
+    description: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def check_name(self):
+        if "name" in self.model_fields_set and (self.name is None or not self.name.strip()):
+            raise ValueError("Нэр хоосон байж болохгүй.")
+        return self
+
+
+class ArchiveFamilyInput(BaseModel):
+    confirm_name: str = Field(min_length=1, max_length=180)
+
+
+class FamilyArchivePreview(BaseModel):
+    family_id: UUID
+    family_name: str
+    archived: bool
+    people: int
+    members: int
+    stories: int
+    memories: int
+    archives: int
+    photos: int
+    shared_people: int
+    active_connections: int
+    shared_root: bool
+    can_archive: bool
 
 
 class WorkspaceAssignment(BaseModel):
@@ -302,6 +336,48 @@ def create_workspace_lineage(
     return WorkspaceLineage.model_validate(lineage)
 
 
+@router.patch("/families/{family_id}/lineages/{lineage_id}", response_model=WorkspaceLineage)
+def edit_workspace_lineage(
+    family_id: UUID, lineage_id: UUID, body: WorkspaceLabelPatch,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    _family(db, family_id)
+    row = db.scalar(select(Lineage).where(Lineage.id == lineage_id, Lineage.family_id == family_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Удмын нэрийн бүртгэл олдсонгүй.")
+    if body.name is not None:
+        row.name = body.name.strip()
+    if "description" in body.model_fields_set:
+        row.description = (body.description or "").strip() or None
+    _audit(db, current[0], family_id, "admin.lineage_edited", "lineage", row.id)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Энэ нэртэй бүртгэл аль хэдийн байна.") from exc
+    return WorkspaceLineage.model_validate(row)
+
+
+@router.delete("/families/{family_id}/lineages/{lineage_id}", status_code=204)
+def delete_unused_workspace_lineage(
+    family_id: UUID, lineage_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    _family(db, family_id)
+    row = db.scalar(select(Lineage).where(Lineage.id == lineage_id, Lineage.family_id == family_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Удмын нэрийн бүртгэл олдсонгүй.")
+    if db.scalar(select(Branch.id).where(Branch.lineage_id == lineage_id).limit(1)) or db.scalar(
+        select(PersonLineageAssignment.id).where(
+            PersonLineageAssignment.lineage_id == lineage_id).limit(1)
+    ):
+        raise HTTPException(status_code=409, detail="Салаа эсвэл хүний багцлалттай бүртгэлийг эхлээд цэгцэлнэ үү.")
+    _audit(db, current[0], family_id, "admin.lineage_deleted", "lineage", row.id)
+    db.delete(row)
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post(
     "/families/{family_id}/lineages/{lineage_id}/branches",
     response_model=WorkspaceBranch, status_code=201,
@@ -324,6 +400,127 @@ def create_workspace_branch(
         db.rollback()
         raise HTTPException(status_code=409, detail="Энэ нэртэй салаа аль хэдийн байна.") from exc
     return WorkspaceBranch.model_validate(branch)
+
+
+def _workspace_branch(db: Session, family_id: UUID, branch_id: UUID) -> Branch:
+    _family(db, family_id)
+    row = db.scalar(select(Branch).join(Lineage, Lineage.id == Branch.lineage_id).where(
+        Branch.id == branch_id, Lineage.family_id == family_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Салааны нэрийн бүртгэл олдсонгүй.")
+    return row
+
+
+@router.patch("/families/{family_id}/branches/{branch_id}", response_model=WorkspaceBranch)
+def edit_workspace_branch(
+    family_id: UUID, branch_id: UUID, body: WorkspaceLabelPatch,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    row = _workspace_branch(db, family_id, branch_id)
+    if body.name is not None:
+        row.name = body.name.strip()
+    if "description" in body.model_fields_set:
+        row.description = (body.description or "").strip() or None
+    _audit(db, current[0], family_id, "admin.branch_edited", "branch", row.id)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Энэ нэртэй салааны бүртгэл аль хэдийн байна.") from exc
+    return WorkspaceBranch.model_validate(row)
+
+
+@router.delete("/families/{family_id}/branches/{branch_id}", status_code=204)
+def delete_unused_workspace_branch(
+    family_id: UUID, branch_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    row = _workspace_branch(db, family_id, branch_id)
+    if db.scalar(select(PersonLineageAssignment.id).where(
+        PersonLineageAssignment.branch_id == branch_id).limit(1)
+    ):
+        raise HTTPException(status_code=409, detail="Энэ салаанд хүний багцлалт байна. Эхлээд багцлалтыг цэгцэлнэ үү.")
+    _audit(db, current[0], family_id, "admin.branch_deleted", "branch", row.id)
+    db.delete(row)
+    db.commit()
+    return Response(status_code=204)
+
+
+def _family_archive_preview(db: Session, family: Family) -> FamilyArchivePreview:
+    def count(model, column):
+        return db.scalar(select(func.count()).select_from(model).where(column == family.id)) or 0
+
+    ancestry_root = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+    shared_root = bool(ancestry_root and db.scalar(select(FamilyPerson.id).where(
+        FamilyPerson.family_id == family.id, FamilyPerson.person_id == ancestry_root)))
+    shared_people = count(SharedAncestryPerson, SharedAncestryPerson.family_id)
+    active_connections = db.scalar(select(func.count()).select_from(RootConnection).where(
+        RootConnection.family_id == family.id, RootConnection.status.in_(("pending", "approved")))) or 0
+    return FamilyArchivePreview(
+        family_id=family.id, family_name=family.name, archived=family.archived_at is not None,
+        people=count(FamilyPerson, FamilyPerson.family_id),
+        members=count(FamilyMember, FamilyMember.family_id), stories=count(Story, Story.family_id),
+        memories=count(Memory, Memory.family_id), archives=count(Archive, Archive.family_id),
+        photos=count(Photo, Photo.family_id), shared_people=shared_people,
+        active_connections=active_connections, shared_root=shared_root,
+        can_archive=not shared_root and not shared_people and not active_connections,
+    )
+
+
+@router.get("/families/{family_id}/archive-preview", response_model=FamilyArchivePreview)
+def preview_family_archive(
+    family_id: UUID, current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    family = db.get(Family, family_id)
+    if family is None:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
+    return _family_archive_preview(db, family)
+
+
+@router.post("/families/{family_id}/archive", status_code=204)
+def archive_workspace_family(
+    family_id: UUID, body: ArchiveFamilyInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    family = db.scalar(select(Family).where(Family.id == family_id).with_for_update())
+    if family is None:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
+    if body.confirm_name.strip() != family.name:
+        raise HTTPException(status_code=409, detail="Гэр бүлийн нэрийг яг тааруулж бичнэ үү.")
+    if not _family_archive_preview(db, family).can_archive:
+        raise HTTPException(status_code=409, detail="Үндсэн модтой холбоотой гэр бүлийг эхлээд шалгаж цэгцэлнэ үү.")
+    family.archived_at = datetime.now(UTC)
+    _audit(db, current[0], family_id, "admin.family_archived", "family", family.id)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/archived-families")
+def list_archived_workspace_families(
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+    limit: int = Query(default=25, ge=1, le=100), offset: int = Query(default=0, ge=0),
+):
+    return [{"id": family.id, "name": family.name, "archived_at": family.archived_at}
+            for family in db.scalars(select(Family).where(Family.archived_at.is_not(None))
+                                     .order_by(Family.archived_at.desc(), Family.id)
+                                     .offset(offset).limit(limit)).all()]
+
+
+@router.post("/families/{family_id}/restore", status_code=204)
+def restore_workspace_family(
+    family_id: UUID, body: ArchiveFamilyInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
+):
+    family = db.get(Family, family_id)
+    if family is None:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
+    if body.confirm_name.strip() != family.name:
+        raise HTTPException(status_code=409, detail="Гэр бүлийн нэрийг яг тааруулж бичнэ үү.")
+    family.archived_at = None
+    _audit(db, current[0], family_id, "admin.family_restored", "family", family.id)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.put(

@@ -9,6 +9,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
     "test:root-linking": "node --experimental-strip-types scripts/verify-root-linking.mjs",
+    "test:heritage": "node --experimental-strip-types scripts/verify-heritage-readiness.mjs",
     "regression:routes": "node scripts/verify-core-routes.mjs",
     "start": "next start --hostname 0.0.0.0",
     "dev:vinext": "vite dev --port 3001",
