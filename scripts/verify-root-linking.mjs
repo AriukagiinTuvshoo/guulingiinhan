@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
 import { sharedAncestryPaths } from '../lib/shared-ancestry.ts';
+import { readWorkspacePeople } from '../lib/admin-workspace.ts';
+
+// FamilyWorkspace serializes `people`, unlike SharedTreeOut's `persons`.
+const workspacePeople = [{ id: 'father', first_name: 'Ancestor', last_name: '', birth_date: null, is_alive: false }];
+assert.deepEqual(readWorkspacePeople({ people: workspacePeople }), workspacePeople);
+assert.deepEqual(readWorkspacePeople({ people: [] }), []);
+assert.throws(() => readWorkspacePeople({ persons: workspacePeople }), /people must be an array/);
+assert.throws(() => readWorkspacePeople({ people: null }), /people must be an array/);
 
 const tree = {
   root_person_id: 'father', root_partner_person_id: 'mother',
@@ -25,3 +33,4 @@ assert.equal(sharedAncestryPaths({ ...tree, persons: [] }).size, 0);
 const cyclic = sharedAncestryPaths({ ...tree, relationships: [...tree.relationships, { parent_id: 'grandchild', child_id: 'father' }] });
 assert.equal(cyclic.size, 5);
 console.log('PASS root paths: explicit parents, spouses, grandchildren, pending account exclusion, hidden roots, cycle resilience');
+

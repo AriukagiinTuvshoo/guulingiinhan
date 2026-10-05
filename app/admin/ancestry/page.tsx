@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { ApiError, api } from '../../../lib/api';
 import { sharedAncestryPaths } from '../../../lib/shared-ancestry';
+import { readWorkspacePeople, type FamilyWorkspacePeople, type WorkspacePerson } from '../../../lib/admin-workspace';
 import styles from '../admin.module.css';
 
 type Candidate = { id: string; name: string; family_name: string; family_id: string; birth_date: string | null; is_alive: boolean; account_linked: boolean; eligible_for_admin_link: boolean };
@@ -11,7 +12,6 @@ type Tree = { root_person_id: string | null; root_partner_person_id: string | nu
 type DonationInfo = { id?: number; title: string; purpose: string; currency: string; bank_name: string; account_name: string; account_number: string; qr_image_url: string | null; is_published: boolean };
 type RootConnection = { family_id: string; family_name: string | null; status: string; person_id: string; person_name: string; target_person_id: string; target_name: string; relationship_type: string; requested_by_name: string | null; requested_at: string | null };
 type AdminFamily = { id: string; name: string };
-type WorkspacePerson = { id: string; first_name: string; last_name: string; birth_date: string | null; is_alive: boolean };
 type AncestorDraft = { first_name: string; last_name: string; gender: string; birth_date: string; birth_place: string; is_alive: boolean; death_date: string; death_place: string; short_description: string };
 const emptyDonation: DonationInfo = { title: '', purpose: '', currency: 'MNT', bank_name: '', account_name: '', account_number: '', qr_image_url: null, is_published: false };
 const emptyAncestor: AncestorDraft = { first_name: '', last_name: '', gender: 'unknown', birth_date: '', birth_place: '', is_alive: false, death_date: '', death_place: '', short_description: '' };
@@ -71,8 +71,8 @@ export default function SharedAncestryAdminPage() {
     if (!ancestorFamilyId) { setFamilyPeople([]); setFamilyPeopleReady(false); return; }
     let active = true;
     setFamilyPeopleBusy(true); setFamilyPeopleReady(false);
-    api<{ persons: WorkspacePerson[] }>(`/admin/families/${encodeURIComponent(ancestorFamilyId)}/workspace`)
-      .then((workspace) => { if (active) { setFamilyPeople(workspace.persons); setFamilyPeopleReady(true); } })
+    api<FamilyWorkspacePeople>(`/admin/families/${encodeURIComponent(ancestorFamilyId)}/workspace`)
+      .then((workspace) => { const people = readWorkspacePeople(workspace); if (active) { setFamilyPeople(people); setFamilyPeopleReady(true); } })
       .catch(() => { if (active) { setFamilyPeople([]); setFamilyPeopleReady(false); setError('Сонгосон гэр бүлийн хүмүүсийг шалгаж чадсангүй. Давхардал шалгагдтал шинэ хүн хадгалахгүй.'); } })
       .finally(() => { if (active) setFamilyPeopleBusy(false); });
     return () => { active = false; };
@@ -115,9 +115,9 @@ export default function SharedAncestryAdminPage() {
       try {
         const [options, workspace] = await Promise.all([
           api<Candidate[]>('/admin/shared-lineage/candidates'),
-          api<{ persons: WorkspacePerson[] }>(`/admin/families/${encodeURIComponent(ancestorFamilyId)}/workspace`),
+          api<FamilyWorkspacePeople>(`/admin/families/${encodeURIComponent(ancestorFamilyId)}/workspace`),
         ]);
-        setCandidates(options); setFamilyPeople(workspace.persons);
+        setCandidates(options); setFamilyPeople(readWorkspacePeople(workspace));
       } catch {
         setNotice('Хүний бүртгэл амжилттай үүслээ. Жагсаалт шинэчлэгдэхгүй бол хуудсыг дахин ачаална уу. Дахин шинэ хүн үүсгэх шаардлагагүй.');
       }
@@ -357,3 +357,4 @@ export default function SharedAncestryAdminPage() {
     </section>
   </div></main>;
 }
+
