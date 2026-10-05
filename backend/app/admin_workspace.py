@@ -606,6 +606,9 @@ def create_story(
     current: tuple[User, AdminRole] = Depends(require_super_admin), db: Session = Depends(get_db),
 ):
     _family(db, family_id)
+    from app.families import _validate_story_photos
+
+    _validate_story_photos(db, family_id, current[0], body.body, body.visibility)
     story = Story(family_id=family_id, title=body.title.strip(), body=body.body.strip(),
                   visibility=body.visibility, created_by=current[0].id)
     db.add(story)

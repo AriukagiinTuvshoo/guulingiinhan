@@ -135,6 +135,7 @@ class AdminStoryEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=180)
     body: str = Field(min_length=1, max_length=100000)
+    visibility: str | None = Field(default=None, pattern="^(private|family|public)$")
 
 
 def bootstrap_admin_roles() -> None:
@@ -435,8 +436,17 @@ def edit_story(
     story = db.get(Story, story_id)
     if story is None:
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
+    next_visibility = body.visibility or story.visibility
+    visibility_rank = {"private": 0, "family": 1, "public": 2}
+    if (visibility_rank[next_visibility] > visibility_rank[story.visibility]
+            and story.created_by != current[0].id):
+        raise HTTPException(status_code=409, detail="Бусдын түүхийн харагдах хүрээг зөвшөөрөлгүй өргөжүүлэхгүй.")
+    from app.families import _validate_story_photos
+
+    _validate_story_photos(db, story.family_id, current[0], body.body, next_visibility)
     story.title = body.title.strip()
     story.body = body.body.strip()
+    story.visibility = next_visibility
     if not story.title or not story.body:
         raise HTTPException(status_code=422, detail="Гарчиг болон түүхийн агуулга шаардлагатай.")
     db.add(AuditLog(id=uuid4(), family_id=story.family_id, actor_id=current[0].id,
