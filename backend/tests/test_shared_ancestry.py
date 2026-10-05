@@ -253,6 +253,49 @@ def _login(client, provider, email):
     return UUID(client.get("/api/v1/auth/me").json()["id"])
 
 
+def test_guided_linking_reuses_existing_family_relationships(client, database, email_provider):
+    admin_id = _login(client, email_provider, "guided-existing-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    family_id = client.post("/api/v1/families", json={"name": "Existing relationship test"}).json()["id"]
+    base = f"/api/v1/admin/families/{family_id}/people"
+    people = [client.post(base, json={"first_name": name, "is_alive": False}).json()["id"]
+              for name in ("Root", "Partner", "Child", "Spouse")]
+    root_id, partner_id, child_id, spouse_id = people
+    shared = "/api/v1/admin/shared-lineage"
+    assert client.put(shared + "/root-couple", json={
+        "root_person_id": root_id, "partner_person_id": partner_id, "family_id": family_id,
+    }).status_code == 200
+    edge_id, marriage_id = uuid4(), uuid4()
+    first, second = sorted((UUID(child_id), UUID(spouse_id)))
+    with database.begin() as db:
+        db.add(ParentChildRelationship(id=edge_id, parent_id=UUID(root_id), child_id=UUID(child_id),
+                                       relationship_type="biological", created_by=admin_id))
+        db.add(Marriage(id=marriage_id, person_1_id=first, person_2_id=second,
+                        status="widowed", created_by=admin_id))
+    child_payload = {"person_id": child_id, "related_person_id": root_id,
+                     "family_id": family_id, "connection_kind": "child"}
+    child = client.post(shared + "/connect-person", json=child_payload)
+    assert child.status_code == 201, child.text
+    assert any(edge["id"] == str(edge_id) for edge in child.json()["relationships"])
+    assert client.post(shared + "/connect-person", json=child_payload).status_code == 409
+    spouse_payload = {"person_id": spouse_id, "related_person_id": child_id,
+                      "family_id": family_id, "connection_kind": "spouse", "spouse_status": "widowed"}
+    assert client.post(shared + "/connect-person", json={
+        **spouse_payload, "spouse_status": "married",
+    }).status_code == 409
+    spouse = client.post(shared + "/connect-person", json=spouse_payload)
+    assert spouse.status_code == 201, spouse.text
+    assert any(pair["id"] == str(marriage_id) for pair in spouse.json()["spouses"])
+    assert client.post(shared + "/connect-person", json=spouse_payload).status_code == 409
+    assert client.delete(shared + f"/people/{child_id}").status_code == 200
+    assert client.post(shared + "/connect-person", json=child_payload).status_code == 201
+    with database() as db:
+        assert db.query(Person).count() == 4
+        assert db.query(ParentChildRelationship).count() == 1
+        assert db.query(Marriage).count() == 2
+
+
 @pytest.mark.parametrize("role", ["ADMIN", "MODERATOR"])
 def test_guided_root_writes_require_super_admin(client, database, email_provider, role):
     user_id = _login(client, email_provider, f"guided-{role.lower()}@example.com")

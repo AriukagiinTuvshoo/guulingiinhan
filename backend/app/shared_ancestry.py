@@ -628,6 +628,7 @@ def connect_person_to_root(
     if body.person_id == body.related_person_id:
         raise HTTPException(status_code=422, detail="Хүнийг өөртэй нь холбож болохгүй.")
     _shared_target(db, body.related_person_id)
+    already_shared = db.get(SharedAncestryPerson, body.person_id) is not None
     if body.connection_kind == "spouse":
         if body.second_parent_person_id is not None:
             raise HTTPException(status_code=422, detail="Ханьд эцэг/эхийн холбоо сонгохгүй.")
@@ -635,22 +636,27 @@ def connect_person_to_root(
             raise HTTPException(status_code=422, detail="Хос нэг идэвхтэй гэр бүлд бүртгэлтэй байх ёстой.")
         _validate_spouse_ancestry(db, body.person_id, body.related_person_id)
         first, second = canonical_pair(body.person_id, body.related_person_id)
-        existing_marriage = db.scalar(select(Marriage.id).where(
+        existing_marriage = db.scalar(select(Marriage).where(
             Marriage.person_1_id == first, Marriage.person_2_id == second,
             Marriage.deleted_at.is_(None), Marriage.status.in_(("married", "widowed")),
         ).limit(1))
-        if existing_marriage is not None:
+        if existing_marriage is not None and already_shared:
             raise HTTPException(status_code=409, detail="Энэ хоёр хүний хосын холбоо аль хэдийн бүртгэлтэй.")
+        if existing_marriage is not None and existing_marriage.status != body.spouse_status:
+            raise HTTPException(status_code=409, detail="Бүртгэлтэй хосын төлөв сонголтоос өөр байна. Гэр бүлийн бүртгэлийг шалгана уу.")
         root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
         if body.related_person_id == root_id and db.scalar(select(Marriage.id).where(
             or_(Marriage.person_1_id == root_id, Marriage.person_2_id == root_id),
             Marriage.deleted_at.is_(None), Marriage.status.in_(("married", "widowed")),
+            or_(Marriage.person_1_id != first, Marriage.person_2_id != second),
         ).limit(1)):
             raise HTTPException(status_code=409, detail="Үндсэн эхийн хос аль хэдийн бүртгэлтэй байна. Эхийн тохиргооноос шалгана уу.")
-        marriage = Marriage(person_1_id=first, person_2_id=second,
-                            status=body.spouse_status, created_by=current[0].id)
-        db.add(marriage)
-        _flush_shared_changes(db)
+        marriage = existing_marriage
+        if marriage is None:
+            marriage = Marriage(person_1_id=first, person_2_id=second,
+                                status=body.spouse_status, created_by=current[0].id)
+            db.add(marriage)
+            _flush_shared_changes(db)
         target_id = marriage.id
         action = "shared_ancestry.spouse_connected"
     else:
@@ -676,6 +682,7 @@ def connect_person_to_root(
         if len(existing_parents | set(parent_ids)) > 2:
             raise HTTPException(status_code=409, detail="Нэг хүнд хоёр хүртэлх эцэг/эх холбож болно.")
         created_edges = []
+        reused_edges = []
         for parent_id in parent_ids:
             try:
                 assert_parent_child_is_acyclic(edges, parent_id, body.person_id)
@@ -688,6 +695,7 @@ def connect_person_to_root(
             if existing_edge is not None:
                 if existing_edge.relationship_type != body.relationship_type:
                     raise HTTPException(status_code=409, detail="Бодит эцэг/эхийн холбооны төрөл өөр байна.")
+                reused_edges.append(existing_edge)
                 continue
             if (parent_id, body.person_id) in edges:
                 raise HTTPException(status_code=409, detail="Хуучин модонд энэ холбоо бий. Эхлээд шалгана уу.")
@@ -696,10 +704,10 @@ def connect_person_to_root(
                                             created_by=current[0].id)
             db.add(edge)
             created_edges.append(edge)
-        if not created_edges:
+        if not created_edges and already_shared:
             raise HTTPException(status_code=409, detail="Энэ эцэг/эх–хүүхдийн холбоо аль хэдийн бүртгэлтэй.")
         _flush_shared_changes(db)
-        target_id = created_edges[0].id
+        target_id = (created_edges or reused_edges)[0].id
         action = "shared_ancestry.person_connected"
     if db.get(SharedAncestryPerson, body.person_id) is None:
         db.add(SharedAncestryPerson(person_id=body.person_id, family_id=body.family_id,
