@@ -3,6 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
+  Bell,
   BookOpen,
   CalendarDays,
   GitFork,
@@ -26,7 +27,7 @@ import { FamilyContext } from './family-context';
 import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
-  key: 'dashboard' | 'ancestry' | 'community' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
+  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
   { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
   { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
+  { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
@@ -56,6 +58,8 @@ function isShellRoute(pathname: string) {
     pathname === '/ancestry' ||
     pathname.startsWith('/ancestry/') ||
     pathname === '/community' ||
+    pathname.startsWith('/community/') ||
+    pathname === '/news' ||
     pathname === '/stories' ||
     pathname.startsWith('/stories/') ||
     pathname === '/memories' ||
@@ -80,7 +84,8 @@ function activeKey(pathname: string): NavItem['key'] | null {
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
   if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
-  if (pathname === '/community') return 'community';
+  if (pathname === '/community' || pathname.startsWith('/community/')) return 'community';
+  if (pathname === '/news') return 'news';
   if (pathname === '/people' || pathname.startsWith('/people/')) return 'people';
   if (pathname === '/stories' || pathname.startsWith('/stories/')) return 'stories';
   if (pathname === '/memories' || pathname.startsWith('/memories/')) return 'memories';
@@ -128,7 +133,7 @@ function AnnouncementBanner({ userId }: { userId: string }) {
   if (!notice || dismissed === notice.id) return null;
   return <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
     <span aria-hidden="true">✦</span>
-    <div><strong>{notice.title}</strong><p>{notice.body}</p></div>
+    <div><strong>{notice.title}</strong><p>{notice.body}</p><Link href="/news">Бүх мэдээг харах →</Link></div>
     <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
   </aside>;
 }

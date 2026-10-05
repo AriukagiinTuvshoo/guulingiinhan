@@ -191,6 +191,12 @@ class AnnouncementOut(BaseModel):
     expires_at: datetime | None
 
 
+class AnnouncementSummary(BaseModel):
+    published: int
+    drafts: int
+    archived: int
+
+
 def _family(db: Session, family_id: UUID) -> Family:
     family = db.get(Family, family_id)
     if family is None or family.archived_at is not None:
@@ -617,6 +623,24 @@ def list_admin_announcements(
     return db.scalars(select(Announcement).order_by(Announcement.created_at.desc()).limit(50)).all()
 
 
+@router.get("/announcements/summary", response_model=AnnouncementSummary)
+def announcement_summary(
+    _: tuple[User, AdminRole] = Depends(require_admin), db: Session = Depends(get_db),
+):
+    now = datetime.now(UTC)
+    published = db.scalar(select(func.count()).select_from(Announcement).where(
+        Announcement.is_published.is_(True),
+        or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
+    )) or 0
+    drafts = db.scalar(select(func.count()).select_from(Announcement).where(
+        Announcement.is_published.is_(False),
+    )) or 0
+    archived = db.scalar(select(func.count()).select_from(Announcement).where(
+        Announcement.is_published.is_(True), Announcement.expires_at <= now,
+    )) or 0
+    return AnnouncementSummary(published=published, drafts=drafts, archived=archived)
+
+
 @router.post("/announcements", response_model=AnnouncementOut, status_code=201)
 def create_announcement(
     body: AnnouncementInput,
@@ -653,10 +677,12 @@ def edit_announcement(
 @public_router.get("", response_model=list[AnnouncementOut])
 def published_announcements(
     _: User = Depends(get_current_user), db: Session = Depends(get_db),
-    limit: int = Query(default=3, ge=1, le=10),
+    limit: int = Query(default=3, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=10000),
 ):
     now = datetime.now(UTC)
     return db.scalars(select(Announcement).where(
         Announcement.is_published.is_(True),
         or_(Announcement.expires_at.is_(None), Announcement.expires_at > now),
-    ).order_by(Announcement.created_at.desc()).limit(limit)).all()
+    ).order_by(Announcement.created_at.desc(), Announcement.id.desc())
+        .offset(offset).limit(limit)).all()

@@ -136,11 +136,6 @@ function MemoriesPageContent() {
     void loadMemories(familyId, 1);
   }, [familyId, loadMemories]);
 
-  useEffect(() => {
-    if (!familyId) return;
-    void loadMemories(familyId, 1);
-  }, [familyId, loadMemories]);
-
   useEffect(() => () => {
     familyAbortRef.current?.abort();
     memoryAbortRef.current?.abort();

@@ -18,6 +18,7 @@ from app.models import (
     Family,
     FamilyMember,
     FamilyPerson,
+    Marriage,
     ParentChildRelationship,
     Person,
     RootConnection,
@@ -29,7 +30,7 @@ from app.models import (
     UserPersonLink,
 )
 from app.privacy import person_is_minor
-from app.relationships import RelationshipError, assert_parent_child_is_acyclic
+from app.relationships import RelationshipError, assert_parent_child_is_acyclic, canonical_pair
 
 router = APIRouter(prefix="/shared-lineage", tags=["shared lineage"])
 admin_router = APIRouter(prefix="/admin/shared-lineage", tags=["admin shared lineage"])
@@ -57,11 +58,20 @@ class SharedEdgeOut(BaseModel):
     source: str = "canonical"
 
 
+class SharedSpouseOut(BaseModel):
+    id: UUID
+    person_1_id: UUID
+    person_2_id: UUID
+    status: str
+
+
 class SharedTreeOut(BaseModel):
     name: str
     root_person_id: UUID | None
     persons: list[SharedPersonOut]
     relationships: list[SharedEdgeOut]
+    spouses: list[SharedSpouseOut] = Field(default_factory=list)
+    root_partner_person_id: UUID | None = None
     my_person_id: UUID | None
 
 
@@ -119,6 +129,12 @@ class CandidateOut(BaseModel):
 class RootInput(BaseModel):
     person_id: UUID
     expected_root_person_id: UUID | None = None
+
+
+class RootPartnerInput(BaseModel):
+    person_id: UUID
+    expected_root_person_id: UUID
+    status: str = Field(default="married", pattern="^(married|widowed)$")
 
 
 class AdminSharedRelationshipInput(BaseModel):
@@ -231,6 +247,10 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
                     for person in people]
     rows = [row for row in rows if not person_is_minor(row[0]) and row[0].visibility != "private"]
     visible_ids = {row[0].id for row in rows}
+    marriages = db.scalars(select(Marriage).where(
+        Marriage.person_1_id.in_(visible_ids), Marriage.person_2_id.in_(visible_ids),
+        Marriage.deleted_at.is_(None), Marriage.status.in_(("married", "widowed")),
+    ).order_by(Marriage.created_at, Marriage.id)).all() if visible_ids else []
     canonical_edges = db.scalars(select(ParentChildRelationship).where(
         ParentChildRelationship.parent_id.in_(visible_ids),
         ParentChildRelationship.child_id.in_(visible_ids),
@@ -243,6 +263,16 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
     connections = {row.family_id: row for row in db.scalars(
         select(RootConnection).where(RootConnection.family_id.in_(set(family_by_person.values())))
     ).all()} if family_by_person else {}
+    memberships: dict[UUID, set[UUID]] = {}
+    for person_id, family_id in db.execute(select(
+        FamilyPerson.person_id, FamilyPerson.family_id,
+    ).join(Family, Family.id == FamilyPerson.family_id).where(
+        FamilyPerson.person_id.in_(visible_ids), Family.archived_at.is_(None),
+    )).all() if visible_ids else []:
+        memberships.setdefault(person_id, set()).add(family_id)
+    marriages = [marriage for marriage in marriages
+                 if memberships.get(marriage.person_1_id, set())
+                 & memberships.get(marriage.person_2_id, set())]
 
     def projection_allows(edge) -> bool:
         child_family = family_by_person.get(edge.child_id)
@@ -258,6 +288,11 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
     edges = [*canonical_edges, *(edge for edge in legacy_edges
                                 if (edge.parent_id, edge.child_id) not in canonical_pairs)]
     linked = _my_linked_person(db, user)
+    root_id = ancestry.root_person_id if ancestry else None
+    root_partners = {
+        marriage.person_2_id if marriage.person_1_id == root_id else marriage.person_1_id
+        for marriage in marriages if root_id in (marriage.person_1_id, marriage.person_2_id)
+    }
     return SharedTreeOut(
         name="Гуулингийнхан",
         root_person_id=ancestry.root_person_id if ancestry else None,
@@ -268,6 +303,10 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
             relationship_type=edge.relationship_type,
             source="canonical" if (edge.parent_id, edge.child_id) in canonical_pairs else "legacy_projection",
         ) for edge in edges],
+        spouses=[SharedSpouseOut(id=marriage.id, person_1_id=marriage.person_1_id,
+                                person_2_id=marriage.person_2_id, status=marriage.status)
+                 for marriage in marriages],
+        root_partner_person_id=next(iter(root_partners)) if len(root_partners) == 1 else None,
         my_person_id=linked.id if linked else None,
     )
 
@@ -487,8 +526,22 @@ def _shared_target(db: Session, person_id: UUID) -> Person:
                 and (connection.status != "approved" or connection.target_person_id != parent_id)):
             continue
         children.setdefault(parent_id, set()).add(child_id)
-    seen = {root_id}
-    frontier = [root_id]
+    partner_ids = {marriage.person_2_id if marriage.person_1_id == root_id else marriage.person_1_id
+                   for marriage in db.scalars(select(Marriage).where(
+                       or_(Marriage.person_1_id == root_id, Marriage.person_2_id == root_id),
+                       Marriage.deleted_at.is_(None), Marriage.status.in_(("married", "widowed")),
+                   )).all()
+                   if marriage.person_1_id in visible and marriage.person_2_id in visible}
+    root_families = select(FamilyPerson.family_id).where(FamilyPerson.person_id == root_id)
+    partner_ids = {partner_id for partner_id in partner_ids if db.scalar(
+        select(FamilyPerson.family_id).join(Family, Family.id == FamilyPerson.family_id)
+        .where(FamilyPerson.person_id == partner_id,
+               FamilyPerson.family_id.in_(root_families),
+               Family.archived_at.is_(None)).limit(1)
+    ) is not None}
+    roots = {root_id, *partner_ids} if len(partner_ids) == 1 else {root_id}
+    seen = set(roots)
+    frontier = list(roots)
     while frontier:
         current = frontier.pop()
         for child_id in children.get(current, ()):
@@ -769,6 +822,59 @@ def set_shared_root(body: RootInput, current: tuple[User, AdminRole] = Depends(r
         db.add(AuditLog(actor_id=current[0].id, family_id=None,
                         action="shared_ancestry.root_set", target_type="person", target_id=person.id))
     db.commit()
+    return read_shared_tree(current[0], db)
+
+
+@admin_router.post("/root-partner", response_model=SharedTreeOut, status_code=201)
+def connect_root_partner(
+    body: RootPartnerInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Record an explicitly selected canonical spouse; do not invent a second graph."""
+    ancestry = db.scalar(select(SharedAncestry).where(SharedAncestry.id == 1).with_for_update())
+    if ancestry is None or ancestry.root_person_id != body.expected_root_person_id:
+        raise HTTPException(status_code=409, detail="Үндсэн удмын эх өөрчлөгдсөн байна. Хуудсыг шинэчлэнэ үү.")
+    root_id = ancestry.root_person_id
+    if root_id == body.person_id:
+        raise HTTPException(status_code=422, detail="Хүнийг өөртэй нь гэрлүүлэх боломжгүй.")
+    partner = db.get(Person, body.person_id)
+    if (partner is None or partner.visibility == "private" or person_is_minor(partner)
+            or db.get(SharedAncestryPerson, partner.id) is None):
+        raise HTTPException(status_code=422, detail="Хосыг эхлээд зөвшөөрөгдсөн бодит хүнээр нийтлэг модонд оруулна уу.")
+    root_families = select(FamilyPerson.family_id).where(FamilyPerson.person_id == root_id)
+    shared_family = db.scalar(select(FamilyPerson.family_id).join(
+        Family, Family.id == FamilyPerson.family_id,
+    ).where(FamilyPerson.person_id == partner.id,
+            FamilyPerson.family_id.in_(root_families),
+            Family.archived_at.is_(None)).limit(1))
+    if shared_family is None:
+        raise HTTPException(status_code=422, detail="Үндсэн эх ба хос нь нэг идэвхтэй гэр бүлийн бодит бүртгэлд байх ёстой.")
+    first, second = canonical_pair(root_id, partner.id)
+    existing = db.scalars(select(Marriage).where(
+        Marriage.person_1_id == first, Marriage.person_2_id == second,
+        Marriage.deleted_at.is_(None), Marriage.status.in_(("married", "widowed")),
+    )).first()
+    if existing:
+        return read_shared_tree(current[0], db)
+    other = db.scalars(select(Marriage).where(
+        or_(Marriage.person_1_id == root_id, Marriage.person_2_id == root_id),
+        Marriage.deleted_at.is_(None), Marriage.status.in_(("married", "widowed")),
+    )).first()
+    if other:
+        raise HTTPException(status_code=409, detail="Үндсэн эхийн өөр хос бүртгэлтэй байна. Гэр бүлийн бодит гэрлэлтийн бүртгэлийг эхлээд шалгана уу.")
+    marriage = Marriage(person_1_id=first, person_2_id=second,
+                        status=body.status, created_by=current[0].id)
+    db.add(marriage)
+    db.flush()
+    db.add(AuditLog(actor_id=current[0].id, family_id=shared_family,
+                    action="shared_ancestry.root_partner_connected",
+                    target_type="marriage", target_id=marriage.id))
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Энэ хоёр хүний гэрлэлтийн холбоо аль хэдийн бүртгэгдсэн байна.") from error
     return read_shared_tree(current[0], db)
 
 

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, PersonSearchPage, Story } from '../lib/api';
+import { ApiError, api, MemoryListItem, PersonSearchPage, Story } from '../lib/api';
 import { useAppShellContext } from './app-shell';
+import ProfilePhoto from './profile-photo';
 import { useParams } from 'next/navigation';
 
 type Props = {
@@ -50,6 +51,11 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [initialSnapshot, setInitialSnapshot] = useState('');
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [photoAlbums, setPhotoAlbums] = useState<MemoryListItem[]>([]);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const routeParams = useParams<{ id?: string }>();
   const loadRequestRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
@@ -188,6 +194,46 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     );
   }
 
+  function insertText(before: string, after = '', placeholder = 'текст') {
+    const field = textareaRef.current;
+    const start = field?.selectionStart ?? body.length;
+    const end = field?.selectionEnd ?? start;
+    const selected = body.slice(start, end) || placeholder;
+    const next = body.slice(0, start) + before + selected + after + body.slice(end);
+    setBody(next);
+    window.requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  }
+
+  async function openPhotoPicker() {
+    if (showPhotoPicker) { setShowPhotoPicker(false); return; }
+    setShowPhotoPicker(true);
+    if (!familyId || photoAlbums.length) return;
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const result = await api<{ items: MemoryListItem[] }>(`/families/${familyId}/memories?page=1&page_size=50`);
+      setPhotoAlbums(result.items.filter((memory) => memory.photos?.length));
+    } catch {
+      setPhotoError('Гэр бүлийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
+
+  function insertPhoto(id: string, caption: string) {
+    const cleanCaption = caption.replace(/[\]\n|]/g, ' ').slice(0, 180) || 'Гэр бүлийн зураг';
+    const field = textareaRef.current;
+    const start = field?.selectionStart ?? body.length;
+    const end = field?.selectionEnd ?? start;
+    const token = `\n\n[[photo:${id}|${cleanCaption}]]\n\n`;
+    setBody(body.slice(0, start) + token + body.slice(end));
+    window.requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(start + token.length, start + token.length); });
+    setShowPhotoPicker(false);
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanTitle = title.trim();
@@ -300,11 +346,25 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
             </label>
           </div>
 
-          <label>
-            Түүх *
-            <textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
+          <div className="story-writing-field">
+            <label htmlFor="story-body">Түүх *</label>
+            <div className="story-writing-toolbar" role="toolbar" aria-label="Түүхийн бичвэр форматлах">
+              <button type="button" onClick={() => insertText('\n## ', '', 'Дэд гарчиг')}>Гарчиг</button>
+              <button type="button" onClick={() => insertText('**', '**', 'тод текст')} aria-label="Тод бичвэр"><strong>Б</strong></button>
+              <button type="button" onClick={() => insertText('*', '*', 'налуу текст')} aria-label="Налуу бичвэр"><em>Н</em></button>
+              <button type="button" onClick={() => insertText('\n- ', '', 'Жагсаалтын зүйл')}>Жагсаалт</button>
+              <button type="button" onClick={() => insertText('\n> ', '', 'Ишлэл')}>Ишлэл</button>
+              <button type="button" onClick={() => insertText('[', '](https://example.com)', 'холбоосын нэр')}>Холбоос</button>
+              <button type="button" onClick={() => insertText('\n\n---\n\n', '', '')}>Зааг</button>
+              <button type="button" onClick={() => void openPhotoPicker()} aria-expanded={showPhotoPicker}>📷 Зураг</button>
+            </div>
+            <textarea id="story-body" ref={textareaRef} value={body} onChange={(event) => setBody(event.target.value)} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
             <span className="story-field-hint">{body.length.toLocaleString()} / 100,000</span>
-          </label>
+            {showPhotoPicker && <section className="story-photo-picker" aria-label="Дурсамжаас зураг сонгох">
+              <p>Дурсамжид оруулсан зургаа сонгоно. Нийтийн түүхэнд зөвхөн нийтэд зөвшөөрсөн, насанд хүрсэн хүний зураг ашиглана.</p>
+              {photoLoading ? <p role="status">Зураг ачаалж байна…</p> : photoError ? <p role="alert">{photoError}</p> : photoAlbums.length ? <div className="story-photo-options">{photoAlbums.flatMap((memory) => (memory.photos || []).map((photo) => <button type="button" key={photo.id} onClick={() => insertPhoto(photo.id, photo.title || memory.title)}><ProfilePhoto url={photo.thumbnail_url} name={photo.title || memory.title} fallback="Зураг" className="story-photo-option-image" /><span>{photo.title || memory.title}</span></button>))}</div> : <p>Сонгох зураг алга. Эхлээд <Link href={`/memories?family=${encodeURIComponent(familyId)}`}>Дурсамж</Link> хэсэгт зураг нэмнэ үү.</p>}
+            </section>}
+          </div>
 
           <fieldset className="story-people-fieldset">
             <legend>Холбоотой хүмүүс</legend>

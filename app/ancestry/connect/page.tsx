@@ -10,6 +10,7 @@ type Person = { id: string; first_name: string; last_name: string };
 type SharedPerson = Person & { birth_date: string | null };
 type SharedTree = {
   root_person_id: string | null;
+  root_partner_person_id: string | null;
   my_person_id: string | null;
   persons: SharedPerson[];
   relationships: { parent_id: string; child_id: string }[];
@@ -95,8 +96,9 @@ function RootConnectionContent() {
     if (!tree?.root_person_id) return [];
     const childIds = new Map<string, string[]>();
     for (const edge of tree.relationships) childIds.set(edge.parent_id, [...(childIds.get(edge.parent_id) || []), edge.child_id]);
-    const reachable = new Set<string>([tree.root_person_id]);
-    const stack = [tree.root_person_id];
+    const roots = [tree.root_person_id, tree.root_partner_person_id].filter((id): id is string => Boolean(id));
+    const reachable = new Set<string>(roots);
+    const stack = [...roots];
     while (stack.length) for (const child of childIds.get(stack.pop()!) || []) {
       if (!reachable.has(child)) { reachable.add(child); stack.push(child); }
     }
