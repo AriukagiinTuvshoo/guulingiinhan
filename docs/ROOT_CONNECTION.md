@@ -33,3 +33,44 @@ and request → super admin review → connected view. A rejected or disconnecte
 request can be resubmitted. Root and Family pages both link back to the local
 tree. No automatic Family connection occurs after creating a Person or local
 relationship.
+
+## Guided ancestor administration (P10.8)
+
+`/admin/ancestry` offers manual Person entry without an account, a root-couple
+confirmation, four named first-branch guides, and one Person → relationship →
+preview workflow. The names supplied by the owner are registration guidance;
+they never select records or create relationships automatically. The family
+workspace remains the canonical source of Person data.
+
+Super Admin writes:
+
+- `PUT /admin/shared-lineage/root-couple` explicitly establishes two existing,
+  eligible People and their canonical Marriage atomically. Both must belong to
+  the selected active Family. A stale expected root is rejected; prior People
+  and relationships are preserved when the root changes.
+- `POST /admin/shared-lineage/connect-person` publishes an eligible non-account
+  Person and their explicit child or spouse relationship in one transaction.
+  The selected parent/spouse must be reachable through approved root links.
+  A second parent is optional and must have a registered spouse relationship
+  to the first parent. Existing compatible parent edges can be reused; duplicate
+  submissions and conflicting relationship types are rejected.
+- `DELETE /admin/shared-lineage/people/{person_id}` removes shared visibility
+  and legacy projection links only. Person, Family, canonical parent-child and
+  Marriage records, UserPersonLink, stories, memories and archives remain.
+  Root ancestors are protected. Any corresponding account connection is marked
+  disconnected and requires a new explicit request to reconnect.
+
+Private/minor People are excluded. Living People require the existing public
+visibility policy; account-linked People require their own consented request.
+Only Super Admin can make these writes. ADMIN, MODERATOR and family roles are
+rejected. Cycles, ancestor/spouse conflicts, duplicate marriages, self links
+and more than two parents are checked by the backend. Shared dates remain
+year-only. No schema migration, account creation or name-based relationship
+inference is introduced.
+
+The common frontend path helper derives branch context from visible canonical
+parent-child and spouse links. An unconnected or pending account Person has no
+root path merely because its account link exists. `npm run test:root-linking`
+checks these path rules; backend regression tests exercise the named root
+couple, four children, a grandchild, spouse links, privacy, permissions and
+safe detachment in an isolated database.
