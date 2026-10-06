@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { useDialogFocus } from '../../components/use-dialog-focus';
 import {
   FormEvent,
   Suspense,
@@ -241,17 +242,6 @@ function TreePageContent() {
   const [searchPageNumber, setSearchPageNumber] = useState(1);
   const [relation, setRelation] = useState<RelationKind | null>(null);
 
-  useEffect(() => {
-    if (!relation) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setRelation(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [relation]);
   const [relationError, setRelationError] = useState('');
   const [relationMode, setRelationMode] = useState<'existing' | 'new'>('existing');
   const [relationPersonQuery, setRelationPersonQuery] = useState('');
@@ -262,6 +252,10 @@ function TreePageContent() {
   const [editingPersonIsAlive, setEditingPersonIsAlive] = useState(true);
   const [editPersonError, setEditPersonError] = useState('');
   const [editPersonBusy, setEditPersonBusy] = useState(false);
+  useDialogFocus(Boolean(relation || editingPerson || confirmRoot || linkToApprove), '.tree-modal[role="dialog"]', () => {
+    if (linkBusy || editPersonBusy) return;
+    setRelation(null); setEditingPerson(null); setConfirmRoot(false); setLinkToApprove(null);
+  });
 
   const loadSequence = useRef(0);
   const loadAbort = useRef<AbortController | null>(null);

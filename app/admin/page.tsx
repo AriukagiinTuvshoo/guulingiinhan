@@ -8,6 +8,7 @@ import styles from './admin.module.css';
 import AdminFamilyStudio from '../../components/admin-family-studio';
 import AdminAnnouncements from '../../components/admin-announcements';
 import { ArchivedFamilies } from '../../components/admin-family-archive';
+import { useDialogFocus } from '../../components/use-dialog-focus';
 
 type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MODERATOR';
 type Identity = { user_id: string; email: string | null; display_name: string; role: Role };
@@ -92,14 +93,9 @@ export default function AdminPage() {
     return () => { active = false; };
   }, [identity, section, offset, familyRevision]);
 
-  useEffect(() => {
-    if (!confirmation) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !working) setConfirmation(null);
-    };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [confirmation, working]);
+  useDialogFocus(Boolean(confirmation), '[aria-labelledby="admin-confirm-title"]', () => {
+    if (!working) setConfirmation(null);
+  });
 
   function show(sectionName: Section) {
     setSection(sectionName); setOffset(0); setError(''); setNotice(''); setConfirmation(null);

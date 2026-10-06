@@ -1,6 +1,6 @@
 .card { margin: 24px 0; padding: clamp(22px, 3vw, 34px); border: 1px solid #cdbb94; border-radius: 18px; background: #fbf7ed; color: #153a30; box-shadow: 0 12px 32px rgb(32 46 37 / 6%); }
 .heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; }
-.eyebrow { color: #96702e; font-size: .72rem; font-weight: 800; letter-spacing: .16em; }
+.eyebrow { color: #795b20; font-size: .72rem; font-weight: 800; letter-spacing: .16em; }
 .heading h2 { margin: 8px 0 18px; font: normal clamp(1.45rem, 2.5vw, 2rem)/1.17 Georgia, serif; }
 .status { flex: none; border: 1px solid #c7b88c; border-radius: 999px; padding: 8px 13px; background: #f3ecd9; font-size: .78rem; }
 .status[data-state="approved"] { border-color: #94b19f; background: #e5efe5; }
@@ -9,7 +9,7 @@
 .path { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; padding: 0; list-style: none; }
 .path li { display: grid; gap: 5px; padding: 16px; border: 1px solid #dfd4be; border-radius: 12px; background: #fffdf8; }
 .path li.active { border-color: #b39455; background: #f2ead7; }
-.path span { color: #96702e; font-size: .67rem; font-weight: 800; letter-spacing: .1em; }
+.path span { color: #795b20; font-size: .67rem; font-weight: 800; letter-spacing: .1em; }
 .path strong { font: normal 1.15rem Georgia, serif; }
 .path small { color: #5a6b60; line-height: 1.35; }
 .card p { line-height: 1.6; }

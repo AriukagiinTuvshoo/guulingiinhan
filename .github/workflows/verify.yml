@@ -34,6 +34,8 @@ jobs:
         run: npm run test:root-linking
       - name: Family scope and memory creation regression
         run: npm run test:heritage
+      - name: Encrypted private media recovery regression
+        run: node --test ops/private-media-backup.test.mjs
       - name: Cloudflare Worker build
         run: npm run build:vinext
 
@@ -72,7 +74,7 @@ jobs:
         run: uv run pytest
         working-directory: backend
       - name: Run Ruff
-        run: uv run ruff check app tests migrations
+        run: uv run ruff check app tests migrations ops
         working-directory: backend
       - name: Alembic upgrade
         run: uv run alembic upgrade head

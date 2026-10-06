@@ -190,15 +190,15 @@ export default function LoginPage() {
           </div>
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
-          {error && <div className="authv2-message authv2-message--error" role="alert">{error}</div>}
+          {error && <div id="login-error" className="authv2-message authv2-message--error" role="alert">{error}</div>}
 
           {mode === 'email' ? (
             <form className="authv2-form" onSubmit={submitEmail}>
               <label htmlFor="login-email">Имэйл</label>
-              <input id="login-email" name="email" type="email" autoComplete="email" required maxLength={320} />
+              <input id="login-email" name="email" type="email" autoComplete="email" required maxLength={320} aria-invalid={Boolean(error)} aria-describedby={error ? 'login-error' : undefined} />
               <label htmlFor="login-password">Нууц үг</label>
               <div className="authv2-password">
-                <input id="login-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={128} />
+                <input id="login-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required maxLength={128} aria-invalid={Boolean(error)} aria-describedby={error ? 'login-error' : undefined} />
                 <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>
                   {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>

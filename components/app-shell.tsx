@@ -25,6 +25,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
 import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
 import { FamilyContext } from './family-context';
+import { useDialogFocus } from './use-dialog-focus';
 import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
@@ -272,27 +273,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setAccountOpen(false);
   }, [pathname]);
 
-  useEffect(() => {
-    if (!mobileOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setMobileOpen(false);
-        window.setTimeout(() => menuButtonRef.current?.focus(), 0);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
-
-    window.setTimeout(() => firstNavRef.current?.focus(), 0);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-    };
-  }, [mobileOpen]);
+  useDialogFocus(mobileOpen, '#app-shell-navigation', () => setMobileOpen(false));
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -504,8 +485,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           id="app-shell-navigation"
           className={'app-shell__sidebar ' + (mobileOpen ? 'is-open' : '')}
           aria-label="Authenticated application navigation"
+          role={mobileOpen ? 'dialog' : undefined}
+          aria-modal={mobileOpen ? true : undefined}
         >
           <div className="app-shell__sidebar-inner">
+            {mobileOpen && <button className="app-shell__drawer-close" type="button" onClick={() => setMobileOpen(false)} aria-label="Цэсийг хаах"><X size={20} aria-hidden="true" /></button>}
             <nav aria-label="Үндсэн навигаци">
               {NAV_ITEMS.map((item, index) => {
                 const Icon = item.icon;

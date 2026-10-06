@@ -65,12 +65,12 @@ export default function PasswordResetPage() {
           <p>Баталгаажсан имэйлд хугацаатай, нэг удаагийн холбоос илгээнэ.</p>
         </div>
         {notice && <div className="auth-message success" role="status">{notice}</div>}
-        {error && <div className="auth-message error" role="alert">{error}</div>}
+        {error && <div id="reset-error" className="auth-message error" role="alert">{error}</div>}
         {!token && !complete && emailEnabled === false && <div className="authv2-unavailable" role="status"><strong>Имэйлээр сэргээх түр хаалттай</strong><p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна.</p></div>}
         {!token && !complete && emailEnabled === null && <p className="authv2-availability" role="status">Үйлчилгээний төлөвийг шалгаж байна…</p>}
         {!token && !complete && emailEnabled === true && <form className="auth-form" onSubmit={request}>
           <label htmlFor="reset-email">Имэйл</label>
-          <input id="reset-email" name="email" type="email" autoComplete="email" maxLength={320} required />
+          <input id="reset-email" name="email" type="email" autoComplete="email" maxLength={320} required aria-invalid={Boolean(error)} aria-describedby={error ? 'reset-error' : undefined} />
           <button className="auth-primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Холбоос илгээх'}</button>
           <span className="auth-help">Бүртгэлтэй эсэхийг харуулахгүй.</span>
         </form>}

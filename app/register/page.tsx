@@ -221,7 +221,7 @@ export default function RegisterPage() {
           </div>
 
           {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
-          {error && <div className="authv2-message authv2-message--error" role="alert">{error}</div>}
+          {error && <div id="register-error" className="authv2-message authv2-message--error" role="alert">{error}</div>}
 
           {emailEnabled === null ? (
             <p className="authv2-availability" role="status">Бүртгэлийн боломжийг шалгаж байна…</p>
@@ -238,7 +238,7 @@ export default function RegisterPage() {
               <Link className="authv2-submit authv2-link-button" href={`/email-verification?email=${encodeURIComponent(registeredEmail)}`}>Имэйлээ шалгах <ArrowRight size={16} /></Link>
             </div>
           ) : mode === 'email' ? (
-            <form className="authv2-form" onSubmit={submitEmail}>
+            <form className="authv2-form" onSubmit={submitEmail} aria-describedby={error ? 'register-error' : undefined}>
               <label htmlFor="register-surname">Овог</label>
               <input id="register-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required />
               <label htmlFor="register-given-name">Нэр</label>

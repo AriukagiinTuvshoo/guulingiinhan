@@ -1972,4 +1972,52 @@
   .heritage-tree-overview { min-height: 340px; padding: 18px 14px; }
 }
 
+/* Contrast corrections verified on the rendered heritage surfaces. */
+body .authv2-heading .public-home__eyebrow,
+body .people-page .eyebrow,
+body .memories-eyebrow,
+body .settings-eyebrow,
+body .tree-selected-heading .tree-eyebrow { color: #795b20; }
+body .authv2-heading p:last-child,
+body .authv2-help,
+body .authv2-switch,
+body .heritage-story small,
+body .people-lede,
+body .people-card-identity > span,
+body .people-pagination > span,
+body .story-breadcrumb > span,
+body .story-editor-hero > p:not(.eyebrow),
+body .story-field-hint,
+body .memories-breadcrumb > span,
+body .memories-hero > div > p:not(.memories-eyebrow),
+body .memories-family-picker > span,
+body .memory-composer-heading > span,
+body .memory-composer small,
+body .tree-stats > span,
+body .tree-controls label > span,
+body .tree-zoom > span,
+body .tree-search > span,
+body .tree-selected-heading > div > span,
+body .tree-selected-context > div > span,
+body .tree-selected-relations > section > span,
+body .settings-intro,
+body .settings-anchor-nav a,
+body .settings-index a,
+body .settings-page nav a,
+body .settings-page .settings-section__head p:not(.settings-eyebrow),
+body .settings-account-grid dt,
+body .settings-page dl dt,
+body .settings-note,
+body .settings-mini-card small,
+body .settings-help,
+body .settings-lineage-links p,
+body .settings-action-title > div > span,
+body .settings-action-copy > p,
+body .settings-limitation-card p,
+body .settings-logout-card p { color: #526057; }
+body .settings-mono { color: #526057 !important; }
+body .settings-status--pending { color: #795b20; }
+body .heritage-actions .heritage-section-heading h2 { color: #fff7e2; }
+.app-shell__drawer-close { display: flex; margin: 0 0 12px auto; padding: 8px; border: 1px solid #d5b86b; border-radius: 8px; background: #153c2e; color: #fff7e2; }
+
 
