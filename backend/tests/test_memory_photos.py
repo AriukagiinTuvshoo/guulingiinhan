@@ -82,7 +82,10 @@ def test_memory_photo_upload_list_content_and_delete(client):
     )
     assert uploaded.status_code == 201, uploaded.text
     photo = uploaded.json()
-    assert set(photo) == {"id", "title", "created_at", "thumbnail_url", "content_url", "person_ids"}
+    assert set(photo) == {
+        "id", "title", "description", "photo_date", "created_at", "thumbnail_url",
+        "content_url", "person_ids", "person_names",
+    }
     assert "storage_key" not in photo and "original_filename" not in photo
     assert len(storage.objects) == 2
 
@@ -90,6 +93,26 @@ def test_memory_photo_upload_list_content_and_delete(client):
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
     assert len(listing.json()["items"][0]["photos"]) == 1
+    detail = client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["photos_total"] == 1
+    assert detail.json()["photos"][0]["id"] == photo["id"]
+    assert detail.json()["can_edit"] is True
+    page = client.get(
+        f"/api/v1/families/{family_id}/memories/{memory['id']}/photos?page=1&page_size=1"
+    )
+    assert page.status_code == 200
+    assert page.json()["items"][0]["id"] == photo["id"]
+    assert page.json()["total"] == 1 and page.json()["has_next"] is False
+    edited = client.patch(
+        f"/api/v1/families/{family_id}/photos/{photo['id']}",
+        json={"title": "Наадмын зураг", "description": "Гэр бүлийн тэмдэглэл", "photo_date": "2024-07-11"},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["title"] == "Наадмын зураг"
+    assert edited.json()["photo_date"] == "2024-07-11"
+    detail = client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}").json()
+    assert detail["photos"][0]["description"] == "Гэр бүлийн тэмдэглэл"
     content = client.get(f"/api/v1/families/{family_id}/photos/{photo['id']}/content?variant=thumbnail")
     assert content.status_code == 200
     assert content.headers["cache-control"] == "private, no-store"
@@ -99,6 +122,46 @@ def test_memory_photo_upload_list_content_and_delete(client):
     assert removed.status_code == 204
     assert storage.objects == {}
     assert client.delete(f"/api/v1/families/{family_id}/photos/{photo['id']}").status_code == 404
+
+
+def test_memory_photo_page_returns_all_items_across_pages(client):
+    storage = MemoryStorage()
+    from app.main import app
+
+    app.dependency_overrides[get_storage] = lambda: storage
+    register_verified(client, "photo-page@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Зургийн хуудас"}).json()["id"]
+    memory = client.post(f"/api/v1/families/{family_id}/memories", json={
+        "title": "Гурван зураг", "visibility": "family", "person_ids": [],
+    }).json()
+    endpoint = f"/api/v1/families/{family_id}/memories/{memory['id']}/photos"
+    uploaded_ids = []
+    for index in range(3):
+        response = client.post(endpoint, content=png_bytes(), headers={
+            "Content-Type": "image/png", "X-File-Name": f"family-{index}.png",
+        })
+        assert response.status_code == 201, response.text
+        uploaded_ids.append(response.json()["id"])
+
+    first = client.get(f"{endpoint}?page=1&page_size=2").json()
+    second = client.get(f"{endpoint}?page=2&page_size=2").json()
+    assert first["total"] == 3 and first["has_next"] is True
+    assert len(first["items"]) == 2
+    assert second["total"] == 3 and second["has_next"] is False
+    assert len(second["items"]) == 1
+    assert len({item["id"] for item in first["items"] + second["items"]}) == 3
+    assert {item["id"] for item in first["items"] + second["items"]} == set(uploaded_ids)
+    detail = client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}").json()
+    assert detail["photos_total"] == 3 and len(detail["photos"]) == 3
+
+
+def test_memory_list_openapi_has_one_paginated_contract():
+    from app.main import app
+
+    app.openapi_schema = None
+    operation = app.openapi()["paths"]["/api/v1/families/{family_id}/memories"]["get"]
+    parameter_names = {item["name"] for item in operation["parameters"]}
+    assert {"page", "page_size", "q", "year", "memory_date", "person_id", "branch_id"} <= parameter_names
 
 
 def test_photo_upload_rejects_invalid_image_and_nonmember(client):
@@ -198,7 +261,7 @@ def test_delete_storage_failure_leaves_hidden_retryable_photo(client, database):
     with database() as db:
         row = db.get(Photo, UUID(photo["id"]))
         assert row is not None and row.cleanup_attempts == 1
-    assert client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}/photos").json() == []
+    assert client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}/photos").json()["items"] == []
     storage.fail_delete = False
     assert client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10").status_code == 200
     assert storage.objects == {}

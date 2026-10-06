@@ -29,7 +29,10 @@ from app.privacy import is_minor
 from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/community", tags=["community"])
-_STORY_PHOTO_TOKEN = re.compile(r"\[\[photo:([0-9a-fA-F-]{36})(?:\|[^\]\n]{0,180})?\]\]")
+_STORY_PHOTO_TOKEN = re.compile(
+    r"\[\[photo:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\|[^\]\n]{0,180})?\]\]"
+)
 
 
 class PublicPost(BaseModel):

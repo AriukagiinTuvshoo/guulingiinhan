@@ -112,6 +112,32 @@ def test_public_memory_thumbnail_requires_public_adult_photo_tags(client, email_
         "title": "Bad reference", "body": "[[photo:00000000-0000-0000-0000-000000000001]]",
         "visibility": "public",
     }).status_code == 422
+    assert client.post(f"/api/v1/families/{family_id}/stories", json={
+        "title": "Malformed photo token", "body": "[[photo:------------------------------------]]",
+        "visibility": "family",
+    }).status_code == 422
+
+    family_only_memory = client.post(f"/api/v1/families/{family_id}/memories", json={
+        "title": "Гэр бүлийн хүрээний зураг", "visibility": "family", "person_ids": [person["id"]],
+    }).json()
+    family_only_photo = client.post(
+        f"/api/v1/families/{family_id}/memories/{family_only_memory['id']}/photos",
+        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family-only.png"},
+    ).json()
+    private_photo_story = client.post(f"/api/v1/families/{family_id}/stories", json={
+        "title": "Private photo reference",
+        "body": f"[[photo:{family_only_photo['id']}|Private family photo]]",
+        "visibility": "public",
+    })
+    assert private_photo_story.status_code == 422
+
+    other_family = client.post("/api/v1/families", json={"name": "Other family"}).json()
+    cross_family_photo_story = client.post(f"/api/v1/families/{other_family['id']}/stories", json={
+        "title": "Cross-family photo reference",
+        "body": f"[[photo:{photo_id}|Foreign photo]]",
+        "visibility": "family",
+    })
+    assert cross_family_photo_story.status_code == 422
     assert register_verified(client, "public-photo-viewer@example.com", PASSWORD, email_provider).status_code == 201
     item = next(item for item in client.get("/api/v1/community/feed").json()["items"] if item["kind"] == "memory")
     assert item["thumbnail_url"] == f"/community/photos/{photo_id}/thumbnail"

@@ -184,6 +184,26 @@ export type ArchiveInput = {
   person_ids: string[];
 };
 
+export type MemoryPhoto = {
+  id: string;
+  title: string | null;
+  description?: string | null;
+  photo_date?: string | null;
+  created_at?: string;
+  thumbnail_url: string;
+  content_url: string;
+  person_ids?: string[];
+  person_names?: string[];
+};
+
+export type MemoryPhotoPage = {
+  items: MemoryPhoto[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
 export type MemoryListItem = {
   id: string;
   title: string;
@@ -197,12 +217,11 @@ export type MemoryListItem = {
   comment_count?: number;
   author_name?: string;
   created_at: string;
-  photos?: {
-    id: string;
-    title: string | null;
-    thumbnail_url: string;
-    content_url: string;
-  }[];
+  photos?: MemoryPhoto[];
+  photos_page?: number;
+  photos_page_size?: number;
+  photos_total?: number;
+  photos_has_next?: boolean;
 };
 
 export type StoryPerson = {

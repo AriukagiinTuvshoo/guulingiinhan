@@ -652,7 +652,10 @@ class StoryOut(StoryListItem):
     related_people: list[StoryPersonOut] = Field(default_factory=list)
 
 
-_STORY_PHOTO_TOKEN = re.compile(r"\[\[photo:([0-9a-fA-F-]{36})(?:\|([^\]\n]{0,180}))?\]\]")
+_STORY_PHOTO_TOKEN = re.compile(
+    r"\[\[photo:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\|([^\]\n]{0,180}))?\]\]"
+)
 
 
 def _validate_story_photos(
@@ -669,8 +672,12 @@ def _validate_story_photos(
     from app.memory_photos import _require_photo_scope, _visible_memory
 
     for match in matches:
+        try:
+            photo_id = UUID(match.group(1))
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail="Түүхийн зургийн холбоос буруу байна.") from error
         photo = db.scalar(select(Photo).where(
-            Photo.id == UUID(match.group(1)), Photo.family_id == family_id,
+            Photo.id == photo_id, Photo.family_id == family_id,
             Photo.storage_status == "ready",
         ))
         if photo is None or photo.memory_id is None:
@@ -3089,74 +3096,6 @@ def create_memory(
     }
 
 
-@router.get("/{family_id}/memories")
-def list_memories(
-    family_id: UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _member(db, family_id, user)
-    memories = list(
-        db.scalars(
-            select(Memory)
-            .where(
-                Memory.family_id == family_id,
-                or_(Memory.visibility != "private", Memory.created_by == user.id),
-            )
-            .order_by(Memory.memory_date.desc())
-        ).all()
-    )
-    visible_ids = _memory_visible_to_member(db, family_id, user, [item.id for item in memories])
-    visible_memories = [item for item in memories if item.id in visible_ids]
-    memory_ids = [item.id for item in visible_memories]
-    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
-    tagged = (
-        db.execute(
-            select(
-                MemoryPersonTag.memory_id,
-                MemoryPersonTag.person_id,
-                Person.first_name,
-                Person.last_name,
-                Person.middle_name,
-            )
-            .join(Person, Person.id == MemoryPersonTag.person_id)
-            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-            .where(
-                MemoryPersonTag.memory_id.in_(memory_ids),
-                FamilyPerson.family_id == family_id,
-                or_(
-                    Person.visibility != "private",
-                    Person.created_by == user.id,
-                    Person.id == own_link,
-                ),
-            )
-            .order_by(MemoryPersonTag.memory_id, Person.last_name, Person.first_name)
-        ).all()
-        if memory_ids
-        else []
-    )
-    names_by_memory: dict[UUID, list[str]] = {}
-    ids_by_memory: dict[UUID, list[UUID]] = {}
-    for memory_id, person_id, first_name, last_name, middle_name in tagged:
-        ids_by_memory.setdefault(memory_id, []).append(person_id)
-        names_by_memory.setdefault(memory_id, []).append(
-            " ".join(part for part in (last_name, first_name, middle_name) if part)
-        )
-    return [
-        {
-            "id": item.id,
-            "title": item.title,
-            "description": item.description,
-            "memory_date": item.memory_date,
-            "visibility": item.visibility,
-            "person_ids": ids_by_memory.get(item.id, []),
-            "person_names": names_by_memory.get(item.id, []),
-            "created_at": item.created_at,
-        }
-        for item in visible_memories
-    ]
-
-
 @router.get("/{family_id}/persons/{person_id}/memories")
 def list_person_memories(
     family_id: UUID,
@@ -3249,7 +3188,7 @@ def get_memory(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _member(db, family_id, user)
+    member, _ = _member(db, family_id, user)
     memory = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.family_id == family_id))
     if memory is None or (memory.visibility == "private" and memory.created_by != user.id):
         raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.")
@@ -3258,31 +3197,47 @@ def get_memory(
             select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
         ).all()
     )
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    tagged_people = db.execute(
+        select(Person.id, Person.first_name, Person.last_name, Person.middle_name)
+        .join(MemoryPersonTag, MemoryPersonTag.person_id == Person.id)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(
+            MemoryPersonTag.memory_id == memory_id,
+            FamilyPerson.family_id == family_id,
+            or_(Person.visibility != "private", Person.created_by == user.id, Person.id == own_link),
+        )
+        .order_by(Person.last_name, Person.first_name, Person.middle_name)
+    ).all()
     try:
         _assert_memory_minor_scopes(db, family_id, user, tag_ids)
     except HTTPException as error:
         if error.status_code == 403:
             raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.") from error
         raise
-    from app.memory_photos import _photo_payload, _tagged_photo_visibility
+    from app.memory_photos import _visible_memory_photo_page
 
-    photos = db.scalars(
-        select(Photo).where(
-            Photo.family_id == family_id, Photo.memory_id == memory_id,
-            Photo.storage_status == "ready",
-        )
-        .order_by(Photo.created_at.desc()).limit(50)
-    ).all()
-    visible_photo_ids = _tagged_photo_visibility(db, family_id, user, photos)
+    photo_page = _visible_memory_photo_page(db, family_id, user, memory, 1, 24)
+    author_name = db.scalar(select(User.display_name).where(User.id == memory.created_by))
     return {
         "id": memory.id,
         "title": memory.title,
         "description": memory.description,
         "memory_date": memory.memory_date,
         "visibility": memory.visibility,
-        "person_ids": tag_ids,
+        "person_ids": [person_id for person_id, *_ in tagged_people],
+        "person_names": [
+            " ".join(part for part in (last_name, first_name, middle_name) if part)
+            for _person_id, first_name, last_name, middle_name in tagged_people
+        ],
         "created_at": memory.created_at,
-        "photos": [_photo_payload(photo) for photo in photos if photo.id in visible_photo_ids],
+        "author_name": author_name or "Гэр бүлийн гишүүн",
+        "can_edit": member.role in {"owner", "editor"} or memory.created_by == user.id,
+        "photos": photo_page["items"],
+        "photos_page": photo_page["page"],
+        "photos_page_size": photo_page["page_size"],
+        "photos_total": photo_page["total"],
+        "photos_has_next": photo_page["has_next"],
     }
 
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, MemoryListItem, PersonSearchPage, Story } from '../lib/api';
+import { ApiError, api, MemoryListItem, MemoryPhotoPage, PersonSearchPage, Story } from '../lib/api';
 import { useAppShellContext } from './app-shell';
 import ProfilePhoto from './profile-photo';
 import { useParams } from 'next/navigation';
@@ -20,6 +20,7 @@ const visibilityOptions = [
   { value: 'private', label: 'Зөвхөн би' },
   { value: 'public', label: 'Нийтийн' },
 ];
+const STORY_PHOTO_TOKEN = /\[\[photo:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\|([^\]\n]{0,180}))?\]\]/g;
 
 function personName(person: { first_name: string; last_name: string; middle_name: string | null }) {
   return [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ') || 'Нэргүй хүн';
@@ -53,12 +54,17 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   const [initialSnapshot, setInitialSnapshot] = useState('');
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
   const [photoAlbums, setPhotoAlbums] = useState<MemoryListItem[]>([]);
+  const [photoMemoryPage, setPhotoMemoryPage] = useState(1);
+  const [photoMemoriesHaveNext, setPhotoMemoriesHaveNext] = useState(false);
+  const [photoPagesByMemory, setPhotoPagesByMemory] = useState<Record<string, MemoryPhotoPage>>({});
+  const [photoMemoryLoading, setPhotoMemoryLoading] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
   const [photoError, setPhotoError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const routeParams = useParams<{ id?: string }>();
   const loadRequestRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
+  const photoRequestRef = useRef(0);
   const personSearchRequestRef = useRef(0);
   const personSearchAbortRef = useRef<AbortController | null>(null);
 
@@ -68,6 +74,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   );
   const dirty = initialSnapshot !== '' && snapshot !== initialSnapshot;
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
+  const embeddedPhotos = Array.from(body.matchAll(STORY_PHOTO_TOKEN));
 
   useEffect(() => {
     if (!dirty) return;
@@ -172,6 +179,18 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     };
   }, [familyId, personQuery]);
 
+  useEffect(() => {
+    photoRequestRef.current += 1;
+    setPhotoAlbums([]);
+    setPhotoMemoryPage(1);
+    setPhotoMemoriesHaveNext(false);
+    setPhotoPagesByMemory({});
+    setPhotoMemoryLoading('');
+    setPhotoLoading(false);
+    setPhotoError('');
+    setShowPhotoPicker(false);
+  }, [familyId]);
+
   useEffect(() => () => {
     loadAbortRef.current?.abort();
     personSearchAbortRef.current?.abort();
@@ -211,16 +230,85 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     if (showPhotoPicker) { setShowPhotoPicker(false); return; }
     setShowPhotoPicker(true);
     if (!familyId || photoAlbums.length) return;
+    const operationFamilyId = familyId;
+    const requestId = ++photoRequestRef.current;
     setPhotoLoading(true);
     setPhotoError('');
     try {
-      const result = await api<{ items: MemoryListItem[] }>(`/families/${familyId}/memories?page=1&page_size=50`);
-      setPhotoAlbums(result.items.filter((memory) => memory.photos?.length));
+      const result = await api<{ items: MemoryListItem[]; page: number; has_next: boolean }>(
+        `/families/${operationFamilyId}/memories?page=1&page_size=18`,
+      );
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoAlbums(result.items);
+      setPhotoMemoryPage(result.page);
+      setPhotoMemoriesHaveNext(result.has_next);
     } catch {
+      if (requestId !== photoRequestRef.current) return;
       setPhotoError('Гэр бүлийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
     } finally {
-      setPhotoLoading(false);
+      if (requestId === photoRequestRef.current) setPhotoLoading(false);
     }
+  }
+
+  async function loadNextPhotoMemories() {
+    if (!familyId || photoLoading || photoMemoryLoading || !photoMemoriesHaveNext) return;
+    const operationFamilyId = familyId;
+    const requestId = ++photoRequestRef.current;
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const page = photoMemoryPage + 1;
+      const result = await api<{ items: MemoryListItem[]; page: number; has_next: boolean }>(
+        `/families/${operationFamilyId}/memories?page=${page}&page_size=18`,
+      );
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoAlbums((current) => [...current, ...result.items.filter((item) => !current.some((old) => old.id === item.id))]);
+      setPhotoMemoryPage(result.page);
+      setPhotoMemoriesHaveNext(result.has_next);
+    } catch {
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoError('Дараагийн дурсамжийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (requestId === photoRequestRef.current) setPhotoLoading(false);
+    }
+  }
+
+  async function loadMemoryPhotos(memoryId: string, page = 1) {
+    if (!familyId || photoLoading || photoMemoryLoading) return;
+    const operationFamilyId = familyId;
+    const requestId = ++photoRequestRef.current;
+    setPhotoMemoryLoading(memoryId);
+    setPhotoError('');
+    try {
+      const result = await api<MemoryPhotoPage>(
+        `/families/${operationFamilyId}/memories/${memoryId}/photos?page=${page}&page_size=24`,
+      );
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoPagesByMemory((current) => {
+        const previous = current[memoryId];
+        const items = page === 1 ? result.items : [...(previous?.items ?? []), ...result.items];
+        return { ...current, [memoryId]: { ...result, items } };
+      });
+    } catch {
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoError('Энэ дурсамжийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (requestId === photoRequestRef.current) setPhotoMemoryLoading('');
+    }
+  }
+
+  function removeStoryPhoto(match: RegExpMatchArray) {
+    const start = match.index ?? -1;
+    if (start < 0) return;
+    setBody((current) => current.slice(0, start) + current.slice(start + match[0].length));
+  }
+
+  function updateStoryPhotoCaption(match: RegExpMatchArray, caption: string) {
+    const start = match.index ?? -1;
+    if (start < 0) return;
+    const cleanCaption = caption.replace(/[\]\n|]/g, ' ').slice(0, 180);
+    const replacement = `[[photo:${match[1]}|${cleanCaption}]]`;
+    setBody((current) => current.slice(0, start) + replacement + current.slice(start + match[0].length));
   }
 
   function insertPhoto(id: string, caption: string) {
@@ -360,9 +448,63 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
             </div>
             <textarea id="story-body" ref={textareaRef} value={body} onChange={(event) => setBody(event.target.value)} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
             <span className="story-field-hint">{body.length.toLocaleString()} / 100,000</span>
+            {embeddedPhotos.length > 0 && <section className="story-inserted-photos" aria-label="Түүхэнд оруулсан зургууд">
+              <h3>Түүхэнд оруулсан зураг · {embeddedPhotos.length}</h3>
+              <ul>
+                {embeddedPhotos.map((match, index) => (
+                  <li key={`${match[1]}-${match.index}-${index}`}>
+                    <ProfilePhoto
+                      url={`/families/${familyId}/photos/${match[1]}/content?variant=thumbnail`}
+                      name={match[2] || 'Гэр бүлийн зураг'}
+                      fallback="Зураг харах боломжгүй"
+                      className="story-inserted-photo-image"
+                    />
+                    <label>
+                      <span>Зургийн тайлбар</span>
+                      <input
+                        value={match[2] ?? ''}
+                        maxLength={180}
+                        onChange={(event) => updateStoryPhotoCaption(match, event.target.value)}
+                        aria-label={`Зураг ${index + 1}-ийн тайлбар`}
+                      />
+                    </label>
+                    <button type="button" onClick={() => removeStoryPhoto(match)} aria-label={`Зураг ${index + 1}-ийг түүхээс хасах`}>
+                      Зургийг хасах
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>}
             {showPhotoPicker && <section className="story-photo-picker" aria-label="Дурсамжаас зураг сонгох">
               <p>Дурсамжид оруулсан зургаа сонгоно. Нийтийн түүхэнд зөвхөн нийтэд зөвшөөрсөн, насанд хүрсэн хүний зураг ашиглана.</p>
-              {photoLoading ? <p role="status">Зураг ачаалж байна…</p> : photoError ? <p role="alert">{photoError}</p> : photoAlbums.length ? <div className="story-photo-options">{photoAlbums.flatMap((memory) => (memory.photos || []).map((photo) => <button type="button" key={photo.id} onClick={() => insertPhoto(photo.id, photo.title || memory.title)}><ProfilePhoto url={photo.thumbnail_url} name={photo.title || memory.title} fallback="Зураг" className="story-photo-option-image" /><span>{photo.title || memory.title}</span></button>))}</div> : <p>Сонгох зураг алга. Эхлээд <Link href={`/memories?family=${encodeURIComponent(familyId)}`}>Дурсамж</Link> хэсэгт зураг нэмнэ үү.</p>}
+              {photoError && <p role="alert">{photoError}</p>}
+              {photoLoading && <p role="status">Дурсамж ачаалж байна…</p>}
+              {!photoLoading && photoAlbums.length === 0 && !photoError && <p>Зурагтай дурсамж алга. Эхлээд <Link href={`/memories?family=${encodeURIComponent(familyId)}`}>Дурсамж</Link> хэсэгт зураг нэмнэ үү.</p>}
+              <div className="story-photo-albums">
+                {photoAlbums.map((memory) => {
+                  const photoPage = photoPagesByMemory[memory.id];
+                  const photos = photoPage?.items ?? memory.photos ?? [];
+                  return <section key={memory.id} className="story-photo-album">
+                    <header><strong>{memory.title}</strong><span>{photoPage ? `${photoPage.total} зураг` : 'Дурсамж'}</span></header>
+                    <div className="story-photo-options">
+                      {photos.map((photo, index) => <button type="button" key={photo.id} onClick={() => insertPhoto(photo.id, photo.title || memory.title)}>
+                        <ProfilePhoto url={photo.thumbnail_url} name={photo.title || `${memory.title} · зураг ${index + 1}`} fallback="Зураг харах боломжгүй" className="story-photo-option-image" />
+                        <span>{photo.title || `Зураг ${index + 1}`}<small>{memory.title}</small></span>
+                      </button>)}
+                    </div>
+                    {photoPage && !photoPage.items.length && <p>Энэ дурсамжид сонгож болох зураг алга.</p>}
+                    {!photoPage && <button type="button" disabled={photoLoading || !!photoMemoryLoading} onClick={() => void loadMemoryPhotos(memory.id, 1)}>
+                      {photoMemoryLoading === memory.id ? 'Зураг ачаалж байна…' : 'Энэ дурсамжийн бүх зургийг сонгох'}
+                    </button>}
+                    {photoPage?.has_next && <button type="button" disabled={photoLoading || !!photoMemoryLoading} onClick={() => void loadMemoryPhotos(memory.id, photoPage.page + 1)}>
+                      {photoMemoryLoading === memory.id ? 'Ачаалж байна…' : 'Дараагийн зургууд'}
+                    </button>}
+                  </section>;
+                })}
+              </div>
+              {photoMemoriesHaveNext && <button type="button" disabled={photoLoading || !!photoMemoryLoading} onClick={() => void loadNextPhotoMemories()}>
+                {photoLoading ? 'Ачаалж байна…' : 'Дараагийн дурсамжууд'}
+              </button>}
             </section>}
           </div>
 

@@ -7,7 +7,7 @@ type Props = {
   publicPhotoUrls?: string[];
 };
 
-const photoLine = /^\[\[photo:([0-9a-fA-F-]{36})(?:\|([^\]\n]{0,180}))?\]\]$/;
+const photoLine = /^\[\[photo:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\|([^\]\n]{0,180}))?\]\]$/;
 const inlineParts = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\(https:\/\/[^\s)]+\))/g;
 
 function inline(text: string): ReactNode[] {
@@ -53,6 +53,7 @@ export default function StoryContent({ body, familyId, publicPhotoUrls }: Props)
       const approved = publicPhotoUrls?.find((url) => url.endsWith(`/${id}/thumbnail`));
       const url = publicPhotoUrls ? approved : familyId ? `/families/${familyId}/photos/${id}/content?variant=thumbnail` : null;
       if (url) blocks.push(<figure className="story-inline-photo" key={`i-${blocks.length}`}><ProfilePhoto url={url} name={caption} fallback="Зураг харах эрхгүй эсвэл зураг олдсонгүй" className="story-inline-image" /><figcaption>{caption}</figcaption></figure>);
+      else if (publicPhotoUrls) blocks.push(<figure className="story-inline-photo" key={`i-${blocks.length}`}><div className="story-inline-image-fallback" role="img" aria-label="Энэ зураг нийтэд хуваалцах зөвшөөрөлгүй">Энэ зураг нийтэд хуваалцаагүй.</div><figcaption>{caption}</figcaption></figure>);
       continue;
     }
     if (heading) {

@@ -74,19 +74,30 @@ class PhotoTagsInput(BaseModel):
     person_ids: list[UUID] = Field(max_length=100)
 
 
+class PhotoMetadataInput(BaseModel):
+    title: str | None = Field(default=None, max_length=180)
+    description: str | None = Field(default=None, max_length=2000)
+    photo_date: date | None = None
+
+
 class PhotoResponse(BaseModel):
     id: UUID
     title: str | None
+    description: str | None = None
+    photo_date: date | None = None
     created_at: datetime
     thumbnail_url: str
     content_url: str
     person_ids: list[UUID] = Field(default_factory=list)
+    person_names: list[str] = Field(default_factory=list)
 
 
 class PhotoPageResponse(BaseModel):
     items: list[PhotoResponse]
     page: int
     page_size: int
+    total: int
+    has_next: bool
 
 
 def _visible_people_query(user: User, family_id: UUID):
@@ -120,14 +131,92 @@ def _visible_memory(db: Session, family_id: UUID, memory_id: UUID, user: User) -
     return memory
 
 
-def _photo_payload(photo: Photo, person_ids: list[UUID] | None = None) -> dict:
+def _photo_payload(
+    photo: Photo,
+    person_ids: list[UUID] | None = None,
+    person_names: list[str] | None = None,
+) -> dict:
     return {
         "id": photo.id,
         "title": photo.title,
+        "description": photo.description,
+        "photo_date": photo.photo_date,
         "created_at": photo.created_at,
         "thumbnail_url": f"/families/{photo.family_id}/photos/{photo.id}/content?variant=thumbnail",
         "content_url": f"/families/{photo.family_id}/photos/{photo.id}/content",
         "person_ids": person_ids or [],
+        "person_names": person_names or [],
+    }
+
+
+def _visible_memory_photo_page(
+    db: Session,
+    family_id: UUID,
+    user: User,
+    memory: Memory,
+    page: int,
+    page_size: int,
+) -> dict:
+    """Page only authorized photo metadata; originals remain in protected storage."""
+    if not _memory_media_visible(db, family_id, user, memory):
+        raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.")
+
+    visible_photos: list[Photo] = []
+    offset = 0
+    batch_size = 100
+    while True:
+        batch = db.scalars(
+            select(Photo)
+            .where(
+                Photo.family_id == family_id,
+                Photo.memory_id == memory.id,
+                Photo.storage_status == "ready",
+            )
+            .order_by(Photo.created_at.desc(), Photo.id.desc())
+            .offset(offset)
+            .limit(batch_size)
+        ).all()
+        if not batch:
+            break
+        visible_ids = _tagged_photo_visibility(db, family_id, user, batch)
+        visible_photos.extend(photo for photo in batch if photo.id in visible_ids)
+        offset += len(batch)
+
+    total = len(visible_photos)
+    start = (page - 1) * page_size
+    selected = visible_photos[start : start + page_size]
+    ids = [photo.id for photo in selected]
+    tag_rows = db.execute(
+        select(
+            PhotoPersonTag.photo_id,
+            Person.id,
+            Person.first_name,
+            Person.last_name,
+            Person.middle_name,
+        )
+        .join(Person, Person.id == PhotoPersonTag.person_id)
+        .where(
+            PhotoPersonTag.photo_id.in_(ids),
+            Person.id.in_(_visible_people_query(user, family_id)),
+        )
+        .order_by(Person.last_name, Person.first_name, Person.middle_name)
+    ).all() if ids else []
+    ids_by_photo: dict[UUID, list[UUID]] = {photo_id: [] for photo_id in ids}
+    names_by_photo: dict[UUID, list[str]] = {photo_id: [] for photo_id in ids}
+    for photo_id, person_id, first_name, last_name, middle_name in tag_rows:
+        ids_by_photo[photo_id].append(person_id)
+        names_by_photo[photo_id].append(
+            " ".join(part for part in (last_name, first_name, middle_name) if part)
+        )
+    return {
+        "items": [
+            _photo_payload(photo, ids_by_photo[photo.id], names_by_photo[photo.id])
+            for photo in selected
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_next": page * page_size < total,
     }
 
 
@@ -667,11 +756,12 @@ async def upload_photo(
     return _photo_payload(photo)
 
 
-@router.get("/{family_id}/memories/{memory_id}/photos", response_model=list[PhotoResponse])
+@router.get("/{family_id}/memories/{memory_id}/photos", response_model=PhotoPageResponse)
 def list_memory_photos(
     family_id: UUID,
     memory_id: UUID,
-    limit: int = Query(default=50, ge=1, le=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=24, ge=1, le=100),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     storage: ObjectStorage = Depends(get_storage),
@@ -679,30 +769,7 @@ def list_memory_photos(
     _member(db, family_id, user)
     _retry_pending_cleanup(db, storage, family_id, user)
     memory = _visible_memory(db, family_id, memory_id, user)
-    if not _memory_media_visible(db, family_id, user, memory):
-        raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.")
-    photos = db.scalars(
-        select(Photo).where(
-            Photo.family_id == family_id, Photo.memory_id == memory_id,
-            Photo.storage_status == "ready",
-        )
-        .order_by(Photo.created_at.desc()).limit(limit)
-    ).all()
-    ids = [photo.id for photo in photos]
-    tags = db.execute(
-        select(PhotoPersonTag.photo_id, PhotoPersonTag.person_id).where(
-            PhotoPersonTag.photo_id.in_(ids),
-            PhotoPersonTag.person_id.in_(_visible_people_query(user, family_id)),
-        )
-    ).all() if ids else []
-    tags_by_photo: dict[UUID, list[UUID]] = {photo_id: [] for photo_id in ids}
-    for photo_id, person_id in tags:
-        tags_by_photo[photo_id].append(person_id)
-    visible_photo_ids = _tagged_photo_visibility(db, family_id, user, photos)
-    return [
-        _photo_payload(photo, tags_by_photo[photo.id])
-        for photo in photos if photo.id in visible_photo_ids
-    ]
+    return _visible_memory_photo_page(db, family_id, user, memory, page, page_size)
 
 
 @router.get("/{family_id}/persons/{person_id}/photos", response_model=PhotoPageResponse)
@@ -738,16 +805,28 @@ def list_person_photos(
         if _memory_media_visible(db, family_id, user, memory)
     }
     filtered_conditions = (*conditions, Photo.memory_id.in_(allowed_memory_ids))
-    photos = db.scalars(
-        select(Photo).where(*filtered_conditions).order_by(Photo.created_at.desc(), Photo.id.desc())
-        .offset((page - 1) * page_size).limit(page_size + 1)
-    ).all()
-    photos = photos[:page_size]
-    visible_photo_ids = _tagged_photo_visibility(db, family_id, user, photos)
-    photos = [photo for photo in photos if photo.id in visible_photo_ids]
+    visible_photos: list[Photo] = []
+    offset = 0
+    while True:
+        batch = db.scalars(
+            select(Photo)
+            .where(*filtered_conditions)
+            .order_by(Photo.created_at.desc(), Photo.id.desc())
+            .offset(offset)
+            .limit(100)
+        ).all()
+        if not batch:
+            break
+        visible_ids = _tagged_photo_visibility(db, family_id, user, batch)
+        visible_photos.extend(photo for photo in batch if photo.id in visible_ids)
+        offset += len(batch)
+    total = len(visible_photos)
+    start = (page - 1) * page_size
+    photos = visible_photos[start : start + page_size]
     return {
         "items": [_photo_payload(photo, [person_id]) for photo in photos],
-        "page": page, "page_size": page_size,
+        "page": page, "page_size": page_size, "total": total,
+        "has_next": page * page_size < total,
     }
 
 
@@ -787,6 +866,43 @@ def set_photo_tags(
     _audit(db, user, family_id, action, "photo", photo_id)
     db.commit()
     return {"photo_id": photo_id, "person_ids": list(people)}
+
+
+@router.patch("/{family_id}/photos/{photo_id}", response_model=PhotoResponse)
+def update_photo_metadata(
+    family_id: UUID,
+    photo_id: UUID,
+    body: PhotoMetadataInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    member, _ = _member(db, family_id, user)
+    photo = db.scalar(select(Photo).where(
+        Photo.id == photo_id, Photo.family_id == family_id, Photo.storage_status == "ready"
+    ))
+    if photo is None or photo.memory_id is None:
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.")
+    memory = _visible_memory(db, family_id, photo.memory_id, user)
+    if not _can_edit_memory(memory, member, user):
+        raise HTTPException(status_code=403, detail="Зургийн тайлбар засах эрхгүй.")
+    _require_person_ids_scope(
+        db, family_id, user, _memory_person_ids(db, memory.id), "manage_media"
+    )
+    _require_photo_scope(db, family_id, user, photo, "manage_media")
+    updates = body.model_dump(exclude_unset=True)
+    if "title" in updates and updates["title"] is not None:
+        updates["title"] = updates["title"].strip() or None
+    if "description" in updates and updates["description"] is not None:
+        updates["description"] = updates["description"].strip() or None
+    for field, value in updates.items():
+        setattr(photo, field, value)
+    if updates:
+        _audit(db, user, family_id, "photo.metadata_updated", "photo", photo.id)
+        db.commit()
+    tag_rows = db.execute(
+        select(PhotoPersonTag.person_id).where(PhotoPersonTag.photo_id == photo.id)
+    ).scalars().all()
+    return _photo_payload(photo, list(tag_rows))
 
 
 @router.get("/{family_id}/photos/{photo_id}/content")

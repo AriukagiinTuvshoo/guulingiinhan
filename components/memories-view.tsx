@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { API_BASE, ApiError, api, MemoryListItem, PersonSearchPage } from '../lib/api';
 import { memoryDraftError } from '../lib/memory-draft';
 import { useAppShellContext } from './app-shell';
+import MemoryPhotoInput from './memory-photo-input';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -18,8 +19,11 @@ function friendlyError(cause: unknown, fallback: string) {
     if (cause.status === 404) return 'Дурсамж олдсонгүй.';
     if (cause.status === 409) return 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна. Дахин оролдоно уу.';
     if (cause.status === 413) return 'Зургийн хэмжээ серверийн зөвшөөрсөн хязгаараас хэтэрсэн байна.';
+    if (cause.status === 415) return 'Зургийн файл гэмтсэн эсвэл JPEG, PNG, WebP төрлүүдийн аль нь ч биш байна.';
     if (cause.status === 422) return 'Оруулсан мэдээлэл эсвэл зурагны төрлийг шалгана уу.';
     if (cause.status === 429) return 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.';
+    if (cause.status === 503) return 'Зургийг хадгалах үйлчилгээ түр ажиллахгүй байна. Файлаа дахин оролдоорой.';
+    if (cause.status >= 500) return 'Сервер түр алдаа гаргалаа. Дахин оролдоно уу.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
   }
   return fallback;
@@ -93,6 +97,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
   const [error, setError] = useState('');
   const [composerError, setComposerError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
+  const [selectedPhotoFiles, setSelectedPhotoFiles] = useState<File[]>([]);
   const [memoryPage, setMemoryPage] = useState(1);
   const [filters, setFilters] = useState({ q: '', year: '', memory_date: '', person_id: '', branch_id: '' });
   const [filterPersonName, setFilterPersonName] = useState('');
@@ -142,6 +147,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     setPersonResults(null);
     setSelectedPeople([]);
     setPartialMemoryId('');
+    setSelectedPhotoFiles([]);
     setError('');
     setComposerError('');
     setShowComposer(createMode);
@@ -246,7 +252,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     setBusy(true);
     setComposerError('');
     setUploadStatus('');
-    const files = form.getAll('photos').filter((value): value is File => value instanceof File && value.size > 0);
+    const files = selectedPhotoFiles;
     const title = String(form.get('title') ?? '').trim();
     const visibility = String(form.get('visibility') ?? 'family');
     const validationError = memoryDraftError(title, visibility, files);
@@ -288,6 +294,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
       }
       if (operationFamilyRequestId !== familyRequestRef.current) return;
       formElement.reset();
+      setSelectedPhotoFiles([]);
       setSelectedPeople([]);
       setPersonQuery('');
       setPersonResults(null);
@@ -298,7 +305,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     } catch (cause) {
       if (operationFamilyRequestId === familyRequestRef.current) {
         if (createdId) {
-          setPartialMemoryId(createdId); setShowComposer(false); setUploadStatus('');
+          setPartialMemoryId(createdId); setShowComposer(false); setUploadStatus(''); setSelectedPhotoFiles([]);
           setComposerError('Дурсамж хадгалагдсан боловч зарим зураг хадгалагдсангүй. Дурсамжаа нээгээд дутуу зургийг нэмнэ үү. Дахин дурсамж үүсгэх шаардлагагүй.');
           if (!createMode) await loadMemories(operationFamilyId, 1);
         } else setComposerError(friendlyError(cause, 'Дурсамж хадгалж чадсангүй.'));
@@ -388,11 +395,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                 <span>Тайлбар</span>
                 <textarea name="description" maxLength={20000} rows={5} placeholder="Энэ мөчийн тухай санаанд үлдсэн зүйлс…" />
               </label>
-              <label>
-                <span>Зураг</span>
-                <input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-describedby="memory-photo-help" />
-                <small id="memory-photo-help">Зураг заавал биш. JPEG, PNG, WebP; нэг зураг 10 MB-аас ихгүй, нэг удаад 20 хүртэл.</small>
-              </label>
+              <MemoryPhotoInput id="memory-photos" files={selectedPhotoFiles} onChange={setSelectedPhotoFiles} disabled={busy} />
               <label>
                 <span>Харагдах байдал</span>
                 <select name="visibility" defaultValue="family">
