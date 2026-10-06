@@ -1,5 +1,8 @@
 'use client';
 
+import AccountPhoto from '../../components/account-photo';
+import PhoneVerification from '../../components/phone-verification';
+
 import Link from 'next/link';
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -13,12 +16,6 @@ type Identity = {
   display_identifier: string | null;
   verified: boolean;
   created_at: string;
-};
-
-type Challenge = {
-  challenge_id: string;
-  expires_in: number;
-  resend_after: number;
 };
 
 type Notice = { kind: 'success' | 'error'; text: string };
@@ -56,9 +53,6 @@ function SettingsContent() {
   const [securityBusy, setSecurityBusy] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [accountBusy, setAccountBusy] = useState(false);
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
-  const [phone, setPhone] = useState('');
-  const [resendSeconds, setResendSeconds] = useState(0);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const loadSequence = useRef(0);
   const identitySequence = useRef(0);
@@ -149,14 +143,7 @@ function SettingsContent() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!challenge || resendSeconds <= 0) return;
-    const timer = window.setInterval(
-      () => setResendSeconds((value) => Math.max(0, value - 1)),
-      1000,
-    );
-    return () => window.clearInterval(timer);
-  }, [challenge, resendSeconds]);
+
 
   function switchFamily(nextId: string) {
     if (!families.some((family) => family.id === nextId) || nextId === familyId) return;
@@ -168,9 +155,6 @@ function SettingsContent() {
     setFamilyId('');
     setUser(null);
     setIdentities([]);
-    setChallenge(null);
-    setPhone('');
-    setResendSeconds(0);
     setNotice(null);
     setLoading(true);
     setSecurityBusy(false);
@@ -199,87 +183,6 @@ function SettingsContent() {
     }
   }
 
-  async function requestPhone(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const requestedPhone = String(new FormData(event.currentTarget).get('phone') ?? '').trim();
-    if (!requestedPhone || securityBusy) return;
-    const mutationId = ++mutationSequence.current;
-    setSecurityBusy(true);
-    setNotice(null);
-    try {
-      const result = await api<Challenge>('/auth/me/phone/request', {
-        method: 'POST',
-        body: JSON.stringify({ phone: requestedPhone }),
-      });
-      if (mutationId !== mutationSequence.current) return;
-      setPhone(requestedPhone);
-      setChallenge(result);
-      setResendSeconds(result.resend_after);
-      setNotice({ kind: 'success', text: 'Баталгаажуулах код илгээгдлээ.' });
-    } catch (cause) {
-      if (mutationId !== mutationSequence.current) return;
-      setNotice({ kind: 'error', text: friendlyError(cause, 'Код илгээж чадсангүй.') });
-    } finally {
-      if (mutationId !== mutationSequence.current) return;
-      setSecurityBusy(false);
-    }
-  }
-
-  async function resendPhone() {
-    if (!phone || securityBusy || resendSeconds > 0) return;
-    const mutationId = ++mutationSequence.current;
-    setSecurityBusy(true);
-    setNotice(null);
-    try {
-      const result = await api<Challenge>('/auth/me/phone/request', {
-        method: 'POST',
-        body: JSON.stringify({ phone }),
-      });
-      if (mutationId !== mutationSequence.current) return;
-      setChallenge(result);
-      setResendSeconds(result.resend_after);
-      setNotice({ kind: 'success', text: 'Шинэ баталгаажуулах код илгээгдлээ.' });
-    } catch (cause) {
-      if (mutationId !== mutationSequence.current) return;
-      setNotice({ kind: 'error', text: friendlyError(cause, 'Код дахин илгээж чадсангүй.') });
-    } finally {
-      if (mutationId !== mutationSequence.current) return;
-      setSecurityBusy(false);
-    }
-  }
-
-  async function verifyPhone(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!challenge || securityBusy) return;
-    const code = String(new FormData(event.currentTarget).get('code') ?? '').trim();
-    if (!/^[0-9]{6}$/.test(code)) {
-      setNotice({ kind: 'error', text: '6 оронтой кодоо оруулна уу.' });
-      return;
-    }
-
-    const mutationId = ++mutationSequence.current;
-    setSecurityBusy(true);
-    setNotice(null);
-    try {
-      await api<Identity>('/auth/me/phone/verify', {
-        method: 'POST',
-        body: JSON.stringify({ phone, challenge_id: challenge.challenge_id, code }),
-      });
-      if (mutationId !== mutationSequence.current) return;
-      setChallenge(null);
-      setPhone('');
-      setResendSeconds(0);
-      await refreshIdentities();
-      setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж, account-той холбогдлоо.' });
-    } catch (cause) {
-      if (mutationId !== mutationSequence.current) return;
-      setNotice({ kind: 'error', text: friendlyError(cause, 'Утас баталгаажуулж чадсангүй.') });
-    } finally {
-      if (mutationId !== mutationSequence.current) return;
-      setSecurityBusy(false);
-    }
-  }
-
   async function logout() {
     if (logoutBusy) return;
     const mutationId = ++mutationSequence.current;
@@ -289,9 +192,6 @@ function SettingsContent() {
     identityAbortRef.current?.abort();
     setLogoutBusy(true);
     setNotice(null);
-    setChallenge(null);
-    setPhone('');
-    setResendSeconds(0);
     try {
       await api<void>('/auth/logout', { method: 'POST' });
       if (mutationId !== mutationSequence.current) return;
@@ -310,7 +210,7 @@ function SettingsContent() {
   }
 
   const emailIdentity = identities.find((item) => item.provider === 'email');
-  const phoneIdentity = identities.find((item) => item.provider === 'phone' && item.verified);
+  const phoneIdentity = identities.find((item) => item.provider === 'phone');
   const googleIdentity = identities.find((item) => item.provider === 'google' && item.verified);
 
   if (loading) {
@@ -426,6 +326,7 @@ function SettingsContent() {
               </div>
 
               <div className="settings-security-summary" aria-label="Холбогдсон нэвтрэх аргууд">
+                <AccountPhoto hasPhoto={Boolean(user?.profile_photo_url)} onChanged={() => { void api<User>('/auth/me').then(setUser).catch(() => setNotice({ kind: 'error', text: 'Профайлын мэдээллийг шинэчилж чадсангүй.' })); }} />
                 {identities.map((identity) => (
                   <div key={identity.id} className="settings-mini-card">
                     <span className="settings-mini-card__icon">
@@ -539,42 +440,20 @@ function SettingsContent() {
                   )}
                 </article>
 
-                <article className="settings-card settings-action-card">
-                  <div className="settings-action-copy">
-                    <div className="settings-action-title"><Phone size={17} /><div><strong>Утасны дугаар</strong><span>{phoneIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
-                    <p>{phoneIdentity ? 'Баталгаажсан утас энэ account-той холбогдсон байна.' : 'Утас холбох үед backend-ийн OTP verification заавал хийгдэнэ.'}</p>
-                  </div>
-
-                  {phoneIdentity ? (
-                    <span className="settings-status settings-status--verified"><Check size={13} /> Холбогдсон</span>
-                  ) : !challenge ? (
-                    <form className="settings-inline-form" onSubmit={requestPhone}>
-                      <label htmlFor="settings-phone">Утасны дугаар</label>
-                      <input id="settings-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+976 99112233" maxLength={20} required disabled={securityBusy} aria-describedby="settings-phone-help" />
-                      <span id="settings-phone-help" className="settings-help">+976 99112233 эсвэл 99112233.</span>
-                      <button className="settings-button settings-button--dark" type="submit" disabled={securityBusy}>{securityBusy ? 'Илгээж байна…' : 'Код авах'}</button>
-                    </form>
-                  ) : (
-                    <form className="settings-inline-form" onSubmit={verifyPhone}>
-                      <div className="settings-otp-summary"><span>Код илгээсэн дугаар</span><strong>{phone}</strong></div>
-                      <label htmlFor="settings-phone-code">Баталгаажуулах код</label>
-                      <input id="settings-phone-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required disabled={securityBusy} aria-describedby="settings-phone-code-help" />
-                      <span id="settings-phone-code-help" className="settings-help">6 оронтой кодоо оруулна уу.</span>
-                      <div className="settings-otp-actions">
-                        <button className="settings-button settings-button--dark" type="submit" disabled={securityBusy}>{securityBusy ? 'Шалгаж байна…' : 'Баталгаажуулж холбох'}</button>
-                        <button className="settings-button settings-button--text" type="button" disabled={securityBusy} onClick={() => { setChallenge(null); setPhone(''); setResendSeconds(0); }}>Болих</button>
-                        <button className="settings-button settings-button--text" type="button" disabled={securityBusy || resendSeconds > 0} onClick={() => void resendPhone()}>
-                          {resendSeconds > 0 ? 'Дахин код авах · ' + resendSeconds + ' сек' : 'Дахин код авах'}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                <article className="settings-card settings-phone-card">
+                  <div className="settings-action-title"><Phone size={17} /><h3>Утасны дугаар</h3></div>
+                  <p>{phoneIdentity?.display_identifier || 'Утас холбогдоогүй'} · {phoneIdentity?.verified ? 'Баталгаажсан' : 'Баталгаажаагүй'}</p>
+                  <p>Шинэ дугаар баталгаажсаны дараа хуучин дугаар солигдоно. Нэвтрэхэд SMS шаардахгүй.</p>
+                  <PhoneVerification purpose="account" currentPhone={phoneIdentity?.verified ? '' : phoneIdentity?.display_identifier ?? ''} onVerified={() => {
+                    void api<Identity[]>('/auth/me/identities').then(setIdentities);
+                    setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж хадгалагдлаа.' });
+                  }} />
                 </article>
 
                 <article className="settings-card settings-action-card">
                   <div className="settings-action-copy">
                     <div className="settings-action-title"><Globe2 size={17} /><div><strong>Google account</strong><span>{googleIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
-                    <p>Google linking enabled бол existing OAuth flow-оор холбоно. Credential энэ хуудсанд хадгалагдахгүй.</p>
+                    <p>Үйлчилгээ идэвхтэй үед Google аккаунтаа холбож болно.</p>
                   </div>
                   {googleIdentity ? (
                     <span className="settings-status settings-status--verified"><Check size={13} /> Холбогдсон</span>
@@ -591,8 +470,8 @@ function SettingsContent() {
                   <ShieldCheck size={17} />
                   <div>
                     <strong>Нууц үг солих</strong>
-                    <p>Authenticated password-change endpoint байхгүй. Existing password reset нь reset token-оор ажилладаг тул энд зохиомол password-change API нэмээгүй.</p>
-                    <Link href="/password-reset">Нууц үг сэргээх</Link>
+                    <p>Одоогийн нууц үгээ баталгаажуулж шинэ нууц үг тохируулна. Шинэчилсний дараа бүх төхөөрөмжөөс гарна.</p>
+                    <Link href="/account/security#password">Нууц үг өөрчлөх</Link><Link href="/password-reset">Нууц үг сэргээх</Link>
                   </div>
                 </article>
               </div>
@@ -606,13 +485,13 @@ function SettingsContent() {
                 <div>
                   <p className="settings-eyebrow">НЭВТРЭЛТ</p>
                   <h2 id="settings-signout-title">Гарах</h2>
-                  <p>Одоогийн browser session-ийг existing logout endpoint-оор хүчингүй болгоно.</p>
+                  <p>Энэ төхөөрөмж дээрх нэвтрэлтийг дуусгана.</p>
                 </div>
               </div>
               <div className="settings-card settings-logout-card">
                 <div>
                   <strong>Энэ device-ээс гарах</strong>
-                  <p>Амжилттай гарсны дараа Login руу очно. Password, session token, secret дэлгэцэнд гаргахгүй.</p>
+                  <p>Дараа нь бүртгэлтэй имэйл эсвэл утас, нууц үгээрээ дахин нэвтэрнэ.</p>
                 </div>
                 <button className="settings-button settings-button--dark" type="button" disabled={logoutBusy} onClick={() => void logout()}>
                   <LogOut size={15} /> {logoutBusy ? 'Гарч байна…' : 'Гарах'}

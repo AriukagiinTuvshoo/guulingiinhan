@@ -13,7 +13,9 @@ export class GuulingiinhanBackend extends Container {
     // this image installs psycopg (v3), so select its dialect explicitly.
     DATABASE_URL: env.DATABASE_URL?.replace(/^postgresql:\/\//, "postgresql+psycopg://"),
     CORS_ORIGINS: env.CORS_ORIGINS,
+    TRUST_CLOUDFLARE_PROXY_IP: "true",
     OTP_HASH_SECRET: env.OTP_HASH_SECRET,
+    ...(env.VERIFY_MN_API_KEY ? { VERIFY_MN_API_KEY: env.VERIFY_MN_API_KEY } : {}),
     ...(env.ADMIN_BOOTSTRAP_EMAIL ? { ADMIN_BOOTSTRAP_EMAIL: env.ADMIN_BOOTSTRAP_EMAIL } : {}),
     ...(env.ADMIN_BOOTSTRAP_ADMIN_EMAIL ? { ADMIN_BOOTSTRAP_ADMIN_EMAIL: env.ADMIN_BOOTSTRAP_ADMIN_EMAIL } : {}),
     ...(env.ADMIN_BOOTSTRAP_MODERATOR_EMAIL ? { ADMIN_BOOTSTRAP_MODERATOR_EMAIL: env.ADMIN_BOOTSTRAP_MODERATOR_EMAIL } : {}),

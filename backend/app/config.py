@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     slow_request_threshold_ms: int = 1000
     photo_cleanup_max_attempts: int = 8
     cors_origins: str = "http://localhost:3000"
+    trust_cloudflare_proxy_ip: bool = False
     session_cookie_name: str = "guulingiinhan_session"
     storage_provider: str = "local"
     storage_local_path: str = "./uploads"
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
     photo_upload_family_per_minute: int = 100
     otp_hash_secret: str | None = None
     sms_provider: str = "fake"
+    verify_mn_api_key: str | None = None
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
@@ -93,10 +95,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires OTP_HASH_SECRET with at least 32 characters.")
         if app_env == "production":
             if (
-                self.sms_provider.lower() != "twilio"
+                not self.verify_mn_api_key and (self.sms_provider.lower() != "twilio"
                 or not self.twilio_account_sid
                 or not self.twilio_auth_token
-                or not self.twilio_from_number
+                or not self.twilio_from_number)
             ):
                 raise ValueError("Production requires a configured SMS provider.")
             if self.email_provider.lower() != "smtp":
@@ -139,7 +141,7 @@ class Settings(BaseSettings):
             if not self.google_oidc_issuer.rstrip("/") == "https://accounts.google.com":
                 raise ValueError("Google OIDC issuer must be https://accounts.google.com.")
             if hosted_env:
-                if not self.google_oidc_redirect_uri.startswith("https://"):
+                if not self.google_oidc_redirect_uri or not self.google_oidc_redirect_uri.startswith("https://"):
                     raise ValueError("Production Google OIDC redirect URI must use HTTPS.")
                 if not self.google_oidc_state_secret or len(self.google_oidc_state_secret) < 32:
                     raise ValueError(
@@ -163,7 +165,7 @@ class Settings(BaseSettings):
                 self.storage_secret_key,
             )):
                 raise ValueError("Production requires complete S3-compatible storage settings.")
-            if not self.storage_endpoint.startswith("https://"):
+            if not self.storage_endpoint or not self.storage_endpoint.startswith("https://"):
                 raise ValueError("Production STORAGE_ENDPOINT must use HTTPS.")
         return self
 

@@ -189,11 +189,11 @@ class PersonCreate(BaseModel):
 
 
 class PersonPatch(PersonCreate):
-    first_name: str | None = Field(default=None, min_length=1, max_length=120)
-    last_name: str | None = Field(default=None, max_length=120)
-    gender: str | None = Field(default=None, pattern="^(female|male|other|unknown)$")
-    is_alive: bool | None = None
-    visibility: str | None = Field(default=None, pattern="^(private|family|public)$")
+    first_name: str | None = Field(default=None, min_length=1, max_length=120)  # type: ignore[assignment]  # PATCH omission is intentional.
+    last_name: str | None = Field(default=None, max_length=120)  # type: ignore[assignment]  # PATCH omission is intentional.
+    gender: str | None = Field(default=None, pattern="^(female|male|other|unknown)$")  # type: ignore[assignment]  # PATCH omission is intentional.
+    is_alive: bool | None = None  # type: ignore[assignment]  # PATCH omission is intentional.
+    visibility: str | None = Field(default=None, pattern="^(private|family|public)$")  # type: ignore[assignment]  # PATCH omission is intentional.
 
     @model_validator(mode="after")
     def reject_null_required_fields(self):
@@ -1803,6 +1803,8 @@ def remove_person_from_family(
             FamilyPerson.family_id == family_id, FamilyPerson.person_id == person_id
         )
     )
+    if association is None:
+        raise HTTPException(404, "Гэр бүлийн холбоос олдсонгүй.")
     if association.added_by != user.id and user.id != family.created_by:
         raise HTTPException(status_code=403, detail="Өөр хүний нэмсэн холбоосыг салгах эрхгүй.")
     referenced = any((
@@ -2921,8 +2923,8 @@ def update_story(
     updates = body.model_dump(exclude_unset=True, exclude={"person_ids"})
     _validate_story_photos(
         db, family_id, user,
-        updates.get("body") if updates.get("body") is not None else story.body,
-        updates.get("visibility") if updates.get("visibility") is not None else story.visibility,
+        str(updates["body"]) if updates.get("body") is not None else story.body,
+        str(updates["visibility"]) if updates.get("visibility") is not None else story.visibility,
     )
     if "title" in updates and updates["title"] is not None:
         updates["title"] = updates["title"].strip()
@@ -2933,9 +2935,9 @@ def update_story(
     for field, value in updates.items():
         setattr(story, field, value)
     if body.person_ids is not None:
-        people = _validate_story_people(db, family_id, body.person_ids, user)
+        tagged_people = _validate_story_people(db, family_id, body.person_ids, user)
         db.execute(delete(StoryPerson).where(StoryPerson.story_id == story.id))
-        for person in people:
+        for person in tagged_people:
             db.add(StoryPerson(story_id=story.id, family_id=family_id, person_id=person.id))
     story.updated_at = datetime.now(UTC)
     _audit(db, user, family_id, "story.updated", "story", story.id)
@@ -3113,7 +3115,7 @@ def list_person_memories(
         db, family_id, user, [item.id for item in memories]
     )
     visible_memories = [item for item in memories if item.id in visible_ids]
-    memory_ids = [item.id for item in visible_memories]
+    visible_memory_ids = [item.id for item in visible_memories]
     own_link = db.scalar(
         select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id)
     )
@@ -3129,7 +3131,7 @@ def list_person_memories(
             .join(Person, Person.id == MemoryPersonTag.person_id)
             .join(FamilyPerson, FamilyPerson.person_id == Person.id)
             .where(
-                MemoryPersonTag.memory_id.in_(memory_ids),
+                MemoryPersonTag.memory_id.in_(visible_memory_ids),
                 FamilyPerson.family_id == family_id,
                 or_(
                     Person.visibility != "private",
@@ -3139,7 +3141,7 @@ def list_person_memories(
             )
             .order_by(MemoryPersonTag.memory_id, Person.last_name, Person.first_name)
         ).all()
-        if memory_ids
+        if visible_memory_ids
         else []
     )
     names_by_memory: dict[UUID, list[str]] = {}
@@ -3404,6 +3406,8 @@ def create_invitation(
     _audit(db, user, family_id, "invitation.created", "invitation", invitation.id)
     db.commit()
     family = db.get(Family, family_id)
+    if family is None:
+        raise HTTPException(404, "Гэр бүл олдсонгүй.")
     settings = get_settings()
     link = f"{settings.email_public_base_url.rstrip('/')}/invite#token={raw_token}"
     try:
@@ -3533,10 +3537,11 @@ def family_tree(
     person_id: UUID | None = Query(default=None, description="Контекстийн гол хүн."),
     depth: int = Query(default=2, ge=0, le=5, description="Холбооны гүн, хамгийн ихдээ 5."),
     scope: str = Query(default="context", pattern="^(context|all)$"),
+    node_limit: int = Query(default=300, ge=1, le=1000),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return a family-authorized tree neighborhood capped at 300 people and 1,200 edges."""
+    """Return an authorized bounded tree, with an explicit maximum of 1,000 people."""
     _, family = _member(db, family_id, user)
     linked_person_id = db.scalar(
         select(UserPersonLink.person_id)
@@ -3562,7 +3567,7 @@ def family_tree(
             "persons": [],
             "parent_child_relationships": [],
             "marriages": [],
-            "meta": {"depth": depth, "node_count": 0, "node_limit": 300, "truncated": False},
+            "meta": {"depth": depth, "node_count": 0, "node_limit": node_limit, "truncated": False},
         }
 
     root = _person_in_family(db, family_id, person_id)
@@ -3577,7 +3582,6 @@ def family_tree(
 
     frontier = {root.id} if can_traverse(root) else set()
     truncated = False
-    node_limit = 300
     edge_limit = 1200
 
     if scope == "all":

@@ -18,7 +18,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.3,<9.0", "ruff>=0.6,<1.0"]
+dev = [
+    "mypy>=1.19,<2",
+    "pytest>=8.3,<9.0",
+    "ruff>=0.6,<1.0",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -33,6 +37,12 @@ entrypoint = "index:app"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.mypy]
+files = ["app"]
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 100

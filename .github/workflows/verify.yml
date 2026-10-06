@@ -76,6 +76,9 @@ jobs:
       - name: Run Ruff
         run: uv run ruff check app tests migrations ops
         working-directory: backend
+      - name: Backend typecheck
+        run: uv run mypy
+        working-directory: backend
       - name: Alembic upgrade
         run: uv run alembic upgrade head
         working-directory: backend

@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.account_photos import router as account_photos_router
 from app.admin import bootstrap_admin_roles
 from app.admin import router as admin_router
 from app.admin_workspace import public_router as announcements_router
@@ -23,6 +24,7 @@ from app.families import router as families_router
 from app.family_activities import router as family_activities_router
 from app.memory_photos import router as memory_photos_router
 from app.observability import configure_logging, error_classification, request_id_context
+from app.phone_verification import router as phone_verification_router
 from app.profile_photos import router as profile_photos_router
 from app.shared_ancestry import admin_router as admin_shared_ancestry_router
 from app.shared_ancestry import family_router as family_root_connection_router
@@ -102,6 +104,7 @@ async def request_context(request: Request, call_next):
             response.headers["X-Request-ID"] = request_id
             request_id_context.reset(context_token)
             return response
+    error_code: str | None
     try:
         response = await call_next(request)
     except Exception as error:  # noqa: BLE001 - final boundary keeps internals out of API responses.
@@ -159,6 +162,8 @@ async def request_context(request: Request, call_next):
 
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(account_photos_router, prefix="/api/v1")
+app.include_router(phone_verification_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(admin_workspace_router, prefix="/api/v1")
 app.include_router(admin_shared_ancestry_router, prefix="/api/v1")

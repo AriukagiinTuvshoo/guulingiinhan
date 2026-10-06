@@ -104,6 +104,8 @@ def test_minor_email_login_is_rejected_but_adult_login_still_succeeds(client, da
     user_id = client.get("/api/v1/auth/me").json()["id"]
     family, person = create_minor(client)
     link_user_to_person(database, user_id, person["id"])
+    # A session created before this correction must also fail closed.
+    assert client.get("/api/v1/auth/me").status_code == 401
     client.post("/api/v1/auth/logout")
 
     rejected = client.post(
@@ -241,12 +243,13 @@ def test_minor_google_oidc_login_is_rejected(client, database, monkeypatch, goog
 def test_minor_google_oidc_link_is_rejected(client, database, monkeypatch, google_enabled):
     register_verified(client, "minor-google-link@example.com", PASSWORD)
     user_id = client.get("/api/v1/auth/me").json()["id"]
-    _, person = create_minor(client)
-    link_user_to_person(database, user_id, person["id"])
-
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle(subject="minor-google-link"))
     start = client.post("/api/v1/auth/me/google/start", follow_redirects=False)
     assert start.status_code == 303
+    _, person = create_minor(client)
+    link_user_to_person(database, user_id, person["id"])
+    assert client.post("/api/v1/auth/me/google/start", follow_redirects=False).status_code == 401
+    # An already-issued OAuth state is also rejected after the minor correction.
     result = google_callback(client, start)
     assert "google=failed" in result.headers["location"]
 

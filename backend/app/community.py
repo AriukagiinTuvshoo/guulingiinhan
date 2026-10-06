@@ -2,7 +2,7 @@
 
 import re
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -147,7 +147,7 @@ def public_post(
     _: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     """A public post is readable across families, without exposing related Persons."""
-    variants = {
+    variants: dict[str, tuple[Any, Any, Any]] = {
         "story": (Story, Story.body, Story.event_date),
         "memory": (Memory, Memory.description, Memory.memory_date),
         "archive": (Archive, Archive.description, Archive.document_date),
@@ -193,7 +193,7 @@ def public_thumbnail(
     photo = _public_photo(db, photo_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Нийтийн зураг олдсонгүй.")
-    _, thumbnail_key = _expected_object_keys(photo)
+    _original_key, thumbnail_key = _expected_object_keys(photo)
     try:
         data = storage.get(thumbnail_key)
     except Exception as error:

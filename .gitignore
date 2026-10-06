@@ -15,6 +15,7 @@ backend/*.sqlite*
 backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.ruff_cache/
+backend/.mypy_cache/
 backend/*.egg-info/
 .DS_Store
 .vinext/

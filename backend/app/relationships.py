@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from uuid import UUID
 
 
@@ -14,7 +14,7 @@ def canonical_pair(person_a: UUID, person_b: UUID) -> tuple[UUID, UUID]:
 
 
 def assert_parent_child_is_acyclic(
-    existing_edges: Iterable[tuple[UUID, UUID]], parent_id: UUID, child_id: UUID
+    existing_edges: Iterable[Sequence[UUID]], parent_id: UUID, child_id: UUID
 ) -> None:
     """Reject self-parenting and any edge that closes a directed ancestry cycle."""
     if parent_id == child_id:

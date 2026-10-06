@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -247,13 +247,13 @@ def _person_shared_data(person: Person, shared_by_me: bool) -> SharedPersonOut:
 @router.get("", response_model=SharedTreeOut)
 def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ancestry = _tree_row(db)
-    rows = db.execute(
+    rows = list(db.execute(
         select(Person, SharedAncestryPerson.family_id, SharedAncestryPerson.added_by)
         .join(SharedAncestryPerson, SharedAncestryPerson.person_id == Person.id)
         .where(Person.visibility != "private")
         .order_by(Person.search_last_name, Person.search_first_name, Person.id)
         .limit(2001)
-    ).all()
+    ).tuples().all())
     people = [row[0] for row in rows]
     if ancestry and ancestry.root_person_id:
         root = db.get(Person, ancestry.root_person_id)
@@ -297,7 +297,7 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
     def projection_allows(edge) -> bool:
         child_family = family_by_person.get(edge.child_id)
         parent_family = family_by_person.get(edge.parent_id)
-        connection = connections.get(child_family)
+        connection = connections.get(child_family) if child_family is not None else None
         if connection and connection.person_id == edge.child_id and parent_family != child_family:
             return connection.status == "approved" and connection.target_person_id == edge.parent_id
         return True
@@ -305,7 +305,7 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
     canonical_edges = [edge for edge in canonical_edges if projection_allows(edge)]
     legacy_edges = [edge for edge in legacy_edges if projection_allows(edge)]
     canonical_pairs = {(edge.parent_id, edge.child_id) for edge in canonical_edges}
-    edges = [*canonical_edges, *(edge for edge in legacy_edges
+    edges: list[ParentChildRelationship | SharedAncestryRelationship] = [*canonical_edges, *(edge for edge in legacy_edges
                                 if (edge.parent_id, edge.child_id) not in canonical_pairs)]
     linked = _my_linked_person(db, user)
     root_id = ancestry.root_person_id if ancestry else None
@@ -432,7 +432,7 @@ def leave_shared_tree(user: User = Depends(get_current_user), db: Session = Depe
     ).limit(1))
     if referenced:
         raise HTTPException(status_code=409, detail="Таны хүн нийтлэг модонд хүүхэдтэй байна. Хүүхэд бүр өөрийн холболтоо цуцалсны дараа салгаж болно.")
-    db.execute(SharedAncestryRelationship.__table__.delete().where(
+    db.execute(delete(SharedAncestryRelationship).where(
         or_(SharedAncestryRelationship.parent_id == person.id, SharedAncestryRelationship.child_id == person.id)
     ))
     db.delete(association)
@@ -740,7 +740,7 @@ def detach_shared_person(
         connection.status = "disconnected"
         connection.decided_by = current[0].id
         connection.decided_at = datetime.now(UTC)
-    db.execute(SharedAncestryRelationship.__table__.delete().where(
+    db.execute(delete(SharedAncestryRelationship).where(
         or_(SharedAncestryRelationship.parent_id == person_id,
             SharedAncestryRelationship.child_id == person_id),
     ))
@@ -755,7 +755,7 @@ def _shared_target(db: Session, person_id: UUID) -> Person:
     root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
     person = db.get(Person, person_id)
     if person is None or person.visibility == "private" or person_is_minor(person) or not (
-        person_id == root_id or db.get(SharedAncestryPerson, person_id)
+        person_id == root_id or db.get(SharedAncestryPerson, person_id) is not None
     ):
         raise HTTPException(status_code=404, detail="Үндэс модны зөвшөөрөгдсөн хүн олдсонгүй.")
     if root_id is None:
@@ -786,7 +786,7 @@ def _shared_target(db: Session, person_id: UUID) -> Person:
     children: dict[UUID, set[UUID]] = {}
     for parent_id, child_id in [*canonical, *legacy]:
         child_family = family_by_person.get(child_id)
-        connection = connections.get(child_family)
+        connection = connections.get(child_family) if child_family is not None else None
         if (connection and connection.person_id == child_id
                 and family_by_person.get(parent_id) != child_family
                 and (connection.status != "approved" or connection.target_person_id != parent_id)):
@@ -1171,7 +1171,7 @@ def add_shared_relationship(
     for person_id in (body.parent_person_id, body.child_person_id):
         person = db.get(Person, person_id)
         if person is None or person.visibility == "private" or person_is_minor(person) or not (
-            person_id == root_id or db.get(SharedAncestryPerson, person_id)
+            person_id == root_id or db.get(SharedAncestryPerson, person_id) is not None
         ):
             raise HTTPException(status_code=404, detail="Нийтлэг модонд зөвшөөрлөөр орсон хүн олдсонгүй.")
     edges = db.execute(select(

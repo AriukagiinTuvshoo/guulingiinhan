@@ -36,13 +36,13 @@ export async function backupMedia(env) {
       const opaqueName = hex(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(listed.key))));
       const backupKey = `${prefix}objects/${opaqueName}.json`;
       await env.BACKUP.put(backupKey, JSON.stringify({format:FORMAT,wrapped_key:bytesToBase64(new Uint8Array(wrappedKey)),
-        nonce:bytesToBase64(nonce),ciphertext:bytesToBase64(new Uint8Array(ciphertext))}), {httpMetadata:{contentType:'application/json'}});
+        nonce:bytesToBase64(nonce),ciphertext:bytesToBase64(new Uint8Array(ciphertext))}), {httpMetadata:{contentType:'application/octet-stream'}});
       records.push({backup_key:backupKey,bytes:bytes.length});
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   const manifest = {format:FORMAT,environment:'staging',run_id:runId,object_count:records.length,total_bytes:totalBytes,objects:records};
-  await env.BACKUP.put(`${prefix}media-manifest.json`, JSON.stringify(manifest), {httpMetadata:{contentType:'application/json'}});
+  await env.BACKUP.put(`${prefix}media-manifest.json`, JSON.stringify(manifest), {httpMetadata:{contentType:'application/octet-stream'}});
   return manifest;
 }
 

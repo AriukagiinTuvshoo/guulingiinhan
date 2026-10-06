@@ -7,6 +7,7 @@ import logging
 import re
 import time
 import warnings
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePath
 from urllib.parse import unquote
@@ -107,7 +108,7 @@ def _visible_memory(db: Session, family_id: UUID, memory_id: UUID, user: User) -
         MemoryPersonTag.memory_id == memory_id
     )).all()
     try:
-        _assert_memory_minor_scopes(db, family_id, user, person_ids)
+        _assert_memory_minor_scopes(db, family_id, user, list(person_ids))
     except HTTPException as error:
         if error.status_code == 403:
             raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.") from error
@@ -131,9 +132,10 @@ def _image_payload(filename: str, content_type: str, data: bytes) -> tuple[str, 
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(data)) as image:
-                image.verify()
-            with Image.open(io.BytesIO(data)) as image:
+            with Image.open(io.BytesIO(data)) as probe_image:
+                probe_image.verify()
+            with Image.open(io.BytesIO(data)) as opened_image:
+                image: Image.Image = opened_image
                 fmt = (image.format or "").upper()
                 if fmt not in SUPPORTED_FORMATS:
                     raise HTTPException(status_code=415, detail="JPEG, PNG эсвэл WebP зураг оруулна уу.")
@@ -200,7 +202,7 @@ def _expected_object_keys(photo: Photo) -> tuple[str, str]:
 
 
 def _tagged_photo_visibility(
-    db: Session, family_id: UUID, user: User, photos: list[Photo]
+    db: Session, family_id: UUID, user: User, photos: Sequence[Photo]
 ) -> set[UUID]:
     """Return photos whose every tag is visible in this family and guardian context."""
     photo_ids = [photo.id for photo in photos]
@@ -332,7 +334,7 @@ def _require_photo_scope(
     tag_ids = list(db.scalars(
         select(PhotoPersonTag.person_id).where(PhotoPersonTag.photo_id == photo.id)
     ).all())
-    _require_person_ids_scope(db, family_id, user, tag_ids, scope)
+    _require_person_ids_scope(db, family_id, user, list(tag_ids), scope)
 
 
 def _require_person_ids_scope(
@@ -440,7 +442,7 @@ def list_memories(
     ).all() if ranked_photos is not None else []
     photos_by_memory: dict[UUID, list[Photo]] = {memory_id: [] for memory_id in ids}
     for photo in photo_rows:
-        if len(photos_by_memory[photo.memory_id]) < 12:
+        if photo.memory_id is not None and len(photos_by_memory[photo.memory_id]) < 12:
             photos_by_memory[photo.memory_id].append(photo)
     page_photos = [photo for batch in photos_by_memory.values() for photo in batch]
     visible_photo_ids = _tagged_photo_visibility(db, family_id, user, page_photos)
@@ -540,16 +542,16 @@ async def upload_photo(
     photo_id = uuid4()
     object_prefix = f"families/{family_id}/memories/{memory_id}/photos/{photo_id}"
     original_key, thumbnail_key = f"{object_prefix}/original", f"{object_prefix}/thumbnail.jpg"
-    photo = Photo(
+    created_photo = Photo(
         id=photo_id, family_id=family_id, memory_id=memory_id, object_key=original_key,
         thumbnail_object_key=thumbnail_key, original_filename=safe_filename,
         mime_type=mime_type, file_size=len(data), width=width, height=height,
         uploaded_by=user.id, storage_status="uploading",
     )
-    db.add(photo)
+    db.add(created_photo)
     try:
         db.flush()
-        _audit(db, user, family_id, "photo.upload_started", "photo", photo.id)
+        _audit(db, user, family_id, "photo.upload_started", "photo", created_photo.id)
         db.commit()
     except SQLAlchemyError as error:
         db.rollback()
@@ -693,13 +695,13 @@ def list_person_photos(
     memory_rows = db.scalars(
         select(Memory).where(Memory.id.in_(visible_memory_ids))
     ).all()
-    visible_memory_ids = {
+    allowed_memory_ids = {
         memory.id for memory in memory_rows
         if _memory_media_visible(db, family_id, user, memory)
     }
-    conditions = (*conditions, Photo.memory_id.in_(visible_memory_ids))
+    filtered_conditions = (*conditions, Photo.memory_id.in_(allowed_memory_ids))
     photos = db.scalars(
-        select(Photo).where(*conditions).order_by(Photo.created_at.desc(), Photo.id.desc())
+        select(Photo).where(*filtered_conditions).order_by(Photo.created_at.desc(), Photo.id.desc())
         .offset((page - 1) * page_size).limit(page_size + 1)
     ).all()
     photos = photos[:page_size]

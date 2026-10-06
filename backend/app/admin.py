@@ -5,16 +5,25 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import _consume_otp_rate, get_current_user, normalize_email
+from app.auth import (
+    GenericEmailResponse,
+    LoginIdentityOutput,
+    _audit_auth_event,
+    _consume_otp_rate,
+    _create_email_token,
+    _email_link,
+    get_current_user,
+    normalize_email,
+)
 from app.config import get_settings
 from app.db import SessionLocal, get_db
-from app.email import EmailDeliveryError, EmailProvider, get_email_provider
+from app.email import EmailDeliveryError, EmailProvider, get_email_provider, send_email_safely
 from app.models import (
     AdminBootstrap,
     AdminGrant,
@@ -23,6 +32,7 @@ from app.models import (
     FamilyMember,
     FamilyPerson,
     LoginIdentity,
+    PasswordResetToken,
     Person,
     Story,
     User,
@@ -120,6 +130,8 @@ class AdminUserDetail(AdminUser):
     admin_role: AdminRole | None
     memberships: list[AdminMembership]
     linked_people: list[AdminLinkedPerson]
+    identities: list[LoginIdentityOutput]
+    has_profile_photo: bool
 
 
 class AdminStory(BaseModel):
@@ -336,6 +348,12 @@ def user_detail(
         linked_people=[AdminLinkedPerson(id=p.id, family_id=family_id,
                                          first_name=p.first_name, last_name=p.last_name)
                        for p, family_id in linked],
+        identities=[LoginIdentityOutput(id=item.id, provider=item.provider,
+            display_identifier=item.display_identifier, verified=item.verified_at is not None,
+            verified_at=item.verified_at, created_at=item.created_at)
+            for item in db.scalars(select(LoginIdentity).where(
+                LoginIdentity.user_id == user_id, LoginIdentity.disabled_at.is_(None))).all()],
+        has_profile_photo=bool(user.profile_photo_key),
     )
 
 
@@ -359,6 +377,52 @@ def edit_user_profile(
         db.commit()
     return AdminUser(id=target.id, display_name=target.display_name, email=target.email,
                      is_active=target.is_active, created_at=target.created_at)
+
+
+@router.post("/users/{user_id}/recovery", response_model=GenericEmailResponse, status_code=202)
+def initiate_recovery(user_id: UUID, request: Request, background: BackgroundTasks,
+                      actor: tuple[User, AdminRole] = Depends(require_operator),
+                      db: Session = Depends(get_db), provider: EmailProvider = Depends(get_email_provider)):
+    target = db.get(User, user_id)
+    grant = db.get(AdminGrant, user_id)
+    if not target:
+        raise HTTPException(404, "Хэрэглэгч олдсонгүй.")
+    if grant and actor[1] != AdminRole.SUPER_ADMIN:
+        raise HTTPException(403, "Энэ аккаунтыг удирдах эрхгүй байна.")
+    if not target.is_active or not target.email or not target.email_verified_at:
+        raise HTTPException(409, "Баталгаажсан имэйлээр сэргээх боломжгүй байна.")
+    if not _consume_otp_rate(db, "admin-recovery-user", str(user_id), 1):
+        raise HTTPException(429, "Түр хүлээгээд дахин оролдоно уу.")
+    token = _create_email_token(db, target, model=PasswordResetToken, kind="password_reset_token",
+        ttl_seconds=get_settings().email_password_reset_ttl_seconds, audit_action="password_reset_requested")
+    _audit_auth_event(db, actor[0].id, "admin.recovery_requested", "user", target.id)
+    db.commit()
+    background.add_task(send_email_safely, provider, "send_password_reset_email",
+        (target.email, _email_link("password-reset", token)), getattr(request.state, "request_id", None))
+    return GenericEmailResponse(message="Баталгаажсан имэйлд сэргээх холбоос илгээнэ.")
+
+
+class AdminPhoneVerificationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    verified: bool
+
+
+@router.put("/users/{user_id}/phone-verification", status_code=204)
+def revoke_phone_verification(user_id: UUID, body: AdminPhoneVerificationInput,
+                              actor: tuple[User, AdminRole] = Depends(require_super_admin),
+                              db: Session = Depends(get_db)):
+    if body.verified:
+        raise HTTPException(422, "Утасны эзэмшлийг Verify.MN-ээр баталгаажуулна уу.")
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(404, "Хэрэглэгч олдсонгүй.")
+    for identity in db.scalars(select(LoginIdentity).where(
+        LoginIdentity.user_id == user_id, LoginIdentity.provider == "phone",
+    )).all():
+        identity.verified_at = None
+    db.execute(delete(UserSession).where(UserSession.user_id == user_id))
+    _audit_auth_event(db, actor[0].id, "admin.phone_verification_revoked", "user", user_id)
+    db.commit()
 
 
 @router.get("/audit", response_model=list[AdminAuditEvent])

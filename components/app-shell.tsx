@@ -23,6 +23,7 @@ import Link from 'next/link';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
+import ProfilePhoto from './profile-photo';
 import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
 import { FamilyContext } from './family-context';
 import { useDialogFocus } from './use-dialog-focus';
@@ -408,9 +409,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             aria-expanded={accountOpen}
             onClick={() => setAccountOpen((value) => !value)}
           >
-            <span className="app-shell__avatar" aria-hidden="true">
-              {(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()}
-            </span>
+            <ProfilePhoto url={user?.profile_photo_url} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
             <span className="app-shell__account-name">{user?.display_name || 'Хэрэглэгч'}</span>
           </button>
 

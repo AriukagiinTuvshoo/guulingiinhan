@@ -27,7 +27,7 @@ def test_staging_verified_login_and_disabled_provider_routes(client, database, m
     assert client.get("/health/ready").json()["database"] == "ok"
     assert client.get("/api/v1/auth/google/config").json() == {"enabled": False}
     assert client.get("/api/v1/auth/email/config").json() == {"enabled": False}
-    assert client.get("/api/v1/auth/phone/config").json() == {"enabled": False}
+    assert client.get("/api/v1/auth/phone/config").json()["enabled"] is False
 
     login = client.post(
         "/api/v1/auth/login",

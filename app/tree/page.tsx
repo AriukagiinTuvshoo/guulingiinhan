@@ -294,7 +294,7 @@ function TreePageContent() {
         if (!family || family.id !== id) return;
         let treeData: TreeData;
         const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth)
-          + '&scope=' + (viewModeRef.current === 'full' ? 'all' : 'context');
+          + '&scope=' + (viewModeRef.current === 'full' ? 'all&node_limit=1000' : 'context');
         try {
           const query = preferredPersonId
             ? treeBase + '&person_id=' + encodeURIComponent(preferredPersonId)

@@ -977,7 +977,7 @@
 .settings-family-form select,.settings-inline-form input{width:100%;height:43px;border:1px solid #cdc1ac;border-radius:8px;background:#fffdf8;color:#304b40;padding:0 12px;font-size:11px;outline:none}
 .settings-family-form select:focus-visible,.settings-inline-form input:focus-visible{border-color:#96783f;box-shadow:0 0 0 3px #96783f20}
 .settings-help{margin:0;color:#8a928b;font-size:9px;line-height:1.6}
-.settings-family-meta{display:flex;align-items:flex-start;gap:9px;margin-top:3px;padding-top:11px;border-top:1px solid #dfd4c2;color:#717d76;font-size:9px;line-height:1.6}
+.settings-family-meta{display:flex;align-items:flex-start;gap:9px;margin-top:3px;padding-top:11px;border-top:1px solid #dfd4c2;color:#526057;font-size:11px;line-height:1.6}
 .settings-family-badge{flex:0 0 auto;padding:3px 6px;border:1px solid #cfbea0;background:#efe7d7;color:#755d2e;border-radius:999px;font-size:8px;text-transform:uppercase}
 .settings-stack{display:grid;gap:11px}
 .settings-action-card{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:17px 18px}
@@ -2019,5 +2019,15 @@ body .settings-mono { color: #526057 !important; }
 body .settings-status--pending { color: #795b20; }
 body .heritage-actions .heritage-section-heading h2 { color: #fff7e2; }
 .app-shell__drawer-close { display: flex; margin: 0 0 12px auto; padding: 8px; border: 1px solid #d5b86b; border-radius: 8px; background: #153c2e; color: #fff7e2; }
+.settings-page .phone-verification label { color: #526057; font-size: 13px; }
+.phone-verification button, .phone-verification a.settings-button { min-height: 44px; }
+.settings-action-link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 0; }
+.settings-action-link { color: #153c2e; font-weight: 600; }
+.settings-phone-card { padding: 20px; }
+.settings-phone-card > p { margin: 10px 0; line-height: 1.65; }
+.settings-phone-card .settings-action-title h3 { margin: 0; }
+.settings-page .phone-verification { margin-top: 16px; }
+.settings-page .phone-verification input { background: #fffdfa; color: #153c2e; border: 1px solid #c7d1c3; min-height: 44px; }
+.settings-inline-form label { font-size: 12px; line-height: 1.5; }
 
 

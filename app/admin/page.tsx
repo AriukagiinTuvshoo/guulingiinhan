@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import AccountPhoto from '../../components/account-photo';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api } from '../../lib/api';
@@ -16,7 +17,7 @@ type Overview = { users: number; families: number; admins: number };
 type UserRow = { id: string; display_name: string; email: string | null; is_active: boolean; created_at: string };
 type FamilyRow = { id: string; name: string; created_at: string };
 type AdminRow = UserRow & { role: Role };
-type UserDetail = UserRow & { email_verified: boolean; admin_role: Role | null; memberships: { family_id: string; family_name: string; role: string }[]; linked_people: { id: string; family_id: string; first_name: string; last_name: string }[] };
+type UserDetail = UserRow & { has_profile_photo: boolean; identities: { id: string; provider: string; display_identifier: string | null; verified: boolean }[]; email_verified: boolean; admin_role: Role | null; memberships: { family_id: string; family_name: string; role: string }[]; linked_people: { id: string; family_id: string; first_name: string; last_name: string }[] };
 type UserStory = { id: string; family_id: string; title: string; body: string; visibility: string; created_at: string };
 type Section = 'overview' | 'users' | 'families' | 'admins' | 'user_detail' | 'family_studio' | 'announcements' | 'audit';
 type AuditEvent = { id: string; action: string; target_type: string; target_id: string | null; family_id: string | null; actor_name: string; created_at: string };
@@ -99,6 +100,21 @@ export default function AdminPage() {
 
   function show(sectionName: Section) {
     setSection(sectionName); setOffset(0); setError(''); setNotice(''); setConfirmation(null);
+  }
+
+  async function accountAction(action: 'recovery' | 'revoke-phone') {
+    if (!detail || working) return;
+    const text = action === 'recovery' ? 'Энэ хэрэглэгчийн баталгаажсан имэйлд нууц үг сэргээх холбоос илгээх үү?' : 'Утасны баталгаажуулалтыг цуцлах уу? Бүх төхөөрөмжөөс гарна.';
+    if (!window.confirm(text)) return;
+    setWorking(true); setError('');
+    try {
+      await api(`/admin/users/${detail.id}/${action === 'recovery' ? 'recovery' : 'phone-verification'}`, {
+        method: action === 'recovery' ? 'POST' : 'PUT',
+        ...(action === 'revoke-phone' ? { body: JSON.stringify({ verified: false }) } : {}),
+      });
+      await openUser(detail.id);
+    } catch { setError('Үйлдлийг гүйцэтгэх боломжгүй байна. Мэдээлэл болон эрхээ шалгана уу.'); }
+    finally { setWorking(false); }
   }
 
   async function openUser(userId: string) {
@@ -264,6 +280,11 @@ export default function AdminPage() {
             <div className={styles.detailCard}>
               <div className={styles.detailTop}><div><h2>{detail.display_name}</h2><p>{detail.email || 'Имэйлгүй аккаунт'}</p></div><span>{detail.is_active ? 'Идэвхтэй' : 'Блоклогдсон'}</span></div>
               <dl className={styles.facts}><div><dt>Имэйл</dt><dd>{detail.email_verified ? 'Баталгаажсан' : 'Баталгаажаагүй'}</dd></div><div><dt>Бүртгэсэн</dt><dd>{new Date(detail.created_at).toLocaleDateString('mn-MN')}</dd></div><div><dt>Системийн эрх</dt><dd>{detail.admin_role ? labels[detail.admin_role] : 'Энгийн хэрэглэгч'}</dd></div></dl>
+              <div className={styles.facts}>{detail.identities?.map((item) => <div key={item.id}><strong>{item.provider === 'phone' ? 'Утас' : item.provider === 'email' ? 'Имэйл' : 'Google'}</strong><p>{item.display_identifier} · {item.verified ? 'Баталгаажсан' : 'Баталгаажаагүй'}</p></div>)}</div>
+              {identity.role !== 'MODERATOR' && <button type="button" disabled={working || !detail.email_verified} onClick={() => void accountAction('recovery')}>Нууц үг сэргээх холбоос илгээх</button>}
+              {identity.role === 'SUPER_ADMIN' && <><AccountPhoto endpoint={`/admin/users/${detail.id}/photo`} hasPhoto={detail.has_profile_photo} onChanged={() => void openUser(detail.id)} />
+                {detail.identities?.some((item) => item.provider === 'phone' && item.verified) && <button type="button" disabled={working} onClick={() => void accountAction('revoke-phone')}>Утасны баталгаажуулалт цуцлах</button>}</>}
+
               {identity.role !== 'MODERATOR' && detail.id !== identity.user_id && detail.admin_role !== 'SUPER_ADMIN' && (identity.role === 'SUPER_ADMIN' || !detail.admin_role) && <button className={styles.dangerButton} type="button" onClick={() => setConfirmation({ userId: detail.id, action: detail.is_active ? 'block' : 'unblock', label: detail.email || detail.display_name })}>{detail.is_active ? 'Аккаунт блоклох' : 'Блок гаргах'}</button>}
               {identity.role === 'SUPER_ADMIN' && <div className={styles.profileEditor}><label>Харагдах нэр<input maxLength={120} value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label><button disabled={working || !profileName.trim() || profileName.trim() === detail.display_name} type="button" onClick={() => void saveProfile()}>Нэр хадгалах</button></div>}
             </div>
