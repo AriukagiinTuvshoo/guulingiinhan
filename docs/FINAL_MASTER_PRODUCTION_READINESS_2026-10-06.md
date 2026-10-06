@@ -11,9 +11,9 @@
 - Starting commit for this continuation: `e67790fc6ea98fe765dc8f6aa2009644dc68f02b`
 - Integration PR: [#94](https://github.com/AriukagiinTuvshoo/guulingiinhan/pull/94), open; not merged.
 - Migration head: `c16a4e8b9021`; staging is migrated to this head.
-- Latest Cloudflare staging frontend: `3054fdc2-0662-4b0b-a366-759ca3c03f72` (#53), 100% traffic.
-- Latest Cloudflare staging backend: `d4430279-a5ec-4f70-bcee-24cd312716ce` (#72), 100% traffic.
-- Earlier guest smoke passed on frontend #52/backend #71. This runner could not resolve the staging hostname when repeating HTTP checks against #53/#72. The earlier smoke is not treated as evidence for the latest deployment.
+- Cloudflare staging frontend: `c740ab61-876d-44eb-8ee4-37bca6f35161` (#54), 100% traffic, deployed `2026-10-06T06:54:38Z`.
+- Cloudflare staging backend: `62d0704e-8c1a-442a-89c8-7f3e752c7166` (#72), 100% traffic, deployed `2026-10-06T06:29:14Z`.
+- Guest smoke was repeated against frontend #54/backend #72 after the dependency-scope change: four application routes returned HTTP 200; backend health and readiness returned HTTP 200; four protected API requests returned HTTP 401 anonymously. No authenticated cookie or private family identifier was sent.
 - No production deployment, DNS, secret, credential, or family-data change was made.
 
 ## B. Changes in this continuation
@@ -93,8 +93,8 @@ Statuses cover only the evidence stated in each row. Local tests do not imply au
 | Dependency audit | PARTIAL | `braces` was removed from production dependency graph and absent from Worker output; the build-only GHSA remains, and online npm audit is blocked by DNS. |
 | Backend tests | PASS | 224 passed, zero skipped; Ruff and Mypy pass; migration cycle/consistency passes on the audited code candidate. |
 | Frontend tests | PASS | Clean offline `npm ci`, typecheck, Next build, Vinext build, 25 routes, tree, root-linking and heritage regressions pass after package classification change. |
-| CI | BLOCKED | Runs #1178/#1179 passed for prior commit `e67790f`; this continuation has uncommitted frontend manifest changes and requires a new pushed CI run. |
-| Staging runtime | PARTIAL | Cloudflare reports #53/#72 at 100%; previous guest smoke passed on #52/#71. Host DNS failed from this runner for the latest versions, so health/readiness and HTTP smoke were not repeated. |
+| CI | PASS | Push run #1180 and PR run #1181 both completed successfully for code commit `bd67b97f174a57bb4a6122ffb77e254b7219fa06`; frontend and backend jobs passed. |
+| Staging runtime | PASS | Current guest-only smoke on frontend #54/backend #72: login/register/reset/admin ancestry and health/readiness returned 200; protected shared-lineage/community/family API routes returned 401 anonymously. |
 | Authenticated staging | BLOCKED | No safe in-environment authenticated session evidence. External browser capture was rejected by automatic privacy review because it could export private genealogy/account content. |
 | Cross-family regression | PARTIAL | Automated backend family-isolation tests and anonymous staging denials pass; two authenticated staging accounts were not tested. |
 | Production deployment | NOT TESTED | Explicitly outside authorization; no production action was performed. |
@@ -103,7 +103,7 @@ Statuses cover only the evidence stated in each row. Local tests do not imply au
 
 1. **Live Verify.MN:** provide/approve a disposable test phone and perform verification, phone change, and recovery cases. Evidence still needed: received SMS, successful state transition, and wrong/expired/replay rejection. SMS may incur the documented 150 MNT charge.
 2. **Live email:** provide an approved disposable mailbox and verify registration, verification, reset, expiry, reuse and login. Do not use the owner's personal mailbox or change the owner's real credentials.
-3. **Authenticated staging:** perform the Admin, Profile, Settings, Tree, content, media, logout and two-family workflows using the owner's own browser or another approved method that does not export private page content. The current runner could not resolve the host for a repeat guest smoke.
+3. **Authenticated staging:** perform the Admin, Profile, Settings, Tree, content, media, logout and two-family workflows using the owner's own browser or another approved method that does not export private page content. Guest checks pass; authenticated behavior and two-account cross-family access still lack actual staging evidence. The external TinyFish DOM/screenshot path remains rejected by automatic privacy review.
 4. **Operational recovery:** configure and evidence provider-native retention, independent key custody, scheduled backups/restores, and a documented recovery procedure. Current one-time isolated restore is not production DR.
 5. **Dependency advisory:** upstream lists no patch for CVE-2026-93687. The production graph and deployed Worker are clear of `braces`, but the build-time copy remains. Re-run online `npm audit`; then document owner risk acceptance or revisit when a patched release is available.
 6. **Release/production:** complete all staging gates first, then obtain separate explicit human approval before production deployment, DNS, production secrets, or production data operations.
