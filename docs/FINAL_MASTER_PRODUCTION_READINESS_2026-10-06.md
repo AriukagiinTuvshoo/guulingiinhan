@@ -11,9 +11,9 @@
 - Starting commit for this continuation: `e67790fc6ea98fe765dc8f6aa2009644dc68f02b`
 - Integration PR: [#94](https://github.com/AriukagiinTuvshoo/guulingiinhan/pull/94), open; not merged.
 - Migration head: `c16a4e8b9021`; staging is migrated to this head.
-- Cloudflare staging frontend: `c740ab61-876d-44eb-8ee4-37bca6f35161` (#54), 100% traffic, deployed `2026-10-06T06:54:38Z`.
-- Cloudflare staging backend: `62d0704e-8c1a-442a-89c8-7f3e752c7166` (#72), 100% traffic, deployed `2026-10-06T06:29:14Z`.
-- Guest smoke was repeated against frontend #54/backend #72 after the dependency-scope change: four application routes returned HTTP 200; backend health and readiness returned HTTP 200; four protected API requests returned HTTP 401 anonymously. No authenticated cookie or private family identifier was sent.
+- Cloudflare staging frontend: `30eab380-b0ac-47f4-a65f-43d4016e9781` (#56), 100% traffic, deployed `2026-10-06T07:01:23Z`.
+- Cloudflare staging backend: `e79be8d7-8ba0-4742-837d-c3ca2094b4c0` (#75), 100% traffic, deployed `2026-10-06T07:01:15Z`.
+- Guest smoke was repeated against frontend #56/backend #75 after the dependency-scope change: `/login`, `/register`, `/password-reset`, and `/admin/ancestry` returned HTTP 200; backend `/health` and `/health/ready` returned HTTP 200; four protected API requests returned HTTP 401 anonymously. API health paths under `/api/v1` are not registered and returned 404. No authenticated cookie or private family identifier was sent.
 - No production deployment, DNS, secret, credential, or family-data change was made.
 
 ## B. Changes in this continuation
@@ -42,7 +42,7 @@
 - `npm run test:heritage`: PASS.
 - `npm ls --omit=dev braces --all`: PASS, empty production tree.
 - An online audit could not be completed from this runner due registry DNS failure. The current full-development dependency audit therefore remains PARTIAL.
-- Existing baseline evidence retained: 224 backend tests passed, zero skipped; Ruff, Mypy across 29 modules, PostgreSQL upgrade/downgrade/upgrade/consistency, 16 targeted keyboard/accessibility checks with zero axe violations, and encrypted database/media restore checks passed before this frontend-only manifest change. CI must rerun on the resulting branch commit.
+- Existing baseline evidence retained: 224 backend tests passed, zero skipped; Ruff, Mypy across 29 modules, PostgreSQL upgrade/downgrade/upgrade/consistency, 16 targeted keyboard/accessibility checks with zero axe violations, and encrypted database/media restore checks passed before this frontend-only manifest change. GitHub verify workflows #1182 (push) and #1183 (PR) both passed on `279eb0616b6e40455ee355ba6dd0c88f6df7e29e`.
 
 ## E. Final master feature matrix
 
@@ -93,8 +93,8 @@ Statuses cover only the evidence stated in each row. Local tests do not imply au
 | Dependency audit | PARTIAL | `braces` was removed from production dependency graph and absent from Worker output; the build-only GHSA remains, and online npm audit is blocked by DNS. |
 | Backend tests | PASS | 224 passed, zero skipped; Ruff and Mypy pass; migration cycle/consistency passes on the audited code candidate. |
 | Frontend tests | PASS | Clean offline `npm ci`, typecheck, Next build, Vinext build, 25 routes, tree, root-linking and heritage regressions pass after package classification change. |
-| CI | PASS | Push run #1180 and PR run #1181 both completed successfully for code commit `bd67b97f174a57bb4a6122ffb77e254b7219fa06`; frontend and backend jobs passed. |
-| Staging runtime | PASS | Current guest-only smoke on frontend #54/backend #72: login/register/reset/admin ancestry and health/readiness returned 200; protected shared-lineage/community/family API routes returned 401 anonymously. |
+| CI | PASS | Push run #1182 and PR run #1183 both completed successfully for HEAD `279eb0616b6e40455ee355ba6dd0c88f6df7e29e`; frontend and backend jobs passed. |
+| Staging runtime | PASS | Current guest-only smoke on frontend #56/backend #75: login/register/reset/admin ancestry and health/readiness returned 200; protected shared-lineage/community/family API routes returned 401 anonymously. |
 | Authenticated staging | BLOCKED | No safe in-environment authenticated session evidence. External browser capture was rejected by automatic privacy review because it could export private genealogy/account content. |
 | Cross-family regression | PARTIAL | Automated backend family-isolation tests and anonymous staging denials pass; two authenticated staging accounts were not tested. |
 | Production deployment | NOT TESTED | Explicitly outside authorization; no production action was performed. |
