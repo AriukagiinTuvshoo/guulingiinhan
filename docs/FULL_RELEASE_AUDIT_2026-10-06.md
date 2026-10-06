@@ -41,7 +41,7 @@ Provider reference inspected: [Verify.MN API contract](https://www.verify.mn/) o
 
 ## Execution evidence
 
-- Backend full regression: 222 tests passed, zero skipped (fresh disposable temp directory); one upstream TestClient deprecation warning. Mypy checks all 29 application modules; Ruff passed.
+- Backend full regression: **224 tests passed, zero skipped** (fresh disposable temp directory); one upstream TestClient deprecation warning. Mypy checks all 29 application modules; Ruff passed.
 - PostgreSQL 18 isolated migration drill: full upgrade, downgrade last revision, upgrade again, consistency passed for `c16a4e8b9021`.
 - Frontend: clean `npm ci`, typecheck, Next build, 25 route checks, 800-node algorithm regression, root-path/content regression, 3 encrypted media unit tests, Vinext build passed. Runtime measurements and staged evidence remain separate.
 - Dependency audit: patched `source-map-js` to 1.2.2 and `undici` to 7.29.1. Remaining 7 high advisory entries are the unpatched `braces` <=3.0.3 dependency chain through the build-time CommonJS/glob plugin. No forced adapter downgrade. Runtime reachability requires verification; no vulnerability-free claim.
@@ -51,3 +51,64 @@ Provider reference inspected: [Verify.MN API contract](https://www.verify.mn/) o
 - Actual media recovery: native R2 Workflow exported 3 objects / 775,777 source bytes; ciphertext downloaded and AES-GCM / RSA-OAEP verified; restored checksums match. Three restored private-media API paths returned data to the authorized principal and denied anonymous access. Temporary Workflow and Worker deleted (both HTTP 200). No public HTTP execution route, recurring schedule, header impersonation or production write used.
 - Browser local UI: new phone registration/password login/post-login verification/recovery (controlled provider fixture) and private account photo upload/display/removal PASS; 51 route/viewport checks at 390×844, 768×1024, 1440×1000, zero uncaught errors/HTTP 5xx, account-security axe zero violations after contrast/target fixes. These do not establish real SMS delivery or staged mobile PASS.
 - Performance discovery: full-view UI was limited to 300 persons by a hardcoded API cap. Added an explicit 1–1,000 bounded parameter (default remains 300); full UI requests 1,000. Four tree regression cases passed, including upper-bound rejection and anonymous denial. Actual local browser now loads/renders all 800 people, 799 parent-child links and 90 marriage occurrences on desktop and mobile. Timing evidence will be attached with environment limits; no production/GPU benchmark claim.
+
+## Final candidate and release gate (2026-10-06)
+
+### Repository and deployment identity
+
+- Branch: `codex/integration-regression-2026-10-02`.
+- Candidate commit: `92ce284737c64d6c386c65670ce7fc2b80658b90` (`Harden account auth and profile security`), pushed to `origin`; checkout was clean when this evidence was recorded.
+- Integration PR: [#94](https://github.com/AriukagiinTuvshoo/guulingiinhan/pull/94), open and not merged.
+- CI workflow `verify`, run `37422773396` (#1175): completed successfully.
+- Migration head: `c16a4e8b9021`; staging migration is applied.
+- Staging frontend Worker version `5cc2fbaa-243d-4e7f-ac65-8d44ea8eab68` (#52), 100% traffic, deployed `2026-10-06T06:16:45Z`.
+- Staging backend Worker version `1aa8aac8-d0c2-4eaa-9ed7-b4ad7021ee2b` (#71), 100% traffic, deployed `2026-10-06T06:16:44Z`.
+- Production: not deployed or modified. Production DNS, secrets, and family data were not touched.
+
+### Final feature matrix
+
+Statuses describe the evidence actually available. Local/automated evidence is not represented as authenticated staging proof.
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Auth | PASS | Backend auth regression and local browser registration/login/recovery flows pass; unified email-or-phone plus password is implemented. |
+| Email login | PASS | Password login is covered by backend and browser tests. Real SMTP delivery, mailbox verification, and reset delivery are NOT TESTED. |
+| Phone login | PASS | Phone/password path passes backend and local browser tests without an SMS login challenge. |
+| Phone verification | BLOCKED | Controlled-provider tests pass. No owner-approved test phone/live SMS was supplied; owner deferred this test. |
+| Verify.MN | BLOCKED | Documented MO-SMS flow and server-side session polling are implemented; secret is backend-only. Real provider delivery and live challenge cases remain unverified. |
+| Password reset | BLOCKED | Local email/phone reset and token security cases are tested. Real email and Verify.MN delivery were deferred, so both external recovery channels lack end-to-end evidence. |
+| Profile | PASS | Account photo upload/read/delete, private media access, and account-security flows pass local browser/backend tests. Authenticated staging UI was not inspected. |
+| Phone change | BLOCKED | New-number verification and replacement logic are covered by local tests; live Verify.MN proof was not performed. |
+| Admin | BLOCKED | Authorization and recovery safety are covered by automated tests. Authenticated staging admin QA could not be performed; external browser capture was rejected by automatic privacy review. |
+| User ↔ Person | PASS | Linking/ownership rules and unauthorized-claim regressions pass; staging anonymous requests are denied. |
+| Family authorization | PASS | Cross-family authorization regression passes; staging RLS is enabled on all 44 application tables, with no anon/authenticated SELECT grants. |
+| Tree | PASS | Root-linking and 800-person/799-parent-link/90-marriage local browser regression pass; full view now requests up to the API's 1,000-node bound. |
+| Marriage history | PASS | Marriage occurrence regression passes in the 800-person tree dataset. |
+| Branch navigation | PASS | Root-linking and Tree route/regression suites pass. |
+| Stories | PASS | Heritage regression passes for supported public/private behavior. Authenticated staging walkthrough was not performed. |
+| Memories | PASS | Heritage regression passes for supported visibility and media behavior. Authenticated staging walkthrough was not performed. |
+| Archives | PASS | Automated access/heritage regression passes for implemented archive capabilities. Authenticated staging walkthrough was not performed. |
+| Public content | PASS | Explicitly published content behavior is covered by backend regressions; staging anonymous smoke confirms protected application routes reject anonymous access. Cross-account authenticated staging viewing was not performed. |
+| Private content | PASS | Backend family-isolation tests and staging anonymous denial checks pass; the full two-account staging test remains unperformed. |
+| Media | PASS | Private account photo tests pass. Actual encrypted R2 recovery verified 3 objects / 775,777 source bytes and authorized reads with anonymous denial. |
+| Backup | PASS | Current encrypted staging database export covers all 44 application tables with matching R2 object checksum evidence. Long-term provider-native retention/custody is BLOCKED. |
+| Restore | PASS | Isolated PostgreSQL restore verified schema and exact table row comparisons; 8 authorized reads and 8 anonymous denials passed. Three restored private-media paths passed access checks. |
+| Accessibility | PASS | Targeted keyboard/accessibility run: 16 checks passed; axe reported zero violations after fixes. This is not a formal WCAG certification. |
+| Mobile | PASS | Local browser covered 51 route/viewport checks at 390×844, 768×1024, and 1440×1000 with no overflow, uncaught errors, or HTTP 5xx. Authenticated staging mobile QA was not performed. |
+| Performance | PASS | Local 800-person browser test: full tree API 764 ms; initial 2D DOM about 3.0 s desktop/mobile; no overflow or JS errors. Measurements exclude production hardware/GPU and staging network variability. |
+| Security | PASS | Auth, family boundaries, session/rate-limit protections, private media, and stage RLS regressions pass. Seven high npm audit findings remain in the build-time `braces` dependency chain; reachability is unverified. |
+| Automated tests | PASS | 224 pytest passed; Ruff, Mypy (29 modules), migration cycle/consistency, npm ci, typecheck, Next build, Vinext build, 25-route, tree, root-linking, heritage, and media recovery tests passed. CI run #1175 succeeded. |
+| Staging runtime | BLOCKED | Fresh guest smoke: login/register/reset/admin ancestry HTTP 200; health/readiness 200; protected endpoints 401 anonymously; no JS errors/5xx. Authenticated staging checks could not be safely captured through the external browser tool. |
+
+### Remaining blockers and owner actions
+
+1. Run live Verify.MN verification, phone change, and phone recovery with an owner-approved disposable test number. This sends paid SMS (the documented destination charges 150 MNT); the owner previously deferred the test.
+2. Run live email registration/verification and email recovery using an approved disposable mailbox. This was also deferred; do not use the owner's personal mailbox or change their account.
+3. Complete authenticated staging checks for Admin, Profile, Settings, Tree, content, media, logout, and cross-family access. The attempted external TinyFish capture was rejected by automatic privacy review because it could transmit private genealogy/account details. Use the owner's own browser for those checks or an approved in-environment method that does not export private page content.
+4. Establish and evidence provider-native backup retention, independent key custody, and scheduled restore operations. The isolated encrypted drill does not establish those operational controls.
+5. Resolve or formally assess the seven high build-chain `braces` advisories. Current evidence identifies the chain but does not establish exploitability or a safe upstream upgrade.
+6. Before production release, review and explicitly approve production deployment, domain/DNS, secrets, and live contact tests. No production action is authorized or has occurred in this audit.
+
+### Production decision
+
+**NOT READY** — real Verify.MN and email delivery, authenticated staging regression, operational backup/key custody, and the remaining high dependency advisories do not have the required release evidence. The implementation and automated/guest staging checks are materially complete, but they do not satisfy the prompt's no-false-PASS production gate.
