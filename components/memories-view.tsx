@@ -1,6 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import MemoryInteractions from './memory-interactions';
+import ContextualPersonSearch from './contextual-person-search';
+import HeritageBranchFilter from './heritage-branch-filter';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
@@ -91,6 +94,8 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
   const [composerError, setComposerError] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
   const [memoryPage, setMemoryPage] = useState(1);
+  const [filters, setFilters] = useState({ q: '', year: '', memory_date: '', person_id: '', branch_id: '' });
+  const [filterPersonName, setFilterPersonName] = useState('');
   const [failedPhotoIds, setFailedPhotoIds] = useState<Set<string>>(() => new Set());
   const familyRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
@@ -109,7 +114,9 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     setLoading(true);
     setError('');
     try {
-      const result = await api<MemoryListPage>(`/families/${fid}/memories?page=${page}&page_size=${PAGE_SIZE}`, { signal: controller.signal });
+      const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+      Object.entries(filters).forEach(([key, value]) => { if (value.trim()) query.set(key, value.trim()); });
+      const result = await api<MemoryListPage>(`/families/${fid}/memories?${query}`, { signal: controller.signal });
       if (requestId !== memoryRequestRef.current) return;
       setMemoryPage(result.page);
       setMemories(result);
@@ -123,7 +130,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     } finally {
       if (requestId === memoryRequestRef.current) setLoading(false);
     }
-  }, [router]);
+  }, [router, filters]);
 
   useEffect(() => {
     familyRequestRef.current += 1;
@@ -188,6 +195,8 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     const selected = families.find((item) => item.id === next) ?? null;
     if (!selected) return;
 
+    setFilters({ q: '', year: '', memory_date: '', person_id: '', branch_id: '' });
+    setFilterPersonName('');
     setMemories(null);
     setMemoryPage(1);
     setSelectedPeople([]);
@@ -417,7 +426,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                     const selected = selectedPeople.some((item) => item.id === person.id);
                     return (
                       <button key={person.id} type="button" aria-pressed={selected} onClick={() => togglePerson({ id: person.id, name: person.name })}>
-                        {selected ? '✓ ' : '+ '}{person.name}{person.birth_year ? ` · ${person.birth_year}` : ''}
+                        {selected ? '✓ ' : '+ '}{person.name}{person.birth_year ? ` · ${person.birth_year}` : ''}<small>{person.branch_name ?? person.family_name}</small>
                       </button>
                     );
                   }) : <p>Тохирох хүн олдсонгүй.</p>}
@@ -434,6 +443,19 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
           </section>
         )}
 
+        {!createMode && familyId && <form className="heritage-filters" onSubmit={(event) => {
+          event.preventDefault(); const values = new FormData(event.currentTarget);
+          setFilters((current) => ({ ...current, q: String(values.get('q') ?? ''), year: String(values.get('year') ?? ''), memory_date: String(values.get('memory_date') ?? '') }));
+        }}>
+          <label>Дурсамж хайх<input name="q" maxLength={120} placeholder="Гарчиг, тайлбар…" /></label>
+          <label>Он<input name="year" type="number" min={1} max={9998} placeholder="1998" /></label>
+          <label>Огноо<input name="memory_date" type="date" /></label>
+          <HeritageBranchFilter key={`branch-${familyId}`} familyId={familyId} value={filters.branch_id} onChange={(branch_id) => setFilters((current) => ({ ...current, branch_id }))} />
+          <ContextualPersonSearch key={familyId} familyId={familyId} onSelect={(id, name) => { setFilterPersonName(name); setFilters((current) => ({ ...current, person_id: id })); }} />
+          {filters.person_id && <button type="button" onClick={() => { setFilters((current) => ({ ...current, person_id: '' })); setFilterPersonName(''); }}>{filterPersonName} ×</button>}
+          <button type="submit">Хайх</button>
+          <button type="reset" onClick={() => { setFilterPersonName(''); setFilters({ q: '', year: '', memory_date: '', person_id: '', branch_id: '' }); }}>Цэвэрлэх</button>
+        </form>}
         {!createMode && (loading && !memories ? (
           <section className="memory-state" aria-live="polite">
             <span className="memory-state-mark" aria-hidden="true" />
@@ -451,7 +473,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
         ) : memories && memories.items.length === 0 ? (
           <section className="memory-state">
             <p className="memories-eyebrow">MEMORY ARCHIVE · ХООСОН</p>
-            <h2>Одоогоор дурсамж хадгалагдаагүй байна.</h2>
+            <h2>{Object.values(filters).some(Boolean) ? 'Хайлтад тохирох дурсамж алга.' : 'Одоогоор дурсамж хадгалагдаагүй байна.'}</h2>
             <p>Эхний дурсамжаа нэмээд гэр бүлийн тань өдөр тутмын мөчүүдийг энэ архивт үлдээгээрэй.</p>
             <button type="button" className="memories-primary" onClick={() => setShowComposer(true)} aria-controls="memory-composer">Анхны дурсамж нэмэх</button>
           </section>
@@ -507,10 +529,11 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                           {memory.person_names?.[index] ?? 'Холбоотой хүн'}
                         </Link>
                       )) : 'Холбоотой хүнгүй'}</span>
-                      <small>Хадгалсан {formatCreatedAt(memory.created_at)}</small>
+                      <small>{memory.author_name ? `${memory.author_name} · ` : ''}Хадгалсан {formatCreatedAt(memory.created_at)}</small>
                     </div>
                     <Link className="memory-card-link" href={`/memories/${memory.id}?family=${encodeURIComponent(familyId)}`}>Дурсамжийг үзэх →</Link>
                   </div>
+                  <MemoryInteractions memoryId={memory.id} initial={memory.like_count !== undefined ? { liked: memory.liked ?? false, like_count: memory.like_count, comment_count: memory.comment_count ?? 0 } : undefined} />
                 </article>
               ))}
             </section>

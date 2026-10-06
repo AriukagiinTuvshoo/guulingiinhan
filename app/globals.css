@@ -2031,3 +2031,48 @@ body .heritage-actions .heritage-section-heading h2 { color: #fff7e2; }
 .settings-inline-form label { font-size: 12px; line-height: 1.5; }
 
 
+
+/* Heritage conversation: restrained paper and forest surfaces. */
+.memory-social { padding: 16px 20px; border-top: 1px solid #d9cfb9; color: #163e30; min-width: 0; }
+.memory-social-bar, .memory-comment-actions, .memory-comments nav { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.memory-social button, .heritage-filters button { min-height: 44px; border: 1px solid #bdae87; border-radius: 8px; padding: 8px 12px; background: #fbf8ee; color: #163e30; cursor: pointer; }
+.memory-social button[aria-pressed="true"] { background: #183f31; color: #f3dfaa; }
+.memory-social button:disabled { opacity: .6; cursor: default; }
+.memory-social :focus-visible, .heritage-filters :focus-visible { outline: 3px solid #a98027; outline-offset: 3px; }
+.memory-comments { margin-top: 20px; }
+.memory-comments ol { padding: 0; margin: 0; list-style: none; }
+.memory-comments li { padding: 16px 0; border-bottom: 1px solid #ded6c6; }
+.memory-comment-heading { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; }
+.memory-comment-heading time { font-size: .8rem; color: #65786d; }
+.memory-comment-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.memory-comment-compose, .memory-comments form { display: grid; gap: 10px; margin-top: 20px; }
+.memory-comments label { display: grid; gap: 8px; }
+.memory-comments textarea { width: 100%; min-height: 90px; border: 1px solid #b7c4b9; border-radius: 8px; padding: 12px; background: #fffdf7; color: #173e30; box-sizing: border-box; }
+.memory-comment-compose button { justify-self: start; background: #183f31; color: #fff8e6; }
+.memory-social-error { color: #933b25; }
+.heritage-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 24px 0; padding-bottom: 20px; border-bottom: 1px solid #d9cfb9; }
+.heritage-filters label { display: grid; gap: 8px; flex: 1 1 150px; color: #163e30; }
+.heritage-filters input { min-height: 44px; width: 100%; box-sizing: border-box; background: #fffdf7; border: 1px solid #b7c4b9; border-radius: 8px; padding: 10px; }
+@media (max-width: 480px) { .memory-social { padding: 16px; } .memory-social-bar > button { flex: 1 1 100%; } .heritage-filters label:first-child { flex-basis: 100%; } }
+
+.heritage-photo-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.heritage-photo-options button { background: #fbf8ee; color: #183f31; border: 1px solid #d9cfb9; padding: 8px; border-radius: 8px; text-align: left; }
+.heritage-photo-options img { width: 100%; height: 120px; object-fit: cover; border-radius: 4px; }
+.heritage-photo-picker { margin: 24px 0; }
+.heritage-photo-picker nav { display: flex; align-items: center; gap: 16px; margin-top: 16px; }
+.heritage-event-options { border-top: 1px solid #d9cfb9; padding-top: 16px; }
+.heritage-event-options summary { cursor: pointer; padding: 12px 0; }
+.people-grid > article { min-width: 0; display: grid; align-content: start; gap: 8px; }
+.people-grid > article > button { min-height: 44px; color: #183f31; background: #fbf8ee; border: 1px solid #d9cfb9; border-radius: 8px; padding: 10px; }
+
+.heritage-person-search { flex: 1 1 200px; min-width: 0; }
+.memory-person-results button { display: grid; gap: 4px; }
+.memory-person-results small { color: #607466; font-weight: normal; }
+
+.heritage-image-preview { width: 100%; border: 0; padding: 0; background: #ebe5d7; cursor: zoom-in; }
+.heritage-preview-thumbnail { width: 100%; display: block; object-fit: cover; max-height: 450px; }
+.heritage-image-dialog { width: min(900px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; background: #fbf8ee; border: 1px solid #c5ac68; border-radius: 12px; color: #173e30; padding: 16px; }
+.heritage-image-dialog::backdrop { background: rgb(0 20 13 / .8); }
+.heritage-image-dialog form { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.heritage-image-dialog button { min-height: 44px; padding: 10px 16px; background: #183f31; color: #fff8e6; border: 0; border-radius: 8px; }
+.heritage-preview-original { width: 100%; max-height: 75dvh; object-fit: contain; }

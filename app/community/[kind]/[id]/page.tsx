@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import MemoryInteractions from '../../../../components/memory-interactions';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ApiError, api } from '../../../../lib/api';
@@ -38,8 +39,9 @@ export default function PublicPostPage() {
     <Link className={styles.back} href={`/community?kind=${valid ? kind : 'all'}`}>← Нийтийн өвийн сан</Link>
     {loading ? <p role="status" className={styles.state}>Унших хэсгийг ачаалж байна…</p> : error ? <p role="alert" className={styles.state}>{error}</p> : post && <article className={styles.article}>
       <header><span className={styles.eyebrow}>{titles[post.kind]}</span><h1>{post.title}</h1><p className={styles.meta}>{post.family_name} · {post.author_name} · <time dateTime={post.event_date || post.created_at}>{new Date(post.event_date || post.created_at).toLocaleDateString('mn-MN')}</time></p></header>
-      {post.kind !== 'story' && post.photos.length > 0 && <div className={styles.gallery}>{post.photos.map((url, index) => <ProfilePhoto key={url} url={url} name={`${post.title} · зураг ${index + 1}`} fallback="" className={styles.image} />)}</div>}
-      <div className={styles.body}>{post.kind === 'story' ? <StoryContent body={post.content} publicPhotoUrls={post.photos} /> : post.content || 'Тайлбар оруулаагүй байна.'}</div>
+      {post.kind === 'memory' && post.photos.length > 0 && <div className={styles.gallery}>{post.photos.map((url, index) => <ProfilePhoto key={url} url={url} name={`${post.title} · зураг ${index + 1}`} fallback="" className={styles.image} />)}</div>}
+      <div className={styles.body}>{post.kind !== 'memory' ? <StoryContent body={post.content} publicPhotoUrls={post.photos} /> : post.content || 'Тайлбар оруулаагүй байна.'}</div>
+      {post.kind === 'memory' && <MemoryInteractions key={post.id} memoryId={post.id} />}
       <footer>Энэ бичлэгийг зохиогч нь нийтэд хуваалцсан. Хүний хувийн профайл болон гэр бүлийн хаалттай мэдээлэл энд харагдахгүй.</footer>
     </article>}
   </div></main>;

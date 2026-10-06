@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import StoryContent from '../../../components/story-content';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Archive } from '../../../lib/api';
@@ -225,7 +226,7 @@ function ArchiveDetailContent() {
         <section className="archive-description" aria-labelledby="archive-description-heading">
           <p className="archive-eyebrow">DESCRIPTION</p>
           <h2 id="archive-description-heading">Тайлбар</h2>
-          {archive.description ? <p>{archive.description}</p> : <p className="archive-muted">Энэ архивт тайлбар хадгалагдаагүй байна.</p>}
+          {archive.description ? <StoryContent body={archive.description} familyId={familyId} /> : <p className="archive-muted">Энэ архивт тайлбар хадгалагдаагүй байна.</p>}
         </section>
 
         <section className="archive-related" aria-labelledby="archive-related-heading">
@@ -259,7 +260,7 @@ function ArchiveDetailContent() {
         <section className="archive-source-note" aria-labelledby="archive-source-heading">
           <p className="archive-eyebrow">SOURCE MATERIAL</p>
           <h2 id="archive-source-heading">Эх материал</h2>
-          <p>Одоогийн Archive API нь баримтын metadata-г дэмждэг бөгөөд файл, attachment эсвэл document viewer-ийн талбар expose хийхгүй байна. Тиймээс энэ дэлгэц хадгалагдсан record-ийг л харуулна.</p>
+          <p>Эх баримтын огноо, газар болон тайлбарыг хадгална. Зургийг гэр бүлийн дурсамжийн сангаас холбож харуулж болно.</p>
         </section>
 
         <footer className="archive-detail-footer">
@@ -281,7 +282,7 @@ function ArchiveDetailContent() {
           >
             <p className="archive-eyebrow">DELETE ARCHIVE</p>
             <h2 id="archive-delete-title">Энэ архивийг устгах уу?</h2>
-            <p id="archive-delete-description">“{archive.title}” record болон түүний холбоотой хүмүүсийн холбоос backend-ийн existing delete contract-ийн дагуу устна.</p>
+            <p id="archive-delete-description">“{archive.title}” архивын бичлэг болон түүнтэй холбосон хүмүүсийн тэмдэглэгээ устна. Хүний профайл болон анхны дурсамжийн зураг хэвээр үлдэнэ.</p>
             <div className="archive-dialog-actions">
               <button ref={cancelRef} type="button" className="archive-secondary" onClick={() => setShowDeleteDialog(false)} disabled={busy}>Буцах</button>
               <button type="button" className="archive-danger" onClick={() => void remove()} disabled={busy}>{busy ? 'Устгаж байна…' : 'Устгах'}</button>

@@ -4,6 +4,7 @@ import hashlib
 import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -254,6 +255,8 @@ class PersonSearchItem(BaseModel):
     id: UUID
     name: str
     birth_year: int | None
+    family_name: str | None = None
+    branch_name: str | None = None
 
 
 class PersonSearchPage(BaseModel):
@@ -547,6 +550,7 @@ class ArchivePersonOut(BaseModel):
 
 
 class ArchiveListItem(BaseModel):
+    media_type: str = "text"
     id: UUID
     title: str
     description: str | None
@@ -662,6 +666,7 @@ def _validate_story_photos(
         return
     # Imported here because the photo routes depend on family visibility helpers.
     from app.community import _public_photo
+    from app.memory_photos import _require_photo_scope, _visible_memory
 
     for match in matches:
         photo = db.scalar(select(Photo).where(
@@ -675,6 +680,8 @@ def _validate_story_photos(
             raise HTTPException(status_code=422, detail="Түүхийн зураг олдсонгүй.")
         if memory.visibility == "private" and (visibility != "private" or memory.created_by != user.id):
             raise HTTPException(status_code=422, detail="Хувийн дурсамжийн зургийг энэ түүхэд оруулах боломжгүй.")
+        _visible_memory(db, family_id, memory.id, user)
+        _require_photo_scope(db, family_id, user, photo, "manage_media")
         if visibility == "public" and _public_photo(db, photo.id) is None:
             raise HTTPException(status_code=422, detail="Нийтийн түүхэнд зөвхөн нийтэд зөвшөөрсөн насанд хүрсэн хүний зураг оруулна.")
 
@@ -1372,9 +1379,19 @@ def search_persons(
         ).all()
     )
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id for person in persons])
+    branch_rows = db.execute(select(PersonLineageAssignment.person_id, Branch.name)
+        .join(Lineage, Lineage.id == PersonLineageAssignment.lineage_id)
+        .join(Branch, Branch.id == PersonLineageAssignment.branch_id)
+        .where(Lineage.family_id == family_id,
+               PersonLineageAssignment.person_id.in_([p.id for p in persons]))).all()
+    branch_names: dict[UUID, str] = {pid: name for pid, name in branch_rows}
+    family = db.get(Family, family_id)
+    family_name = family.name if family else None
     items = [
         PersonSearchItem(
             id=person.id,
+            family_name=family_name,
+            branch_name=branch_names.get(person.id),
             name=" ".join(
                 part for part in (person.last_name, person.first_name, person.middle_name) if part
             ),
@@ -1532,6 +1549,45 @@ def _person_profile_output(db: Session, family_id: UUID, person: Person, user: U
             "spouses": relation_items(spouse_ids),
         }
     )
+
+
+class FeaturedPersonInput(BaseModel):
+    person_id: UUID | None = None
+
+
+@router.get("/{family_id}/featured-person")
+def featured_person(family_id: UUID, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    _, family = _member(db, family_id, user)
+    for person_id in dict.fromkeys([family.featured_person_id, family.root_person_id]):
+        if person_id is None:
+            continue
+        try:
+            person = _person_in_family(db, family_id, person_id)
+            _assert_person_visible(db, person, user)
+            if person_is_minor(person):
+                continue
+            return _person_output(db, family_id, person, user).model_copy(
+                update={"profile_photo_url": _person_profile_photo_url(family_id, person)})
+        except HTTPException as error:
+            if error.status_code != 404:
+                raise
+    return None
+
+
+@router.put("/{family_id}/featured-person")
+def set_featured_person(family_id: UUID, body: FeaturedPersonInput,
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _, family = _member(db, family_id, user, {"owner", "editor"})
+    if body.person_id is not None:
+        person = _person_in_family(db, family_id, body.person_id)
+        _assert_person_visible(db, person, user)
+        if person_is_minor(person) or person.visibility == "private":
+            raise HTTPException(422, "Онцлох хүн нь гэр бүлд харагдах насанд хүрсэн хүн байна.")
+    family.featured_person_id = body.person_id
+    _audit(db, user, family_id, "family.featured_person_updated", "family", family_id)
+    db.commit()
+    return {"person_id": family.featured_person_id}
 
 
 @router.get("/{family_id}/persons/{person_id}", response_model=PersonProfileOut)
@@ -2533,6 +2589,8 @@ def list_archives(
     family_id: UUID,
     q: str | None = Query(default=None, max_length=120),
     document_date: date | None = Query(default=None),
+    year: int | None = Query(default=None, ge=1, le=9998),
+    media_type: Literal["all", "image", "text"] = "all",
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=12, ge=1, le=50),
     user: User = Depends(get_current_user),
@@ -2543,12 +2601,19 @@ def list_archives(
         Archive.family_id == family_id,
         or_(Archive.visibility != "private", Archive.created_by == user.id),
     ]
+    has_image = Archive.description.contains("[[photo:")
+    if media_type == "image":
+        conditions.append(has_image)
+    elif media_type == "text":
+        conditions.append(or_(Archive.description.is_(None), ~has_image))
     query = q.strip() if q else ""
     if query:
         pattern = f"%{query}%"
         conditions.append(or_(Archive.title.ilike(pattern), Archive.description.ilike(pattern)))
     if document_date is not None:
         conditions.append(Archive.document_date == document_date)
+    if year is not None:
+        conditions.extend([Archive.document_date >= date(year, 1, 1), Archive.document_date < date(year + 1, 1, 1)])
 
     total = db.scalar(select(func.count()).select_from(Archive).where(*conditions)) or 0
     archives = list(
@@ -2580,7 +2645,8 @@ def list_archives(
         ArchiveListItem(
             id=item.id,
             title=item.title,
-            description=item.description,
+            description=_STORY_PHOTO_TOKEN.sub("", item.description or "").strip() or None,
+            media_type="image" if _STORY_PHOTO_TOKEN.search(item.description or "") else "text",
             document_date=item.document_date,
             place=item.place,
             visibility=item.visibility,
@@ -2609,6 +2675,7 @@ def create_archive(
     db: Session = Depends(get_db),
 ):
     _member(db, family_id, user, {"owner", "editor"})
+    _validate_story_photos(db, family_id, user, body.description or "", body.visibility)
     people = _validate_archive_people(db, family_id, body.person_ids, user)
     archive = Archive(
         family_id=family_id,
@@ -2658,6 +2725,7 @@ def update_archive(
     )
     if archive is None or not _archive_visible(archive, user):
         raise HTTPException(status_code=404, detail="Архив олдсонгүй.")
+    _validate_story_photos(db, family_id, user, body.description or "", body.visibility)
     people = _validate_archive_people(db, family_id, body.person_ids, user)
     archive.title = body.title.strip()
     archive.description = body.description.strip() if body.description else None
@@ -2766,6 +2834,8 @@ def list_stories(
     family_id: UUID,
     q: str | None = Query(default=None, max_length=120),
     person_id: UUID | None = Query(default=None),
+    year: int | None = Query(default=None, ge=1, le=9998),
+    event_date: date | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=12, ge=1, le=50),
     user: User = Depends(get_current_user),
@@ -2780,6 +2850,10 @@ def list_stories(
     if query:
         pattern = f"%{query}%"
         conditions.append(or_(Story.title.ilike(pattern), Story.body.ilike(pattern)))
+    if year is not None:
+        conditions.extend([Story.event_date >= date(year, 1, 1), Story.event_date < date(year + 1, 1, 1)])
+    if event_date is not None:
+        conditions.append(Story.event_date == event_date)
     if person_id is not None:
         person = _person_in_family(db, family_id, person_id)
         _assert_person_visible(db, person, user)

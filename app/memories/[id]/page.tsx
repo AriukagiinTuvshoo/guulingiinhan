@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import MemoryInteractions from '../../../components/memory-interactions';
+import ProtectedImageViewer from '../../../components/protected-image-viewer';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -368,7 +370,7 @@ function MemoryDetailPageContent() {
                 <p className="memories-eyebrow">FAMILY MEMORIES · EDIT</p>
                 <h2 id="memory-edit-heading">Дурсамжийг засах</h2>
               </div>
-              <span>Өөрчлөлтийг серверийн existing Memory authorization болон privacy rules шалгана.</span>
+              <span>Дурсамжийн тайлбар болон харагдах хүрээг өөрчилж хадгалаарай.</span>
             </div>
             {editError && <div className="memories-alert" role="alert" id="memory-edit-error"><span>{editError}</span></div>}
             <form className="memory-composer-form" onSubmit={saveEdit} aria-describedby={editError ? 'memory-edit-error' : undefined}>
@@ -447,7 +449,7 @@ function MemoryDetailPageContent() {
             <div className="memory-detail-gallery">
               {memory.photos.map((photo) => (
                 <figure key={photo.id}>
-                  <img src={photoUrl(photo.content_url)} alt={photo.title ?? `${memory.title} дурсамжийн зураг`} loading="lazy" crossOrigin="use-credentials" onError={(event) => { const image = event.currentTarget; image.alt = 'Зураг ачааллах боломжгүй байна.'; image.style.display = 'none'; image.parentElement?.classList.add('memory-photo-fallback'); }} />
+                  <ProtectedImageViewer thumbnail={photo.thumbnail_url} original={photo.content_url} caption={photo.title ?? `${memory.title} дурсамжийн зураг`} />
                   {photo.title && <figcaption>{photo.title}</figcaption>}
                 </figure>
               ))}
@@ -470,10 +472,11 @@ function MemoryDetailPageContent() {
           ) : <p className="memory-muted">Холбоотой хүн бүртгэгдээгүй байна.</p>}
         </section>
 
+        <MemoryInteractions key={memory.id} memoryId={memory.id} />
         <footer className="memory-detail-footer">
           <Link href={`/tree?family=${encodeURIComponent(familyId)}`}>← Удмын мод руу буцах</Link>
           <Link href={`/memories?family=${encodeURIComponent(familyId)}`}>← Дурсамжийн архив</Link>
-          <span>Бүх өгөгдөл одоогийн family context болон backend authorization-аар шүүгдэнэ.</span>
+          <span>Гэр бүлийн дурсамж, бидний хамтын өв.</span>
         </footer>
       </article>
 
@@ -482,7 +485,7 @@ function MemoryDetailPageContent() {
           <section className="memory-dialog" role="dialog" aria-modal="true" aria-labelledby="memory-delete-title" aria-describedby="memory-delete-description">
             <p className="memories-eyebrow">DELETE MEMORY</p>
             <h2 id="memory-delete-title">Энэ дурсамжийг устгах уу?</h2>
-            <p id="memory-delete-description">“{memory.title}” дурсамж болон түүнтэй холбоотой memory photo өгөгдөл backend-ийн existing delete contract-ийн дагуу устгагдана.</p>
+            <p id="memory-delete-description">“{memory.title}” дурсамж болон түүнд хавсаргасан зургууд устгагдана. Энэ үйлдлийг буцаах боломжгүй.</p>
             <div className="memory-dialog-actions">
               <button ref={cancelRef} type="button" className="memories-secondary" onClick={() => setShowDelete(false)} disabled={busy}>Буцах</button>
               <button type="button" className="memories-danger" onClick={() => void removeMemory()} disabled={busy}>{busy ? 'Устгаж байна…' : 'Устгах'}</button>

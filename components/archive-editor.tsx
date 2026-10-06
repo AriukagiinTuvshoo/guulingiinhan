@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import ProtectedPhotoPicker from './protected-photo-picker';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, Archive, PersonSearchPage } from '../lib/api';
@@ -333,6 +334,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
             <div aria-hidden="true" />
           </div>
 
+          <ProtectedPhotoPicker familyId={familyId} onSelect={(id, caption) => { setDescription((text) => text + `\n\n[[photo:${id}|${caption.replace(/[\]\n|]/g, ' ').slice(0, 180)}]]\n`); markDirty(); }} />
           <fieldset className="story-people-fieldset">
             <legend>Холбоотой хүмүүс</legend>
             <label>

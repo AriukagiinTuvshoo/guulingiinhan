@@ -38,6 +38,8 @@ function ArchivesPageContent() {
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [query, setQuery] = useState('');
   const [documentDate, setDocumentDate] = useState('');
+  const [year, setYear] = useState('');
+  const [mediaType, setMediaType] = useState('all');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -51,6 +53,8 @@ function ArchivesPageContent() {
     page = 1,
     q = query,
     dateValue = documentDate,
+    yearValue = year,
+    typeValue = mediaType,
   ) => {
     if (!fid) return;
     const requestId = ++archiveRequestRef.current;
@@ -67,6 +71,8 @@ function ArchivesPageContent() {
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
       if (dateValue) params.set('document_date', dateValue);
+      if (yearValue) params.set('year', yearValue);
+      if (typeValue !== 'all') params.set('media_type', typeValue);
       const result = await api<ArchiveListPage>(`/families/${fid}/archives?${params.toString()}`, { signal: controller.signal });
       if (requestId !== archiveRequestRef.current) return;
       setArchives(result);
@@ -83,7 +89,7 @@ function ArchivesPageContent() {
         setBusy(false);
       }
     }
-  }, [router]);
+  }, [router, query, documentDate, year, mediaType]);
 
   useEffect(() => {
     archiveAbortRef.current?.abort();
@@ -115,7 +121,8 @@ function ArchivesPageContent() {
   function resetFilters() {
     setQuery('');
     setDocumentDate('');
-    if (familyId) void loadArchives(familyId, 1, '', '');
+    setYear(''); setMediaType('all');
+    if (familyId) void loadArchives(familyId, 1, '', '', '', 'all');
   }
 
   const page = archives?.page ?? 1;
@@ -185,9 +192,11 @@ function ArchivesPageContent() {
               onChange={(event) => setDocumentDate(event.target.value)}
             />
           </label>
+          <label><span>Он</span><input type="number" min={1} max={9998} value={year} onChange={(event) => setYear(event.target.value)} placeholder="1978" /></label>
+          <label><span>Төрөл</span><select value={mediaType} onChange={(event) => setMediaType(event.target.value)}><option value="all">Бүгд</option><option value="image">📷 Зурагтай</option><option value="text">📝 Бичвэр</option></select></label>
           <div className="archive-filter-actions">
             <button type="submit" className="archive-primary" disabled={!familyId || busy}>Хайх</button>
-            {(query || documentDate) && (
+            {(query || documentDate || year || mediaType !== 'all') && (
               <button type="button" className="archive-secondary" onClick={resetFilters} disabled={busy}>Цэвэрлэх</button>
             )}
           </div>
@@ -211,8 +220,8 @@ function ArchivesPageContent() {
           <section className="archive-state">
             <p className="archive-eyebrow">ARCHIVE · ХООСОН</p>
             <h2>Одоогоор архивын материал олдсонгүй.</h2>
-            <p>{query || documentDate ? 'Таны хайлтын нөхцөлд тохирох материал байхгүй байна.' : 'Гэр бүлийн баримт, эх сурвалжаа энд бүртгэж эхлээрэй.'}</p>
-            {query || documentDate ? (
+            <p>{query || documentDate || year || mediaType !== 'all' ? 'Таны хайлтын нөхцөлд тохирох материал байхгүй байна.' : 'Гэр бүлийн баримт, эх сурвалжаа энд бүртгэж эхлээрэй.'}</p>
+            {query || documentDate || year || mediaType !== 'all' ? (
               <button type="button" className="archive-secondary" onClick={resetFilters}>Бүх материалыг харах</button>
             ) : canCreate ? (
               <Link className="archive-primary archive-link-button" href={`/archives/new?family=${encodeURIComponent(familyId)}`}>Анхны баримт нэмэх</Link>

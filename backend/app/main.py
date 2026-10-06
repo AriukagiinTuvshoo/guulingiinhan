@@ -22,6 +22,7 @@ from app.db import engine
 from app.families import invitations_router, lineages_router
 from app.families import router as families_router
 from app.family_activities import router as family_activities_router
+from app.memory_interactions import router as memory_interactions_router
 from app.memory_photos import router as memory_photos_router
 from app.observability import configure_logging, error_classification, request_id_context
 from app.phone_verification import router as phone_verification_router
@@ -172,6 +173,7 @@ app.include_router(family_root_connection_router, prefix="/api/v1")
 app.include_router(community_router, prefix="/api/v1")
 app.include_router(announcements_router, prefix="/api/v1")
 app.include_router(memory_photos_router, prefix="/api/v1")
+app.include_router(memory_interactions_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")

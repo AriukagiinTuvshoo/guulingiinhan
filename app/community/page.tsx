@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import MemoryInteractions from '../../components/memory-interactions';
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
@@ -11,7 +12,7 @@ type Post = {
   id: string; kind: 'story' | 'memory' | 'archive'; family_id: string;
   family_name: string; author_name: string; title: string; content: string;
   event_date: string | null; created_at: string;
-  thumbnail_url: string | null;
+  thumbnail_url: string | null; liked?: boolean; like_count?: number; comment_count?: number;
 };
 type Feed = { items: Post[]; page: number; page_size: number; total: number; has_next: boolean };
 const labels = { story: 'Түүх', memory: 'Дурсамж', archive: 'Архив' };
@@ -66,6 +67,7 @@ export default function CommunityPage() {
         <p className={styles.date}>{new Date(post.event_date ?? post.created_at).toLocaleDateString('mn-MN')}</p>
         {post.content && <p className={styles.content}>{post.content}</p>}
         <Link href={`/community/${post.kind}/${encodeURIComponent(post.id)}`}>Бүтнээр унших →</Link>
+        {post.kind === 'memory' && <MemoryInteractions memoryId={post.id} initial={post.like_count !== undefined && post.like_count !== null ? { liked: post.liked ?? false, like_count: post.like_count, comment_count: post.comment_count ?? 0 } : undefined} />}
       </article>)}</div>
       <nav className={styles.pagination} aria-label="Нийтлэлийн хуудас">
         <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)}>Өмнөх</button>

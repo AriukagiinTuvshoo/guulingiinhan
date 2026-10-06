@@ -8,7 +8,7 @@ import re
 import time
 import warnings
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import PurePath
 from urllib.parse import unquote
 from uuid import UUID, uuid4
@@ -33,12 +33,16 @@ from app.families import (
     _person_in_family,
     _require_minor_scope,
 )
+from app.memory_interactions import interaction_summaries
 from app.models import (
+    Branch,
     FamilyMember,
     FamilyPerson,
+    Lineage,
     Memory,
     MemoryPersonTag,
     Person,
+    PersonLineageAssignment,
     Photo,
     PhotoPersonTag,
     User,
@@ -158,7 +162,7 @@ def _image_payload(filename: str, content_type: str, data: bytes) -> tuple[str, 
                 return mime_type, width, height, thumbnail.getvalue()
     except HTTPException:
         raise
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError,
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError,
             Image.DecompressionBombWarning) as error:
         raise HTTPException(status_code=415, detail="Зургийн файл гэмтсэн эсвэл дэмжигдэхгүй байна.") from error
 
@@ -406,6 +410,11 @@ def _memory_page_payload(
 @router.get("/{family_id}/memories")
 def list_memories(
     family_id: UUID,
+    q: str | None = Query(default=None, max_length=120),
+    year: int | None = Query(default=None, ge=1, le=9998),
+    memory_date: date | None = None,
+    person_id: UUID | None = None,
+    branch_id: UUID | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     user: User = Depends(get_current_user),
@@ -414,11 +423,32 @@ def list_memories(
 ):
     _member(db, family_id, user)
     _retry_pending_cleanup(db, storage, family_id, user)
+    conditions = [Memory.family_id == family_id,
+                  or_(Memory.visibility != "private", Memory.created_by == user.id)]
+    if q and q.strip():
+        pattern = "%" + q.strip() + "%"
+        conditions.append(or_(Memory.title.ilike(pattern), Memory.description.ilike(pattern)))
+    if year is not None:
+        conditions.extend([Memory.memory_date >= date(year, 1, 1),
+                           Memory.memory_date < date(year + 1, 1, 1)])
+    if memory_date is not None:
+        conditions.append(Memory.memory_date == memory_date)
+    if person_id is not None:
+        _require_person_ids_scope(db, family_id, user, [person_id], "view_profile")
+        conditions.append(Memory.id.in_(select(MemoryPersonTag.memory_id).where(
+            MemoryPersonTag.person_id == person_id)))
+    if branch_id is not None:
+        branch = db.scalar(select(Branch).join(Lineage).where(
+            Branch.id == branch_id, Lineage.family_id == family_id))
+        if branch is None:
+            raise HTTPException(status_code=404, detail="Салаа олдсонгүй.")
+        conditions.append(Memory.id.in_(select(MemoryPersonTag.memory_id)
+            .join(PersonLineageAssignment, PersonLineageAssignment.person_id == MemoryPersonTag.person_id)
+            .where(PersonLineageAssignment.branch_id == branch_id,
+                   MemoryPersonTag.person_id.in_(_visible_people_query(user, family_id)))))
     candidates = db.scalars(
-        select(Memory).where(
-            Memory.family_id == family_id,
-            or_(Memory.visibility != "private", Memory.created_by == user.id),
-        ).order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc())
+        select(Memory).where(*conditions)
+        .order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc(), Memory.id)
     ).all()
     visible_ids = _memory_visible_to_member(
         db, family_id, user, [memory.id for memory in candidates]
@@ -463,8 +493,8 @@ def list_memories(
             PhotoPersonTag.person_id.in_(_visible_people_query(user, family_id)),
         )
     ).all() if photo_ids else []
-    for photo_id, person_id in tag_rows:
-        tags_by_photo[photo_id].append(person_id)
+    for photo_id, tagged_person_id in tag_rows:
+        tags_by_photo[photo_id].append(tagged_person_id)
     memory_ids = [memory.id for memory in page_items]
     all_tag_rows = db.execute(
         select(MemoryPersonTag.memory_id, MemoryPersonTag.person_id,
@@ -479,17 +509,25 @@ def list_memories(
     tags_by_memory: dict[UUID, list[tuple[UUID, str | None, str | None, str | None]]] = {
         memory_id: [] for memory_id in memory_ids
     }
-    for memory_id, person_id, first_name, last_name, middle_name in all_tag_rows:
-        tags_by_memory[memory_id].append((person_id, first_name, last_name, middle_name))
+    for memory_id, tagged_person_id, first_name, last_name, middle_name in all_tag_rows:
+        tags_by_memory[memory_id].append((tagged_person_id, first_name, last_name, middle_name))
     items = []
+    summaries = interaction_summaries(db, memory_ids, user)
+    author_ids = [memory.created_by for memory in page_items]
+    author_rows = db.execute(select(User.id, User.display_name).where(
+        User.id.in_(author_ids))).all() if author_ids else []
+    authors: dict[UUID, str] = {uid: name for uid, name in author_rows}
     for memory in page_items:
         item = _memory_page_payload(memory, tags_by_memory[memory.id])
+        item.update(summaries[memory.id])
+        item["author_name"] = authors.get(memory.created_by, "Гэр бүлийн гишүүн")
         item["photos"] = [
             _photo_payload(photo, tags_by_photo[photo.id])
             for photo in photos_by_memory[memory.id]
         ]
         items.append(item)
-    return {"items": items, "page": page, "page_size": page_size, "total": total}
+    return {"items": items, "page": page, "page_size": page_size, "total": total,
+            "has_next": page * page_size < total}
 
 
 @router.post("/{family_id}/memories/{memory_id}/photos", status_code=201, response_model=PhotoResponse)

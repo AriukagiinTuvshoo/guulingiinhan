@@ -115,7 +115,7 @@ export type PersonProfile = Person & {
   spouses: ProfileRelationPerson[];
 };
 
-export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
+export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null; family_name?: string | null; branch_name?: string | null }[]; page: number; page_size: number; total: number; has_next: boolean };
 export type PersonDirectoryItem = Person & {
   lineage_id: string | null;
   lineage_name: string | null;
@@ -192,6 +192,10 @@ export type MemoryListItem = {
   visibility: string;
   person_ids: string[];
   person_names?: string[];
+  liked?: boolean;
+  like_count?: number;
+  comment_count?: number;
+  author_name?: string;
   created_at: string;
   photos?: {
     id: string;

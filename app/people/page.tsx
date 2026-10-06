@@ -59,6 +59,7 @@ function PeoplePageContent() {
   const [busy, setBusy] = useState(false);
   const [metaError, setMetaError] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [metaBusy, setMetaBusy] = useState(false);
   const peopleRequestRef = useRef(0);
   const familyRequestRef = useRef(0);
@@ -261,6 +262,7 @@ function PeoplePageContent() {
           </div>
         </div>
 
+        {notice && <p role="status">{notice}</p>}
         {contextError && <div className="error people-error" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="error people-error" role="alert">
@@ -378,6 +380,7 @@ function PeoplePageContent() {
             </div>
             <div className="people-grid" aria-busy={busy}>
               {people?.items.map((person) => (
+                <article key={person.id}>
                 <Link
                   className="card people-card"
                   key={person.id}
@@ -411,6 +414,13 @@ function PeoplePageContent() {
 
                   <span className="button people-profile-link" aria-hidden="true">Профайл нээх →</span>
                 </Link>
+                {(family?.role === 'owner' || family?.role === 'editor') && <button type="button" disabled={busy} onClick={async () => {
+                  setBusy(true); setError(''); setNotice('');
+                  try { await api(`/families/${familyId}/featured-person`, { method: 'PUT', body: JSON.stringify({ person_id: person.id }) }); setNotice('Нүүр хуудсанд онцлох хүнийг хадгаллаа.'); }
+                  catch { setError('Онцлох хүнийг хадгалж чадсангүй. Гэр бүлд харагдах насанд хүрсэн хүн сонгоно уу.'); }
+                  finally { setBusy(false); }
+                }}>⭐ Нүүр хуудсанд онцлох</button>}
+                </article>
               ))}
             </div>
 

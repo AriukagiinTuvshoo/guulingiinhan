@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
+from app.memory_interactions import interaction_summaries
 from app.memory_photos import _expected_object_keys
 from app.models import (
     Archive,
@@ -43,6 +44,9 @@ class PublicPost(BaseModel):
     created_at: datetime
     thumbnail_url: str | None = None
     photos: list[str] = Field(default_factory=list)
+    liked: bool | None = None
+    like_count: int | None = None
+    comment_count: int | None = None
 
 
 class PublicFeed(BaseModel):
@@ -85,7 +89,7 @@ def public_feed(
     page: int = Query(default=1, ge=1, le=1000),
     page_size: int = Query(default=12, ge=1, le=30),
     kind: Literal["all", "story", "memory", "archive"] = "all",
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Show public posts from every active family; never expose family/private records."""
@@ -116,22 +120,26 @@ def public_feed(
         candidates.extend(PublicPost(
             id=row[0], kind=item_kind, family_id=row[1], family_name=row[2],
             author_name=row[3], title=row[4],
-            content=_STORY_PHOTO_TOKEN.sub("", row[5] or "").strip() if item_kind == "story" else row[5] or "",
+            content=_STORY_PHOTO_TOKEN.sub("", row[5] or "").strip() if item_kind in {"story", "archive"} else row[5] or "",
             event_date=row[6], created_at=row[7],
         ) for row in rows)
     candidates.sort(key=lambda item: (item.created_at.replace(tzinfo=None), str(item.id)), reverse=True)
     start = (page - 1) * page_size
     items = candidates[start:start + page_size]
+    summaries = interaction_summaries(db, [item.id for item in items if item.kind == "memory"], user)
     for item in items:
         if item.kind == "memory":
+            item.liked = summaries[item.id]["liked"]
+            item.like_count = summaries[item.id]["like_count"]
+            item.comment_count = summaries[item.id]["comment_count"]
             photos = db.scalars(select(Photo).where(
                 Photo.memory_id == item.id, Photo.storage_status == "ready",
             ).order_by(Photo.created_at.desc(), Photo.id.desc()).limit(12)).all()
             approved = next((photo for photo in photos if _public_photo(db, photo.id)), None)
             if approved:
                 item.thumbnail_url = f"/community/photos/{approved.id}/thumbnail"
-        elif item.kind == "story":
-            body = db.scalar(select(Story.body).where(Story.id == item.id)) or ""
+        elif item.kind in {"story", "archive"}:
+            body = (db.scalar(select(Story.body).where(Story.id == item.id)) if item.kind == "story" else db.scalar(select(Archive.description).where(Archive.id == item.id))) or ""
             for match in _STORY_PHOTO_TOKEN.finditer(body):
                 photo = _public_photo(db, UUID(match.group(1)))
                 if photo is not None and photo.family_id == item.family_id:
@@ -169,7 +177,7 @@ def public_post(
         ).order_by(Photo.created_at, Photo.id).limit(24)).all()
         photos = [f"/community/photos/{photo.id}/thumbnail" for photo in candidates
                   if _public_photo(db, photo.id)]
-    elif kind == "story":
+    elif kind in {"story", "archive"}:
         for match in _STORY_PHOTO_TOKEN.finditer(content or ""):
             photo_id = UUID(match.group(1))
             photo = _public_photo(db, photo_id)

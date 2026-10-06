@@ -67,11 +67,11 @@
 .profile-portrait { position: relative; display: grid; justify-items: center; gap: 13px; }
 .profile-photo,
 .profile-photo-object,
-.profile-photo-fallback { width: clamp(116px, 14vw, 172px); height: clamp(116px, 14vw, 172px); }
+.profile-portrait .profile-photo-fallback { width: clamp(116px, 14vw, 172px); height: clamp(116px, 14vw, 172px); }
 .profile-photo { border: 3px solid #e5cd83; box-shadow: 0 10px 28px rgb(22 55 37 / 20%); }
 .profile-hero .personavatar.large.profile-photo { width: clamp(116px, 14vw, 172px); height: clamp(116px, 14vw, 172px); }
 .profile-photo-object { display: block; border-radius: 50%; object-fit: cover; }
-.profile-photo-fallback { flex: 0 0 auto; }
+.profile-portrait .profile-photo-fallback { flex: 0 0 auto; }
 .profile-photo-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
 .profile-photo-upload,
 .profile-photo-remove {

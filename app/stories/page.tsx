@@ -22,6 +22,7 @@ function StoriesPageContent() {
   const { families, currentFamily, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [query, setQuery] = useState('');
+  const [year, setYear] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -42,6 +43,7 @@ function StoriesPageContent() {
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
+      if (year) params.set('year', year);
       const result = await api<StoryListPage>('/families/' + fid + '/stories?' + params.toString(), { signal: controller.signal });
       if (requestId !== storyRequestRef.current) return;
       setStories(result);
@@ -58,7 +60,7 @@ function StoriesPageContent() {
         setBusy(false);
       }
     }
-  }, [query, router]);
+  }, [query, year, router]);
 
   useEffect(() => {
     storyAbortRef.current?.abort();
@@ -130,6 +132,7 @@ function StoriesPageContent() {
             <input
               id="story-search" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void loadStories(familyId, 1); }} placeholder="Гарчиг эсвэл агуулгаар хайх…" />
           </label>
+          <label>Он<input type="number" min={1} max={9998} value={year} onChange={(event) => setYear(event.target.value)} placeholder="1978" /></label>
           <button type="submit" disabled={busy}>Хайх</button>
         </form>
 

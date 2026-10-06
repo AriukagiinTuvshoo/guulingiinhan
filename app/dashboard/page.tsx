@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import type {
   Family,
+  Person,
   PersonDirectoryPage,
   TreeData,
   StoryListPage,
@@ -32,6 +33,7 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
   const people = useDashboardSection<PersonDirectoryPage>(
     `${base}/people?page=1&page_size=6`,
   );
+  const featured = useDashboardSection<Person | null>(`${base}/featured-person`);
   const tree = useDashboardSection<TreeData>(`${base}/tree?depth=2`);
   const stories = useDashboardSection<StoryListPage>(
     `${base}/stories?page=1&page_size=4`,
@@ -73,25 +75,22 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
             href={familyLink("/stories", family.id)}
           />
           <SectionState state={stories}>
-            {(data) => <FamilyStory page={data} familyId={family.id} />}
+            {(data) => <><FamilyStory page={data} familyId={family.id} /><StoryTimeline page={data} familyId={family.id} /></>}
           </SectionState>
         </section>
         <section
           className="heritage-person-section"
           aria-label="Онцлох хүн"
-          aria-busy={people.loading}
+          aria-busy={featured.loading}
         >
-          <SectionState state={people}>
+          {!featured.loading && !featured.error && !featured.data ? <FeaturedPerson person={undefined} familyId={family.id} /> : <SectionState state={featured}>
             {(data) => (
               <FeaturedPerson
-                person={
-                  data.items.find((person) => person.short_description) ||
-                  data.items[0]
-                }
+                person={data ?? undefined}
                 familyId={family.id}
               />
             )}
-          </SectionState>
+          </SectionState>}
         </section>
       </div>
       <section className="heritage-album-section" aria-busy={memories.loading}>
@@ -103,22 +102,6 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
         />
         <SectionState state={memories} kind="album">
           {(data) => <MemoryAlbum page={data} familyId={family.id} />}
-        </SectionState>
-      </section>
-      <section
-        className="heritage-timeline-section"
-        aria-busy={stories.loading}
-      >
-        <SectionHeading
-          eyebrow="ОН ЦАГИЙН ХУУДАС"
-          title="Түүхийн мөрөөр"
-          href={familyLink("/stories", family.id)}
-        />
-        <p className="heritage-section-note">
-          Сүүлийн түүхүүдэд тэмдэглэсэн үйл явдлын огноогоор.
-        </p>
-        <SectionState state={stories}>
-          {(data) => <StoryTimeline page={data} familyId={family.id} />}
         </SectionState>
       </section>
       <section
