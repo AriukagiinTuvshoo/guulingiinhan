@@ -100,7 +100,7 @@ manual operator runs; do not claim scheduled backups are running.
    its ciphertext hash. Decrypt only in a protected local scratch directory.
 4. Call `ops.recovery.restore_application(snapshot, database_url)`. It rejects a
    remote host, a database without the disposable prefix, wrong schema/table
-   inventory and any nonempty target. Insert and exact-row comparison are one
+   inventory, connection query overrides and any nonempty target. Insert and exact-row comparison are one
    transaction; errors must not log private row values.
 5. For each media envelope, use `ops.recovery.restore_media` with the private RSA
    recovery key and a protected isolated storage root. AES-GCM authentication,

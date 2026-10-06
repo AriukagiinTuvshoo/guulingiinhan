@@ -11,7 +11,7 @@ gates, not assumed passes. Independent code and verification work continued.
 ## Release
 
 - Branch: `codex/integration-regression-2026-10-02`.
-- Application commit: `adfe2b58b0f0f9e0c208c9c5342cd01a63bf5cc1`.
+- Verified UI application commit: `adfe2b58b0f0f9e0c208c9c5342cd01a63bf5cc1`.
 - Frontend staging version: `40b06124-cbc5-42fc-a802-354e84bbf62d`, 100% traffic.
 - Backend staging version: `7c4e5563-bd95-491d-8c4d-cd8de95ad98e`, 100% traffic.
 - Both Cloudflare builds succeeded for this exact application commit.
@@ -65,6 +65,27 @@ That desktop run did not emulate 390px or open the intended relation-edit dialog
 clicking a profile/detail view was not accepted as a modal-focus test. The local
 keyboard test correctly used the relation action and passed. Mobile staging and
 authenticated runtime console/network inspection remain separate open checks.
+
+The focused follow-up
+[c3974351-2e0c-413e-aea6-9b6d7c273d56](https://agent.tinyfish.ai/runs/c3974351-2e0c-413e-aea6-9b6d7c273d56)
+timed out with no result. It is not a dialog PASS and does not establish an
+application defect. The deployed authenticated dialog/console/mobile gate remains
+BLOCKED; the successful local test is not substituted for it.
+
+Documentation commit `0460a88af28a6d10bc8ff3380e9b5652c2cba8a0` passed CI runs
+`37398061486` and `37398064891`; both staging builds succeeded and reached 100%.
+Its frontend/backend versions are `f26f2e7d-b143-4d60-958e-02bf659b7cb9` and
+`b5f291cd-e34e-4ecd-b652-fe4036fd82e3`. Application source is unchanged from `adfe2b5`.
+
+The documentation-only rollout was checked again in native Chromium: health and
+readiness 200, four anonymous protected requests 401, zero guest page exceptions
+or HTTP 5xx. Generic `fetch` inside the Cloudflare MCP runtime was denied by that
+tool's host allowlist; its 403 was not an application response.
+
+Final operator hardening rejects all restore-URL query overrides (including
+`host`/`hostaddr`); these could otherwise override a loopback URL. The focused
+recovery suite now has 14 passing cases. This operator-only change does not
+modify application routes, the Tree or staging family data.
 
 An independent deployed Chromium guest smoke pass confirmed login, register,
 password-reset and ancestry route HTML; health/readiness 200; four protected API

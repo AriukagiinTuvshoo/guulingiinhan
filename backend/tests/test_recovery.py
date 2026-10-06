@@ -16,6 +16,8 @@ from ops.recovery import MEDIA_FORMAT, export_sql, restore_media, validate_resto
     "postgresql://u:p@127.0.0.1/guulingiinhan",
     "sqlite:///guulingiinhan_restore_test",
     "postgresql://u:p@127.0.0.1/",
+    "postgresql://u:p@127.0.0.1/guulingiinhan_restore_test?host=production.invalid",
+    "postgresql://u:p@127.0.0.1/guulingiinhan_restore_test?hostaddr=10.0.0.1",
 ])
 def test_restore_cannot_target_live_or_non_postgres_database(url):
     with pytest.raises(ValueError):

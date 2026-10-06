@@ -54,6 +54,8 @@ def export_sql(public_key: str) -> str:
 
 def validate_restore_url(database_url: str) -> None:
     url = make_url(database_url)
+    if url.query:
+        raise ValueError("Restore URL must not include connection overrides")
     if url.get_backend_name() != "postgresql" or url.host not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("Restore is restricted to an isolated local PostgreSQL instance")
     if not (url.database or "").startswith("guulingiinhan_restore_"):
