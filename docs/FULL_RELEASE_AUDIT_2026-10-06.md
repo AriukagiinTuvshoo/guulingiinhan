@@ -57,12 +57,13 @@ Provider reference inspected: [Verify.MN API contract](https://www.verify.mn/) o
 ### Repository and deployment identity
 
 - Branch: `codex/integration-regression-2026-10-02`.
-- Candidate commit: `92ce284737c64d6c386c65670ce7fc2b80658b90` (`Harden account auth and profile security`), pushed to `origin`; checkout was clean when this evidence was recorded.
+- Candidate commit: `d68c1ec760e07561eed6f8c1ba39da97c40ad25a` (`Record final production readiness evidence`), pushed to `origin`; includes code candidate `92ce284737c64d6c386c65670ce7fc2b80658b90`.
 - Integration PR: [#94](https://github.com/AriukagiinTuvshoo/guulingiinhan/pull/94), open and not merged.
-- CI workflow `verify`, run `37422773396` (#1175): completed successfully.
+- CI workflow `verify`, run `37423592407` (#1176), for the final candidate commit: completed successfully.
 - Migration head: `c16a4e8b9021`; staging migration is applied.
-- Staging frontend Worker version `5cc2fbaa-243d-4e7f-ac65-8d44ea8eab68` (#52), 100% traffic, deployed `2026-10-06T06:16:45Z`.
-- Staging backend Worker version `1aa8aac8-d0c2-4eaa-9ed7-b4ad7021ee2b` (#71), 100% traffic, deployed `2026-10-06T06:16:44Z`.
+- Latest staging frontend Worker version `3054fdc2-0662-4b0b-a366-759ca3c03f72` (#53), 100% traffic, uploaded `2026-10-06T06:25:49Z`.
+- Latest staging backend Worker version `d4430279-a5ec-4f70-bcee-24cd312716ce` (#72), 100% traffic, uploaded `2026-10-06T06:25:35Z`.
+- Guest smoke evidence was captured against the preceding code deployment (#52/#71). The post-report upload (#53/#72) is visible in Cloudflare, but this environment could not resolve the staging host during a repeat HTTP smoke; no post-upload runtime PASS is claimed.
 - Production: not deployed or modified. Production DNS, secrets, and family data were not touched.
 
 ### Final feature matrix
@@ -98,7 +99,7 @@ Statuses describe the evidence actually available. Local/automated evidence is n
 | Performance | PASS | Local 800-person browser test: full tree API 764 ms; initial 2D DOM about 3.0 s desktop/mobile; no overflow or JS errors. Measurements exclude production hardware/GPU and staging network variability. |
 | Security | PASS | Auth, family boundaries, session/rate-limit protections, private media, and stage RLS regressions pass. Seven high npm audit findings remain in the build-time `braces` dependency chain; reachability is unverified. |
 | Automated tests | PASS | 224 pytest passed; Ruff, Mypy (29 modules), migration cycle/consistency, npm ci, typecheck, Next build, Vinext build, 25-route, tree, root-linking, heritage, and media recovery tests passed. CI run #1175 succeeded. |
-| Staging runtime | BLOCKED | Fresh guest smoke: login/register/reset/admin ancestry HTTP 200; health/readiness 200; protected endpoints 401 anonymously; no JS errors/5xx. Authenticated staging checks could not be safely captured through the external browser tool. |
+| Staging runtime | BLOCKED | Guest smoke on preceding code deployment (#52/#71): login/register/reset/admin ancestry HTTP 200; health/readiness 200; protected endpoints 401 anonymously; no JS errors/5xx. Latest versions #53/#72 are 100% but could not be smoke-checked after upload because this environment could not resolve the staging host. Authenticated staging checks could not be safely captured through the external browser tool. |
 
 ### Remaining blockers and owner actions
 
