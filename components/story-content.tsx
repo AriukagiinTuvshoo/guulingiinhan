@@ -1,5 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import ProfilePhoto from './profile-photo';
+import { stripHeritageLinks } from '../lib/heritage-links';
 
 type Props = {
   body: string;
@@ -21,6 +22,7 @@ function inline(text: string): ReactNode[] {
 }
 
 export default function StoryContent({ body, familyId, publicPhotoUrls }: Props) {
+  body = stripHeritageLinks(body);
   const lines = body.replace(/\r\n/g, '\n').split('\n');
   const blocks: ReactNode[] = [];
   let paragraph: string[] = [];

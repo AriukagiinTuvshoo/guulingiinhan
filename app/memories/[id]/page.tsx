@@ -1,4 +1,7 @@
 'use client';
+import HeritageLinks from '../../../components/heritage-links';
+import HeritageLinkPicker from '../../../components/heritage-link-picker';
+import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../../../lib/heritage-links';
 
 import Link from 'next/link';
 import MemoryInteractions from '../../../components/memory-interactions';
@@ -10,6 +13,7 @@ import { API_BASE, ApiError, api, MemoryListItem, MemoryPhoto, MemoryPhotoPage }
 import { useAppShellContext } from '../../../components/app-shell';
 import MemoryPhotoInput from '../../../components/memory-photo-input';
 import { memoryDraftError } from '../../../lib/memory-draft';
+import { useDialogFocus } from '../../../components/use-dialog-focus';
 
 type MemoryDetail = Omit<MemoryListItem, 'photos'> & {
   photos: MemoryPhoto[];
@@ -407,9 +411,9 @@ function MemoryDetailPageContent() {
     }
   }
 
-  useEffect(() => {
-    if (showDelete) cancelRef.current?.focus();
-  }, [showDelete]);
+  useDialogFocus(Boolean(showDelete), '.memory-dialog', () => {
+    if (!busy) setShowDelete(false);
+  });
 
   async function removeMemory() {
     if (!familyId || !memoryId || busy) return;
@@ -519,8 +523,9 @@ function MemoryDetailPageContent() {
               </label>
               <label className="memory-composer-wide">
                 <span>Тайлбар</span>
-                <textarea value={editDescription} onChange={(event) => { setEditDescription(event.target.value); setEditDirty(true); }} maxLength={20000} rows={8} />
+                <textarea value={heritageEditorText(editDescription)} onChange={(event) => { setEditDescription(editHeritageText(event.target.value, editDescription)); setEditDirty(true); }} maxLength={20000} rows={8} />
               </label>
+              <HeritageLinkPicker familyId={familyId} value={editDescription} onChange={value => { setEditDescription(value); setEditDirty(true); }} />
               <fieldset className="memory-composer-wide memory-edit-people">
                 <legend>Холбоотой хүмүүс</legend>
                 <label>
@@ -561,7 +566,8 @@ function MemoryDetailPageContent() {
 
         <section className="memory-detail-body" aria-labelledby="memory-detail-content">
           <h2 id="memory-detail-content">Энэ мөчийн тухай</h2>
-          {memory.description ? <p>{memory.description}</p> : <p className="memory-muted">Энэ дурсамжид нэмэлт тайлбар хадгалагдаагүй байна.</p>}
+          {memory.description ? <p>{stripHeritageLinks(memory.description)}</p> : <p className="memory-muted">Энэ дурсамжид нэмэлт тайлбар хадгалагдаагүй байна.</p>}
+          <HeritageLinks familyId={familyId} kind="memory" id={memory.id} />
         </section>
 
         <section className="memory-detail-photos" aria-labelledby="memory-detail-photos-heading">

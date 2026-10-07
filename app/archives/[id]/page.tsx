@@ -2,10 +2,12 @@
 
 import Link from 'next/link';
 import StoryContent from '../../../components/story-content';
+import HeritageLinks from '../../../components/heritage-links';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Archive } from '../../../lib/api';
 import { useAppShellContext } from '../../../components/app-shell';
+import { useDialogFocus } from '../../../components/use-dialog-focus';
 
 function formatDate(value: string | null) {
   if (!value) return 'Огноогүй';
@@ -105,18 +107,9 @@ function ArchiveDetailContent() {
       mutationRequestRef.current += 1;
     };
   }, [loadFamilyContext]);
-  useEffect(() => {
-    if (!showDeleteDialog) return;
-    cancelRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) {
-        event.preventDefault();
-        setShowDeleteDialog(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [busy, showDeleteDialog]);
+  useDialogFocus(Boolean(showDeleteDialog), '.archive-dialog', () => {
+    if (!busy) setShowDeleteDialog(false);
+  });
 
   async function remove() {
     if (!archive || busy || !familyId) return;
@@ -227,6 +220,7 @@ function ArchiveDetailContent() {
           <p className="archive-eyebrow">DESCRIPTION</p>
           <h2 id="archive-description-heading">Тайлбар</h2>
           {archive.description ? <StoryContent body={archive.description} familyId={familyId} /> : <p className="archive-muted">Энэ архивт тайлбар хадгалагдаагүй байна.</p>}
+          <HeritageLinks familyId={familyId} kind="archive" id={archive.id} />
         </section>
 
         <section className="archive-related" aria-labelledby="archive-related-heading">

@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import ProtectedPhotoPicker from './protected-photo-picker';
+import HeritageLinkPicker from './heritage-link-picker';
+import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../lib/heritage-links';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, Archive, PersonSearchPage } from '../lib/api';
@@ -279,9 +281,9 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
           <label>
             Тайлбар
             <textarea
-              value={description}
+              value={heritageEditorText(description)}
               onChange={(event) => {
-                setDescription(event.target.value);
+                setDescription(editHeritageText(event.target.value, description));
                 markDirty();
               }}
               maxLength={20000}
@@ -289,6 +291,8 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
             />
             <span className="story-field-hint">Хоосон байж болно</span>
           </label>
+          <label>Баримтын төрөл<select value={description.match(/^Төрөл: (.+)\n/)?.[1] || ''} onChange={event => { setDescription((event.target.value ? `Төрөл: ${event.target.value}\n` : '') + description.replace(/^Төрөл: .+\n/, '')); markDirty(); }}><option value="">Төрөл оруулаагүй</option>{['Гэрчилгээ', 'Хуучин зураг', 'Баримт бичиг', 'Захидал', 'Бүртгэл'].map(kind => <option key={kind}>{kind}</option>)}</select><small>Төрлийг материалын тайлбарт хадгална.</small></label>
+          <HeritageLinkPicker familyId={familyId} value={description} onChange={value => { setDescription(value); markDirty(); }} />
 
           <div className="story-form-grid">
             <label>

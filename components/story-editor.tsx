@@ -5,6 +5,8 @@ import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react
 import { ApiError, api, MemoryListItem, MemoryPhotoPage, PersonSearchPage, Story } from '../lib/api';
 import { useAppShellContext } from './app-shell';
 import ProfilePhoto from './profile-photo';
+import HeritageLinkPicker from './heritage-link-picker';
+import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../lib/heritage-links';
 import { useParams } from 'next/navigation';
 
 type Props = {
@@ -215,11 +217,12 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
 
   function insertText(before: string, after = '', placeholder = 'текст') {
     const field = textareaRef.current;
-    const start = field?.selectionStart ?? body.length;
+    const editorialBody = heritageEditorText(body);
+    const start = field?.selectionStart ?? editorialBody.length;
     const end = field?.selectionEnd ?? start;
-    const selected = body.slice(start, end) || placeholder;
-    const next = body.slice(0, start) + before + selected + after + body.slice(end);
-    setBody(next);
+    const selected = editorialBody.slice(start, end) || placeholder;
+    const next = editorialBody.slice(0, start) + before + selected + after + editorialBody.slice(end);
+    setBody(editHeritageText(next, body));
     window.requestAnimationFrame(() => {
       field?.focus();
       field?.setSelectionRange(start + before.length, start + before.length + selected.length);
@@ -314,10 +317,11 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   function insertPhoto(id: string, caption: string) {
     const cleanCaption = caption.replace(/[\]\n|]/g, ' ').slice(0, 180) || 'Гэр бүлийн зураг';
     const field = textareaRef.current;
-    const start = field?.selectionStart ?? body.length;
+    const editorialBody = heritageEditorText(body);
+    const start = field?.selectionStart ?? editorialBody.length;
     const end = field?.selectionEnd ?? start;
     const token = `\n\n[[photo:${id}|${cleanCaption}]]\n\n`;
-    setBody(body.slice(0, start) + token + body.slice(end));
+    setBody(editHeritageText(editorialBody.slice(0, start) + token + editorialBody.slice(end), body));
     window.requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(start + token.length, start + token.length); });
     setShowPhotoPicker(false);
   }
@@ -435,6 +439,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
           </div>
 
           <div className="story-writing-field">
+            <HeritageLinkPicker familyId={familyId} value={body} onChange={setBody} />
             <label htmlFor="story-body">Түүх *</label>
             <div className="story-writing-toolbar" role="toolbar" aria-label="Түүхийн бичвэр форматлах">
               <button type="button" onClick={() => insertText('\n## ', '', 'Дэд гарчиг')}>Гарчиг</button>
@@ -446,7 +451,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
               <button type="button" onClick={() => insertText('\n\n---\n\n', '', '')}>Зааг</button>
               <button type="button" onClick={() => void openPhotoPicker()} aria-expanded={showPhotoPicker}>📷 Зураг</button>
             </div>
-            <textarea id="story-body" ref={textareaRef} value={body} onChange={(event) => setBody(event.target.value)} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
+            <textarea id="story-body" ref={textareaRef} value={heritageEditorText(body)} onChange={(event) => setBody(editHeritageText(event.target.value, body))} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
             <span className="story-field-hint">{body.length.toLocaleString()} / 100,000</span>
             {embeddedPhotos.length > 0 && <section className="story-inserted-photos" aria-label="Түүхэнд оруулсан зургууд">
               <h3>Түүхэнд оруулсан зураг · {embeddedPhotos.length}</h3>

@@ -11,6 +11,8 @@ import { API_BASE, ApiError, api, MemoryListItem, PersonSearchPage } from '../li
 import { memoryDraftError } from '../lib/memory-draft';
 import { useAppShellContext } from './app-shell';
 import MemoryPhotoInput from './memory-photo-input';
+import HeritageLinkPicker from './heritage-link-picker';
+import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../lib/heritage-links';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -91,6 +93,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
   const [personPage, setPersonPage] = useState(1);
   const [selectedPeople, setSelectedPeople] = useState<SelectedPerson[]>([]);
   const [showComposer, setShowComposer] = useState(createMode);
+  const [draftDescription, setDraftDescription] = useState('');
   const [partialMemoryId, setPartialMemoryId] = useState('');
   const [loading, setLoading] = useState(!createMode);
   const [busy, setBusy] = useState(false);
@@ -267,7 +270,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
         method: 'POST',
         body: JSON.stringify({
           title,
-          description: String(form.get('description') ?? '').trim() || null,
+          description: draftDescription.trim() || null,
           memory_date: String(form.get('memory_date') ?? '') || null,
           visibility,
           person_ids: selectedPeople.map((person) => person.id),
@@ -294,6 +297,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
       }
       if (operationFamilyRequestId !== familyRequestRef.current) return;
       formElement.reset();
+      setDraftDescription('');
       setSelectedPhotoFiles([]);
       setSelectedPeople([]);
       setPersonQuery('');
@@ -393,9 +397,10 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
               </label>
               <label className="memory-composer-wide">
                 <span>Тайлбар</span>
-                <textarea name="description" maxLength={20000} rows={5} placeholder="Энэ мөчийн тухай санаанд үлдсэн зүйлс…" />
+                <textarea name="description" value={heritageEditorText(draftDescription)} onChange={event => setDraftDescription(editHeritageText(event.target.value, draftDescription))} maxLength={20000} rows={5} placeholder="Энэ мөчийн тухай санаанд үлдсэн зүйлс…" />
               </label>
               <MemoryPhotoInput id="memory-photos" files={selectedPhotoFiles} onChange={setSelectedPhotoFiles} disabled={busy} />
+              <div className="memory-composer-wide"><HeritageLinkPicker familyId={familyId} value={draftDescription} onChange={setDraftDescription} /></div>
               <label>
                 <span>Харагдах байдал</span>
                 <select name="visibility" defaultValue="family">
@@ -525,7 +530,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                       <span>{visibilityLabel(memory.visibility)}</span>
                     </div>
                     <h3>{memory.title}</h3>
-                    {memory.description && <p>{memory.description}</p>}
+                    {memory.description && <p>{stripHeritageLinks(memory.description)}</p>}
                     <div className="memory-card-footer">
                       <span>{memory.person_names?.length ? memory.person_ids.map((personId, index) => (
                         <Link key={personId} href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(personId)}`} className="memory-person-link">
