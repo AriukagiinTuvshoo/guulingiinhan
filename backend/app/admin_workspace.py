@@ -49,7 +49,11 @@ from app.models import (
 )
 from app.person_search import normalize_search_name
 from app.privacy import person_is_minor
-from app.relationships import RelationshipError, assert_parent_child_is_acyclic
+from app.relationships import (
+    RelationshipError,
+    assert_parent_child_is_acyclic,
+    lock_ancestry_writes,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin-workspace"])
 public_router = APIRouter(prefix="/announcements", tags=["announcements"])
@@ -751,15 +755,17 @@ def create_relationship(
     _family(db, family_id)
     _person(db, family_id, body.parent_id)
     _person(db, family_id, body.child_id)
+    lock_ancestry_writes(db)
     db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
-    person_ids = select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
-    edges = db.execute(select(ParentChildRelationship.parent_id, ParentChildRelationship.child_id).where(
-        ParentChildRelationship.parent_id.in_(person_ids),
-        ParentChildRelationship.child_id.in_(person_ids))).all()
+    edges = db.execute(select(
+        ParentChildRelationship.parent_id, ParentChildRelationship.child_id,
+    )).all()
     try:
         assert_parent_child_is_acyclic(edges, body.parent_id, body.child_id)
     except RelationshipError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if (body.parent_id, body.child_id) in edges:
+        raise HTTPException(status_code=409, detail="Энэ холбоос аль хэдийн байна.")
     edge = ParentChildRelationship(parent_id=body.parent_id, child_id=body.child_id,
                                    relationship_type=body.relationship_type, created_by=current[0].id)
     db.add(edge)

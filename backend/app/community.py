@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.db import get_db
+from app.heritage_links import LINK_TOKEN
 from app.memory_interactions import interaction_summaries
 from app.memory_photos import _expected_object_keys
 from app.models import (
@@ -123,7 +124,7 @@ def public_feed(
         candidates.extend(PublicPost(
             id=row[0], kind=item_kind, family_id=row[1], family_name=row[2],
             author_name=row[3], title=row[4],
-            content=_STORY_PHOTO_TOKEN.sub("", row[5] or "").strip() if item_kind in {"story", "archive"} else row[5] or "",
+            content=LINK_TOKEN.sub("", _STORY_PHOTO_TOKEN.sub("", row[5] or "")).strip(),
             event_date=row[6], created_at=row[7],
         ) for row in rows)
     candidates.sort(key=lambda item: (item.created_at.replace(tzinfo=None), str(item.id)), reverse=True)
@@ -188,7 +189,7 @@ def public_post(
                 photos.append(f"/community/photos/{photo_id}/thumbnail")
     return PublicPost(
         id=item.id, kind=kind, family_id=item.family_id, family_name=family_name,
-        author_name=author_name, title=item.title, content=content or "",
+        author_name=author_name, title=item.title, content=LINK_TOKEN.sub("", content or ""),
         event_date=event_date, created_at=item.created_at,
         thumbnail_url=photos[0] if photos else None, photos=photos,
     )

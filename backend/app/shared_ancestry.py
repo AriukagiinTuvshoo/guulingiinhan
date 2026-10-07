@@ -30,7 +30,12 @@ from app.models import (
     UserPersonLink,
 )
 from app.privacy import person_is_minor
-from app.relationships import RelationshipError, assert_parent_child_is_acyclic, canonical_pair
+from app.relationships import (
+    RelationshipError,
+    assert_parent_child_is_acyclic,
+    canonical_pair,
+    lock_ancestry_writes,
+)
 
 router = APIRouter(prefix="/shared-lineage", tags=["shared lineage"])
 admin_router = APIRouter(prefix="/admin/shared-lineage", tags=["admin shared lineage"])
@@ -560,6 +565,7 @@ def set_root_couple(
     db: Session = Depends(get_db),
 ):
     """Establish one explicitly selected canonical couple in one transaction."""
+    lock_ancestry_writes(db)
     if body.root_person_id == body.partner_person_id:
         raise HTTPException(status_code=422, detail="Нэг хүнийг өөртэй нь хос болгож болохгүй.")
     _admin_publishable_person(db, body.root_person_id, body.family_id)
@@ -623,6 +629,7 @@ def connect_person_to_root(
     db: Session = Depends(get_db),
 ):
     """Publish a non-account Person and their explicit canonical relationship atomically."""
+    lock_ancestry_writes(db)
     db.execute(select(SharedAncestry.id).where(SharedAncestry.id == 1).with_for_update())
     _admin_publishable_person(db, body.person_id, body.family_id)
     if body.person_id == body.related_person_id:
@@ -989,6 +996,7 @@ def disconnect_root_connection_as_admin(
 def decide_root_connection(family_id: UUID, body: RootConnectionDecision,
                            current: tuple[User, AdminRole] = Depends(require_super_admin),
                            db: Session = Depends(get_db)):
+    lock_ancestry_writes(db)
     row = db.scalar(select(RootConnection).where(
         RootConnection.family_id == family_id,
     ).with_for_update())
@@ -1061,6 +1069,7 @@ def decide_root_connection(family_id: UUID, body: RootConnectionDecision,
 @admin_router.put("/root", response_model=SharedTreeOut)
 def set_shared_root(body: RootInput, current: tuple[User, AdminRole] = Depends(require_super_admin),
                     db: Session = Depends(get_db)):
+    lock_ancestry_writes(db)
     person = db.scalar(select(Person).join(FamilyPerson, FamilyPerson.person_id == Person.id)
                         .join(Family, Family.id == FamilyPerson.family_id)
                         .where(Person.id == body.person_id, Person.visibility != "private",
@@ -1112,6 +1121,7 @@ def connect_root_partner(
     db: Session = Depends(get_db),
 ):
     """Record an explicitly selected canonical spouse; do not invent a second graph."""
+    lock_ancestry_writes(db)
     ancestry = db.scalar(select(SharedAncestry).where(SharedAncestry.id == 1).with_for_update())
     if ancestry is None or ancestry.root_person_id != body.expected_root_person_id:
         raise HTTPException(status_code=409, detail="Үндсэн удмын эх өөрчлөгдсөн байна. Хуудсыг шинэчлэнэ үү.")
@@ -1165,6 +1175,7 @@ def add_shared_relationship(
     db: Session = Depends(get_db),
 ):
     """Connect two people already visible in the consent based shared tree."""
+    lock_ancestry_writes(db)
     root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
     if body.parent_person_id == body.child_person_id or body.child_person_id == root_id:
         raise HTTPException(status_code=422, detail="Үндсэн эхийг хүүхэд болгох эсвэл хүнийг өөртэй нь холбох боломжгүй.")

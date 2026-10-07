@@ -2,6 +2,20 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from uuid import UUID
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+
+def lock_ancestry_writes(db: Session) -> None:
+    """Serialize canonical graph checks/writes across all family and root APIs.
+
+    A per-family lock cannot protect paths that cross family boundaries. The
+    transaction lock is released on commit/rollback and needs no schema change.
+    SQLite fixtures execute serially and do not support PostgreSQL advisory locks.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 604260703})
+
 
 class RelationshipError(ValueError):
     """A family relationship would violate a graph invariant."""

@@ -535,16 +535,18 @@ def list_memories(
             .join(PersonLineageAssignment, PersonLineageAssignment.person_id == MemoryPersonTag.person_id)
             .where(PersonLineageAssignment.branch_id == branch_id,
                    MemoryPersonTag.person_id.in_(_visible_people_query(user, family_id)))))
-    candidates = db.scalars(
-        select(Memory).where(*conditions)
+    candidates = list(db.scalars(
+        select(Memory.id).where(*conditions)
         .order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc(), Memory.id)
-    ).all()
+    ).all())
     visible_ids = _memory_visible_to_member(
-        db, family_id, user, [memory.id for memory in candidates]
+        db, family_id, user, candidates
     )
-    visible = [memory for memory in candidates if memory.id in visible_ids]
+    visible = [memory_id for memory_id in candidates if memory_id in visible_ids]
     total = len(visible)
-    page_items = visible[(page - 1) * page_size : page * page_size]
+    page_ids = visible[(page - 1) * page_size : page * page_size]
+    page_items = list(db.scalars(select(Memory).where(Memory.id.in_(page_ids))
+        .order_by(Memory.memory_date.desc().nullslast(), Memory.created_at.desc(), Memory.id)).all()) if page_ids else []
     ids = [memory.id for memory in page_items]
     ranked_photos = select(
         Photo.id.label("photo_id"),

@@ -64,6 +64,7 @@ from app.relationships import (
     assert_date_order,
     assert_parent_child_is_acyclic,
     canonical_pair,
+    lock_ancestry_writes,
 )
 from app.storage import ObjectStorage, get_storage
 
@@ -662,6 +663,8 @@ def _validate_story_photos(
     db: Session, family_id: UUID, user: User, content: str, visibility: str,
 ) -> None:
     """Story images reuse access-controlled Memory photos, never arbitrary URLs."""
+    from app.heritage_links import validate_content_links
+    validate_content_links(db, family_id, user, content)
     matches = list(_STORY_PHOTO_TOKEN.finditer(content))
     if len(matches) != content.count("[[photo:") or len(matches) > 24:
         raise HTTPException(status_code=422, detail="Түүхийн зургийн холбоос буруу эсвэл хэт олон байна.")
@@ -2032,19 +2035,17 @@ def add_parent_child(
     _person_in_family(db, family_id, body.child_id)
     _assert_person_visible(db, _person_in_family(db, family_id, body.parent_id), user)
     _assert_person_visible(db, _person_in_family(db, family_id, body.child_id), user)
-    # Serialize ancestry writes on PostgreSQL to avoid concurrent inverse edges.
+    lock_ancestry_writes(db)
     db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
-    family_person_ids = select(FamilyPerson.person_id).where(FamilyPerson.family_id == family_id)
     edges = db.execute(
-        select(ParentChildRelationship.parent_id, ParentChildRelationship.child_id).where(
-            ParentChildRelationship.parent_id.in_(family_person_ids),
-            ParentChildRelationship.child_id.in_(family_person_ids),
-        )
+        select(ParentChildRelationship.parent_id, ParentChildRelationship.child_id)
     ).all()
     try:
         assert_parent_child_is_acyclic(edges, body.parent_id, body.child_id)
     except RelationshipError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    if (body.parent_id, body.child_id) in edges:
+        raise HTTPException(status_code=409, detail="Энэ эцэг эх-хүүхдийн холбоо өмнө нь бүртгэгдсэн байна.")
     edge = ParentChildRelationship(
         parent_id=body.parent_id,
         child_id=body.child_id,
@@ -2510,6 +2511,8 @@ def _validate_story_people(
 
 
 def _story_excerpt(body: str) -> str:
+    from app.heritage_links import LINK_TOKEN
+    body = LINK_TOKEN.sub("", _STORY_PHOTO_TOKEN.sub("", body))
     normalized = " ".join(body.split())
     return normalized if len(normalized) <= 220 else normalized[:217].rstrip() + "..."
 
@@ -3067,6 +3070,8 @@ def create_memory(
     db: Session = Depends(get_db),
 ):
     _member(db, family_id, user)
+    from app.heritage_links import validate_content_links
+    validate_content_links(db, family_id, user, body.description)
     for person_id in body.person_ids:
         person = _person_in_family(db, family_id, person_id)
         _assert_person_visible(db, person, user)
@@ -3257,6 +3262,8 @@ def update_memory(
         raise HTTPException(status_code=404, detail="Дурсамж олдсонгүй.")
     if member.role not in {"owner", "editor"} and memory.created_by != user.id:
         raise HTTPException(status_code=403, detail="Дурсамж засах эрхгүй.")
+    from app.heritage_links import validate_content_links
+    validate_content_links(db, family_id, user, body.description)
     existing_person_ids = list(
         db.scalars(
             select(MemoryPersonTag.person_id).where(MemoryPersonTag.memory_id == memory_id)
@@ -3525,6 +3532,9 @@ def accept_invitation(
     ):
         raise HTTPException(status_code=409, detail="Та энэ гэр бүлийн гишүүн байна.")
     invitation.accepted_at = datetime.now(UTC)
+    family = db.get(Family, invitation.family_id)
+    if family is None or family.archived_at is not None:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
     db.add(FamilyMember(family_id=invitation.family_id, user_id=user.id, role=invitation.role))
     _audit(db, user, invitation.family_id, "invitation.accepted", "invitation", invitation.id)
     _commit(db, "Урилгыг ашиглах боломжгүй байна.")
