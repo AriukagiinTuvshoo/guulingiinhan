@@ -162,3 +162,35 @@ def test_two_account_object_read_write_and_media_isolation(client, isolated_acco
     for context in isolated_accounts:
         for path in _object_paths(context):
             assert client.get(path).status_code == 401, path
+
+
+def test_private_api_cache_policy_survives_denial_and_session_revocation(client, isolated_accounts):
+    own, foreign = isolated_accounts
+    client.cookies.clear()
+    client.cookies.update(own["cookies"])
+
+    # Both private representations and denial responses can be retained by a
+    # cache unless the common API boundary explicitly prevents storage.
+    for context, statuses in ((own, {200}), (foreign, {403, 404})):
+        for path in _object_paths(context):
+            response = client.get(path)
+            assert response.status_code in statuses, path
+            assert response.headers["cache-control"] == "private, no-store", path
+            assert "cookie" in response.headers["vary"].lower(), path
+
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert response.headers["cache-control"] == "private, no-store"
+    client.cookies.clear()
+    client.cookies.update(own["cookies"])
+    for path in _object_paths(own):
+        response = client.get(path)
+        assert response.status_code == 401, path
+        assert response.headers["cache-control"] == "private, no-store", path
+
+    response = client.post("/api/v1/auth/login", json={"email": "invalid", "password": ""})
+    assert response.status_code == 422
+    assert response.headers["cache-control"] == "private, no-store"
+    response = client.post("/api/v1/auth/logout", headers={"Origin": "https://foreign.invalid"})
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "private, no-store"

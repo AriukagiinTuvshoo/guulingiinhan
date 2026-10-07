@@ -106,6 +106,8 @@ async def request_context(request: Request, call_next):
                          "request_id": request_id},
             )
             response.headers["X-Request-ID"] = request_id
+            if request.url.path.startswith("/api/v1/"):
+                response.headers["Cache-Control"] = "private, no-store"
             request_id_context.reset(context_token)
             return response
     error_code: str | None
@@ -127,6 +129,14 @@ async def request_context(request: Request, call_next):
             },
         )
     response.headers["X-Request-ID"] = request_id
+    # Authenticated JSON, validation failures and revoked sessions must never
+    # become reusable browser/shared-cache representations of a user's data.
+    if request.url.path.startswith("/api/v1/"):
+        response.headers["Cache-Control"] = "private, no-store"
+        vary = [item.strip() for item in response.headers.get("Vary", "").split(",") if item.strip()]
+        if "cookie" not in {item.lower() for item in vary}:
+            vary.append("Cookie")
+        response.headers["Vary"] = ", ".join(vary)
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
     route = getattr(request.scope.get("route"), "path", "unmatched")
     rate_limit_namespace = None
