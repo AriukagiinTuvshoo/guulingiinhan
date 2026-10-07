@@ -1,0 +1,49 @@
+{
+  "scope": "Anonymous live staging HTTP and protected-route registration only; no private family data read",
+  "results": [
+    {
+      "label": "frontend search",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "mongolian": true
+    },
+    {
+      "label": "frontend relationship",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "mongolian": true
+    },
+    {
+      "label": "backend health",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "label": "backend ready",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "label": "protected relationship",
+      "status": 401,
+      "expected": 401,
+      "pass": true
+    },
+    {
+      "label": "protected timeline",
+      "status": 401,
+      "expected": 401,
+      "pass": true
+    },
+    {
+      "label": "protected content links",
+      "status": 401,
+      "expected": 401,
+      "pass": true
+    }
+  ]
+}
