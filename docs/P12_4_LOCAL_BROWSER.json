@@ -1,0 +1,574 @@
+{
+  "scope": "Local headless Edge / actual local synthetic PostgreSQL and FastAPI / API transport proxy, not authenticated staging",
+  "widths": [
+    320,
+    390,
+    768,
+    1024,
+    1440
+  ],
+  "routeChecks": 55,
+  "errors": [],
+  "measurements": [
+    {
+      "width": 320,
+      "path": "/search",
+      "ready_ms": 1917,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Нэгдсэн хайлт"
+    },
+    {
+      "width": 320,
+      "path": "/relationships",
+      "ready_ms": 1062,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Би энэ хүнтэй ямар хамаатай вэ?"
+    },
+    {
+      "width": 320,
+      "path": "/profile?person=0b73606e-1be6-429d-97ec-96a65356467b",
+      "ready_ms": 1964,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture0"
+    },
+    {
+      "width": 320,
+      "path": "/tree",
+      "ready_ms": 2537,
+      "overflow": false,
+      "treeNodes": 19,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "P12.4 local fixture"
+    },
+    {
+      "width": 320,
+      "path": "/stories/new",
+      "ready_ms": 1402,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ түүх"
+    },
+    {
+      "width": 320,
+      "path": "/archives/new",
+      "ready_ms": 1093,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ архив"
+    },
+    {
+      "width": 320,
+      "path": "/memories/new",
+      "ready_ms": 1083,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ дурсамж"
+    },
+    {
+      "width": 320,
+      "path": "/stories/c355f82b-c454-45c7-9b14-af258b5de57b",
+      "ready_ms": 1131,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture story 29"
+    },
+    {
+      "width": 320,
+      "path": "/archives/960c8c22-b0a8-43a7-a16e-7cc8c04fd51d",
+      "ready_ms": 1065,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture archive 29"
+    },
+    {
+      "width": 320,
+      "path": "/memories/df76bd64-b494-44ef-b2b5-d7ec13f55adc",
+      "ready_ms": 1107,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture memory 29"
+    },
+    {
+      "width": 320,
+      "path": "/invite",
+      "ready_ms": 807,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Гэр бүлийн урилга"
+    },
+    {
+      "width": 390,
+      "path": "/search",
+      "ready_ms": 998,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Нэгдсэн хайлт"
+    },
+    {
+      "width": 390,
+      "path": "/relationships",
+      "ready_ms": 999,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Би энэ хүнтэй ямар хамаатай вэ?"
+    },
+    {
+      "width": 390,
+      "path": "/profile?person=0b73606e-1be6-429d-97ec-96a65356467b",
+      "ready_ms": 1648,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture0"
+    },
+    {
+      "width": 390,
+      "path": "/tree",
+      "ready_ms": 2247,
+      "overflow": false,
+      "treeNodes": 19,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "P12.4 local fixture"
+    },
+    {
+      "width": 390,
+      "path": "/stories/new",
+      "ready_ms": 1149,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ түүх"
+    },
+    {
+      "width": 390,
+      "path": "/archives/new",
+      "ready_ms": 1416,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ архив"
+    },
+    {
+      "width": 390,
+      "path": "/memories/new",
+      "ready_ms": 1466,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ дурсамж"
+    },
+    {
+      "width": 390,
+      "path": "/stories/c355f82b-c454-45c7-9b14-af258b5de57b",
+      "ready_ms": 1292,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture story 29"
+    },
+    {
+      "width": 390,
+      "path": "/archives/960c8c22-b0a8-43a7-a16e-7cc8c04fd51d",
+      "ready_ms": 1078,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture archive 29"
+    },
+    {
+      "width": 390,
+      "path": "/memories/df76bd64-b494-44ef-b2b5-d7ec13f55adc",
+      "ready_ms": 1073,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture memory 29"
+    },
+    {
+      "width": 390,
+      "path": "/invite",
+      "ready_ms": 859,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Гэр бүлийн урилга"
+    },
+    {
+      "width": 768,
+      "path": "/search",
+      "ready_ms": 1010,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Нэгдсэн хайлт"
+    },
+    {
+      "width": 768,
+      "path": "/relationships",
+      "ready_ms": 1043,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Би энэ хүнтэй ямар хамаатай вэ?"
+    },
+    {
+      "width": 768,
+      "path": "/profile?person=0b73606e-1be6-429d-97ec-96a65356467b",
+      "ready_ms": 1699,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture0"
+    },
+    {
+      "width": 768,
+      "path": "/tree",
+      "ready_ms": 1890,
+      "overflow": false,
+      "treeNodes": 23,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "P12.4 local fixture"
+    },
+    {
+      "width": 768,
+      "path": "/stories/new",
+      "ready_ms": 1275,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ түүх"
+    },
+    {
+      "width": 768,
+      "path": "/archives/new",
+      "ready_ms": 1017,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ архив"
+    },
+    {
+      "width": 768,
+      "path": "/memories/new",
+      "ready_ms": 1090,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ дурсамж"
+    },
+    {
+      "width": 768,
+      "path": "/stories/c355f82b-c454-45c7-9b14-af258b5de57b",
+      "ready_ms": 1250,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture story 29"
+    },
+    {
+      "width": 768,
+      "path": "/archives/960c8c22-b0a8-43a7-a16e-7cc8c04fd51d",
+      "ready_ms": 1111,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture archive 29"
+    },
+    {
+      "width": 768,
+      "path": "/memories/df76bd64-b494-44ef-b2b5-d7ec13f55adc",
+      "ready_ms": 1117,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture memory 29"
+    },
+    {
+      "width": 768,
+      "path": "/invite",
+      "ready_ms": 845,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Гэр бүлийн урилга"
+    },
+    {
+      "width": 1024,
+      "path": "/search",
+      "ready_ms": 1036,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Нэгдсэн хайлт"
+    },
+    {
+      "width": 1024,
+      "path": "/relationships",
+      "ready_ms": 1091,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Би энэ хүнтэй ямар хамаатай вэ?"
+    },
+    {
+      "width": 1024,
+      "path": "/profile?person=0b73606e-1be6-429d-97ec-96a65356467b",
+      "ready_ms": 1795,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture0"
+    },
+    {
+      "width": 1024,
+      "path": "/tree",
+      "ready_ms": 1802,
+      "overflow": false,
+      "treeNodes": 19,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "P12.4 local fixture"
+    },
+    {
+      "width": 1024,
+      "path": "/stories/new",
+      "ready_ms": 1180,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ түүх"
+    },
+    {
+      "width": 1024,
+      "path": "/archives/new",
+      "ready_ms": 1107,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ архив"
+    },
+    {
+      "width": 1024,
+      "path": "/memories/new",
+      "ready_ms": 1098,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ дурсамж"
+    },
+    {
+      "width": 1024,
+      "path": "/stories/c355f82b-c454-45c7-9b14-af258b5de57b",
+      "ready_ms": 1169,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture story 29"
+    },
+    {
+      "width": 1024,
+      "path": "/archives/960c8c22-b0a8-43a7-a16e-7cc8c04fd51d",
+      "ready_ms": 1083,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture archive 29"
+    },
+    {
+      "width": 1024,
+      "path": "/memories/df76bd64-b494-44ef-b2b5-d7ec13f55adc",
+      "ready_ms": 1092,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture memory 29"
+    },
+    {
+      "width": 1024,
+      "path": "/invite",
+      "ready_ms": 813,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Гэр бүлийн урилга"
+    },
+    {
+      "width": 1440,
+      "path": "/search",
+      "ready_ms": 1110,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Нэгдсэн хайлт"
+    },
+    {
+      "width": 1440,
+      "path": "/relationships",
+      "ready_ms": 1068,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Би энэ хүнтэй ямар хамаатай вэ?"
+    },
+    {
+      "width": 1440,
+      "path": "/profile?person=0b73606e-1be6-429d-97ec-96a65356467b",
+      "ready_ms": 1725,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture0"
+    },
+    {
+      "width": 1440,
+      "path": "/tree",
+      "ready_ms": 2178,
+      "overflow": false,
+      "treeNodes": 23,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "P12.4 local fixture"
+    },
+    {
+      "width": 1440,
+      "path": "/stories/new",
+      "ready_ms": 1070,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ түүх"
+    },
+    {
+      "width": 1440,
+      "path": "/archives/new",
+      "ready_ms": 1075,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ архив"
+    },
+    {
+      "width": 1440,
+      "path": "/memories/new",
+      "ready_ms": 1104,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Шинэ дурсамж"
+    },
+    {
+      "width": 1440,
+      "path": "/stories/c355f82b-c454-45c7-9b14-af258b5de57b",
+      "ready_ms": 1088,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture story 29"
+    },
+    {
+      "width": 1440,
+      "path": "/archives/960c8c22-b0a8-43a7-a16e-7cc8c04fd51d",
+      "ready_ms": 1074,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture archive 29"
+    },
+    {
+      "width": 1440,
+      "path": "/memories/df76bd64-b494-44ef-b2b5-d7ec13f55adc",
+      "ready_ms": 1072,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Fixture memory 29"
+    },
+    {
+      "width": 1440,
+      "path": "/invite",
+      "ready_ms": 783,
+      "overflow": false,
+      "treeNodes": 0,
+      "unnamedButtons": 0,
+      "unlabeledInputs": 0,
+      "heading": "Гэр бүлийн урилга"
+    }
+  ],
+  "interactions": [
+    "unified four-kind search",
+    "two-person relationship path",
+    "three 2D densities",
+    "branch focus and restore",
+    "authorized 800-person print (sidebar hidden)",
+    "canonical profile timeline",
+    "story link add/save/edit without raw IDs",
+    "invalid explicit family blocked"
+  ]
+}

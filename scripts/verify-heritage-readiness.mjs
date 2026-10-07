@@ -3,7 +3,7 @@ import { memoryDraftError } from '../lib/memory-draft.ts';
 import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope.ts';
 
 const families = [{ id: 'family-a' }, { id: 'family-b' }];
-for (const pathname of ['/tree', '/people', '/stories/new', '/memories/new', '/archives', '/settings', '/ancestry/connect']) {
+for (const pathname of ['/tree', '/search', '/relationships', '/people', '/stories/new', '/memories/new', '/archives', '/settings', '/ancestry/connect']) {
   assert.ok(needsExplicitFamily(pathname, false));
   assert.equal(resolveFamilyScope(families, '', true).id, '');
   assert.equal(resolveFamilyScope(families, 'invalid', true).id, '');

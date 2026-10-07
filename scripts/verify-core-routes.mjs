@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 
-const routes = ['/', '/login', '/register', '/password-reset', '/dashboard', '/admin', '/admin/ancestry', '/ancestry', '/ancestry/connect', '/tree', '/people', '/profile', '/stories', '/stories/new', '/memories', '/memories/new', '/archives', '/archives/new', '/community', '/news', '/settings', '/activities', '/families', '/onboarding', '/invite'];
+const routes = ['/', '/login', '/register', '/password-reset', '/dashboard', '/admin', '/admin/ancestry', '/ancestry', '/ancestry/connect', '/tree', '/search', '/relationships', '/people', '/profile', '/stories', '/stories/new', '/memories', '/memories/new', '/archives', '/archives/new', '/community', '/news', '/settings', '/activities', '/families', '/onboarding', '/invite'];
 const port = await new Promise((resolve, reject) => {
   const server = createServer();
   server.once('error', reject);
