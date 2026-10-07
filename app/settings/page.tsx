@@ -217,6 +217,7 @@ function SettingsContent() {
     return (
       <main className="settings-page">
         <div className="settings-shell settings-loading">
+          <h1 className="sr-only">Тохиргоо</h1>
           <div className="settings-skeleton" aria-busy="true" aria-live="polite">
             <span className="settings-skeleton__line settings-skeleton__line--small" />
             <span className="settings-skeleton__line settings-skeleton__line--title" />
@@ -507,5 +508,5 @@ function SettingsContent() {
 
 
 export default function SettingsPage() {
-  return <Suspense fallback={<main className="settings-page"><div className="settings-shell settings-loading"><div className="settings-skeleton" aria-busy="true"><small>Тохиргоог ачаалж байна…</small></div></div></main>}><SettingsContent /></Suspense>;
+  return <Suspense fallback={<main className="settings-page"><div className="settings-shell settings-loading"><h1 className="sr-only">Тохиргоо</h1><div className="settings-skeleton" aria-busy="true"><small>Тохиргоог ачаалж байна…</small></div></div></main>}><SettingsContent /></Suspense>;
 }

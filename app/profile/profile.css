@@ -86,7 +86,7 @@
   border-radius: 20px;
   background: #fffdf6;
   color: #315740 !important;
-  font: 600 11px/1.2 'Noto Sans', sans-serif !important;
+  font: 600 11px/1.2 var(--font-body) !important;
   cursor: pointer;
   transition: transform .18s ease, background .18s ease;
 }
@@ -114,7 +114,7 @@
   border-radius: 22px;
   background: #fffdf6;
   color: #244834;
-  font: 600 12px/1.2 'Noto Sans', sans-serif;
+  font: 600 12px/1.2 var(--font-body);
   text-decoration: none;
   cursor: pointer;
   transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
@@ -164,7 +164,7 @@
   border-radius: 10px;
   background: #fffefa;
   color: #193e2b;
-  font: 400 13px/1.5 'Noto Sans', sans-serif;
+  font: 400 13px/1.5 var(--font-body);
 }
 .profile-page input,
 .profile-page select { min-height: 43px; padding: 0 12px; }
@@ -180,7 +180,7 @@
   border-radius: 22px;
   background: linear-gradient(105deg, #dfc36e, #cba64a);
   color: #203a2a;
-  font: 700 12px/1.2 'Noto Sans', sans-serif;
+  font: 700 12px/1.2 var(--font-body);
   cursor: pointer;
 }
 .profile-page button:disabled { cursor: wait; opacity: .62; }

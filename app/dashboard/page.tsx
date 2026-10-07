@@ -147,6 +147,7 @@ function DashboardContent() {
           title="Гэр бүлийнхээ түүхийг эндээс эхлүүлье."
           href="/families"
           action="Гэр бүлээ сонгох"
+          headingLevel="h1"
         >
           Таны гэр бүлийн хүмүүс, түүх, дурсамж нэг дор цугларна.
         </EmptyState>

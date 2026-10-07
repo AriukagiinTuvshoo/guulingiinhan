@@ -67,15 +67,18 @@ export function EmptyState({
   children,
   href,
   action,
+  headingLevel = "h3",
 }: {
   title: string;
   children?: ReactNode;
   href?: string;
   action?: string;
+  headingLevel?: "h1" | "h2" | "h3";
 }) {
+  const Heading = headingLevel;
   return (
     <div className="heritage-empty">
-      <h3>{title}</h3>
+      <Heading>{title}</Heading>
       {children && <p>{children}</p>}
       {href && (
         <Link className="heritage-text-link" href={href}>
@@ -124,6 +127,7 @@ export function DashboardSkeleton() {
       aria-busy="true"
       aria-label="Гэр бүлийн орчныг ачаалж байна"
     >
+      <h1 className="sr-only">Гэр бүлийн тойм</h1>
       <div className="heritage-skeleton heritage-skeleton--hero">
         <span />
         <span />

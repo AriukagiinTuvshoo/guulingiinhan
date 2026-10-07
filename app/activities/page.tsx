@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api, Family } from '../../lib/api';
 
@@ -46,7 +47,20 @@ function ActivitiesContent() {
     e.preventDefault(); const form = e.currentTarget; const d = new FormData(form);
     await run(() => api(`${root(familyId)}/events`, { method: 'POST', body: JSON.stringify({ title: d.get('title'), description: d.get('description'), location: d.get('location'), starts_at: new Date(String(d.get('starts_at'))).toISOString(), registration_deadline: d.get('deadline') ? new Date(String(d.get('deadline'))).toISOString() : null, capacity: d.get('capacity') ? Number(d.get('capacity')) : null, adult_fee_minor: Number(d.get('adult_fee')) * 100, child_fee_minor: Number(d.get('child_fee')) * 100, currency: 'MNT', payment_instruction: d.get('instruction') }) }), 'Арга хэмжээ үүслээ.'); form.reset();
   }
-  if (!familyId) return <main className="activities-page"><p>Гэр бүлийн орчин ачаалж байна…</p></main>;
+  if (!familyId) return (
+    <main className="activities-page">
+      <header className="activities-heading">
+        <div>
+          <span>ГЭР БҮЛИЙН ХАМТЫН АМЬДРАЛ</span>
+          <h1>Сан ба уулзалт</h1>
+          <p>Гэр бүлийн сан, уулзалтыг харахын тулд гэр бүлийн орчноо сонгоно уу.</p>
+        </div>
+      </header>
+      <p className="activities-empty" role="status">
+        Гэр бүлийн орчин сонгоогүй байна. <Link href="/families">Гэр бүлүүдийг үзэх →</Link>
+      </p>
+    </main>
+  );
   return <main className="activities-page">
     <header className="activities-heading"><div><span>ГЭР БҮЛИЙН ХАМТЫН АМЬДРАЛ</span><h1>Сан ба уулзалт</h1><p>{family?.name ?? 'Гэр бүлийн орчин'} · гишүүдийн хүрээнд</p></div><button onClick={() => void reload()} disabled={busy}>Шинэчлэх</button></header>
     {error && <div className="activities-alert" role="alert">{error}<button onClick={() => void reload()}>Дахин оролдох</button></div>}{notice && <p role="status" className="activities-notice">{notice}</p>}
@@ -62,5 +76,5 @@ function ActivitiesContent() {
 }
 
 export default function ActivitiesPage() {
-  return <Suspense fallback={<main className="activities-page"><p>Гэр бүлийн үйл ажиллагааг ачаалж байна…</p></main>}><ActivitiesContent /></Suspense>;
+  return <Suspense fallback={<main className="activities-page"><header className="activities-heading"><div><span>ГЭР БҮЛИЙН ХАМТЫН АМЬДРАЛ</span><h1>Сан ба уулзалт</h1><p role="status">Гэр бүлийн үйл ажиллагааг ачаалж байна…</p></div></header></main>}><ActivitiesContent /></Suspense>;
 }
