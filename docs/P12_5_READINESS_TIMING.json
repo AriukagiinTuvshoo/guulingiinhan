@@ -1,0 +1,40 @@
+{
+  "checked_at": "2026-10-07T16:43:16.982Z",
+  "flow": "staging public readiness probe",
+  "scope": "No authentication or private payloads. Sequential warmup + five samples; not a product endpoint benchmark.",
+  "samples": [
+    {
+      "ms": 1146,
+      "status": 200,
+      "bytes": 61
+    },
+    {
+      "ms": 724,
+      "status": 200,
+      "bytes": 61
+    },
+    {
+      "ms": 778,
+      "status": 200,
+      "bytes": 61
+    },
+    {
+      "ms": 762,
+      "status": 200,
+      "bytes": 61
+    },
+    {
+      "ms": 765,
+      "status": 200,
+      "bytes": 61
+    },
+    {
+      "ms": 755,
+      "status": 200,
+      "bytes": 61
+    }
+  ],
+  "median_ms": 762,
+  "p95_sample_ms": 778,
+  "p95_note": "Five samples are too few for a stable population p95; this is the sample upper percentile."
+}
