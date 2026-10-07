@@ -246,7 +246,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [contextLoaded, contextLoading, retryContext, shouldRenderShell]);
 
   useEffect(() => {
-    if (!shouldRenderShell || contextLoading) return;
+    // An unresolved session/family list cannot establish a denial. Keep the
+    // private scope empty until the authenticated context is available.
+    if (!shouldRenderShell || contextLoading || !contextLoaded || !user) return;
     const scope = resolveFamilyScope(families, requestedFamilyId, needsExplicitFamily(pathname, searchParams.has('person')));
     if (!scope.id) {
       setFamilyId('');
@@ -273,7 +275,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       params.set('family', nextFamily);
       router.replace(pathname + '?' + params.toString());
     }
-  }, [contextLoading, families, pathname, requestedFamilyId, router, searchParams, shouldRenderShell]);
+  }, [contextLoaded, contextLoading, families, pathname, requestedFamilyId, router, searchParams, shouldRenderShell, user]);
 
   useEffect(() => {
     setMobileOpen(false);

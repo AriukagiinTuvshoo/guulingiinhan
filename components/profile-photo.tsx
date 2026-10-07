@@ -7,16 +7,20 @@ type ProfilePhotoProps = {
   url: string | null | undefined;
   name: string;
   fallback: string;
+  loadingFallback?: string;
   className: string;
 };
 
-export default function ProfilePhoto({ url, name, fallback, className }: ProfilePhotoProps) {
+export default function ProfilePhoto({ url, name, fallback, loadingFallback, className }: ProfilePhotoProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(Boolean(url));
 
   useEffect(() => {
     let active = true;
     let createdUrl: string | null = null;
+    const controller = new AbortController();
     setObjectUrl(null);
+    setLoading(Boolean(url));
     if (!url) return;
 
     const isApiPath = url.startsWith('/');
@@ -27,6 +31,7 @@ export default function ProfilePhoto({ url, name, fallback, className }: Profile
       credentials: isApiPath ? 'include' : 'omit',
       cache: 'no-store',
       referrerPolicy: 'no-referrer',
+      signal: controller.signal,
     })
       .then(async (response) => {
         if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) return;
@@ -35,14 +40,19 @@ export default function ProfilePhoto({ url, name, fallback, className }: Profile
         createdUrl = URL.createObjectURL(image);
         setObjectUrl(createdUrl);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { if (active) setLoading(false); });
 
     return () => {
       active = false;
+      controller.abort();
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
   }, [url]);
 
-  if (objectUrl) return <img className={className} src={objectUrl} alt={`${name}-ийн зураг`} />;
-  return <span className={`${className} profile-photo-fallback`} aria-label={`${name}-ийн зураг`}>{fallback}</span>;
+  if (objectUrl) return <img className={className} src={objectUrl} alt={`${name}-ийн зураг`} onError={() => setObjectUrl(null)} />;
+  return <span className={`${className} profile-photo-fallback`} aria-label={`${name}-ийн зураг`}
+    aria-busy={loading && !!loadingFallback} role={loading && loadingFallback ? 'status' : undefined}>
+    {loading && loadingFallback ? loadingFallback : fallback}
+  </span>;
 }
