@@ -6,7 +6,7 @@ import { ApiError, api, MemoryListItem, MemoryPhotoPage, PersonSearchPage, Story
 import { useAppShellContext } from './app-shell';
 import ProfilePhoto from './profile-photo';
 import HeritageLinkPicker from './heritage-link-picker';
-import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../lib/heritage-links';
+import { editHeritageText, heritageEditorText } from '../lib/heritage-links';
 import { useParams } from 'next/navigation';
 
 type Props = {

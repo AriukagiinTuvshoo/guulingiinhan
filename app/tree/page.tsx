@@ -701,6 +701,7 @@ function TreePageContent() {
   }
 
   async function selectSearchResult(personId: string) {
+    setBranchRoot('');
     if (!familyId) return;
     setSearchPage(null);
     setSearch('');
