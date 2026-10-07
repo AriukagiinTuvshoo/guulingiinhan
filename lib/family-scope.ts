@@ -1,5 +1,5 @@
 export function needsExplicitFamily(pathname: string, hasPerson: boolean): boolean {
-  return /^\/(tree|people|stories|memories|archives|settings)(\/|$)/.test(pathname)
+  return /^\/(tree|people|stories|memories|archives|settings|search|relationships)(\/|$)/.test(pathname)
     || pathname === '/ancestry/connect'
     || (pathname.startsWith('/profile') && hasPerson);
 }

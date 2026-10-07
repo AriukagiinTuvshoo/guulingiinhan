@@ -224,6 +224,14 @@ export type MemoryListItem = {
   photos_has_next?: boolean;
 };
 
+export type MemoryListPage = { items: MemoryListItem[]; page: number; page_size: number; total: number; has_next: boolean };
+export type RelationshipResult = {
+  status: 'same' | 'found' | 'not_found' | 'limited'; truncated: boolean; paths_limited: boolean;
+  paths: { people: { id: string; name: string }[]; steps: { kind: 'parent' | 'child' | 'spouse'; relationship_type?: string; status?: string }[]; distance: number; generation_distance: number }[];
+  common_ancestors: { id: string; name: string; first_distance: number; second_distance: number }[];
+};
+export type TimelinePage = { items: { id: string; kind: string; date: string | null; title: string; href: string | null }[]; page: number; has_next: boolean; total: number; truncated: boolean };
+
 export type StoryPerson = {
   id: string;
   first_name: string;

@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  Search,
   ShieldCheck,
   TreeDeciduous,
   UserRound,
@@ -30,7 +31,7 @@ import { useDialogFocus } from './use-dialog-focus';
 import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
-  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings';
+  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -45,6 +46,8 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
+  { key: 'search', label: 'Хайлт', description: 'Гэр бүлийн сангаас хайх', icon: Search, path: '/search', needsFamily: true },
+  { key: 'relationships', label: 'Хамаарал', description: 'Хоёр хүний холбооны зам', icon: GitFork, path: '/relationships', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
   { key: 'memories', label: 'Дурсамж', description: 'Хадгалсан дурсамж', icon: Globe2, path: '/memories', needsFamily: true },
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
@@ -54,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
 
 function isShellRoute(pathname: string) {
   return (
+    pathname === '/search' || pathname === '/relationships' ||
     pathname === '/people' ||
     pathname.startsWith('/people/') ||
     pathname === '/tree' ||
@@ -84,6 +88,8 @@ function isDashboardRoute(pathname: string) {
 }
 
 function activeKey(pathname: string): NavItem['key'] | null {
+  if (pathname === '/search') return 'search';
+  if (pathname === '/relationships') return 'relationships';
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
   if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
