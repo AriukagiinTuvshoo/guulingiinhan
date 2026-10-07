@@ -1,0 +1,216 @@
+/* Focused mobile overrides for controls measured below the app's 44px target. */
+@media (max-width: 640px) {
+  .app-shell__menu-button {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .app-shell__brand {
+    min-height: 44px;
+  }
+
+  .app-shell__context select {
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .app-shell__context-empty {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .app-shell__account-button {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .app-shell__account-menu > a,
+  .app-shell__account-menu-button {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .app-shell__context-alert button {
+    min-height: 44px;
+    font-size: 11px;
+  }
+
+  .app-shell__no-family a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    padding-inline: 6px;
+  }
+
+  .authv2-password button,
+  .password-toggle {
+    top: 0;
+    width: 44px;
+    height: 44px;
+  }
+
+  .authv2-forgot-row a,
+  .authv2-switch a,
+  .authv2-back,
+  .auth-back {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .tree-button,
+  .tree-person-profile {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .tree-controls > div button,
+  .tree-zoom button,
+  .zoomdock button,
+  .generationbar button,
+  .tree-marriage-row button,
+  .tree-relation-actions button,
+  .tree-mode-switch button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .tree-search input {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .people-control select,
+  .people-filters select,
+  .people-search input,
+  .people-filters > button,
+  .people-pagination button,
+  .activities-page input:not([type="checkbox"]):not([type="radio"]),
+  .activities-page textarea,
+  .activities-page button,
+  .activities-empty a,
+  .settings-button,
+  .story-writing-toolbar button,
+  .memory-photo-queue li > button,
+  .memory-photo-actions button,
+  .memory-photo-edit button,
+  .story-inserted-photos li > button,
+  .story-photo-picker > button,
+  .story-photo-album > button {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .people-heading > div:first-child > a,
+  .stories-heading > div:first-child > a,
+  .memories-breadcrumb a,
+  .archive-breadcrumb a {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .people-error button,
+  .stories-error button,
+  .memories-alert button,
+  .archive-alert button {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .archive-filters select {
+    min-height: 44px;
+    border: 1px solid #d3cab7;
+    border-radius: 8px;
+    background: #fffdf8;
+    color: #29463b;
+    padding-inline: 11px;
+    font: inherit;
+  }
+
+  .activities-empty a {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* The same essential actions remain comfortably clickable on touch laptops and tablets. */
+.app-shell__context-empty,
+.app-shell__no-family a,
+.app-shell__sidebar-footer > a,
+.app-shell__context-alert button,
+.authv2-back,
+.authv2-forgot-row a,
+.authv2-switch a,
+.tree-button,
+.people-heading > a,
+.people-heading > div:first-child > a,
+.people-error button,
+.stories-heading > div:first-child > a,
+.stories-error button,
+.story-breadcrumb a,
+.memories-breadcrumb a,
+.memories-alert button,
+.archive-breadcrumb a,
+.archive-alert button,
+.activities-empty a,
+.activities-alert button,
+.settings-state button {
+  min-height: 44px;
+}
+
+.app-shell__context-empty,
+.app-shell__no-family a,
+.app-shell__sidebar-footer > a,
+.authv2-back,
+.authv2-forgot-row a,
+.authv2-switch a,
+.people-heading > a,
+.people-heading > div:first-child > a,
+.stories-heading > div:first-child > a,
+.story-breadcrumb a,
+.memories-breadcrumb a,
+.archive-breadcrumb a,
+.activities-empty a {
+  display: inline-flex;
+  align-items: center;
+}
+
+.authv2-password button {
+  width: 44px;
+  height: 44px;
+  top: 0;
+}
+
+.archive-filters select {
+  min-height: 44px;
+}
+
+.story-confirm-dialog,
+.archive-dialog,
+.memory-dialog {
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.story-dialog-actions > button,
+.archive-dialog-actions > button,
+.memory-dialog-actions > button {
+  min-height: 44px;
+}
+
+.settings-state button,
+.people-error button,
+.stories-error button,
+.memories-alert button,
+.archive-alert button,
+.activities-alert button,
+.app-shell__context-alert button,
+.tree-button {
+  padding-block: 7px;
+}

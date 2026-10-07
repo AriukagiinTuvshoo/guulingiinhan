@@ -1,4 +1,5 @@
 'use client';
+import PersonTimeline from '../../components/person-timeline';
 
 import Link from 'next/link';
 import { ChangeEvent, FormEvent, Suspense, useEffect, useRef, useState } from 'react';
@@ -478,7 +479,8 @@ function ProfilePageContent() {
       <main className="profile-page">
         <section className="profile-shell profile-state" aria-live="polite">
           <span className="people-spinner" aria-hidden="true" />
-          <p>Профайлыг ачаалж байна…</p>
+          <h1 className="sr-only">Хүний профайл</h1>
+          <p role="status">Профайлыг ачаалж байна…</p>
         </section>
       </main>
     );
@@ -578,6 +580,7 @@ function ProfilePageContent() {
         </header>
 
         <div className="profile-grid">
+          <div className="card profile-card profile-timeline-card"><PersonTimeline key={`${family}-${person.id}`} familyId={family} personId={person.id} /></div>
           <section className="card profile-card">
             <div className="profile-card-heading">
               <div><p className="eyebrow">ҮНДСЭН МЭДЭЭЛЭЛ</p><h2>Үндсэн мэдээлэл</h2></div>

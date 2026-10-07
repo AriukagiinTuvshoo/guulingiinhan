@@ -25,6 +25,7 @@ import {
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
+import TreePrint from '../../components/tree-print';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -102,7 +103,7 @@ function treeFriendlyError(cause: unknown, fallback: string) {
   return fallback;
 }
 
-function buildTreeLayout(tree: TreeData): TreeLayout {
+function buildTreeLayout(tree: TreeData, nodeWidth = TREE_NODE_WIDTH, nodeHeight = TREE_NODE_HEIGHT): TreeLayout {
   if (!tree.persons.length) return { nodes: [], width: 920, height: 420, generations: 0 };
 
   const personIds = new Set(tree.persons.map((person) => person.id));
@@ -160,19 +161,19 @@ function buildTreeLayout(tree: TreeData): TreeLayout {
   const widestRow = Math.max(...sortedGroups.map(([, people]) => people.length), 1);
   const width = Math.max(
     920,
-    TREE_PAD_X * 2 + widestRow * TREE_NODE_WIDTH + Math.max(0, widestRow - 1) * TREE_X_GAP,
+    TREE_PAD_X * 2 + widestRow * nodeWidth + Math.max(0, widestRow - 1) * TREE_X_GAP,
   );
   const height = Math.max(
     420,
     TREE_PAD_Y * 2 +
-      sortedGroups.length * TREE_NODE_HEIGHT +
+      sortedGroups.length * nodeHeight +
       Math.max(0, sortedGroups.length - 1) * TREE_Y_GAP,
   );
 
   const nodes: LayoutNode[] = [];
   for (const [rowIndex, [generation, people]] of sortedGroups.entries()) {
     const rowWidth =
-      people.length * TREE_NODE_WIDTH + Math.max(0, people.length - 1) * TREE_X_GAP;
+      people.length * nodeWidth + Math.max(0, people.length - 1) * TREE_X_GAP;
     const startX = Math.max(TREE_PAD_X, (width - rowWidth) / 2);
 
     const ordered = [...people].sort((a, b) =>
@@ -192,8 +193,8 @@ function buildTreeLayout(tree: TreeData): TreeLayout {
         // Keep the semantic generation relative to the API-selected root.
         // The normalized generation is only for choosing the visual row.
         generation: generationById.get(person.id) ?? 0,
-        x: startX + index * (TREE_NODE_WIDTH + TREE_X_GAP),
-        y: TREE_PAD_Y + rowIndex * (TREE_NODE_HEIGHT + TREE_Y_GAP),
+        x: startX + index * (nodeWidth + TREE_X_GAP),
+        y: TREE_PAD_Y + rowIndex * (nodeHeight + TREE_Y_GAP),
       });
     });
   }
@@ -228,6 +229,11 @@ function TreePageContent() {
   const viewModeRef = useRef<'full' | 'close'>('full');
   const [treeView, setTreeView] = useState<'2d' | '3d'>('2d');
   const [zoom, setZoom] = useState(0.9);
+  const [density, setDensity] = useState<'minimal' | 'standard' | 'detailed'>('standard');
+  const [branchRoot, setBranchRoot] = useState('');
+  const [viewport, setViewport] = useState({ left: 0, top: 0, width: 1400, height: 900 });
+  const viewportFrame = useRef(0);
+  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [noFamily, setNoFamily] = useState(false);
@@ -258,6 +264,8 @@ function TreePageContent() {
   });
 
   const loadSequence = useRef(0);
+  const persistedSelection = useRef('');
+  const loadedFamilyId = useRef('');
   const loadAbort = useRef<AbortController | null>(null);
   const searchSequence = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
@@ -265,6 +273,7 @@ function TreePageContent() {
 
   const persistSelected = useCallback(
     (personId: string) => {
+      persistedSelection.current = personId;
       setSelectedId(personId);
       if (typeof window === 'undefined') return;
       const params = new URLSearchParams(window.location.search);
@@ -316,6 +325,7 @@ function TreePageContent() {
         if (sequence !== loadSequence.current || controller.signal.aborted) return;
 
         setTree(treeData);
+        loadedFamilyId.current = id;
         const preferredIsAvailable =
           Boolean(preferredPersonId) &&
           treeData.persons.some((person) => person.id === preferredPersonId);
@@ -350,6 +360,10 @@ function TreePageContent() {
 
   useEffect(() => {
     loadAbort.current?.abort();
+    if (!contextLoading && !contextError && familyId === loadedFamilyId.current && requestedPersonId === persistedSelection.current && tree?.persons.some(person => person.id === requestedPersonId)) {
+      persistedSelection.current = '';
+      return;
+    }
     searchAbort.current?.abort();
     loadSequence.current += 1;
     searchSequence.current += 1;
@@ -469,10 +483,30 @@ function TreePageContent() {
     };
   }, [familyId, relation, relationMode, relationPersonQuery, selectedId]);
 
-  const layout = useMemo(
-    () => buildTreeLayout(tree ?? EMPTY_TREE),
-    [tree],
-  );
+  const nodeWidth = density === 'minimal' ? 164 : 212;
+  const nodeHeight = density === 'minimal' ? 76 : density === 'standard' ? 166 : 214;
+  const displayedTree = useMemo(() => {
+    if (!tree || !branchRoot || !tree.persons.some(p => p.id === branchRoot)) return tree ?? EMPTY_TREE;
+    const children = new Map<string, string[]>();
+    for (const edge of tree.parent_child_relationships) children.set(edge.parent_id, [...(children.get(edge.parent_id) || []), edge.child_id]);
+    const ids = new Set([branchRoot]); const pending = [branchRoot];
+    for (let index = 0; index < pending.length; index++) for (const child of children.get(pending[index]) || []) if (!ids.has(child)) { ids.add(child); pending.push(child); }
+    const descendants = new Set(ids);
+    for (const marriage of tree.marriages) if (descendants.has(marriage.person_1_id) || descendants.has(marriage.person_2_id)) { ids.add(marriage.person_1_id); ids.add(marriage.person_2_id); }
+    return { ...tree, root_person_id: branchRoot, persons: tree.persons.filter(p => ids.has(p.id)), parent_child_relationships: tree.parent_child_relationships.filter(e => ids.has(e.parent_id) && ids.has(e.child_id)), marriages: tree.marriages.filter(m => ids.has(m.person_1_id) && ids.has(m.person_2_id)) };
+  }, [tree, branchRoot]);
+  const layout = useMemo(() => buildTreeLayout(displayedTree, nodeWidth, nodeHeight), [displayedTree, nodeWidth, nodeHeight]);
+  const renderedNodes = useMemo(() => layout.nodes.filter(node => node.id === selectedId || (
+    (node.x + nodeWidth) * zoom >= viewport.left - 320 && node.x * zoom <= viewport.left + viewport.width + 320 &&
+    (node.y + nodeHeight) * zoom >= viewport.top - 320 && node.y * zoom <= viewport.top + viewport.height + 320
+  )), [layout, selectedId, nodeWidth, nodeHeight, zoom, viewport]);
+  useEffect(() => {
+    const element = scrollRef.current; if (!element) return;
+    const update = () => setViewport({ left: element.scrollLeft, top: element.scrollTop, width: element.clientWidth, height: element.clientHeight });
+    const observer = new ResizeObserver(update); observer.observe(element); update();
+    return () => { observer.disconnect(); window.cancelAnimationFrame(viewportFrame.current); };
+  }, [treeView, layout, zoom]);
+  useEffect(() => { setBranchRoot(''); }, [familyId]);
 
   const nodeById = useMemo(
     () => new Map(layout.nodes.map((node) => [node.id, node])),
@@ -486,7 +520,13 @@ function TreePageContent() {
       if (!viewport) return;
       const width = Math.max(280, viewport.clientWidth - 28);
       const height = Math.max(320, Math.min(window.innerHeight * 0.72, 760) - 24);
-      setZoom(Math.max(0.3, Math.min(1, Number(Math.min(width / layout.width, height / layout.height).toFixed(2)))));
+      const fit = Math.min(width / layout.width, height / layout.height);
+      const nextZoom = fit < 0.3 ? 0.8 : Math.min(1, Number(fit.toFixed(2)));
+      setZoom(nextZoom);
+      const center = layout.nodes.find(node => node.id === selectedId);
+      if (center) window.requestAnimationFrame(() => {
+        viewport.scrollTo({ left: Math.max(0, (center.x + nodeWidth / 2) * nextZoom - viewport.clientWidth / 2), top: Math.max(0, (center.y + nodeHeight / 2) * nextZoom - viewport.clientHeight / 2) });
+      });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [tree, treeView, loading, layout.width, layout.height]);
@@ -503,7 +543,8 @@ function TreePageContent() {
   useEffect(() => {
     if (!selectedId || !tree || loading) return;
     const frame = window.requestAnimationFrame(() => {
-      const element = document.getElementById('tree-person-' + selectedId);
+      if (zoom < 0.6) setZoom(0.8);
+    const element = document.getElementById('tree-person-' + selectedId);
       element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
     });
     return () => window.cancelAnimationFrame(frame);
@@ -571,6 +612,7 @@ function TreePageContent() {
 
   function focusSelected() {
     if (!selectedId) return;
+    if (zoom < 0.6) setZoom(0.8);
     const element = document.getElementById('tree-person-' + selectedId);
     element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
   }
@@ -919,6 +961,7 @@ function TreePageContent() {
     return (
       <main className="tree-page">
         <section className="tree-shell">
+          <h1 className="sr-only">Удмын мод</h1>
           <div className="tree-page-header tree-skeleton-header" aria-hidden="true">
             <div className="tree-skeleton tree-skeleton--title" />
             <div className="tree-skeleton tree-skeleton--control" />
@@ -981,6 +1024,9 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions">
+            <Link className="tree-button tree-button--secondary" href={`/relationships?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(selectedId)}`}>Хамаарлыг харах</Link>
+            <button type="button" className="tree-button tree-button--secondary" disabled={!selectedId} onClick={() => setBranchRoot(branchRoot ? '' : selectedId)}>{branchRoot ? 'Бүх салааг харах' : 'Сонгосон хүний үр удам'}</button>
+            <button type="button" className="tree-button tree-button--secondary" onClick={() => window.print()}>Модыг хэвлэх</button>
             <button type="button" className={'tree-button ' + (viewMode === 'full' ? 'tree-button--primary' : 'tree-button--secondary')} onClick={() => switchView('full')}>Бүх удам</button>
             <button type="button" className={'tree-button ' + (viewMode === 'close' ? 'tree-button--primary' : 'tree-button--secondary')} onClick={() => switchView('close')}>Ойрын хүрээ</button>
             {family?.role === 'owner' && !tree?.lineage_root_person_id && selectedId && <button type="button" className="tree-button tree-button--secondary" onClick={() => setConfirmRoot(true)}>Сонгосон хүнийг удмын эх болгох</button>}
@@ -1023,9 +1069,9 @@ function TreePageContent() {
         <section className="tree-workspace" aria-label="Удмын модны ажлын хэсэг">
           <div className="tree-workspace-top">
             <div className="tree-stats" aria-live="polite">
-              <strong>{tree?.persons.length ?? 0}</strong><span>хүн</span>
+              <strong>{displayedTree.persons.length}</strong><span>{branchRoot ? 'салааны хүн' : 'хүн'}</span>
               <i aria-hidden="true">·</i>
-              <strong>{tree?.marriages.length ?? 0}</strong><span>гэрлэлт</span>
+              <strong>{displayedTree.marriages.length}</strong><span>гэрлэлт</span>
               {tree?.meta?.truncated ? <em>Хэсэгчлэн ачаалсан</em> : null}
             </div>
 
@@ -1071,7 +1117,7 @@ function TreePageContent() {
                 <button type="button" onClick={() => {
                   const available = Math.max(280, (scrollRef.current?.clientWidth || window.innerWidth) - 28);
                   const availableHeight = Math.max(320, Math.min(window.innerHeight * 0.72, 760) - 24);
-                  setZoom(Math.max(0.3, Math.min(1, Number(Math.min(available / layout.width, availableHeight / layout.height).toFixed(2)))));
+                  setZoom(Math.max(0.01, Math.min(1, Number(Math.min(available / layout.width, availableHeight / layout.height).toFixed(2)))));
                   scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
                 }}>Тааруулах</button>
               </div>
@@ -1079,6 +1125,7 @@ function TreePageContent() {
           </div>
 
           <div className="tree-search-wrap">
+            <label className="tree-density">2D дэлгэрэнгүй байдал<select value={density} onChange={e => setDensity(e.target.value as typeof density)} disabled={treeView !== '2d'}><option value="minimal">Товч · нэр ба холбоо</option><option value="standard">Энгийн · зураг ба нэр</option><option value="detailed">Дэлгэрэнгүй · бүх мэдээлэл</option></select></label>
             <label className="tree-search">
               <span>Гэр бүлийн хүн хайх</span>
               <input
@@ -1155,7 +1202,7 @@ function TreePageContent() {
           ) : (
             <div className={'tree-map-layout ' + (treeView === '3d' ? 'tree-map-layout--3d' : '')}>
               {treeView === '3d' ? <Tree3DScene
-                data={tree}
+                data={displayedTree}
                 selectedPersonId={selectedId}
                 currentPersonId={tree.linked_person_id}
                 canonicalRootId={tree.lineage_root_person_id || tree.root_person_id}
@@ -1164,7 +1211,11 @@ function TreePageContent() {
               /> : (
               <div
                 ref={scrollRef}
-                className="tree-map-scroll"
+                className={`tree-map-scroll tree-density--${density}`}
+                onScroll={event => { const element = event.currentTarget; window.cancelAnimationFrame(viewportFrame.current); viewportFrame.current = window.requestAnimationFrame(() => setViewport({ left: element.scrollLeft, top: element.scrollTop, width: element.clientWidth, height: element.clientHeight })); }}
+                onPointerDown={event => { if (event.pointerType !== 'mouse' || event.button !== 0 || (event.target as HTMLElement).closest('button,a')) return; pan.current = { x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop }; event.currentTarget.setPointerCapture(event.pointerId); }}
+                onPointerMove={event => { if (pan.current) { event.currentTarget.scrollLeft = pan.current.left + pan.current.x - event.clientX; event.currentTarget.scrollTop = pan.current.top + pan.current.y - event.clientY; } }}
+                onPointerUp={() => { pan.current = null; }} onPointerCancel={() => { pan.current = null; }}
                 style={{ height: Math.max(440, layout.height * zoom + 24), maxHeight: '72vh' }}
                 tabIndex={0}
                 aria-label="Удмын модны зөөврийн зураглал. Хэвтээ болон босоо гүйлгэж удам угсааг харна."
@@ -1199,9 +1250,9 @@ function TreePageContent() {
                         const child = nodeById.get(edge.child_id);
                         if (!parent || !child) return null;
 
-                        const x1 = parent.x + TREE_NODE_WIDTH / 2;
-                        const y1 = parent.y + TREE_NODE_HEIGHT - 4;
-                        const x2 = child.x + TREE_NODE_WIDTH / 2;
+                        const x1 = parent.x + nodeWidth / 2;
+                        const y1 = parent.y + nodeHeight - 4;
+                        const x2 = child.x + nodeWidth / 2;
                         const y2 = child.y + 4;
                         const middleY = (y1 + y2) / 2;
 
@@ -1228,10 +1279,10 @@ function TreePageContent() {
                         const second = nodeById.get(marriage.person_2_id);
                         if (!first || !second) return null;
 
-                        const x1 = first.x + TREE_NODE_WIDTH;
-                        const y1 = first.y + TREE_NODE_HEIGHT / 2;
+                        const x1 = first.x + nodeWidth;
+                        const y1 = first.y + nodeHeight / 2;
                         const x2 = second.x;
-                        const y2 = second.y + TREE_NODE_HEIGHT / 2;
+                        const y2 = second.y + nodeHeight / 2;
                         const isHistorical = marriage.status !== 'married';
 
                         const startX = Math.min(x1, x2);
@@ -1258,7 +1309,7 @@ function TreePageContent() {
                       })}
                     </svg>
 
-                    {layout.nodes.map((node) => {
+                    {renderedNodes.map((node) => {
                       const person = node.person;
                       const selected = person.id === selectedId;
                       const parentCount = relationCounts.parents.get(person.id) ?? 0;
@@ -1274,6 +1325,8 @@ function TreePageContent() {
                           style={{
                             left: node.x,
                             top: node.y,
+                            width: nodeWidth,
+                            height: nodeHeight,
                           }}
                         >
                           <button
@@ -1283,10 +1336,10 @@ function TreePageContent() {
                             aria-label={personName(person) + ' хүнийг сонгох'}
                             onClick={() => selectPerson(person.id)}
                           >
-                            <ProfilePhoto className="tree-person-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />
+                            {density !== 'minimal' && zoom >= 0.25 && <ProfilePhoto className="tree-person-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />}
                             <strong>{personName(person) || 'Нэргүй хүн'}</strong>
                             <span>{lifeSummary(person)}</span>
-                            <em>{tree.lineage_root_person_id && viewMode === 'full' ? generationLabel(node.generation) : 'Үе тогтоогоогүй'}</em>
+                            <em>{branchRoot ? 'Салааны хүрээ' : tree.lineage_root_person_id && viewMode === 'full' ? generationLabel(node.generation) : 'Үе тогтоогоогүй'}</em>
                           </button>
 
                           <div className="tree-person-meta">
@@ -1463,6 +1516,7 @@ function TreePageContent() {
           <span>Гэрлэлт болон эцэг-эх/хүүхдийн холбоо тусдаа хадгалагдана.</span>
         </footer>
       </section>
+      {tree && <TreePrint tree={displayedTree} familyName={family?.name || 'Гэр бүл'} />}
 
       {(confirmRoot || linkToApprove) && <div className="tree-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !linkBusy) { setConfirmRoot(false); setLinkToApprove(null); } }}><section className="tree-modal" role="dialog" aria-modal="true" aria-labelledby="tree-confirm-title"><div className="tree-modal-heading"><div><p className="tree-eyebrow">БАТАЛГААЖУУЛАХ</p><h2 id="tree-confirm-title">{confirmRoot ? 'Удмын эхийг сонгох' : 'Хүнтэй холбох'}</h2></div></div><p>{confirmRoot ? `${selectedPerson ? personName(selectedPerson) : 'Сонгосон хүн'}-ийг удмын эхээр хадгална. Энгийн дэлгэцээс дараа нь солих боломжгүй.` : `${linkToApprove?.user_name} аккаунтыг ${linkToApprove?.person_name} хүнтэй холбоно. Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.`}</p><div className="tree-modal-actions"><button type="button" className="tree-button tree-button--secondary" disabled={linkBusy} onClick={() => { setConfirmRoot(false); setLinkToApprove(null); }}>Болих</button><button type="button" className="tree-button tree-button--primary" disabled={linkBusy} onClick={() => { if (confirmRoot) void designateRoot(); else if (linkToApprove) void approveLink(linkToApprove); }}>{linkBusy ? 'Хүлээнэ үү…' : 'Батлах'}</button></div></section></div>}
 
