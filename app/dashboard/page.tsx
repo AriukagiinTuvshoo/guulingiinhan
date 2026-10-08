@@ -5,7 +5,6 @@ import type {
   Family,
   Person,
   PersonDirectoryPage,
-  TreeData,
   StoryListPage,
   ArchiveListPage,
 } from "../../lib/api";
@@ -26,6 +25,7 @@ import {
   TreeOverview,
   familyLink,
   type MemoryPage,
+  type SharedLineagePreview,
 } from "../../components/dashboard/heritage-sections";
 
 function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
@@ -34,7 +34,7 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
     `${base}/people?page=1&page_size=6`,
   );
   const featured = useDashboardSection<Person | null>(`${base}/featured-person`);
-  const tree = useDashboardSection<TreeData>(`${base}/tree?depth=2`);
+  const tree = useDashboardSection<SharedLineagePreview>("/shared-lineage");
   const stories = useDashboardSection<StoryListPage>(
     `${base}/stories?page=1&page_size=4`,
   );

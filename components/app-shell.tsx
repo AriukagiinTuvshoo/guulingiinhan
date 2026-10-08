@@ -31,7 +31,7 @@ import { useDialogFocus } from './use-dialog-focus';
 import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
-  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
+  key: 'dashboard' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -41,10 +41,9 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
-  { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
   { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
-  { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
+  { key: 'tree', label: 'Удмын мод', description: 'Үндсэн удам · Манай гэр бүл', icon: GitFork, path: '/tree', needsFamily: false },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
   { key: 'search', label: 'Хайлт', description: 'Гэр бүлийн сангаас хайх', icon: Search, path: '/search', needsFamily: true },
   { key: 'relationships', label: 'Хамаарал', description: 'Хоёр хүний холбооны зам', icon: GitFork, path: '/relationships', needsFamily: true },
@@ -53,6 +52,14 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
   { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
   { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
+];
+
+const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
+  { label: 'ТОЙМ', keys: ['dashboard'] },
+  { label: 'УДАМ', keys: ['tree', 'people', 'relationships', 'search'] },
+  { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
+  { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities'] },
+  { label: 'АККАУНТ', keys: ['settings'] },
 ];
 
 function isShellRoute(pathname: string) {
@@ -92,7 +99,7 @@ function activeKey(pathname: string): NavItem['key'] | null {
   if (pathname === '/relationships') return 'relationships';
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
-  if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
+  if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'tree';
   if (pathname === '/community' || pathname.startsWith('/community/')) return 'community';
   if (pathname === '/news') return 'news';
   if (pathname === '/people' || pathname.startsWith('/people/')) return 'people';
@@ -499,7 +506,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="app-shell__sidebar-inner">
             {mobileOpen && <button className="app-shell__drawer-close" type="button" onClick={() => setMobileOpen(false)} aria-label="Цэсийг хаах"><X size={20} aria-hidden="true" /></button>}
             <nav aria-label="Үндсэн навигаци">
-              {NAV_ITEMS.map((item, index) => {
+              {NAV_GROUPS.map((group) => <div className="app-shell__nav-group" key={group.label}>
+                <span className="app-shell__nav-group-label">{group.label}</span>
+                {group.keys.map((key) => {
+                const item = NAV_ITEMS.find((candidate) => candidate.key === key)!;
+                const index = NAV_ITEMS.indexOf(item);
                 const Icon = item.icon;
                 const itemActive = active === item.key;
                 const disabled = item.needsFamily && !currentFamily;
@@ -544,6 +555,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   </Link>
                 );
               })}
+              </div>)}
             </nav>
 
             <div className="app-shell__sidebar-footer">

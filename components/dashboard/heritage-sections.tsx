@@ -1,29 +1,33 @@
 "use client";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
   ArrowRight,
   BookOpen,
-  TreeDeciduous,
   Plus,
-  Image as ImageIcon,
 } from "lucide-react";
 import {
-  API_BASE,
   type Family,
   type Person,
-  type TreeData,
   type MemoryListItem,
   type StoryListPage,
   type ArchiveListPage,
   personName,
 } from "../../lib/api";
 import type { SectionData } from "./use-dashboard-section";
+import ProfilePhoto from "../profile-photo";
 export type MemoryPage = {
   items: MemoryListItem[];
   total: number;
   page: number;
   page_size: number;
+};
+export type SharedLineagePreview = {
+  root_person_id: string | null;
+  root_partner_person_id: string | null;
+  persons: { id: string; first_name: string; last_name: string; middle_name: string | null; is_alive: boolean; birth_date: string | null; death_date: string | null }[];
+  relationships: { parent_id: string; child_id: string }[];
+  spouses: { person_1_id: string; person_2_id: string }[];
 };
 export const familyLink = (path: string, familyId: string) =>
   `${path}?family=${encodeURIComponent(familyId)}`;
@@ -199,7 +203,7 @@ export function TreeOverview({
   state,
   familyId,
 }: {
-  state: SectionData<TreeData>;
+  state: SectionData<SharedLineagePreview>;
   familyId: string;
 }) {
   return (
@@ -211,130 +215,63 @@ export function TreeOverview({
         linkText="Бүтэн мод"
       />
       <SectionState state={state} kind="tree">
-        {(tree) =>
-          tree.persons.length ? (
+        {(tree) => {
+          const byId = new Map(tree.persons.map((person) => [person.id, person]));
+          const root = tree.root_person_id ? byId.get(tree.root_person_id) : undefined;
+          const partner = tree.root_partner_person_id ? byId.get(tree.root_partner_person_id) : undefined;
+          const children = [...new Set(tree.relationships
+            .filter((edge) => edge.parent_id === root?.id || edge.parent_id === partner?.id)
+            .map((edge) => edge.child_id))]
+            .map((id) => byId.get(id))
+            .filter((person): person is NonNullable<typeof person> => Boolean(person))
+            .slice(0, 4);
+          if (!root) return (
+            <EmptyState
+              title="Үндсэн удмын эх хараахан тохируулаагүй байна."
+              href="/tree?view=shared"
+              action="Үндсэн удам харах"
+            >
+              Баталгаажсан эх, хүүхдийн холбоос бүртгэгдэхэд энд харагдана.
+            </EmptyState>
+          );
+          const people = [root, ...(partner ? [partner] : []), ...children];
+          const childX = children.length === 1 ? [50] : children.length === 2 ? [34, 66] : children.length === 3 ? [22, 50, 78] : [14, 38, 62, 86];
+          const positions = [
+            { x: partner ? 39 : 50, y: 24 },
+            ...(partner ? [{ x: 61, y: 24 }] : []),
+            ...childX.map((x) => ({ x, y: 76 })),
+          ];
+          const visible = new Set(people.map((person) => person.id));
+          const index = new Map(people.map((person, i) => [person.id, i]));
+          const edges = [
+            ...tree.relationships.map((edge) => ({ from: edge.parent_id, to: edge.child_id, kind: "family" as const })),
+            ...tree.spouses.map((pair) => ({ from: pair.person_1_id, to: pair.person_2_id, kind: "partner" as const })),
+          ].filter((edge) => visible.has(edge.from) && visible.has(edge.to));
+          return (
             <div className="heritage-tree-overview">
-              {(() => {
-                const positions =
-                  tree.persons.length === 1
-                    ? [{ x: 50, y: 50 }]
-                    : tree.persons.length === 2
-                      ? [
-                          { x: 27, y: 50 },
-                          { x: 73, y: 50 },
-                        ]
-                      : tree.persons.length === 3
-                        ? [
-                            { x: 50, y: 20 },
-                            { x: 25, y: 76 },
-                            { x: 75, y: 76 },
-                          ]
-                        : [
-                            { x: 25, y: 23 },
-                            { x: 75, y: 23 },
-                            { x: 25, y: 77 },
-                            { x: 75, y: 77 },
-                          ];
-                const people = tree.persons.slice(0, 4);
-                const personIds = new Set(people.map((person) => person.id));
-                const connections = [
-                  ...tree.parent_child_relationships.map((relation) => ({
-                    from: relation.parent_id,
-                    to: relation.child_id,
-                    kind: "family" as const,
-                  })),
-                  ...tree.marriages.map((marriage) => ({
-                    from: marriage.person_1_id,
-                    to: marriage.person_2_id,
-                    kind: "partner" as const,
-                  })),
-                ].filter(
-                  (relation) =>
-                    personIds.has(relation.from) && personIds.has(relation.to),
-                );
-                const indexById = new Map(
-                  people.map((person, index) => [person.id, index]),
-                );
-                return (
-                  <>
-                    <div
-                      className="heritage-tree-graph"
-                      role="group"
-                      aria-label="Бүртгэлтэй удмын холбоос бүхий хүмүүс"
-                    >
-                      <svg
-                        className="heritage-tree-connections"
-                        viewBox="0 0 100 100"
-                        preserveAspectRatio="none"
-                        aria-hidden="true"
-                      >
-                        {connections.map((connection, index) => {
-                          const from = positions[indexById.get(connection.from)!];
-                          const to = positions[indexById.get(connection.to)!];
-                          return (
-                            <line
-                              key={`${connection.from}-${connection.to}-${index}`}
-                              x1={from.x}
-                              y1={from.y}
-                              x2={to.x}
-                              y2={to.y}
-                              className={`heritage-tree-edge heritage-tree-edge--${connection.kind}`}
-                            />
-                          );
-                        })}
-                      </svg>
-                      <div className="heritage-tree-nodes">
-                        {people.map((person, index) => (
-                          <Link
-                            key={person.id}
-                            className="heritage-tree-node"
-                            href={personLink(person.id, familyId)}
-                            style={{
-                              left: `${positions[index].x}%`,
-                              top: `${positions[index].y}%`,
-                            }}
-                          >
-                            <TreeDeciduous
-                              size={18}
-                              strokeWidth={1.5}
-                              aria-hidden="true"
-                            />
-                            <span>{personName(person)}</span>
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="heritage-tree-caption">
-                      {connections.length
-                        ? `${connections.length} бүртгэлтэй холбоос · ${people.length} хүний хураангуй`
-                        : `Холбоос хараахан бүртгэгдээгүй · ${people.length} хүний хураангуй`}
-                    </p>
-                  </>
-                );
-              })()}
-              <small>
-                Удмын модны жишээ өгөгдөл. Хураангуйд {tree.persons.length} хүн
-                · {tree.parent_child_relationships.length} эцэг эх, хүүхдийн
-                холбоо
-              </small>
-              <Link
-                className="heritage-button"
-                href={familyLink("/tree", familyId)}
-              >
-                Удмын холбоог дэлгэрүүлж үзэх{" "}
-                <ArrowRight size={16} aria-hidden="true" />
+              <div className="heritage-tree-graph" role="group" aria-label="Үндсэн удмын эх болон эхний салаанууд">
+                <svg className="heritage-tree-connections" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  {edges.map((edge, i) => {
+                    const from = positions[index.get(edge.from)!]; const to = positions[index.get(edge.to)!];
+                    return <line key={`${edge.from}-${edge.to}-${i}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} className={`heritage-tree-edge heritage-tree-edge--${edge.kind}`} />;
+                  })}
+                </svg>
+                <div className="heritage-tree-nodes">
+                  {people.map((person, i) => <Link key={person.id} className={`heritage-tree-node${i < (partner ? 2 : 1) ? ' is-root' : ''}`} href={`/tree?view=shared&family=${encodeURIComponent(familyId)}&focus=${encodeURIComponent(person.id)}`} style={{ left: `${positions[i].x}%`, top: `${positions[i].y}%` }}>
+                    <span className="heritage-tree-node__initial" aria-hidden="true">{(person.last_name || person.first_name).slice(0, 1).toLocaleUpperCase('mn-MN')}</span>
+                    <span>{[person.last_name, person.first_name].filter(Boolean).join(' ')}</span>
+                    {i < (partner ? 2 : 1) && <small>Үндсэн эх</small>}
+                  </Link>)}
+                </div>
+              </div>
+              <p className="heritage-tree-caption">Үндсэн эх · {children.length} эхний салаа</p>
+              <small>Зөвшөөрөгдсөн хүмүүс, баталгаажсан холбоосоор.</small>
+              <Link className="heritage-button" href={`/tree?view=shared&family=${encodeURIComponent(familyId)}`}>
+                Бүтэн мод <ArrowRight size={16} aria-hidden="true" />
               </Link>
             </div>
-          ) : (
-            <EmptyState
-              title="Удмын модоо хамтдаа ургуулъя."
-              href={familyLink("/people", familyId)}
-              action="Гэр бүлийн хүмүүс"
-            >
-              Гэр бүлийнхээ хүмүүсийг холбоход удмын түүх тань энд үргэлжилнэ.
-            </EmptyState>
-          )
-        }
+          );
+        }}
       </SectionState>
     </section>
   );
@@ -346,43 +283,12 @@ function PersonPortrait({
   person: Person;
   familyId: string;
 }) {
-  const [failedSource, setFailedSource] = useState("");
-  const value = person.profile_photo_url || "";
-  const path =
-    API_BASE && value.startsWith(API_BASE + "/")
-      ? value.slice(API_BASE.length)
-      : value;
-  const prefix = `/families/${encodeURIComponent(familyId)}/photos/`;
-  const validPath =
-    path.startsWith(prefix) &&
-    /^[^/]+\/content(?:\?variant=(?:thumbnail|original))?$/.test(
-      path.slice(prefix.length),
-    );
-  const src = API_BASE && validPath ? API_BASE + path : "";
   const initials = [person.last_name, person.first_name]
     .filter(Boolean)
     .map((part) => part[0])
     .join("")
     .slice(0, 2);
-  return (
-    <div className="heritage-portrait" aria-hidden="true">
-      {src && failedSource !== src ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          onError={() => setFailedSource(src)}
-        />
-      ) : (
-        <>
-          <span>{initials}</span>
-          <TreeDeciduous size={24} strokeWidth={1} />
-        </>
-      )}
-    </div>
-  );
+  return <div className="heritage-portrait"><ProfilePhoto className="heritage-portrait__image" url={person.profile_photo_url} name={personName(person)} fallback={initials || "🌳"} /></div>;
 }
 
 export function FeaturedPerson({
@@ -440,29 +346,15 @@ function AlbumPhoto({
   photo: NonNullable<MemoryListItem["photos"]>[number];
   familyId: string;
 }) {
-  const [failed, setFailed] = useState(false);
   // Resolve only authenticated family content, never an arbitrary external image URL.
-  const src = `${API_BASE}/families/${encodeURIComponent(familyId)}/photos/${encodeURIComponent(photo.id)}/content?variant=thumbnail`;
+  const src = `/families/${encodeURIComponent(familyId)}/photos/${encodeURIComponent(photo.id)}/content?variant=thumbnail`;
   return (
     <Link
       className="heritage-album-photo"
       href={familyLink(`/memories/${encodeURIComponent(memory.id)}`, familyId)}
     >
       <div className="heritage-photo-frame">
-        {!failed && API_BASE ? (
-          <img
-            src={src}
-            alt={photo.title || memory.title}
-            loading="lazy"
-            decoding="async"
-            onError={() => setFailed(true)}
-          />
-        ) : (
-          <span className="heritage-photo-unavailable">
-            <ImageIcon aria-hidden="true" />
-            <span>Зургийг одоогоор үзүүлэх боломжгүй.</span>
-          </span>
-        )}
+        <ProfilePhoto className="heritage-photo-image" url={src} name={photo.title || memory.title} fallback="📷" loadingFallback="…" />
       </div>
       <div className="heritage-photo-caption">
         <strong>{memory.title}</strong>

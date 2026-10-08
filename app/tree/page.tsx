@@ -28,6 +28,7 @@ import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
 import TreePrint from '../../components/tree-print';
 import FamilyMap, { FamilyMapMode, FamilyMapCamera } from '../../components/family-map';
+import SharedAncestryView from '../ancestry/shared-tree-view';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -1373,6 +1374,33 @@ function TreePageContent() {
 }
 
 
+function UnifiedTreeContent() {
+  const searchParams = useSearchParams();
+  const { familyId } = useAppShellContext();
+  const view = searchParams.get('view') === 'family' ? 'family' : 'shared';
+  const selectedFamily = searchParams.get('family') || familyId;
+  const viewHref = (next: 'shared' | 'family') => {
+    const params = new URLSearchParams();
+    if (selectedFamily) params.set('family', selectedFamily);
+    params.set('view', next);
+    return `/tree?${params.toString()}`;
+  };
+
+  return (
+    <div className="tree-unified">
+      <nav className="tree-unified__tabs" aria-label="Удмын модны харагдац">
+        <Link href={viewHref('shared')} aria-current={view === 'shared' ? 'page' : undefined} className={view === 'shared' ? 'is-active' : ''}>
+          Үндсэн удам
+        </Link>
+        <Link href={viewHref('family')} aria-current={view === 'family' ? 'page' : undefined} className={view === 'family' ? 'is-active' : ''}>
+          Манай гэр бүл
+        </Link>
+      </nav>
+      {view === 'shared' ? <SharedAncestryView /> : <TreePageContent />}
+    </div>
+  );
+}
+
 export default function TreePage() {
   return (
     <Suspense
@@ -1387,7 +1415,7 @@ export default function TreePage() {
         </main>
       }
     >
-      <TreePageContent />
+      <UnifiedTreeContent />
     </Suspense>
   );
 }
