@@ -28,11 +28,11 @@ try {
       const separator = path.includes('?') ? '&' : '?'; const started = performance.now();
       await page.goto(`${base}${path}${separator}family=${fixture.family_id}`);
       await page.waitForLoadState('networkidle');
-      if (path === '/tree') await page.locator('.tree-person-card').first().waitFor({ timeout: 20000 });
+      if (path === '/tree') await page.locator('.family-map-node').first().waitFor({ timeout: 20000 });
       if (path.startsWith('/profile')) await page.locator('.person-timeline ol').waitFor({ timeout: 20000 });
       const metrics = await page.evaluate(() => {
         const visible = el => { const rect = el.getBoundingClientRect(); const style = getComputedStyle(el); return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && !el.closest('details:not([open])') && rect.left >= 0 && rect.right <= innerWidth; };
-        return { overflow: document.documentElement.scrollWidth > innerWidth + 2, treeNodes: document.querySelectorAll('.tree-person-card').length, unnamedButtons: [...document.querySelectorAll('button')].filter(visible).filter(el => !el.getAttribute('aria-label') && !el.textContent.trim()).length, unlabeledInputs: [...document.querySelectorAll('input,select,textarea')].filter(visible).filter(el => !el.labels?.length && !el.getAttribute('aria-label')).length, heading: document.querySelector('h1')?.textContent };
+        return { overflow: document.documentElement.scrollWidth > innerWidth + 2, treeNodes: document.querySelectorAll('.family-map-node').length, unnamedButtons: [...document.querySelectorAll('button')].filter(visible).filter(el => !el.getAttribute('aria-label') && !el.textContent.trim()).length, unlabeledInputs: [...document.querySelectorAll('input,select,textarea')].filter(visible).filter(el => !el.labels?.length && !el.getAttribute('aria-label')).length, heading: document.querySelector('h1')?.textContent };
       });
       assert.equal(metrics.overflow, false, `${width} ${path}: body overflow`);
       assert.equal(metrics.unnamedButtons, 0, `${width} ${path}: unnamed button`);
@@ -51,9 +51,12 @@ try {
   await page.getByRole('button', { name: 'Хамаарлыг харах', exact: true }).click(); await page.locator('.relationship-result').waitFor(); assert.ok(await page.locator('.relationship-path li').count() > 0);
   await page.screenshot({ path: '.p12_4_artifacts/relationship-phone.png', fullPage: true });
   await page.goto(`${base}/tree?family=${fixture.family_id}`); await page.waitForLoadState('networkidle');
-  for (const mode of ['minimal', 'standard', 'detailed']) { await page.locator('.tree-density select').selectOption(mode); await page.waitForTimeout(250); assert.ok(await page.locator(`.tree-density--${mode}`).count()); }
+  for (const mode of ['Ерөнхий', 'Ойрын холбоо', 'Жагсаалт']) { const button = page.getByRole('button', { name: mode, exact: true }); if (await button.isEnabled()) { await button.click(); await page.waitForTimeout(120); assert.equal(await button.getAttribute('aria-pressed'), 'true'); } }
+  await page.getByRole('button', { name: 'Ерөнхий', exact: true }).click();
+  await page.getByRole('button', { name: 'Мэдээллийг товчлох', exact: true }).click();
+  assert.ok(await page.locator('.family-map--name,.family-map--initials').count());
   await page.getByRole('button', { name: 'Сонгосон хүний үр удам', exact: true }).click(); await page.getByRole('button', { name: 'Бүх салааг харах', exact: true }).click();
-  await page.getByRole('button', { name: 'Тааруулах', exact: true }).click(); await page.waitForTimeout(250);
+  await page.getByRole('button', { name: 'Товч', exact: true }).click(); await page.waitForTimeout(120);
   await page.emulateMedia({ media: 'print' }); assert.equal(await page.locator('.tree-print').isVisible(), true); assert.equal(await page.locator('.tree-print tbody tr').count(), 800); assert.equal(await page.locator('.app-shell__sidebar').isVisible(), false);
   await page.pdf({ path: '.p12_4_artifacts/tree-local-print.pdf', landscape: true }); await page.emulateMedia({ media: 'screen' });
   await page.goto(`${base}/profile?family=${fixture.family_id}&person=${fixture.person_id}`); await page.locator('.person-timeline ol').waitFor(); await page.screenshot({ path: '.p12_4_artifacts/timeline-phone.png', fullPage: true });
@@ -69,7 +72,7 @@ try {
   await page.screenshot({ path: '.p12_4_artifacts/story-links-phone.png', fullPage: true });
   await page.goto(`${base}/search?family=00000000-0000-4000-8000-000000000000`); await page.locator('.discovery-state[role=alert]').waitFor(); assert.equal(await page.locator('.discovery-form').count(), 0);
   assert.deepEqual(errors, []);
-  await fs.writeFile('docs/P12_4_LOCAL_BROWSER.json', JSON.stringify({ scope: 'Local headless Edge / actual local synthetic PostgreSQL and FastAPI / API transport proxy, not authenticated staging', widths, routeChecks: measurements.length, errors, measurements, interactions: ['unified four-kind search', 'two-person relationship path', 'three 2D densities', 'branch focus and restore', 'authorized 800-person print (sidebar hidden)', 'canonical profile timeline', 'story link add/save/edit without raw IDs', 'invalid explicit family blocked'] }, null, 2));
+  await fs.writeFile('docs/P12_4_LOCAL_BROWSER.json', JSON.stringify({ scope: 'Local headless Edge / actual local synthetic PostgreSQL and FastAPI / API transport proxy, not authenticated staging', widths, routeChecks: measurements.length, errors, measurements, interactions: ['unified four-kind search', 'two-person relationship path', 'Overview/Focus/List family map', 'semantic density control', 'branch focus and restore', 'authorized 800-person print (sidebar hidden)', 'canonical profile timeline', 'story link add/save/edit without raw IDs', 'invalid explicit family blocked'] }, null, 2));
   console.log(`PASS ${measurements.length} viewport/route checks and discovery interactions; no page exceptions`);
 } catch (error) {
   await page.screenshot({ path: '.p12_4_artifacts/browser-failure.png', fullPage: true });

@@ -5,6 +5,7 @@ import './typography.css';
 import './mvp.css';
 import './profile/profile.css';
 import './tree-3d.css';
+import './family-map.css';
 import './mobile-polish.css';
 import './discovery.css';
 import AppShell from '../components/app-shell';

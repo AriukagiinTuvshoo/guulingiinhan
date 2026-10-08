@@ -8,6 +8,8 @@
     "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "next typegen && tsc --noEmit",
     "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
+    "test:family-map": "node scripts/verify-family-map.mjs",
+    "test:family-map-browser": "node scripts/verify-family-map-browser.mjs",
     "test:root-linking": "node --experimental-strip-types scripts/verify-root-linking.mjs",
     "test:heritage": "node --experimental-strip-types scripts/verify-heritage-readiness.mjs",
     "regression:routes": "node scripts/verify-core-routes.mjs",

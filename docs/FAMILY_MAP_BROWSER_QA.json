@@ -1,0 +1,113 @@
+{
+  "scope": "Local headless Edge with synthetic authorized API responses; excludes staging, production, network, physical devices and real user data",
+  "widths": [
+    320,
+    360,
+    375,
+    390,
+    414,
+    430,
+    768,
+    1024,
+    1440
+  ],
+  "measurements": [
+    {
+      "width": 320,
+      "readyMs": 1017,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 360,
+      "readyMs": 686,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 375,
+      "readyMs": 701,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 390,
+      "readyMs": 638,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 414,
+      "readyMs": 661,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 430,
+      "readyMs": 662,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 768,
+      "readyMs": 632,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 1024,
+      "readyMs": 977,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    },
+    {
+      "width": 1440,
+      "readyMs": 771,
+      "pageOverflow": false,
+      "mapOverflow": false,
+      "viewportOverflow": false,
+      "renderedNodes": 160,
+      "minTouchHeight": 44,
+      "mode": "family-map family-map--overview family-map--name"
+    }
+  ],
+  "interactions": [
+    "Overview → Focus on tap",
+    "List fallback",
+    "semantic zoom to initials",
+    "profile → Back state restoration"
+  ],
+  "errors": []
+}

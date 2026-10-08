@@ -26,6 +26,7 @@ import {
 import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
 import TreePrint from '../../components/tree-print';
+import FamilyMap, { FamilyMapMode } from '../../components/family-map';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -34,28 +35,6 @@ const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
 
 type RelationKind = 'parent' | 'child' | 'spouse';
 type LinkRequest = { id: string; person_id: string; user_id: string; user_name: string; person_name: string; status: string; created_at: string };
-
-type LayoutNode = {
-  id: string;
-  person: TreePerson;
-  generation: number;
-  x: number;
-  y: number;
-};
-
-type TreeLayout = {
-  nodes: LayoutNode[];
-  width: number;
-  height: number;
-  generations: number;
-};
-
-const TREE_NODE_WIDTH = 212;
-const TREE_NODE_HEIGHT = 214;
-const TREE_X_GAP = 48;
-const TREE_Y_GAP = 82;
-const TREE_PAD_X = 62;
-const TREE_PAD_Y = 58;
 
 const EMPTY_TREE: TreeData = {
   persons: [],
@@ -80,10 +59,6 @@ function lifeSummary(person: TreePerson) {
   return 'Огноо тодорхойгүй';
 }
 
-function generationLabel(generation: number) {
-  return generation === 0 ? 'Төв үе' : generation < 0 ? Math.abs(generation) + ' үеийн өмнө' : generation + ' үеийн үргэлжлэл';
-}
-
 function parentLinkLabel(type: string) {
   return type === 'step' ? 'Дагавар холбоо' : type === 'adoptive' ? 'Үрчилсэн холбоо' : 'Төрсөн холбоо';
 }
@@ -103,110 +78,6 @@ function treeFriendlyError(cause: unknown, fallback: string) {
   return fallback;
 }
 
-function buildTreeLayout(tree: TreeData, nodeWidth = TREE_NODE_WIDTH, nodeHeight = TREE_NODE_HEIGHT): TreeLayout {
-  if (!tree.persons.length) return { nodes: [], width: 920, height: 420, generations: 0 };
-
-  const personIds = new Set(tree.persons.map((person) => person.id));
-  const generationById = new Map<string, number>();
-  const adjacency = new Map<string, { id: string; delta: number }[]>();
-
-  for (const person of tree.persons) adjacency.set(person.id, []);
-
-  for (const edge of tree.parent_child_relationships) {
-    if (!personIds.has(edge.parent_id) || !personIds.has(edge.child_id)) continue;
-    adjacency.get(edge.parent_id)?.push({ id: edge.child_id, delta: 1 });
-    adjacency.get(edge.child_id)?.push({ id: edge.parent_id, delta: -1 });
-  }
-
-  for (const marriage of tree.marriages) {
-    if (!personIds.has(marriage.person_1_id) || !personIds.has(marriage.person_2_id)) continue;
-    adjacency.get(marriage.person_1_id)?.push({ id: marriage.person_2_id, delta: 0 });
-    adjacency.get(marriage.person_2_id)?.push({ id: marriage.person_1_id, delta: 0 });
-  }
-
-  const rootId = tree.root_person_id && personIds.has(tree.root_person_id)
-    ? tree.root_person_id
-    : tree.persons[0].id;
-
-  generationById.set(rootId, 0);
-  const queue = [rootId];
-
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const currentId = queue[cursor];
-    const currentGeneration = generationById.get(currentId) ?? 0;
-
-    for (const neighbor of adjacency.get(currentId) ?? []) {
-      if (generationById.has(neighbor.id)) continue;
-      generationById.set(neighbor.id, currentGeneration + neighbor.delta);
-      queue.push(neighbor.id);
-    }
-  }
-
-  for (const person of tree.persons) {
-    if (!generationById.has(person.id)) generationById.set(person.id, 0);
-  }
-
-  const minGeneration = Math.min(...generationById.values());
-  const normalizedGeneration = new Map(
-    [...generationById.entries()].map(([id, generation]) => [id, generation - minGeneration]),
-  );
-
-  const groups = new Map<number, TreePerson[]>();
-  for (const person of tree.persons) {
-    const generation = normalizedGeneration.get(person.id) ?? 0;
-    groups.set(generation, [...(groups.get(generation) ?? []), person]);
-  }
-
-  const sortedGroups = [...groups.entries()].sort(([a], [b]) => a - b);
-  const widestRow = Math.max(...sortedGroups.map(([, people]) => people.length), 1);
-  const width = Math.max(
-    920,
-    TREE_PAD_X * 2 + widestRow * nodeWidth + Math.max(0, widestRow - 1) * TREE_X_GAP,
-  );
-  const height = Math.max(
-    420,
-    TREE_PAD_Y * 2 +
-      sortedGroups.length * nodeHeight +
-      Math.max(0, sortedGroups.length - 1) * TREE_Y_GAP,
-  );
-
-  const nodes: LayoutNode[] = [];
-  for (const [rowIndex, [generation, people]] of sortedGroups.entries()) {
-    const rowWidth =
-      people.length * nodeWidth + Math.max(0, people.length - 1) * TREE_X_GAP;
-    const startX = Math.max(TREE_PAD_X, (width - rowWidth) / 2);
-
-    const ordered = [...people].sort((a, b) =>
-      personName(a).localeCompare(personName(b), 'mn'),
-    );
-    if (generation === 0 && ordered.some((person) => person.id === rootId)) {
-      const root = ordered.find((person) => person.id === rootId);
-      const peers = ordered.filter((person) => person.id !== rootId);
-      peers.splice(Math.floor(peers.length / 2), 0, root!);
-      ordered.splice(0, ordered.length, ...peers);
-    }
-
-    ordered.forEach((person, index) => {
-      nodes.push({
-        id: person.id,
-        person,
-        // Keep the semantic generation relative to the API-selected root.
-        // The normalized generation is only for choosing the visual row.
-        generation: generationById.get(person.id) ?? 0,
-        x: startX + index * (nodeWidth + TREE_X_GAP),
-        y: TREE_PAD_Y + rowIndex * (nodeHeight + TREE_Y_GAP),
-      });
-    });
-  }
-
-  return {
-    nodes,
-    width,
-    height,
-    generations: sortedGroups.length,
-  };
-}
-
 function relationshipStatusLabel(status: Marriage['status']) {
   if (status === 'married') return 'Идэвхтэй';
   if (status === 'divorced') return 'Салсан';
@@ -221,6 +92,9 @@ function TreePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedPersonId = searchParams.get('person') ?? '';
+  const requestedMapMode = searchParams.get('map');
+  const initialMapMode: FamilyMapMode = requestedMapMode === 'focus' || requestedMapMode === 'list' ? requestedMapMode : 'overview';
+  const requestedZoom = Number(searchParams.get('zoom'));
   const { familyId, currentFamily: family, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [tree, setTree] = useState<TreeData | null>(null);
   const [selectedId, setSelectedId] = useState('');
@@ -228,12 +102,14 @@ function TreePageContent() {
   const [viewMode, setViewMode] = useState<'full' | 'close'>('full');
   const viewModeRef = useRef<'full' | 'close'>('full');
   const [treeView, setTreeView] = useState<'2d' | '3d'>('2d');
-  const [zoom, setZoom] = useState(0.9);
-  const [density, setDensity] = useState<'minimal' | 'standard' | 'detailed'>('standard');
+  const [mapMode, setMapMode] = useState<FamilyMapMode>(initialMapMode);
+  const [zoom, setZoom] = useState(Number.isFinite(requestedZoom) && requestedZoom >= 0.35 && requestedZoom <= 1.15 ? requestedZoom : 0.65);
+  const [focusDepth, setFocusDepth] = useState(() => {
+    const value = Number(searchParams.get('focus_depth'));
+    return value >= 1 && value <= 3 ? value : 2;
+  });
+  const [activeGeneration, setActiveGeneration] = useState(searchParams.get('generation') ?? '');
   const [branchRoot, setBranchRoot] = useState('');
-  const [viewport, setViewport] = useState({ left: 0, top: 0, width: 1400, height: 900 });
-  const viewportFrame = useRef(0);
-  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [noFamily, setNoFamily] = useState(false);
@@ -269,7 +145,6 @@ function TreePageContent() {
   const loadAbort = useRef<AbortController | null>(null);
   const searchSequence = useRef(0);
   const searchAbort = useRef<AbortController | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const persistSelected = useCallback(
     (personId: string) => {
@@ -283,6 +158,26 @@ function TreePageContent() {
     },
     [],
   );
+
+  const persistMapState = useCallback((next: {
+    mode?: FamilyMapMode;
+    zoom?: number;
+    focusDepth?: number;
+    generation?: string;
+  }) => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const mode = next.mode ?? mapMode;
+    const nextZoom = next.zoom ?? zoom;
+    const nextDepth = next.focusDepth ?? focusDepth;
+    const generation = next.generation ?? activeGeneration;
+    params.set('map', mode);
+    params.set('zoom', nextZoom.toFixed(2));
+    params.set('focus_depth', String(nextDepth));
+    if (generation) params.set('generation', generation);
+    else params.delete('generation');
+    window.history.replaceState(null, '', '/tree?' + params.toString());
+  }, [activeGeneration, focusDepth, mapMode, zoom]);
 
   const loadTree = useCallback(
     async (id: string, preferredPersonId?: string, nextDepth = 3) => {
@@ -483,8 +378,6 @@ function TreePageContent() {
     };
   }, [familyId, relation, relationMode, relationPersonQuery, selectedId]);
 
-  const nodeWidth = density === 'minimal' ? 164 : 212;
-  const nodeHeight = density === 'minimal' ? 76 : density === 'standard' ? 166 : 214;
   const displayedTree = useMemo(() => {
     if (!tree || !branchRoot || !tree.persons.some(p => p.id === branchRoot)) return tree ?? EMPTY_TREE;
     const children = new Map<string, string[]>();
@@ -495,41 +388,7 @@ function TreePageContent() {
     for (const marriage of tree.marriages) if (descendants.has(marriage.person_1_id) || descendants.has(marriage.person_2_id)) { ids.add(marriage.person_1_id); ids.add(marriage.person_2_id); }
     return { ...tree, root_person_id: branchRoot, persons: tree.persons.filter(p => ids.has(p.id)), parent_child_relationships: tree.parent_child_relationships.filter(e => ids.has(e.parent_id) && ids.has(e.child_id)), marriages: tree.marriages.filter(m => ids.has(m.person_1_id) && ids.has(m.person_2_id)) };
   }, [tree, branchRoot]);
-  const layout = useMemo(() => buildTreeLayout(displayedTree, nodeWidth, nodeHeight), [displayedTree, nodeWidth, nodeHeight]);
-  const renderedNodes = useMemo(() => layout.nodes.filter(node => node.id === selectedId || (
-    (node.x + nodeWidth) * zoom >= viewport.left - 320 && node.x * zoom <= viewport.left + viewport.width + 320 &&
-    (node.y + nodeHeight) * zoom >= viewport.top - 320 && node.y * zoom <= viewport.top + viewport.height + 320
-  )), [layout, selectedId, nodeWidth, nodeHeight, zoom, viewport]);
-  useEffect(() => {
-    const element = scrollRef.current; if (!element) return;
-    const update = () => setViewport({ left: element.scrollLeft, top: element.scrollTop, width: element.clientWidth, height: element.clientHeight });
-    const observer = new ResizeObserver(update); observer.observe(element); update();
-    return () => { observer.disconnect(); window.cancelAnimationFrame(viewportFrame.current); };
-  }, [treeView, layout, zoom]);
   useEffect(() => { setBranchRoot(''); }, [familyId]);
-
-  const nodeById = useMemo(
-    () => new Map(layout.nodes.map((node) => [node.id, node])),
-    [layout],
-  );
-
-  useEffect(() => {
-    if (!tree?.persons.length || loading || treeView !== '2d') return;
-    const frame = window.requestAnimationFrame(() => {
-      const viewport = scrollRef.current;
-      if (!viewport) return;
-      const width = Math.max(280, viewport.clientWidth - 28);
-      const height = Math.max(320, Math.min(window.innerHeight * 0.72, 760) - 24);
-      const fit = Math.min(width / layout.width, height / layout.height);
-      const nextZoom = fit < 0.3 ? 0.8 : Math.min(1, Number(fit.toFixed(2)));
-      setZoom(nextZoom);
-      const center = layout.nodes.find(node => node.id === selectedId);
-      if (center) window.requestAnimationFrame(() => {
-        viewport.scrollTo({ left: Math.max(0, (center.x + nodeWidth / 2) * nextZoom - viewport.clientWidth / 2), top: Math.max(0, (center.y + nodeHeight / 2) * nextZoom - viewport.clientHeight / 2) });
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [tree, treeView, loading, layout.width, layout.height]);
 
   const selectedPerson = selectedId
     ? tree?.persons.find((person) => person.id === selectedId) ?? null
@@ -543,36 +402,11 @@ function TreePageContent() {
   useEffect(() => {
     if (!selectedId || !tree || loading) return;
     const frame = window.requestAnimationFrame(() => {
-      if (zoom < 0.6) setZoom(0.8);
-    const element = document.getElementById('tree-person-' + selectedId);
+      const element = document.getElementById('tree-person-' + selectedId);
       element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [loading, selectedId, tree]);
-
-  const relationCounts = useMemo(() => {
-    const parents = new Map<string, number>();
-    const children = new Map<string, number>();
-    const spouses = new Map<string, number>();
-
-    for (const edge of tree?.parent_child_relationships ?? []) {
-      parents.set(edge.child_id, (parents.get(edge.child_id) ?? 0) + 1);
-      children.set(edge.parent_id, (children.get(edge.parent_id) ?? 0) + 1);
-    }
-
-    for (const marriage of tree?.marriages ?? []) {
-      spouses.set(
-        marriage.person_1_id,
-        (spouses.get(marriage.person_1_id) ?? 0) + 1,
-      );
-      spouses.set(
-        marriage.person_2_id,
-        (spouses.get(marriage.person_2_id) ?? 0) + 1,
-      );
-    }
-
-    return { parents, children, spouses };
-  }, [tree]);
 
   const selectedMarriages = useMemo(
     () =>
@@ -606,15 +440,20 @@ function TreePageContent() {
       '/profile?family=' +
       encodeURIComponent(familyId) +
       '&person=' +
-      encodeURIComponent(personId)
+      encodeURIComponent(personId) +
+      '&from=tree'
     );
   }
 
   function focusSelected() {
     if (!selectedId) return;
-    if (zoom < 0.6) setZoom(0.8);
-    const element = document.getElementById('tree-person-' + selectedId);
-    element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    setTreeView('2d');
+    setMapMode('focus');
+    setActiveGeneration('');
+    persistMapState({ mode: 'focus', generation: '' });
+    window.requestAnimationFrame(() => {
+      document.getElementById('tree-person-' + selectedId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   }
 
   function switchView(mode: 'full' | 'close') {
@@ -706,6 +545,10 @@ function TreePageContent() {
     setSearchPage(null);
     setSearch('');
     await loadTree(familyId, personId, depth);
+    setTreeView('2d');
+    setMapMode('focus');
+    setActiveGeneration('');
+    persistMapState({ mode: 'focus', generation: '' });
   }
 
   async function addRelation(event: FormEvent<HTMLFormElement>) {
@@ -1098,35 +941,10 @@ function TreePageContent() {
                   <option value={5}>5 үе</option>
                 </select>
               </label>
-
-              <div className="tree-zoom" aria-label="Модны хэмжээ">
-                <button
-                  type="button"
-                  onClick={() => setZoom((value) => Math.max(0.3, Number((value - 0.1).toFixed(2))))}
-                  aria-label="Жижигрүүлэх"
-                >
-                  −
-                </button>
-                <span>{Math.round(zoom * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => setZoom((value) => Math.min(1.3, Number((value + 0.1).toFixed(2))))}
-                  aria-label="Томруулах"
-                >
-                  +
-                </button>
-                <button type="button" onClick={() => {
-                  const available = Math.max(280, (scrollRef.current?.clientWidth || window.innerWidth) - 28);
-                  const availableHeight = Math.max(320, Math.min(window.innerHeight * 0.72, 760) - 24);
-                  setZoom(Math.max(0.01, Math.min(1, Number(Math.min(available / layout.width, availableHeight / layout.height).toFixed(2)))));
-                  scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
-                }}>Тааруулах</button>
-              </div>
             </div>
           </div>
 
           <div className="tree-search-wrap">
-            <label className="tree-density">2D дэлгэрэнгүй байдал<select value={density} onChange={e => setDensity(e.target.value as typeof density)} disabled={treeView !== '2d'}><option value="minimal">Товч · нэр ба холбоо</option><option value="standard">Энгийн · зураг ба нэр</option><option value="detailed">Дэлгэрэнгүй · бүх мэдээлэл</option></select></label>
             <label className="tree-search">
               <span>Гэр бүлийн хүн хайх</span>
               <input
@@ -1210,165 +1028,33 @@ function TreePageContent() {
                 onSelect={selectPerson}
                 onFallback={() => setTreeView('2d')}
               /> : (
-              <div
-                ref={scrollRef}
-                className={`tree-map-scroll tree-density--${density}`}
-                onScroll={event => { const element = event.currentTarget; window.cancelAnimationFrame(viewportFrame.current); viewportFrame.current = window.requestAnimationFrame(() => setViewport({ left: element.scrollLeft, top: element.scrollTop, width: element.clientWidth, height: element.clientHeight })); }}
-                onPointerDown={event => { if (event.pointerType !== 'mouse' || event.button !== 0 || (event.target as HTMLElement).closest('button,a')) return; pan.current = { x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop }; event.currentTarget.setPointerCapture(event.pointerId); }}
-                onPointerMove={event => { if (pan.current) { event.currentTarget.scrollLeft = pan.current.left + pan.current.x - event.clientX; event.currentTarget.scrollTop = pan.current.top + pan.current.y - event.clientY; } }}
-                onPointerUp={() => { pan.current = null; }} onPointerCancel={() => { pan.current = null; }}
-                style={{ height: Math.max(440, layout.height * zoom + 24), maxHeight: '72vh' }}
-                tabIndex={0}
-                aria-label="Удмын модны зөөврийн зураглал. Хэвтээ болон босоо гүйлгэж удам угсааг харна."
-              >
-                <div
-                  className="tree-map-space"
-                  style={{
-                    width: layout.width * zoom,
-                    height: layout.height * zoom,
-                  }}
-                >
-                  <div
-                    className="tree-map-stage"
-                    style={{
-                      width: layout.width,
-                      height: layout.height,
-                      transform: 'scale(' + zoom + ')',
-                    }}
-                  >
-                    <div className="tree-map-scenery" aria-hidden="true" />
-                    <div className="tree-map-veil" aria-hidden="true" />
-
-                    <svg
-                      className="tree-connectors"
-                      width={layout.width}
-                      height={layout.height}
-                      viewBox={'0 0 ' + layout.width + ' ' + layout.height}
-                      aria-hidden="true"
-                    >
-                      {tree.parent_child_relationships.map((edge) => {
-                        const parent = nodeById.get(edge.parent_id);
-                        const child = nodeById.get(edge.child_id);
-                        if (!parent || !child) return null;
-
-                        const x1 = parent.x + nodeWidth / 2;
-                        const y1 = parent.y + nodeHeight - 4;
-                        const x2 = child.x + nodeWidth / 2;
-                        const y2 = child.y + 4;
-                        const middleY = (y1 + y2) / 2;
-
-                        return (
-                          <g key={'parent-' + edge.id} className="tree-branch">
-                            <path
-                              d={'M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + middleY + ', ' + x2 + ' ' + middleY + ', ' + x2 + ' ' + y2}
-                              className={'tree-connector tree-connector--parent tree-connector--shadow ' + (edge.relationship_type === 'adoptive' ? 'is-adoptive' : '')}
-                            />
-                            <path
-                              d={'M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + middleY + ', ' + x2 + ' ' + middleY + ', ' + x2 + ' ' + y2}
-                              className={'tree-connector tree-connector--parent tree-connector--bark ' + (edge.relationship_type === 'adoptive' ? 'is-adoptive' : '')}
-                            />
-                            <path
-                              d={'M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + middleY + ', ' + x2 + ' ' + middleY + ', ' + x2 + ' ' + y2}
-                              className={'tree-connector tree-connector--parent tree-connector--glint ' + (edge.relationship_type === 'adoptive' ? 'is-adoptive' : '')}
-                            />
-                          </g>
-                        );
-                      })}
-
-                      {tree.marriages.map((marriage) => {
-                        const first = nodeById.get(marriage.person_1_id);
-                        const second = nodeById.get(marriage.person_2_id);
-                        if (!first || !second) return null;
-
-                        const x1 = first.x + nodeWidth;
-                        const y1 = first.y + nodeHeight / 2;
-                        const x2 = second.x;
-                        const y2 = second.y + nodeHeight / 2;
-                        const isHistorical = marriage.status !== 'married';
-
-                        const startX = Math.min(x1, x2);
-                        const endX = Math.max(x1, x2);
-                        const lineY = (y1 + y2) / 2;
-
-                        return (
-                          <g key={'marriage-' + marriage.id}>
-                            <line
-                              x1={x1}
-                              y1={y1}
-                              x2={x2}
-                              y2={y2}
-                              className={'tree-connector tree-connector--spouse ' + (isHistorical ? 'is-history' : '')}
-                            />
-                            <circle
-                              cx={(startX + endX) / 2}
-                              cy={lineY}
-                              r="6"
-                              className={'tree-marriage-dot ' + (isHistorical ? 'is-history' : '')}
-                            />
-                          </g>
-                        );
-                      })}
-                    </svg>
-
-                    {renderedNodes.map((node) => {
-                      const person = node.person;
-                      const selected = person.id === selectedId;
-                      const parentCount = relationCounts.parents.get(person.id) ?? 0;
-                      const childCount = relationCounts.children.get(person.id) ?? 0;
-                      const spouseCount = relationCounts.spouses.get(person.id) ?? 0;
-
-                      return (
-                        <article
-                          key={person.id}
-                          id={'tree-person-' + person.id}
-                          data-person-id={person.id}
-                          className={'tree-person-card ' + (selected ? 'is-selected' : '')}
-                          style={{
-                            left: node.x,
-                            top: node.y,
-                            width: nodeWidth,
-                            height: nodeHeight,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className="tree-person-select"
-                            aria-pressed={selected}
-                            aria-label={personName(person) + ' хүнийг сонгох'}
-                            onClick={() => selectPerson(person.id)}
-                          >
-                            {density !== 'minimal' && zoom >= 0.25 && <ProfilePhoto className="tree-person-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />}
-                            <strong>{personName(person) || 'Нэргүй хүн'}</strong>
-                            <span>{lifeSummary(person)}</span>
-                            <em>{branchRoot ? 'Салааны хүрээ' : tree.lineage_root_person_id && viewMode === 'full' ? generationLabel(node.generation) : 'Үе тогтоогоогүй'}</em>
-                          </button>
-
-                          <div className="tree-person-meta">
-                            <span>{parentCount} эцэг/эх</span>
-                            <span>{childCount} хүүхэд</span>
-                            <span>{spouseCount} хань</span>
-                          </div>
-
-                          {(person.lineage_name || person.branch_name) && (
-                            <div className="tree-person-tags">
-                              {person.lineage_name ? <span>{person.lineage_name}</span> : null}
-                              {person.branch_name ? <span>{person.branch_name}</span> : null}
-                            </div>
-                          )}
-
-                          <Link
-                            className="tree-person-profile"
-                            href={profileHref(person.id)}
-                            aria-label={personName(person) + ' профайл нээх'}
-                          >
-                            Профайл →
-                          </Link>
-                        </article>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+              <FamilyMap
+                data={displayedTree}
+                familyId={familyId}
+                selectedId={selectedId}
+                mode={mapMode}
+                zoom={zoom}
+                focusDepth={focusDepth}
+                activeGeneration={activeGeneration}
+                onModeChange={(mode) => {
+                  setMapMode(mode);
+                  setActiveGeneration('');
+                  persistMapState({ mode, generation: '' });
+                }}
+                onZoomChange={(nextZoom) => {
+                  setZoom(nextZoom);
+                  persistMapState({ zoom: nextZoom });
+                }}
+                onFocusDepthChange={(nextDepth) => {
+                  setFocusDepth(nextDepth);
+                  persistMapState({ focusDepth: nextDepth });
+                }}
+                onGenerationChange={(generation) => {
+                  setActiveGeneration(generation);
+                  persistMapState({ generation });
+                }}
+                onSelect={selectPerson}
+              />
               )}
 
               <aside className="tree-selected-panel" aria-label="Сонгосон хүний мэдээлэл">
