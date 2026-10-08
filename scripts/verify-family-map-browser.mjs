@@ -85,7 +85,7 @@ try {
     let status = 200;
     let body = null;
     if (path === '/auth/me') body = { id: 'user-1', email: 'fixture@example.test', display_name: 'Responsive QA', person_id: 'person-0' };
-    else if (path === '/families') body = [{ id: familyId, name: 'Туршилтын гэр бүл', description: null, role: 'owner' }];
+    else if (path === '/families') body = [{ id: familyId, name: 'ГУУЛИНГИЙНХАН', description: null, role: 'owner' }];
     else if (path === '/admin/me') { status = 403; body = { detail: 'Forbidden' }; }
     else if (path === '/announcements') body = [];
     else if (path === '/shared-lineage/donation-info') body = null;
@@ -124,11 +124,13 @@ try {
         intentionalCanvas: viewport ? getComputedStyle(viewport).overflow === 'hidden' && getComputedStyle(viewport).touchAction === 'none' : false,
         renderedNodes: document.querySelectorAll('.family-map-node').length,
         connectors: document.querySelectorAll('.family-map__edge').length,
+        headerControlsFit: [...document.querySelectorAll('.tree-header-actions>a,.tree-header-actions>details>summary')].every((control) => { const r = control.getBoundingClientRect(); return !r.width || (r.left >= 0 && r.right <= innerWidth); }),
         minTouchHeight: Math.min(...visibleButtons.map((button) => button.getBoundingClientRect().height)),
         mode: document.querySelector('.family-map')?.className,
       };
     });
     assert.equal(metrics.pageOverflow, false, `${width}: no accidental page overflow`);
+    assert.equal(metrics.headerControlsFit, true, `${width}: family title never pushes header controls outside the screen`);
     assert.equal(metrics.mapOverflow, false, `${width}: map shell does not overflow horizontally`);
     assert.equal(metrics.intentionalCanvas, true, `${width}: map uses a contained pan canvas`);
     assert.ok(metrics.renderedNodes > 0 && metrics.renderedNodes <= 240, `${width}: rendering stays bounded`);

@@ -129,7 +129,7 @@ const AppShellContext = createContext<AppShellContextValue | null>(null);
 
 type PublishedNotice = { id: string; title: string; body: string };
 
-function AnnouncementBanner({ userId }: { userId: string }) {
+function AnnouncementBanner({ userId, compact = false }: { userId: string; compact?: boolean }) {
   const [notice, setNotice] = useState<PublishedNotice | null>(null);
   const [dismissed, setDismissed] = useState('');
   useEffect(() => {
@@ -140,11 +140,12 @@ function AnnouncementBanner({ userId }: { userId: string }) {
     return () => { active = false; };
   }, [userId]);
   if (!notice || dismissed === notice.id) return null;
-  return <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
+  const content = <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
     <span aria-hidden="true">✦</span>
     <div><strong>{notice.title}</strong><p>{notice.body}</p><Link href="/news">Бүх мэдээг харах →</Link></div>
     <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
   </aside>;
+  return compact ? <details className="tree-shell-notice"><summary><span aria-hidden="true">✦</span><span>{notice.title}</span><small>Мэдээ</small></summary>{content}</details> : content;
 }
 
 export function useAppShellContext() {
@@ -350,7 +351,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <AppShellContext.Provider value={shellContext}>
-      <div className="app-shell">
+      <div className={'app-shell' + (pathname === '/tree' ? ' app-shell--tree' : '')}>
       <header className="app-shell__header">
         <button
           ref={menuButtonRef}
@@ -476,8 +477,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {user && <AnnouncementBanner userId={user.id} />}
-      {user && <SharedDonationBanner userId={user.id} />}
+      {user && <AnnouncementBanner userId={user.id} compact={pathname === '/tree'} />}
+      {user && <SharedDonationBanner userId={user.id} compact={pathname === '/tree'} />}
 
       <div className="app-shell__body">
         <button
