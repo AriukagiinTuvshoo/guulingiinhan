@@ -30,11 +30,15 @@ All timing figures below are local synthetic algorithm measurements, excluding A
 | `npm run regression:routes` | PASS: 27 routes |
 | `git diff --check` | PASS |
 
-Latest map projection plus layout measurements: 800 people 29.08ms; 2000 people 56.85ms; 5000 people 170.48ms. Responsive browser measurements are in `FAMILY_MAP_BROWSER_QA.json`. Screenshots use disposable synthetic API responses and are kept locally in the ignored `.family-map-artifacts` directory.
+Latest map projection plus layout measurements: 800 people 26.22ms; 2000 people 53.53ms; 5000 people 152.53ms. Responsive browser measurements are in `FAMILY_MAP_BROWSER_QA.json`. Screenshots use disposable synthetic API responses and are kept locally in the ignored `.family-map-artifacts` directory.
 
 ## Staging
 
-Deployment and authenticated browser results will be recorded after the staging rollout. Production was not modified. No database mutation or migration is part of this task.
+First rollout: application commit `3e1c210`, Worker version `b14e1d29-099a-426b-a6cd-8f34980d038d`, at `https://guulingiinhan-staging.tuvshoo0331.workers.dev`.
+
+Authenticated owner session: VERIFIED that the new map loaded authorized real records, an existing portrait loaded through secure media delivery, a person tap opened the detail sheet, the founding couple and four children were connected correctly, family editor controls remained available and Focus showed the six-person founding household. No record was created, changed or deleted. Live inspection identified clipped long-name labels and excessive vertical whitespace for independent households; both were corrected before the final rollout.
+
+Final rollout and remaining Profile/Back results will be recorded below. Production was not modified. No database mutation or migration is part of this task.
 
 ## Boundaries
 

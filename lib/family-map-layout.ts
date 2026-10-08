@@ -88,6 +88,25 @@ export function layoutFamilyMap(data: TreeData, compact = false): MapLayout {
     maxWidth = Math.max(maxWidth, width);
     top += height + 88;
   }
+  // Flow detached households together rather than leaving a long vertical stack
+  // of one-person frames. Their boundaries and canonical edges remain separate.
+  const mainFrame = frames.find((frame) => !frame.detached);
+  const flowWidth = Math.max(mainFrame?.width ?? 0, 780);
+  const changes = new Map<number, { x: number; y: number }>();
+  let flowX = 28, flowY = mainFrame ? mainFrame.y + mainFrame.height + 60 : 28, lineHeight = 0;
+  for (const frame of frames.filter((entry) => entry.detached).sort((a, b) => Number(a.key.split('-')[1]) - Number(b.key.split('-')[1]))) {
+    if (flowX > 28 && flowX + frame.width > flowWidth + 28) { flowX = 28; flowY += lineHeight + 28; lineHeight = 0; }
+    changes.set(Number(frame.key.split('-')[1]), { x: flowX - frame.x, y: flowY - frame.y });
+    frame.x = flowX; frame.y = flowY;
+    flowX += frame.width + 24;
+    lineHeight = Math.max(lineHeight, frame.height);
+  }
+  for (const node of nodeMap.values()) {
+    const delta = changes.get(node.component);
+    if (delta) { node.x += delta.x; node.y += delta.y; }
+  }
+  maxWidth = Math.max(...frames.map((frame) => frame.x + frame.width + 28), 240);
+  top = Math.max(...frames.map((frame) => frame.y + frame.height), 200) + 76;
   const edges: MapEdge[] = [];
   const round = (value: number) => Math.round(value * 10) / 10;
   const point = (id: string) => nodeMap.get(id);

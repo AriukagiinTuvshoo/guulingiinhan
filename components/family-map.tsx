@@ -106,7 +106,7 @@ export default function FamilyMap(props: Props) {
   }, [mode]);
   useEffect(() => {
     if (!size.width || mode === 'list') return;
-    const key = `${mode}:${compact}:${mode === 'focus' ? selectedId + ':' + focusDepth : data.root_person_id}:${layout.nodes.length}`;
+    const key = `${mode}:${compact}:${mode === 'focus' ? selectedId + ':' + focusDepth : data.root_person_id}:${layout.nodes.length}:${Math.round(size.width)}:${Math.round(size.height)}`;
     if (initialized.current === key) return;
     const isFirst = !initialized.current;
     initialized.current = key;

@@ -160,6 +160,7 @@ try {
   await page.getByRole('button', { name: 'Ойрын холбоо', exact: true }).click();
   await page.locator('.family-map--focus').waitFor();
   assert.ok(await page.locator('.family-map-node').count() < 28, 'focus bounds local context');
+  await page.screenshot({ path: '.family-map-artifacts/tree-focus-390.png', fullPage: true });
   await page.getByRole('button', { name: 'Жагсаалт', exact: true }).click();
   await page.locator('.family-map-list').waitFor();
   assert.ok(await page.locator('.family-map-list li').count() > 0, 'list fallback exposes semantic people rows');
