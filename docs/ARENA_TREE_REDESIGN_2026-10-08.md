@@ -1,0 +1,41 @@
+# Arena reference family-tree redesign
+
+Date: 2026-10-08. Branch: `codex/integration-regression-2026-10-02`.
+
+## Reference and implementation
+
+The owner explicitly requested the two Arena designs and identified Option B as the family-tree direction. The Arena conversation and both rendered previews were inspected. Option B's source archive was downloaded through Arena's source download control and read as reference material. Its circular portraits, spouse connectors, branching descendants, forest backdrop, map controls and detail-panel composition were adapted to the existing application.
+
+The reference's demo graph, browser-local genealogy store, fake sample reset, bulk-clear and local undo actions were not integrated. Existing Family/Person identities, marriage occurrences, parent-child edges, secure ProfilePhoto delivery, backend authorization and server mutation flows remain the application source of truth.
+
+## Changes
+
+- `lib/family-map-layout.ts`: deterministic household layout, independent component frames, canonical SVG parent/spouse paths, iterative subtree placement and viewport selection capped at 240 person nodes. Unknown endpoints are excluded. Remarriage never duplicates a person.
+- `components/family-map.tsx`: circular portraits; Overview, Focus and paginated List; pointer pan, two-pointer pinch, wheel pan/Ctrl zoom, keyboard navigation, fit/center controls, generation navigation, semantic density and visible ancestor/descendant paths. Camera state is restored from the URL.
+- `app/family-map.css`: forest/gold/ivory map, landscape silhouettes, responsive composition, touch controls and person drawer. Mobile uses a bottom sheet; desktop uses a side sheet. Reduced-motion styles are respected.
+- `app/tree/page.tsx`: cleaner heading, secondary actions in one menu, existing authorized search, live person editor/relationship actions, accessible detail-sheet focus/close, relative selection, URL camera persistence and Profile/Back integration. Existing 3D mode and print remain available.
+
+## Local verification
+
+All timing figures below are local synthetic algorithm measurements, excluding API, network, images and GPU rendering.
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` | PASS |
+| `NEXT_PUBLIC_API_BASE_URL=https://ci.invalid/api/v1 npm run build` | PASS; 31 generated pages |
+| `npm run test:family-map` | PASS: 20, 30, 100, 800, 2000, 5000 people; unique identity, no same-row overlaps, marriage statuses, disconnected components, unknown-endpoint filtering, bounded focus and viewport |
+| `npm run test:family-map-browser` | PASS: 320, 360, 375, 390, 414, 430, 768, 1024, 1440px; contained pan canvas, no page overflow, real connectors, readable framing, sheet, drag, list, 800-person window, search/focus and Profile/Back |
+| `npm run test:tree-3d` | PASS: 800 people, 799 parent-child edges, 90 marriages; median layout 23.93ms |
+| `npm run test:heritage` | PASS |
+| `npm run regression:routes` | PASS: 27 routes |
+| `git diff --check` | PASS |
+
+Latest map projection plus layout measurements: 800 people 29.08ms; 2000 people 56.85ms; 5000 people 170.48ms. Responsive browser measurements are in `FAMILY_MAP_BROWSER_QA.json`. Screenshots use disposable synthetic API responses and are kept locally in the ignored `.family-map-artifacts` directory.
+
+## Staging
+
+Deployment and authenticated browser results will be recorded after the staging rollout. Production was not modified. No database mutation or migration is part of this task.
+
+## Boundaries
+
+Physical-device gesture behavior and a separate live Account A/Account B matrix are not inferred from desktop emulation. Existing API limits still bound server-loaded graphs. The 5000-person check verifies the presentation algorithm, not a 5000-person production API round trip.

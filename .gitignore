@@ -21,6 +21,7 @@ backend/*.egg-info/
 .vinext/
 .cloudflare/
 *.tsbuildinfo
+.family-map-artifacts/
 backend/worker-configuration.d.ts
 backend/.wrangler-staging-build/
 .next-*/

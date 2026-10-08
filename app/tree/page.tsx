@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { Menu, Users, X } from 'lucide-react';
 import { useDialogFocus } from '../../components/use-dialog-focus';
 import {
   FormEvent,
@@ -26,7 +27,7 @@ import {
 import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
 import TreePrint from '../../components/tree-print';
-import FamilyMap, { FamilyMapMode } from '../../components/family-map';
+import FamilyMap, { FamilyMapMode, FamilyMapCamera } from '../../components/family-map';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -103,7 +104,13 @@ function TreePageContent() {
   const viewModeRef = useRef<'full' | 'close'>('full');
   const [treeView, setTreeView] = useState<'2d' | '3d'>('2d');
   const [mapMode, setMapMode] = useState<FamilyMapMode>(initialMapMode);
-  const [zoom, setZoom] = useState(Number.isFinite(requestedZoom) && requestedZoom >= 0.35 && requestedZoom <= 1.15 ? requestedZoom : 0.65);
+  const [zoom, setZoom] = useState(Number.isFinite(requestedZoom) && requestedZoom >= 0.18 && requestedZoom <= 2.2 ? requestedZoom : 0.85);
+  const [personPanelOpen, setPersonPanelOpen] = useState(false);
+  const initialCamera = useMemo<FamilyMapCamera | null>(() => {
+    const x = Number(searchParams.get('map_x')), y = Number(searchParams.get('map_y'));
+    return searchParams.has('map_x') && searchParams.has('map_y') && Number.isFinite(x) && Number.isFinite(y) && requestedZoom >= 0.18 && requestedZoom <= 2.2
+      ? { x, y, scale: requestedZoom } : null;
+  }, [searchParams, requestedZoom]);
   const [focusDepth, setFocusDepth] = useState(() => {
     const value = Number(searchParams.get('focus_depth'));
     return value >= 1 && value <= 3 ? value : 2;
@@ -138,6 +145,7 @@ function TreePageContent() {
     if (linkBusy || editPersonBusy) return;
     setRelation(null); setEditingPerson(null); setConfirmRoot(false); setLinkToApprove(null);
   });
+  useDialogFocus(personPanelOpen && !relation && !editingPerson && !confirmRoot && !linkToApprove, '.tree-selected-panel[role="dialog"]', () => setPersonPanelOpen(false));
 
   const loadSequence = useRef(0);
   const persistedSelection = useRef('');
@@ -388,7 +396,7 @@ function TreePageContent() {
     for (const marriage of tree.marriages) if (descendants.has(marriage.person_1_id) || descendants.has(marriage.person_2_id)) { ids.add(marriage.person_1_id); ids.add(marriage.person_2_id); }
     return { ...tree, root_person_id: branchRoot, persons: tree.persons.filter(p => ids.has(p.id)), parent_child_relationships: tree.parent_child_relationships.filter(e => ids.has(e.parent_id) && ids.has(e.child_id)), marriages: tree.marriages.filter(m => ids.has(m.person_1_id) && ids.has(m.person_2_id)) };
   }, [tree, branchRoot]);
-  useEffect(() => { setBranchRoot(''); }, [familyId]);
+  useEffect(() => { setBranchRoot(''); setPersonPanelOpen(false); }, [familyId]);
 
   const selectedPerson = selectedId
     ? tree?.persons.find((person) => person.id === selectedId) ?? null
@@ -398,15 +406,6 @@ function TreePageContent() {
     Boolean(tree?.root_person_id) &&
     Boolean(tree?.persons.some((person) => person.id === tree.root_person_id));
   const canManageTree = family?.role === 'owner' || family?.role === 'editor';
-
-  useEffect(() => {
-    if (!selectedId || !tree || loading) return;
-    const frame = window.requestAnimationFrame(() => {
-      const element = document.getElementById('tree-person-' + selectedId);
-      element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [loading, selectedId, tree]);
 
   const selectedMarriages = useMemo(
     () =>
@@ -433,6 +432,7 @@ function TreePageContent() {
   function selectPerson(personId: string) {
     if (!tree?.persons.some((person) => person.id === personId)) return;
     persistSelected(personId);
+    setPersonPanelOpen(true);
   }
 
   function profileHref(personId: string) {
@@ -451,9 +451,7 @@ function TreePageContent() {
     setMapMode('focus');
     setActiveGeneration('');
     persistMapState({ mode: 'focus', generation: '' });
-    window.requestAnimationFrame(() => {
-      document.getElementById('tree-person-' + selectedId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    setPersonPanelOpen(false);
   }
 
   function switchView(mode: 'full' | 'close') {
@@ -549,6 +547,7 @@ function TreePageContent() {
     setMapMode('focus');
     setActiveGeneration('');
     persistMapState({ mode: 'focus', generation: '' });
+    setPersonPanelOpen(true);
   }
 
   async function addRelation(event: FormEvent<HTMLFormElement>) {
@@ -853,21 +852,23 @@ function TreePageContent() {
   }
 
   return (
-    <main className="tree-page">
+    <main className="tree-page tree-page--studio">
       <section className="tree-shell">
         <header className="tree-page-header">
           <div>
             <Link className="tree-back-link" href={'/dashboard?family=' + encodeURIComponent(familyId)}>
               ← Гэр бүлийн тойм
             </Link>
-            <p className="tree-eyebrow">ГУУЛИНГИЙНХАН · УДМЫН МОД</p>
+            <p className="tree-eyebrow">УДМЫН МОД</p>
             <h1>{family?.name ?? 'Удмын мод'}</h1>
             <p className="tree-lede">
-              Удам, гэрлэлт, үеийн холбоосыг зөвхөн таны хандах эрхтэй бодит гэр бүлийн мэдээллээр харуулна.
+              Өвөг дээдэс, хань, үр хүүхэд — гэр бүлийн холбоо нэг дор.
             </p>
           </div>
 
           <div className="tree-header-actions">
+            <Link className="tree-studio-action" aria-label="Гэр бүлийн хүмүүс" href={'/people?family=' + encodeURIComponent(familyId)}><Users size={19} /></Link>
+            <details className="tree-studio-menu"><summary aria-label="Удмын модны цэс"><Menu size={19} /></summary><div>
             <Link className="tree-button tree-button--secondary" href={`/relationships?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(selectedId)}`}>Хамаарлыг харах</Link>
             <button type="button" className="tree-button tree-button--secondary" disabled={!selectedId} onClick={() => setBranchRoot(branchRoot ? '' : selectedId)}>{branchRoot ? 'Бүх салааг харах' : 'Сонгосон хүний үр удам'}</button>
             <button type="button" className="tree-button tree-button--secondary" onClick={() => window.print()}>Модыг хэвлэх</button>
@@ -887,6 +888,7 @@ function TreePageContent() {
             <button type="button" className="tree-button tree-button--secondary" onClick={focusSelected} disabled={!selectedId}>
               Сонгосон хүнийг төвд
             </button>
+            </div></details>
           </div>
         </header>
 
@@ -906,8 +908,7 @@ function TreePageContent() {
           </div>
         )}
 
-        {tree?.persons.length && !tree.lineage_root_person_id && <div className="tree-alert tree-alert--info" role="status">Энэ гэр бүлийн удмын эхийг эзэн нь хараахан баталгаажуулаагүй байна. Одоогийн мод бодит хүмүүс, холбоосыг харуулж байгаа ч үеийн дугаарыг удмын эхтэй холбож үзүүлэхгүй.</div>}
-        {tree?.persons.length && !tree.linked_person_id && <div className="tree-alert tree-alert--info" role="status">Удмын мод бэлэн байна. Та өөрийн Person бүртгэлтэй холбогдоогүй бол “Хүмүүс” хэсэгт өөрийгөө олж, гэр бүлийн эзэнтэй холбоосоо баталгаажуулна уу.</div>}
+        {Boolean(tree?.persons.length && (!tree.lineage_root_person_id || !tree.linked_person_id)) && <details className="tree-studio-context"><summary>Удмын эх, миний бүртгэл</summary>{!tree?.lineage_root_person_id && <p>Удмын эх хараахан сонгогдоогүй. Гэр бүлийн эзэн хүн сонгоод цэснээс удмын эхийг батална.</p>}{!tree?.linked_person_id && <p>“Хүмүүс” хэсгээс өөрийн бүртгэлийг олж, гэр бүлийн эзнээр холбоосоо баталгаажуулаарай.</p>}</details>}
         {family?.role === 'owner' && linkRequests.length > 0 && <section className="tree-link-requests" aria-label="Холбох хүсэлтүүд"><h2>Хүнтэй холбох хүсэлт</h2><p>Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.</p>{linkRequests.map((request) => <div key={request.id}><span><strong>{request.user_name}</strong> → {request.person_name}</span><button type="button" disabled={linkBusy} onClick={() => setLinkToApprove(request)}>Шалгаж батлах</button></div>)}</section>}
 
         <section className="tree-workspace" aria-label="Удмын модны ажлын хэсэг">
@@ -1029,6 +1030,7 @@ function TreePageContent() {
                 onFallback={() => setTreeView('2d')}
               /> : (
               <FamilyMap
+                key={familyId}
                 data={displayedTree}
                 familyId={familyId}
                 selectedId={selectedId}
@@ -1036,6 +1038,14 @@ function TreePageContent() {
                 zoom={zoom}
                 focusDepth={focusDepth}
                 activeGeneration={activeGeneration}
+                initialCamera={initialCamera}
+                onCameraChange={(camera) => {
+                  const params = new URLSearchParams(window.location.search);
+                  params.set('map_x', camera.x.toFixed(1));
+                  params.set('map_y', camera.y.toFixed(1));
+                  params.set('zoom', camera.scale.toFixed(3));
+                  window.history.replaceState(null, '', '/tree?' + params.toString());
+                }}
                 onModeChange={(mode) => {
                   setMapMode(mode);
                   setActiveGeneration('');
@@ -1057,7 +1067,8 @@ function TreePageContent() {
               />
               )}
 
-              <aside className="tree-selected-panel" aria-label="Сонгосон хүний мэдээлэл">
+              {personPanelOpen && selectedPerson ? <div className="tree-studio-sheet-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPersonPanelOpen(false); }}><aside className="tree-selected-panel" role="dialog" aria-modal="true" aria-label="Сонгосон хүний мэдээлэл">
+                <button type="button" className="tree-studio-close" aria-label="Хүний мэдээллийг хаах" onClick={() => setPersonPanelOpen(false)}><X size={18} /></button>
                 {selectedPerson ? (
                   <>
                     <div className="tree-selected-heading">
@@ -1112,7 +1123,7 @@ function TreePageContent() {
                           const parent = tree?.persons.find((person) => person.id === edge.parent_id);
                           return (
                             <div className="tree-relation-row" key={edge.id}>
-                              <strong>{parent ? personName(parent) : 'Хүний мэдээлэл харагдахгүй байна'}</strong>
+                              {parent ? <button type="button" className="tree-studio-relative" onClick={() => selectPerson(parent.id)}>{personName(parent)}</button> : <strong>Хүний мэдээлэл харагдахгүй байна</strong>}
                               <span>{parentLinkLabel(edge.relationship_type)}</span>
                               {canManageTree && <div className="tree-relation-actions">
                                 <select aria-label="Эцэг эхийн холбооны төрөл" value={edge.relationship_type} onChange={(event) => void updateParentChild(edge, event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select>
@@ -1129,7 +1140,7 @@ function TreePageContent() {
                           const child = tree?.persons.find((person) => person.id === edge.child_id);
                           return (
                             <div className="tree-relation-row" key={edge.id}>
-                              <strong>{child ? personName(child) : 'Хүний мэдээлэл харагдахгүй байна'}</strong>
+                              {child ? <button type="button" className="tree-studio-relative" onClick={() => selectPerson(child.id)}>{personName(child)}</button> : <strong>Хүний мэдээлэл харагдахгүй байна</strong>}
                               <span>{parentLinkLabel(edge.relationship_type)}</span>
                               {canManageTree && <div className="tree-relation-actions">
                                 <select aria-label="Хүүхдийн холбооны төрөл" value={edge.relationship_type} onChange={(event) => void updateParentChild(edge, event.target.value)}><option value="biological">Төрсөн</option><option value="adoptive">Үрчилсэн</option><option value="step">Дагавар</option></select>
@@ -1143,7 +1154,7 @@ function TreePageContent() {
                       <section>
                         <h3>Хань</h3>
                         {spouseNames.length ? (
-                          <p>{spouseNames.join(' · ')}</p>
+                          <div>{selectedMarriages.map((marriage) => { const partner = tree?.persons.find((person) => person.id === marriagePartnerId(marriage, selectedId)); return partner ? <button className="tree-studio-relative" type="button" key={marriage.id} onClick={() => selectPerson(partner.id)}>{personName(partner)} · {marriage.status === 'married' ? 'Хань' : marriage.status === 'divorced' ? 'Өмнөх хань' : 'Бэлэвсэн'}</button> : null; })}</div>
                         ) : (
                           <span>Бүртгэлтэй хань алга.</span>
                         )}
@@ -1187,7 +1198,7 @@ function TreePageContent() {
                     <p>Удмын модны хүн дээр дарж тухайн хүний холбоос болон профайл руу орно.</p>
                   </div>
                 )}
-              </aside>
+              </aside></div> : null}
             </div>
           )}
         </section>
@@ -1199,8 +1210,7 @@ function TreePageContent() {
         )}
 
         <footer className="tree-footer-note">
-          <span>Удмын холбоосыг зөвхөн backend-ээс зөвшөөрөгдсөн Person болон Relationship өгөгдлөөр зурна.</span>
-          <span>Гэрлэлт болон эцэг-эх/хүүхдийн холбоо тусдаа хадгалагдана.</span>
+          <span>Холбоос нэмэх, мэдээлэл засах бол хүн дээр дарна уу.</span>
         </footer>
       </section>
       {tree && <TreePrint tree={displayedTree} familyName={family?.name || 'Гэр бүл'} />}

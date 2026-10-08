@@ -44,19 +44,34 @@ function fixture(count) {
 try {
   execFileSync(process.execPath, [
     path.join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
-    '--ignoreConfig', 'lib/family-map.ts', 'lib/api.ts',
+    '--ignoreConfig', 'lib/family-map.ts', 'lib/family-map-layout.ts', 'lib/api.ts',
     '--target', 'ES2022', '--module', 'commonjs', '--types', 'node', '--skipLibCheck', '--outDir', temporary,
   ], { cwd: root, stdio: 'inherit' });
   const benchRequire = createRequire(path.join(temporary, 'bench.cjs'));
   const { focusFamilyTree, projectFamilyMap } = benchRequire(path.join(temporary, 'family-map.js'));
+  const { layoutFamilyMap, visibleMapNodes } = benchRequire(path.join(temporary, 'family-map-layout.js'));
 
   const results = [];
   for (const count of [20, 30, 100, 800, 2000, 5000]) {
     const data = fixture(count);
     const started = performance.now();
     const projection = projectFamilyMap(data);
+    const layout = layoutFamilyMap(data, count > 100);
     const layoutMs = performance.now() - started;
     assert.equal(projection.people.length, count, `${count}: every authorized person is projected`);
+    assert.equal(layout.nodes.length, count, `${count}: no person is duplicated or lost in branching layout`);
+    assert.equal(new Set(layout.nodes.map((node) => node.id)).size, count);
+    assert.ok(layout.nodes.every((node) => Number.isFinite(node.x) && Number.isFinite(node.y)), `${count}: finite positions`);
+    const rowNodes = new Map();
+    for (const node of layout.nodes) {
+      const row = rowNodes.get(node.rowKey) ?? [];
+      row.push(node); rowNodes.set(node.rowKey, row);
+    }
+    for (const row of rowNodes.values()) {
+      row.sort((a, b) => a.x - b.x);
+      for (let i = 1; i < row.length; i++) assert.ok(row[i].x >= row[i - 1].x + layout.nodeWidth, `${count}: same-generation nodes do not overlap`);
+    }
+    assert.ok(visibleMapNodes(layout, { x: 0, y: 0, scale: .7 }, 390, 600).length <= 240, `${count}: viewport window is bounded`);
     assert.equal(projection.components, 1, `${count}: connected fixture remains one component`);
     assert.ok(projection.generations.length > 1, `${count}: meaningful generations are retained`);
     assert.deepEqual(projection.people.find((item) => item.person.id === 'person-1')?.parents, ['person-0'], `${count}: canonical parent identity remains visible`);
@@ -77,9 +92,22 @@ try {
   assert.equal(projectedDisconnected.components, 2, 'disconnected branch remains a separate component');
   assert.ok(projectedDisconnected.people.filter((item) => item.component === 1).every((item) => item.generation === null), 'disconnected branch never receives fabricated canonical generations');
   assert.equal(projectedDisconnected.people.find((item) => item.person.id === 'detached-b')?.displayGeneration, 1, 'detached branch still has understandable local structure');
+  const detachedLayout = layoutFamilyMap(disconnected);
+  assert.equal(detachedLayout.frames.filter((frame) => frame.detached).length, 1);
+  assert.ok(detachedLayout.edges.every((edge) => [...edge.from, ...edge.to].every((id) => disconnected.persons.some((person) => person.id === id))), 'only authorized connector endpoints');
+  const unknown = structuredClone(disconnected);
+  unknown.parent_child_relationships.push({ id: 'foreign', parent_id: 'unauthorized-person', child_id: 'person-1', relationship_type: 'biological' });
+  unknown.marriages.push({ id: 'foreign-spouse', person_1_id: 'unauthorized-person', person_2_id: 'person-2', status: 'married' });
+  assert.ok(layoutFamilyMap(unknown).edges.every((edge) => ![...edge.from, ...edge.to].includes('unauthorized-person')), 'layout never leaks unauthorized endpoints');
+  const occurrences = fixture(20);
+  occurrences.marriages.push({ id: 'widow', person_1_id: 'person-4', person_2_id: 'person-6', status: 'widowed', start_date: null, end_date: null });
+  const occurrenceLayout = layoutFamilyMap(occurrences);
+  assert.equal(occurrenceLayout.edges.filter((edge) => edge.kind === 'divorced').length, 1);
+  assert.equal(occurrenceLayout.edges.filter((edge) => edge.kind === 'widowed').length, 1);
+  assert.equal(occurrenceLayout.nodes.length, occurrences.persons.length, 'remarriage preserves one canonical person');
 
   console.log(JSON.stringify({
-    verified: 'canonical projection, disconnected-branch safety, bounded focus, scale algorithm only',
+    verified: 'canonical projection, branching layout, no overlaps, marriage occurrences, unauthorized endpoint filtering, disconnected safety, bounded DOM window and focus; local scale algorithm only',
     results,
     caveat: 'local synthetic timing excludes API, browser layout, image loading, and network',
   }, null, 2));
