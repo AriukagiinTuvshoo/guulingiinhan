@@ -9,7 +9,7 @@ import { layoutFamilyMap, visibleMapNodes } from '../lib/family-map-layout';
 import ProfilePhoto from './profile-photo';
 
 export type FamilyMapMode = 'overview' | 'focus' | 'list';
-export type FamilyMapCamera = { x: number; y: number; scale: number };
+export type FamilyMapCamera = { x: number; y: number; scale: number; width?: number; height?: number };
 type Props = {
   data: TreeData; familyId: string; selectedId: string; mode: FamilyMapMode; zoom: number; focusDepth: number; activeGeneration: string;
   initialCamera?: FamilyMapCamera | null; onCameraChange?: (camera: FamilyMapCamera) => void;
@@ -74,7 +74,7 @@ export default function FamilyMap(props: Props) {
     if (settleRef.current) clearTimeout(settleRef.current);
     if (save) settleRef.current = setTimeout(() => {
       callbacks.current.onZoomChange(next.scale);
-      callbacks.current.onCameraChange?.(next);
+      callbacks.current.onCameraChange?.({ ...next, width: viewportRef.current?.clientWidth, height: viewportRef.current?.clientHeight });
     }, 150);
   }, []);
   const zoomAt = useCallback((factor: number, px: number, py: number) => {
@@ -110,7 +110,8 @@ export default function FamilyMap(props: Props) {
     if (initialized.current === key) return;
     const isFirst = !initialized.current;
     initialized.current = key;
-    if (isFirst && callbacks.current.initialCamera) return;
+    const savedCamera = callbacks.current.initialCamera;
+    if (isFirst && savedCamera && Math.abs((savedCamera.width ?? 0) - size.width) < 3 && Math.abs((savedCamera.height ?? 0) - size.height) < 3) return;
     const fitScale = Math.min((size.width - 32) / layout.width, (size.height - 58) / layout.height);
     if (fitScale >= 0.55) fit();
     else {
@@ -179,7 +180,7 @@ export default function FamilyMap(props: Props) {
       if (current && !current.moved && !cancel) {
         const id = current.personId;
         if (id) {
-          callbacks.current.onCameraChange?.(viewRef.current);
+          callbacks.current.onCameraChange?.({ ...viewRef.current, width: viewportRef.current?.clientWidth, height: viewportRef.current?.clientHeight });
           onSelect(id);
         }
       }

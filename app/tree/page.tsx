@@ -109,7 +109,7 @@ function TreePageContent() {
   const initialCamera = useMemo<FamilyMapCamera | null>(() => {
     const x = Number(searchParams.get('map_x')), y = Number(searchParams.get('map_y'));
     return searchParams.has('map_x') && searchParams.has('map_y') && Number.isFinite(x) && Number.isFinite(y) && requestedZoom >= 0.18 && requestedZoom <= 2.2
-      ? { x, y, scale: requestedZoom } : null;
+      ? { x, y, scale: requestedZoom, width: Number(searchParams.get('map_width')), height: Number(searchParams.get('map_height')) } : null;
   }, [searchParams, requestedZoom]);
   const [focusDepth, setFocusDepth] = useState(() => {
     const value = Number(searchParams.get('focus_depth'));
@@ -1044,6 +1044,8 @@ function TreePageContent() {
                   params.set('map_x', camera.x.toFixed(1));
                   params.set('map_y', camera.y.toFixed(1));
                   params.set('zoom', camera.scale.toFixed(3));
+                  if (camera.width) params.set('map_width', String(Math.round(camera.width)));
+                  if (camera.height) params.set('map_height', String(Math.round(camera.height)));
                   window.history.replaceState(null, '', '/tree?' + params.toString());
                 }}
                 onModeChange={(mode) => {

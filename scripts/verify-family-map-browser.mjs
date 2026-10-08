@@ -182,10 +182,12 @@ try {
   await page.waitForTimeout(200);
   assert.match(page.url(), /map_x=/);
   assert.match(page.url(), /map_y=/);
+  assert.match(page.url(), /map_width=/);
   const stateUrl = page.url();
   await page.getByRole('button', { name: 'Ойрын холбоо', exact: true }).click();
   await page.getByRole('button', { name: 'Сонгосон хүн рүү', exact: true }).click();
   await page.locator('#tree-person-person-250').click();
+  await page.waitForTimeout(200);
   await page.getByRole('link', { name: 'Профайл үзэх', exact: true }).click();
   await page.waitForURL(/\/profile\?/);
   await page.goBack();
@@ -193,6 +195,10 @@ try {
   assert.match(page.url(), /person=person-250/);
   assert.match(page.url(), /map=focus/);
   assert.ok(stateUrl.includes('person=person-250'), 'selection is stored before profile navigation');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.waitForTimeout(250);
+  const restoredDimensions = new URL(page.url());
+  assert.ok(Number(restoredDimensions.searchParams.get('map_width')) > 800, 'camera reframes when viewport dimensions change');
   assert.deepEqual(errors, []);
   await fs.writeFile('docs/FAMILY_MAP_BROWSER_QA.json', JSON.stringify({
     scope: 'Local headless Edge with synthetic authorized API responses; excludes staging, production, network, physical devices and real user data',
