@@ -41,7 +41,11 @@ Authenticated owner session: VERIFIED that the new map loaded authorized real re
 
 Authenticated Profile/Back: VERIFIED that the authorized profile opened and Back retained selected person, Focus mode and camera parameters. A transient API connection failure occurred during the concurrent rollout; reload recovered the session, and frontend/API health both returned 200. This is recorded rather than counted as uninterrupted navigation success. At 390px, real founder/child names and all six canonical records loaded. Live QA found that camera coordinates from a different viewport size needed re-framing; camera state now includes viewport dimensions and the browser regression checks phone-to-desktop re-framing.
 
-Final staging deployment identity and the last smoke result are recorded below after rollout. Production was not modified. No database mutation or migration is part of this task.
+Final application source: `19cf679ff19ba02b852f52b9bfb4313d3e6cdf53` (pushed to the integration branch). Cloudflare Worker version: `52095a4b-fe64-49d2-ab94-0df648220426`. Final `/tree` HTTP 200 served `index.Cw5Qlt_R.css`; backend `/health` returned HTTP 200 and `status=ok`.
+
+Final authenticated 390px verification: PASS — the six-person founding household rendered, canonical spouse and grouped parent-child connectors were present, full person names loaded, compact portrait mode was active, and the real product title did not push header controls outside the viewport. A protected real portrait was verified in the broader family view; the founding records have no uploaded portraits, so initials are shown for them. News/fund information on the tree route now expands on demand. The browser viewport override was reset and the tree tab was left open for the owner.
+
+Production was not modified. No database mutation or migration is part of this task.
 
 ## Boundaries
 
