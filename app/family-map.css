@@ -237,6 +237,15 @@
   font-size: 11px;
 }
 .family-map-node small { color: #b9c8be; font-size: 9px; }
+.family-map-node__parents {
+  min-width: 0;
+  overflow: hidden;
+  color: #d6d8c9;
+  font-size: 8px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .family-map-node em {
   position: absolute;
   top: 5px;
@@ -254,7 +263,9 @@
 .family-map--name .family-map-node__avatar,
 .family-map--name .family-map-node__initials,
 .family-map--name .family-map-node small { display: none; }
-.family-map--name .family-map-node strong { white-space: normal; font-size: 10px; line-height: 1.25; }
+.family-map--name .family-map-node { flex-direction: column; gap: 3px; }
+.family-map--name .family-map-node strong { white-space: normal; font-size: 10px; line-height: 1.15; }
+.family-map--name .family-map-node__parents { max-width: 100%; font-size: 7px; }
 .family-map--initials .family-map__people { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; }
 .family-map--initials .family-map-node {
   min-height: 48px;
@@ -265,7 +276,8 @@
 }
 .family-map--initials .family-map-node__avatar,
 .family-map--initials .family-map-node strong,
-.family-map--initials .family-map-node small { display: none; }
+.family-map--initials .family-map-node small,
+.family-map--initials .family-map-node__parents { display: none; }
 .family-map--initials .family-map-node__initials { display: grid; grid-row: auto; width: 40px; height: 40px; }
 .family-map--initials .family-map-node em { top: -2px; right: -2px; width: 17px; height: 17px; display: grid; place-items: center; border-radius: 50%; background: #d7b85f; color: #17392d; font-size: 8px; }
 

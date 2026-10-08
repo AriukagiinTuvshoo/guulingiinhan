@@ -27,6 +27,17 @@ function initials(person: TreePerson) {
   return [person.last_name, person.first_name].filter(Boolean).map((value) => value.slice(0, 1)).join('').slice(0, 2).toUpperCase() || '?';
 }
 
+function compactRelatedPeople(ids: string[], people: Map<string, TreePerson>) {
+  const related = ids.map((id) => people.get(id)).filter((person): person is TreePerson => Boolean(person));
+  if (!related.length) return '';
+  const first = related.slice(0, 2).map((person) => initials(person)).join(' · ');
+  return related.length > 2 ? `${first} +${related.length - 2}` : first;
+}
+
+function relatedPeopleNames(ids: string[], people: Map<string, TreePerson>) {
+  return ids.map((id) => people.get(id)).filter((person): person is TreePerson => Boolean(person)).map(personName).join(' · ');
+}
+
 function lifeSummary(person: TreePerson) {
   const birth = person.birth_date?.slice(0, 4);
   const death = !person.is_alive ? person.death_date?.slice(0, 4) : null;
@@ -133,15 +144,19 @@ export default function FamilyMap({ data, familyId, selectedId, mode, zoom, focu
                 {row.component > 0 ? 'Бие даасан салбар · ' : ''}{generationText(row.generation, row.displayGeneration, row.component)}
               </h3>
               <ul>
-                {people.map(({ person, spouses }) => (
+                {people.map(({ person, parents, spouses }) => {
+                  const parentNames = relatedPeopleNames(parents, personById);
+                  const spouseNames = relatedPeopleNames(spouses, personById);
+                  return (
                   <li key={person.id} className={person.id === selectedId ? 'is-selected' : ''}>
                     <button type="button" onClick={() => select(person.id)}>
                       <span>{initials(person)}</span><strong>{personName(person)}</strong><small>{lifeSummary(person) || 'Огноо тодорхойгүй'}</small>
-                      {spouses.length ? <em>♡ {spouses.map((id) => personById.get(id)).filter(Boolean).map((item) => personName(item!)).join(' · ')}</em> : null}
+                      {parentNames || spouseNames ? <em>{parentNames ? `Эцэг/эх: ${parentNames}` : ''}{parentNames && spouseNames ? ' · ' : ''}{spouseNames ? `Хань: ${spouseNames}` : ''}</em> : null}
                     </button>
                     <Link href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(person.id)}&from=tree`}>Профайл</Link>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </section>;
           })}
@@ -162,8 +177,10 @@ export default function FamilyMap({ data, familyId, selectedId, mode, zoom, focu
                   <small>{row.people.length} хүн</small>
                 </div>
                 <div className="family-map__people">
-                  {people.map(({ person, spouses }) => {
+                  {people.map(({ person, parents, spouses }) => {
                     const name = personName(person) || 'Нэргүй хүн';
+                    const parentNames = relatedPeopleNames(parents, personById);
+                    const spouseNames = relatedPeopleNames(spouses, personById);
                     const marriageStatuses = marriageStatusByPerson.get(person.id) ?? [];
                     const hasCurrentMarriage = marriageStatuses.includes('married');
                     const hasHistoricalMarriage = marriageStatuses.some((status) => status !== 'married');
@@ -175,14 +192,15 @@ export default function FamilyMap({ data, familyId, selectedId, mode, zoom, focu
                         id={`tree-person-${person.id}`}
                         className={`family-map-node ${person.id === selectedId ? 'is-selected' : ''}`}
                         aria-pressed={person.id === selectedId}
-                        aria-label={`${name}. ${lifeSummary(person) || 'Огноо тодорхойгүй'}${marriageLabel ? `. ${marriageLabel}` : ''}`}
+                        aria-label={`${name}. ${lifeSummary(person) || 'Огноо тодорхойгүй'}${parentNames ? `. Эцэг эх: ${parentNames}` : ''}${spouseNames ? `. Хань: ${spouseNames}` : ''}${marriageLabel ? `. ${marriageLabel}` : ''}`}
                         onClick={() => select(person.id)}
                       >
                         <ProfilePhoto className="family-map-node__avatar" url={person.profile_photo_url} name={name} fallback={initials(person)} />
                         <span className="family-map-node__initials" aria-hidden="true">{initials(person)}</span>
                         <strong>{name}</strong>
                         <small>{lifeSummary(person)}</small>
-                        {spouses.length ? <em title={marriageLabel}>{hasCurrentMarriage ? '♡' : '◌'} {spouses.length}</em> : null}
+                        {parents.length ? <span className="family-map-node__parents" title={`Эцэг/эх: ${parentNames}`}>↑ {compactRelatedPeople(parents, personById)}</span> : null}
+                        {spouses.length ? <em title={`${marriageLabel}: ${spouseNames}`}>{hasCurrentMarriage ? '♡' : '◌'} {compactRelatedPeople(spouses, personById)}</em> : null}
                       </button>
                     );
                   })}

@@ -59,6 +59,9 @@ try {
     assert.equal(projection.people.length, count, `${count}: every authorized person is projected`);
     assert.equal(projection.components, 1, `${count}: connected fixture remains one component`);
     assert.ok(projection.generations.length > 1, `${count}: meaningful generations are retained`);
+    assert.deepEqual(projection.people.find((item) => item.person.id === 'person-1')?.parents, ['person-0'], `${count}: canonical parent identity remains visible`);
+    assert.ok(projection.people.find((item) => item.person.id === 'person-0')?.children.includes('person-1'), `${count}: canonical child identity remains visible`);
+    if (count >= 20) assert.deepEqual(projection.people.find((item) => item.person.id === 'person-4')?.spouses, ['person-5'], `${count}: spouse identity remains distinct from parent-child structure`);
     const focused = focusFamilyTree(data, `person-${Math.min(count - 1, 250)}`, 2);
     assert.ok(focused.persons.length < count || count === 20, `${count}: focus is bounded below the whole graph`);
     assert.ok(focused.persons.some((person) => person.id === `person-${Math.min(count - 1, 250)}`), `${count}: focus retains selected person`);

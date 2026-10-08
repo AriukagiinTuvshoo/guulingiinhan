@@ -5,6 +5,8 @@ export type FamilyMapPerson = {
   generation: number | null;
   displayGeneration: number;
   component: number;
+  parents: string[];
+  children: string[];
   spouses: string[];
 };
 
@@ -103,6 +105,20 @@ export function projectFamilyMap(data: TreeData): FamilyMapProjection {
     }
   }
 
+  const parentsByPerson = new Map<string, string[]>();
+  const childrenByPerson = new Map<string, string[]>();
+  for (const edge of data.parent_child_relationships) {
+    if (!ids.has(edge.parent_id) || !ids.has(edge.child_id)) continue;
+    parentsByPerson.set(edge.child_id, [...(parentsByPerson.get(edge.child_id) ?? []), edge.parent_id]);
+    childrenByPerson.set(edge.parent_id, [...(childrenByPerson.get(edge.parent_id) ?? []), edge.child_id]);
+  }
+
+  const sortedRelatedIds = (relatedIds: string[]) => relatedIds
+    .map((id) => peopleById.get(id))
+    .filter((candidate): candidate is TreePerson => Boolean(candidate))
+    .sort(comparePeople)
+    .map((candidate) => candidate.id);
+
   const spouses = new Map<string, string[]>();
   for (const marriage of data.marriages) {
     if (!ids.has(marriage.person_1_id) || !ids.has(marriage.person_2_id)) continue;
@@ -115,11 +131,9 @@ export function projectFamilyMap(data: TreeData): FamilyMapProjection {
     generation: canonicalGenerationById.get(person.id) ?? null,
     displayGeneration: displayGenerationById.get(person.id) ?? 0,
     component: componentById.get(person.id) ?? 0,
-    spouses: (spouses.get(person.id) ?? [])
-      .map((id) => peopleById.get(id))
-      .filter((candidate): candidate is TreePerson => Boolean(candidate))
-      .sort(comparePeople)
-      .map((candidate) => candidate.id),
+    parents: sortedRelatedIds(parentsByPerson.get(person.id) ?? []),
+    children: sortedRelatedIds(childrenByPerson.get(person.id) ?? []),
+    spouses: sortedRelatedIds(spouses.get(person.id) ?? []),
   }));
 
   const rows = new Map<string, FamilyMapGeneration>();

@@ -14,7 +14,7 @@
   "measurements": [
     {
       "width": 320,
-      "readyMs": 1017,
+      "readyMs": 1195,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -24,7 +24,7 @@
     },
     {
       "width": 360,
-      "readyMs": 686,
+      "readyMs": 555,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -34,7 +34,7 @@
     },
     {
       "width": 375,
-      "readyMs": 701,
+      "readyMs": 671,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -44,7 +44,7 @@
     },
     {
       "width": 390,
-      "readyMs": 638,
+      "readyMs": 658,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -54,7 +54,7 @@
     },
     {
       "width": 414,
-      "readyMs": 661,
+      "readyMs": 799,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -64,7 +64,7 @@
     },
     {
       "width": 430,
-      "readyMs": 662,
+      "readyMs": 596,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -74,7 +74,7 @@
     },
     {
       "width": 768,
-      "readyMs": 632,
+      "readyMs": 686,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -84,7 +84,7 @@
     },
     {
       "width": 1024,
-      "readyMs": 977,
+      "readyMs": 521,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -94,7 +94,7 @@
     },
     {
       "width": 1440,
-      "readyMs": 771,
+      "readyMs": 669,
       "pageOverflow": false,
       "mapOverflow": false,
       "viewportOverflow": false,
@@ -106,6 +106,7 @@
   "interactions": [
     "Overview → Focus on tap",
     "List fallback",
+    "search → focus",
     "semantic zoom to initials",
     "profile → Back state restoration"
   ],

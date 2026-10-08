@@ -80,6 +80,7 @@ try {
     else if (path === '/announcements') body = [];
     else if (path === '/shared-lineage/donation-info') body = null;
     else if (path.includes(`/families/${familyId}/tree`)) body = tree;
+    else if (path === `/families/${familyId}/persons/search`) body = { items: [{ id: 'person-250', name: 'Туршилт Хүн 250', birth_year: 1950, family_name: null, branch_name: 'А салбар' }], page: 1, page_size: 25, total: 1, has_next: false };
     else if (path === `/families/${familyId}/link-requests`) body = [];
     else if (path === `/families/${familyId}/persons/person-0`) body = { ...people[0], gender: 'unknown', birth_place: null, death_place: null, nickname: null, short_description: null, visibility: 'family', can_edit_profile: true, lineage_id: null, lineage_name: null, branch_id: null, branch_name: null, parents: [], children: [], spouses: [] };
     else { status = 404; body = { detail: 'Synthetic browser fixture has no route' }; }
@@ -131,6 +132,12 @@ try {
   await page.locator('.family-map-list').waitFor();
   assert.ok(await page.locator('.family-map-list li').count() > 0, 'list fallback exposes semantic people rows');
   await page.getByRole('button', { name: 'Ерөнхий', exact: true }).click();
+  await page.getByLabel('Гэр бүлийн хүн хайх', { exact: true }).fill('Хүн 250');
+  await page.getByRole('button', { name: /Туршилт Хүн 250/ }).click();
+  await page.locator('.family-map--focus').waitFor();
+  assert.match(page.url(), /person=person-250/, 'search focuses the requested canonical person');
+  assert.ok(await page.locator('.family-map-node').count() < 50, 'search opens a bounded local family context');
+  await page.getByRole('button', { name: 'Ерөнхий', exact: true }).click();
   await page.getByRole('button', { name: 'Мэдээллийг товчлох', exact: true }).click();
   await page.getByRole('button', { name: 'Мэдээллийг товчлох', exact: true }).click();
   await page.locator('.family-map--initials').waitFor();
@@ -142,15 +149,15 @@ try {
   await page.waitForURL(/\/profile\?/);
   await page.goBack();
   await page.locator('.family-map--focus').waitFor();
-  assert.match(page.url(), /person=person-0/);
+  assert.match(page.url(), /person=person-250/);
   assert.match(page.url(), /map=focus/);
-  assert.ok(stateUrl.includes('person=person-0'), 'selection is stored before profile navigation');
+  assert.ok(stateUrl.includes('person=person-250'), 'selection is stored before profile navigation');
   assert.deepEqual(errors, []);
   await fs.writeFile('docs/FAMILY_MAP_BROWSER_QA.json', JSON.stringify({
     scope: 'Local headless Edge with synthetic authorized API responses; excludes staging, production, network, physical devices and real user data',
     widths,
     measurements,
-    interactions: ['Overview → Focus on tap', 'List fallback', 'semantic zoom to initials', 'profile → Back state restoration'],
+    interactions: ['Overview → Focus on tap', 'List fallback', 'search → focus', 'semantic zoom to initials', 'profile → Back state restoration'],
     errors,
   }, null, 2));
   console.log(`PASS ${widths.length} responsive widths, semantic modes, focus, list, and back-state restoration`);
