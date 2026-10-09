@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { sharedAncestryPaths } from '../lib/shared-ancestry.ts';
+import { sharedAncestryGenerations, sharedAncestryPaths } from '../lib/shared-ancestry.ts';
 import { readWorkspacePeople } from '../lib/admin-workspace.ts';
 
 // FamilyWorkspace serializes `people`, unlike SharedTreeOut's `persons`.
@@ -30,7 +30,17 @@ assert.ok(!paths.has('unlinked'));
 assert.ok(!paths.has('pending-account'));
 assert.equal(sharedAncestryPaths({ ...tree, root_person_id: null }).size, 0);
 assert.equal(sharedAncestryPaths({ ...tree, persons: [] }).size, 0);
+const generations = sharedAncestryGenerations(tree);
+assert.equal(generations.get('father'), 1);
+assert.equal(generations.get('mother'), 1);
+assert.equal(generations.get('daughter'), 2);
+assert.equal(generations.get('spouse'), 2);
+assert.equal(generations.get('grandchild'), 3);
+assert.equal(generations.has('unlinked'), false);
 const cyclic = sharedAncestryPaths({ ...tree, relationships: [...tree.relationships, { parent_id: 'grandchild', child_id: 'father' }] });
 assert.equal(cyclic.size, 5);
-console.log('PASS root paths: explicit parents, spouses, grandchildren, pending account exclusion, hidden roots, cycle resilience');
+const cyclicGenerations = sharedAncestryGenerations({ ...tree, relationships: [...tree.relationships, { parent_id: 'grandchild', child_id: 'father' }] });
+assert.equal(cyclicGenerations.get('father'), 1);
+assert.equal(cyclicGenerations.get('grandchild'), 3);
+console.log('PASS root paths and generations: explicit parents, spouses, grandchildren, pending account exclusion, hidden roots, cycle resilience');
 

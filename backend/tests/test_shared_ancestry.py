@@ -6,6 +6,7 @@ from app.models import (
     AdminGrant,
     AuditLog,
     Family,
+    FamilyMember,
     Marriage,
     ParentChildRelationship,
     Person,
@@ -526,6 +527,104 @@ def test_admin_can_correct_consented_shared_branches_without_changing_family_tre
     }).status_code == 200
     with database() as db:
         assert db.get(ParentChildRelationship, UUID(edge_id)) is None
+
+
+def test_family_can_connect_an_existing_deceased_anchor_then_members_join_through_real_parents(
+    client, database, email_provider,
+):
+    admin_id = _login(client, email_provider, "root-picker-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    root_family = client.post("/api/v1/families", json={"name": "Үндэс"}).json()
+    root = client.post(f"/api/v1/admin/families/{root_family['id']}/people", json={
+        "first_name": "Баавай", "birth_date": "1910-01-01", "is_alive": False,
+        "death_date": "1980-01-01",
+    }).json()
+    assert client.put("/api/v1/admin/shared-lineage/root", json={"person_id": root["id"]}).status_code == 200
+
+    _login(client, email_provider, "root-picker-owner@example.com")
+    family = client.post("/api/v1/families", json={"name": "Ээжийн салбар"}).json()
+    base = f"/api/v1/families/{family['id']}"
+    mother = client.post(base + "/persons", json={
+        "first_name": "Ээж", "last_name": "Салбар", "birth_date": "1960-01-01",
+        "is_alive": False, "death_date": "2020-01-01", "visibility": "family",
+    }).json()
+    me = client.post(base + "/persons", json={
+        "first_name": "Охин", "last_name": "Салбар", "birth_date": "1990-01-01",
+    }).json()
+    living_relative = client.post(base + "/persons", json={
+        "first_name": "Амьд", "last_name": "Хамаатан", "birth_date": "1985-01-01",
+    }).json()
+    private_ancestor = client.post(base + "/persons", json={
+        "first_name": "Нууц", "last_name": "Өвөг", "is_alive": False, "visibility": "private",
+    }).json()
+    assert client.post(base + "/relationships/parent-child", json={
+        "parent_id": mother["id"], "child_id": me["id"], "relationship_type": "biological",
+    }).status_code == 201
+    assert client.post(base + f"/persons/{me['id']}/link-me").status_code == 204
+
+    candidates = client.get(base + "/root-connection/candidates")
+    assert candidates.status_code == 200, candidates.text
+    candidate_ids = {row["person_id"] for row in candidates.json()}
+    assert candidate_ids == {mother["id"], me["id"]}
+    mother_candidate = next(row for row in candidates.json() if row["person_id"] == mother["id"])
+    assert mother_candidate["is_current_user"] is False
+    assert mother_candidate["parent_person_ids"] == []
+    assert next(row for row in candidates.json() if row["person_id"] == me["id"])["is_current_user"] is True
+
+    wrong_parent = client.post(base + "/root-connection", json={
+        "person_id": me["id"], "target_person_id": root["id"],
+        "relationship_type": "biological", "share_consent": True,
+    })
+    assert wrong_parent.status_code == 409
+
+    connection = client.post(base + "/root-connection", json={
+        "person_id": mother["id"], "target_person_id": root["id"],
+        "relationship_type": "biological", "share_consent": True,
+    })
+    assert connection.status_code == 200, connection.text
+    assert connection.json()["status"] == "pending"
+    assert connection.json()["person_name"] == "Салбар Ээж"
+
+    member_id = _login(client, email_provider, "root-picker-member@example.com")
+    with database.begin() as db:
+        db.add(FamilyMember(family_id=UUID(family["id"]), user_id=member_id, role="member"))
+    assert client.get(base + "/root-connection/candidates").json() == []
+    forbidden = client.post(base + "/root-connection", json={
+        "person_id": mother["id"], "target_person_id": root["id"],
+        "relationship_type": "biological", "share_consent": True,
+    })
+    assert forbidden.status_code == 403
+
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-picker-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    assert client.post(f"/api/v1/admin/shared-lineage/connections/{family['id']}/decision",
+                       json={"approve": True}).status_code == 200
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-picker-owner@example.com", "password": PASSWORD,
+    }).status_code == 200
+
+    # A second living person joins only through their own linked account and
+    # an already recorded direct parent edge; no generation is supplied.
+    joined = client.post("/api/v1/shared-lineage/join", json={
+        "person_id": me["id"], "parent_person_id": mother["id"],
+        "relationship_type": "biological", "share_consent": True,
+    })
+    assert joined.status_code == 201, joined.text
+    shared = joined.json()
+    assert {person["id"] for person in shared["persons"]} >= {root["id"], mother["id"], me["id"]}
+    assert any(edge["parent_id"] == root["id"] and edge["child_id"] == mother["id"]
+               for edge in shared["relationships"])
+    assert any(edge["parent_id"] == mother["id"] and edge["child_id"] == me["id"]
+               for edge in shared["relationships"])
+    with database() as db:
+        assert db.query(ParentChildRelationship).filter(
+            ParentChildRelationship.parent_id == UUID(mother["id"]),
+            ParentChildRelationship.child_id == UUID(me["id"]),
+        ).count() == 1
+        assert db.get(SharedAncestryPerson, UUID(living_relative["id"])) is None
+        assert db.get(SharedAncestryPerson, UUID(private_ancestor["id"])) is None
 
 
 def test_shared_ancestry_root_can_be_corrected_without_losing_people_or_edges(client, database, email_provider):
