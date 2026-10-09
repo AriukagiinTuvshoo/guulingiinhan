@@ -18,6 +18,8 @@ import {
   TreeDeciduous,
   UserRound,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -136,23 +138,160 @@ const AppShellContext = createContext<AppShellContextValue | null>(null);
 
 type PublishedNotice = { id: string; title: string; body: string };
 
-function AnnouncementBanner({ userId, compact = false }: { userId: string; compact?: boolean }) {
-  const [notice, setNotice] = useState<PublishedNotice | null>(null);
-  const [dismissed, setDismissed] = useState('');
+function playNotificationChime(context: AudioContext) {
+  const start = context.currentTime;
+  [784, 988].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const noteStart = start + index * 0.12;
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.08, noteStart + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.28);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.3);
+  });
+}
+
+function NotificationBell({ userId }: { userId: string }) {
+  const [notices, setNotices] = useState<PublishedNotice[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const latestId = useRef<string | null>(null);
+  const initialized = useRef(false);
+  const audioContext = useRef<AudioContext | null>(null);
+  const soundEnabledRef = useRef(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => () => {
+    const context = audioContext.current;
+    audioContext.current = null;
+    if (context && context.state !== 'closed') {
+      void context.close().catch(() => undefined);
+    }
+  }, [userId]);
+
   useEffect(() => {
     let active = true;
-    void api<PublishedNotice[]>('/announcements?limit=1')
-      .then((rows) => { if (active) setNotice(rows[0] ?? null); })
-      .catch(() => { if (active) setNotice(null); });
-    return () => { active = false; };
+    initialized.current = false;
+    latestId.current = null;
+    soundEnabledRef.current = false;
+    setOpen(false);
+    setNotices([]);
+    setLoadError(false);
+    try {
+      const storedRead = window.localStorage.getItem(`announcement-read:${userId}`);
+      const parsed = storedRead ? JSON.parse(storedRead) : [];
+      setReadIds(new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []));
+      setSoundEnabled(window.localStorage.getItem(`announcement-sound:${userId}`) === '1');
+      soundEnabledRef.current = window.localStorage.getItem(`announcement-sound:${userId}`) === '1';
+    } catch {
+      setReadIds(new Set());
+      setSoundEnabled(false);
+    }
+
+    const load = async () => {
+      try {
+        const rows = await api<PublishedNotice[]>('/announcements?limit=8');
+        if (!active) return;
+        const newLatestId = rows[0]?.id ?? null;
+        if (initialized.current && newLatestId && newLatestId !== latestId.current && soundEnabledRef.current && audioContext.current) {
+          const context = audioContext.current;
+          void context.resume().then(() => {
+            if (active && audioContext.current === context) playNotificationChime(context);
+          }).catch(() => undefined);
+        }
+        latestId.current = newLatestId;
+        initialized.current = true;
+        setNotices(rows);
+        setLoadError(false);
+      } catch {
+        if (active) setLoadError(true);
+      }
+    };
+
+    void load();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 60_000);
+    return () => { active = false; window.clearInterval(interval); };
   }, [userId]);
-  if (!notice || dismissed === notice.id) return null;
-  const content = <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
-    <span aria-hidden="true">✦</span>
-    <div><strong>{notice.title}</strong><p>{notice.body}</p><Link href="/news">Бүх мэдээг харах →</Link></div>
-    <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
-  </aside>;
-  return compact ? <details className="tree-shell-notice"><summary><span aria-hidden="true">✦</span><span>{notice.title}</span><small>Мэдээ</small></summary>{content}</details> : content;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  const unreadCount = notices.filter((notice) => !readIds.has(notice.id)).length;
+
+  function markVisibleRead() {
+    const next = new Set([...readIds, ...notices.map((notice) => notice.id)]);
+    setReadIds(next);
+    try { window.localStorage.setItem(`announcement-read:${userId}`, JSON.stringify([...next].slice(-50))); } catch { /* storage is optional */ }
+  }
+
+  function toggleSound() {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    soundEnabledRef.current = next;
+    try { window.localStorage.setItem(`announcement-sound:${userId}`, next ? '1' : '0'); } catch { /* storage is optional */ }
+    if (!next) return;
+    try {
+      const context = audioContext.current ?? new AudioContext();
+      audioContext.current = context;
+      void context.resume().then(() => playNotificationChime(context)).catch(() => undefined);
+    } catch { /* Web Audio may be unavailable */ }
+  }
+
+  return <div className="app-shell__notifications" ref={panelRef}>
+    <button
+      type="button"
+      className="app-shell__notification-button"
+      aria-label={unreadCount ? `Мэдэгдэл, уншаагүй ${unreadCount}` : 'Мэдэгдэл'}
+      aria-expanded={open}
+      aria-controls="app-shell-notification-panel"
+      onClick={() => {
+        const next = !open;
+        setOpen(next);
+        if (next) markVisibleRead();
+        if (soundEnabledRef.current) {
+          try {
+            const context = audioContext.current ?? new AudioContext();
+            audioContext.current = context;
+            void context.resume().catch(() => undefined);
+          } catch { /* Web Audio may be unavailable */ }
+        }
+      }}
+    >
+      <Bell size={18} aria-hidden="true" />
+      {unreadCount > 0 && <span className="app-shell__notification-count" aria-hidden="true">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+    </button>
+    {open && <section id="app-shell-notification-panel" className="app-shell__notification-panel" role="dialog" aria-label="Мэдэгдлийн төв">
+      <header><div><strong>Мэдэгдэл</strong><small>{unreadCount ? `${unreadCount} уншаагүй` : 'Шинэ мэдээ алга'}</small></div><button type="button" aria-label={`Хонхны дууг ${soundEnabled ? 'унтраах' : 'асаах'}`} onClick={toggleSound}>{soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}</button></header>
+      {loadError && <p className="app-shell__notification-state" role="status">Мэдээг түр ачаалж чадсангүй. <button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></p>}
+      {!loadError && notices.length === 0 && <p className="app-shell__notification-state">Одоогоор шинэ мэдээ алга.</p>}
+      <ul>{notices.map((notice) => <li key={notice.id}>
+        <Link href="/news" onClick={() => { markVisibleRead(); setOpen(false); }}>
+          <strong>{notice.title}</strong><span>{notice.body}</span>
+        </Link>
+      </li>)}</ul>
+      <Link className="app-shell__notification-all" href="/news" onClick={() => setOpen(false)}>Бүх мэдээ харах →</Link>
+    </section>}
+  </div>;
 }
 
 export function useAppShellContext() {
@@ -418,6 +557,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="app-shell__account" ref={accountRef}>
+          {user && <NotificationBell userId={user.id} />}
           <button
             type="button"
             className="app-shell__account-button"
@@ -484,7 +624,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {user && <AnnouncementBanner userId={user.id} compact={pathname === '/tree'} />}
       {user && <SharedDonationBanner userId={user.id} compact={pathname === '/tree'} />}
 
       <div className="app-shell__body">

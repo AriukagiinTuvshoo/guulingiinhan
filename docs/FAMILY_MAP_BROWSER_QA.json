@@ -14,7 +14,7 @@
   "measurements": [
     {
       "width": 320,
-      "readyMs": 974,
+      "readyMs": 2576,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -26,19 +26,19 @@
     },
     {
       "width": 360,
-      "readyMs": 743,
+      "readyMs": 992,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
       "renderedNodes": 18,
       "connectors": 12,
       "headerControlsFit": true,
-      "minTouchHeight": 44,
+      "minTouchHeight": 43.99993896484375,
       "mode": "family-map family-map--overview family-map--portrait is-compact"
     },
     {
       "width": 375,
-      "readyMs": 703,
+      "readyMs": 903,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -50,7 +50,7 @@
     },
     {
       "width": 390,
-      "readyMs": 486,
+      "readyMs": 1527,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -62,7 +62,7 @@
     },
     {
       "width": 414,
-      "readyMs": 771,
+      "readyMs": 996,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -74,7 +74,7 @@
     },
     {
       "width": 430,
-      "readyMs": 780,
+      "readyMs": 1057,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -86,19 +86,19 @@
     },
     {
       "width": 768,
-      "readyMs": 1255,
+      "readyMs": 883,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
       "renderedNodes": 19,
       "connectors": 14,
       "headerControlsFit": true,
-      "minTouchHeight": 44,
+      "minTouchHeight": 43.99993896484375,
       "mode": "family-map family-map--overview family-map--portrait "
     },
     {
       "width": 1024,
-      "readyMs": 1042,
+      "readyMs": 1245,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -110,7 +110,7 @@
     },
     {
       "width": 1440,
-      "readyMs": 968,
+      "readyMs": 864,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,

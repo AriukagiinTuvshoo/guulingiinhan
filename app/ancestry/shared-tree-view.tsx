@@ -1,16 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, Family } from '../../lib/api';
-import { sharedAncestryPaths } from '../../lib/shared-ancestry';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError, api, Family, TreeData } from '../../lib/api';
+import { sharedAncestryGenerations, sharedAncestryPaths } from '../../lib/shared-ancestry';
+import { useAppShellContext } from '../../components/app-shell';
+import FamilyMap, { FamilyMapMode } from '../../components/family-map';
+import SharedRelativeRequest, { SharedRequestKind, SharedRequestStatus } from '../../components/shared-relative-request';
+import '../family-map.css';
 import './shared-ancestry.css';
 
-type SharedPerson = { id: string; first_name: string; last_name: string; middle_name: string | null; gender: string; birth_date: string | null; is_alive: boolean; death_date: string | null; shared_by_me: boolean };
+type SharedPerson = { id: string; first_name: string; last_name: string; middle_name: string | null; gender: string; birth_date: string | null; is_alive: boolean; death_date: string | null; shared_by_me: boolean; profile_photo_url?: string | null };
 type SharedEdge = { id: string; parent_id: string; child_id: string; relationship_type: string };
-type SharedSpouse = { id: string; person_1_id: string; person_2_id: string; status: string };
+type SharedSpouse = { id: string; person_1_id: string; person_2_id: string; status: 'married' | 'widowed' | 'divorced' };
 type SharedTree = { name: string; root_person_id: string | null; root_partner_person_id: string | null; persons: SharedPerson[]; relationships: SharedEdge[]; spouses: SharedSpouse[]; my_person_id: string | null };
-
 function label(person: SharedPerson) { return [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' '); }
 function years(person: SharedPerson) {
   const birth = person.birth_date?.slice(0, 4); const death = !person.is_alive ? person.death_date?.slice(0, 4) : null;
@@ -18,172 +21,94 @@ function years(person: SharedPerson) {
   if (birth) return person.is_alive ? `${birth} — одоо` : `${birth} — огноо тодорхойгүй`;
   return person.is_alive ? 'Амьд · он тодорхойгүй' : 'Нас барсан · он тодорхойгүй';
 }
-function genderLabel(value: string) {
-  if (value === 'male') return 'Эрэгтэй';
-  if (value === 'female') return 'Эмэгтэй';
-  if (value === 'other') return 'Бусад';
-  return 'Тодорхойгүй';
-}
-
-const MIN_ZOOM = 0.6;
-const MAX_ZOOM = 1.5;
-const ZOOM_STEP = 0.15;
 
 export default function SharedAncestryPage() {
-  const [tree, setTree] = useState<SharedTree | null>(null); const [busy, setBusy] = useState(true);
+  const { familyId, currentFamily } = useAppShellContext();
+  const [tree, setTree] = useState<SharedTree | null>(null);
+  const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [context, setContext] = useState<{ family: Family; personId: string; targetName: string } | null>(null);
-  const [zoom, setZoom] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mapMode, setMapMode] = useState<FamilyMapMode>('overview');
+  const [zoom, setZoom] = useState(0.85);
+  const [focusDepth, setFocusDepth] = useState(3);
+  const [generation, setGeneration] = useState('');
+  const [requestTarget, setRequestTarget] = useState<{ person: SharedPerson; kind: SharedRequestKind } | null>(null);
+  const [requestRevision, setRequestRevision] = useState(0);
+  const loadRequest = useRef(0);
   const detailRef = useRef<HTMLElement | null>(null);
-  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
     setBusy(true); setError('');
     try {
-      const loaded = await api<SharedTree>('/shared-lineage');
-      setTree(loaded);
-    }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модыг ачаалж чадсангүй.'); }
-    finally { setBusy(false); }
+      const result = await api<SharedTree>('/shared-lineage');
+      if (request === loadRequest.current) setTree(result);
+    } catch (cause) {
+      if (request === loadRequest.current) setError(cause instanceof ApiError ? cause.message : 'Үндсэн модыг ачаалж чадсангүй.');
+    } finally { if (request === loadRequest.current) setBusy(false); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { loadRequest.current++; }; }, [load]);
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams(window.location.search);
-    const familyId = params.get('family');
-    const focusId = params.get('focus');
-    if (!familyId || !focusId) return;
+    const id = params.get('family'), focusId = params.get('focus');
+    if (!id || !focusId) return;
     void Promise.all([
       api<Family[]>('/families'),
-      api<{ status: string; person_id: string | null; target_name: string | null }>(`/families/${encodeURIComponent(familyId)}/root-connection`),
+      api<{ status: string; person_id: string | null; target_name: string | null }>(`/families/${encodeURIComponent(id)}/root-connection`),
     ]).then(([families, connection]) => {
-      const family = families.find((item) => item.id === familyId);
-      if (active && family && connection.status === 'approved' && connection.person_id === focusId) {
-        setContext({ family, personId: focusId, targetName: connection.target_name || 'Салбар' });
-      }
-    }).catch(() => { /* Invalid Family context stays empty. */ });
+      const family = families.find((item) => item.id === id);
+      if (active && family && connection.status === 'approved' && connection.person_id === focusId) setContext({ family, personId: focusId, targetName: connection.target_name || 'Салбар' });
+    }).catch(() => { /* Unverified context stays empty. */ });
     return () => { active = false; };
   }, []);
-  useEffect(() => {
-    if (!tree) return;
-    const focusedId = new URLSearchParams(window.location.search).get('focus');
-    if (!focusedId || !tree.persons.some((person) => person.id === focusedId)) return;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const timer = window.setTimeout(() => document.getElementById(`shared-person-${focusedId}`)?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' }), 100);
-    return () => window.clearTimeout(timer);
-  }, [tree]);
-  const personById = useMemo(() => new Map((tree?.persons ?? []).map((person) => [person.id, person])), [tree]);
-  const children = useMemo(() => {
-    const rows = new Map<string, SharedPerson[]>();
-    for (const edge of tree?.relationships ?? []) { const person = personById.get(edge.child_id); if (person && !(rows.get(edge.parent_id) ?? []).some((row) => row.id === person.id)) rows.set(edge.parent_id, [...(rows.get(edge.parent_id) ?? []), person]); }
-    return rows;
-  }, [personById, tree]);
-  const linked = Boolean(tree?.my_person_id && tree.persons.some((person) => person.id === tree.my_person_id));
-  const ownName = tree?.my_person_id ? personById.get(tree.my_person_id) : undefined;
-  const root = tree?.root_person_id ? personById.get(tree.root_person_id) : undefined;
-  const rootPartner = tree?.root_partner_person_id ? personById.get(tree.root_partner_person_id) : undefined;
-  const firstGeneration = [...new Map([...(root ? children.get(root.id) ?? [] : []), ...(rootPartner ? children.get(rootPartner.id) ?? [] : [])].map((person) => [person.id, person])).values()];
   const paths = useMemo(() => sharedAncestryPaths(tree), [tree]);
-  const unlinked = (tree?.persons ?? []).filter((person) => !paths.has(person.id) && !tree?.relationships.some((edge) => edge.child_id === person.id && !paths.has(edge.parent_id)));
-
-  const clampZoom = useCallback((value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(value * 100) / 100)), []);
-  const selected = selectedId ? personById.get(selectedId) ?? null : null;
-  const selectedSpouses = useMemo(() => {
-    if (!tree || !selectedId) return [];
-    return tree.spouses
-      .filter((pair) => pair.person_1_id === selectedId || pair.person_2_id === selectedId)
-      .map((pair) => personById.get(pair.person_1_id === selectedId ? pair.person_2_id : pair.person_1_id))
-      .filter((partner): partner is SharedPerson => Boolean(partner));
-  }, [personById, selectedId, tree]);
-  const selectedParents = selectedId ? (tree?.relationships ?? []).filter((edge) => edge.child_id === selectedId).length : 0;
-  const selectedChildren = selectedId ? (tree?.relationships ?? []).filter((edge) => edge.parent_id === selectedId).length : 0;
-  const selectedGeneration = useMemo(() => {
-    if (!selectedId) return '';
-    if (selectedId === tree?.root_person_id || selectedId === tree?.root_partner_person_id) return 'УДМЫН ЭХ';
-    const depth = (paths.get(selectedId)?.length ?? 0) - 1;
-    if (depth <= 0) return 'ХОЛБООГҮЙ САЛАА';
-    if (depth === 1) return 'ЭХНИЙ ҮНДСЭН САЛАА';
-    return `${depth} · ҮЕ`;
-  }, [paths, selectedId, tree]);
-
-  function selectPerson(personId: string, trigger: HTMLButtonElement | null) {
-    lastTriggerRef.current = trigger;
-    setSelectedId((current) => (current === personId ? null : personId));
-  }
+  const generations = useMemo(() => sharedAncestryGenerations(tree), [tree]);
+  const peopleById = useMemo(() => new Map((tree?.persons || []).map((person) => [person.id, person])), [tree]);
+  const root = tree?.root_person_id ? peopleById.get(tree.root_person_id) : undefined;
+  const partner = tree?.root_partner_person_id ? peopleById.get(tree.root_partner_person_id) : undefined;
+  const selected = selectedId && paths.has(selectedId) ? peopleById.get(selectedId) : undefined;
+  const mapData = useMemo<TreeData>(() => ({
+    persons: (tree?.persons || []).filter((person) => paths.has(person.id)),
+    parent_child_relationships: (tree?.relationships || []).filter((edge) => paths.has(edge.parent_id) && paths.has(edge.child_id)),
+    marriages: (tree?.spouses || []).filter((pair) => paths.has(pair.person_1_id) && paths.has(pair.person_2_id)).map((pair) => ({ ...pair, start_date: null, end_date: null })),
+    root_person_id: tree?.root_person_id, lineage_root_person_id: tree?.root_person_id,
+  }), [tree, paths]);
   useEffect(() => {
-    if (selectedId) detailRef.current?.focus({ preventScroll: true });
-  }, [selectedId]);
+    const focusedId = new URLSearchParams(window.location.search).get('focus');
+    if (focusedId && paths.has(focusedId)) setSelectedId(focusedId);
+  }, [paths]);
+  useEffect(() => { if (selectedId) detailRef.current?.focus({ preventScroll: true }); }, [selectedId]);
+  const selectedSpouses = selected ? (tree?.spouses || []).filter((pair) => pair.person_1_id === selected.id || pair.person_2_id === selected.id).map((pair) => peopleById.get(pair.person_1_id === selected.id ? pair.person_2_id : pair.person_1_id)).filter((person): person is SharedPerson => Boolean(person)) : [];
+  const familyHref = `/tree?view=family${familyId ? `&family=${encodeURIComponent(familyId)}` : ''}`;
+  function openRequest(personId: string, kind: SharedRequestKind = 'child') {
+    const person = peopleById.get(personId);
+    if (person && paths.has(personId)) { setNotice(''); setRequestTarget({ person, kind }); }
+  }
   function closeDetail() {
+    const id = selectedId;
     setSelectedId(null);
-    lastTriggerRef.current?.focus({ preventScroll: true });
-  }
-
-  function card(person: SharedPerson, generation: string) {
-    const partners = (tree?.spouses || []).filter((pair) => pair.person_1_id === person.id || pair.person_2_id === person.id).map((pair) => personById.get(pair.person_1_id === person.id ? pair.person_2_id : pair.person_1_id)).filter((partner): partner is SharedPerson => Boolean(partner));
-    const isSelected = selectedId === person.id;
-    const isCouple = person.id === tree?.root_person_id || person.id === tree?.root_partner_person_id;
-    return <article id={`shared-person-${person.id}`} className={'shared-person' + (isCouple ? ' is-root' : '') + (person.id === context?.personId ? ' is-focused' : '') + (isSelected ? ' is-selected' : '')}>
-      <button
-        type="button"
-        className="shared-person__select"
-        aria-pressed={isSelected}
-        aria-label={`${label(person)} · дэлгэрэнгүй`}
-        onClick={(event) => selectPerson(person.id, event.currentTarget)}
-      >
-        <span className="shared-person__generation">{generation}</span>
-        <span className="shared-person__avatar" aria-hidden="true">{(person.last_name || person.first_name).slice(0, 1).toLocaleUpperCase('mn-MN')}</span>
-        <strong>{label(person)}</strong><small>{years(person)}</small>
-        {partners.map((partner) => <small key={partner.id}>Хань: {label(partner)}</small>)}
-        {person.id === tree?.my_person_id && <em>{person.shared_by_me ? 'Таны бүртгэл' : 'Тантай холбогдсон'}</em>}
-        <span className="shared-person__scope">Нийтлэг модны мэдээлэл</span>
-      </button>
-    </article>;
-  }
-
-  function renderPerson(person: SharedPerson, depth: number, trail: Set<string>): React.ReactNode {
-    if (trail.has(person.id)) return null; const nextTrail = new Set(trail); nextTrail.add(person.id);
-    const partners = (tree?.spouses || []).filter((pair) => pair.person_1_id === person.id || pair.person_2_id === person.id).map((pair) => personById.get(pair.person_1_id === person.id ? pair.person_2_id : pair.person_1_id)).filter((partner): partner is SharedPerson => Boolean(partner && !trail.has(partner.id)));
-    for (const partner of partners) nextTrail.add(partner.id);
-    const next = [...new Map([...(children.get(person.id) || []), ...partners.flatMap((partner) => children.get(partner.id) || [])].map((child) => [child.id, child])).values()];
-    const generation = person.id === tree?.root_person_id || person.id === tree?.root_partner_person_id ? 'УДМЫН ЭХ' : depth === 0 ? 'ХОЛБООГҮЙ САЛАА' : depth === 1 ? 'ЭХНИЙ ҮНДСЭН САЛАА' : `${depth} · ҮЕ`;
-    return <li key={person.id} className="shared-tree__node">{card(person, generation)}{next.length > 0 && <ul>{next.map((child) => renderPerson(child, depth + 1, nextTrail))}</ul>}</li>;
+    if (id) document.getElementById(`tree-person-${id}`)?.focus({ preventScroll: true });
   }
 
   return <main className="shared-ancestry">
-    <header className="shared-ancestry__hero"><div><span>🌳 НЭГ УДАМ · ОЛОН САЛАА</span><h1>Гуулингийнхны их мод</h1><p>Нийтлэг үндэс ба гэр бүлийн мод бодит хүмүүсийн баталгаажсан холбоогоор холбогдоно.</p></div><div className="shared-ancestry__count"><strong>{tree?.persons.length ?? 0}</strong><span>зөвшөөрсөн хүн</span></div></header>
-    {context && tree && <nav className="shared-ancestry__context" aria-label="Удмын зам"><span>Үндэс мод</span><span aria-hidden="true">/</span><span>{context.targetName} салбар</span><span aria-hidden="true">/</span><Link href={`/tree?family=${encodeURIComponent(context.family.id)}`}>{context.family.name}</Link><span aria-hidden="true">/</span><Link href={`/profile?family=${encodeURIComponent(context.family.id)}&person=${encodeURIComponent(context.personId)}`}>{personById.has(context.personId) ? label(personById.get(context.personId)!) : 'Холбогдсон хүн'}</Link><Link href={`/tree?family=${encodeURIComponent(context.family.id)}`}>← Гэр бүлийн мод руу буцах</Link></nav>}
-    {error && <p className="shared-ancestry__alert" role="alert">{error}</p>}
-    {busy ? <p className="shared-ancestry__empty" role="status">Модыг ачаалж байна…</p> : !root ? <section className="shared-ancestry__empty"><span>🪴</span><h2>Үндсэн удмын эхийг тохируулж байна</h2><p>Системийн admin бодит хүнийг эх болгон сонгосны дараа нийтлэг мод энд харагдана.</p></section> : <section className="shared-tree" aria-label="Гуулингийнхны нийтлэг удмын мод">
-      <div className="shared-tree__legend"><span>Үе хоорондын холбоо баталгаатай эцэг/эх, хүүхдийн бүртгэлээр зурна.</span><span>Холбоогүй салбар үндсэн модноос тусдаа байна.</span></div>
-      <div className="shared-tree__toolbar" role="group" aria-label="Модны харагдацын удирдлага">
-        <span className="shared-tree__toolbar-label">Харагдац</span>
-        <button type="button" aria-label="Модыг жижигрүүлэх" disabled={zoom <= MIN_ZOOM} onClick={() => setZoom((value) => clampZoom(value - ZOOM_STEP))}>−</button>
-        <span className="shared-tree__zoom-value" role="status" aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <button type="button" aria-label="Модыг томруулах" disabled={zoom >= MAX_ZOOM} onClick={() => setZoom((value) => clampZoom(value + ZOOM_STEP))}>+</button>
-        <button type="button" onClick={() => setZoom(1)} disabled={zoom === 1}>Хэмжээ сэргээх</button>
-        <span className="shared-tree__toolbar-hint">Утсан дээр хуруугаар гулсуулж үзнэ үү</span>
-      </div>
+    <header className="shared-ancestry__hero"><div><span>ҮНДСЭН УДМЫН МОД</span><h1>Гуулингийнхны их мод</h1><p>{root ? `${label(root)}${partner ? ` + ${label(partner)}` : ''}` : 'Үе үеийн гэр бүлийн холбоо'}</p></div><div className="shared-ancestry__count"><strong>{paths.size}</strong><span>холбоотой хүн</span></div></header>
+    {context && <nav className="shared-ancestry__context" aria-label="Удмын зам"><span>Үндсэн мод</span><span aria-hidden="true">/</span><span>{context.targetName}</span><span aria-hidden="true">/</span><Link href={familyHref}>{context.family.name}</Link></nav>}
+    {notice && <p className="shared-ancestry__notice" role="status">{notice}</p>}
+    {error && <p className="shared-ancestry__alert" role="alert">{error} <button type="button" onClick={() => void load()}>Дахин оролдох</button></p>}
+    {busy ? <p className="shared-ancestry__empty" role="status">Модыг ачаалж байна…</p> : !root ? <section className="shared-ancestry__empty"><h2>Үндсэн удмын эхийг тохируулж байна</h2><p>Админ үндсэн эхийг баталсны дараа мод энд харагдана.</p></section> : <section className="shared-tree-shell" aria-label="Гуулингийнхны үндсэн удмын мод">
+      <div className="shared-tree-shell__intro"><span>Хүний дэргэдэх + товчоор хүүхэд, хань нэмэх хүсэлт илгээнэ үү.</span><button type="button" onClick={() => void load()}>Мод шинэчлэх</button></div>
+      <FamilyMap data={mapData} familyId={familyId} selectedId={selectedId || root.id} mode={mapMode} zoom={zoom} focusDepth={focusDepth} activeGeneration={generation} canManageTree profileLinks={false} onAddRelative={(id) => openRequest(id)} onModeChange={setMapMode} onZoomChange={setZoom} onFocusDepthChange={setFocusDepth} onGenerationChange={setGeneration} onSelect={(id) => setSelectedId((current) => current === id ? null : id)} />
       {selected && <section ref={detailRef} tabIndex={-1} className="shared-detail" aria-label={`${label(selected)} · дэлгэрэнгүй`}>
-        <div className="shared-detail__head">
-          <div><span className="shared-person__generation">{selectedGeneration}</span><h2>{label(selected)}</h2><p>{years(selected)} · {genderLabel(selected.gender)}</p></div>
-          <button type="button" className="shared-detail__close" aria-label="Дэлгэрэнгүй хаах" onClick={closeDetail}>✕</button>
-        </div>
-        <dl className="shared-detail__facts">
-          <div><dt>Эцэг/эх</dt><dd>{selectedParents}</dd></div>
-          <div><dt>Хүүхэд</dt><dd>{selectedChildren}</dd></div>
-          <div><dt>Хань</dt><dd>{selectedSpouses.length ? selectedSpouses.map((partner) => label(partner)).join(' · ') : 'Бүртгэлгүй'}</dd></div>
-        </dl>
-        {selected.id === tree?.my_person_id && <p className="shared-detail__mine">{selected.shared_by_me ? 'Таны бүртгэл' : 'Тантай холбогдсон'}</p>}
-        <p className="shared-detail__scope">Нийтлэг модны мэдээлэл · зөвхөн зөвшөөрөгдсөн талбарууд</p>
+        <div className="shared-detail__head"><div><span className="shared-person__generation">{selected.id === root.id || selected.id === partner?.id ? 'УДМЫН ЭХ' : `${generations.get(selected.id) || '—'}-Р ҮЕ`}</span><h2>{label(selected)}</h2><p>{years(selected)}</p></div><button type="button" className="shared-detail__close" aria-label="Дэлгэрэнгүй хаах" onClick={closeDetail}>×</button></div>
+        <dl className="shared-detail__facts"><div><dt>Эцэг/эх</dt><dd>{(tree?.relationships || []).filter((edge) => edge.child_id === selected.id).length}</dd></div><div><dt>Хүүхэд</dt><dd>{(tree?.relationships || []).filter((edge) => edge.parent_id === selected.id).length}</dd></div><div><dt>Хань</dt><dd>{selectedSpouses.length ? selectedSpouses.map(label).join(' · ') : 'Бүртгэлгүй'}</dd></div></dl>
+        {selected.id === tree?.my_person_id && <p className="shared-detail__mine">Таны бүртгэл</p>}
+        <div className="shared-detail__actions"><button type="button" onClick={() => openRequest(selected.id, 'child')}>+ Хүүхэд</button><button type="button" onClick={() => openRequest(selected.id, 'spouse')}>+ Хань</button>{selected.shared_by_me && selected.id !== root.id && selected.id !== partner?.id && <button type="button" onClick={() => openRequest(selected.id, 'detach')}>Салгах хүсэлт</button>}</div>
       </section>}
-      <div className="shared-tree__viewport" tabIndex={0} role="group" aria-label="Нийтлэг удмын модны зураглал. Хулгана болон хуруугаар гулсуулж үзнэ үү.">
-        <div className="shared-tree__canvas" style={{ '--tree-zoom': zoom } as CSSProperties}>
-          <div className="shared-tree__couple" aria-label="Үндсэн удмын эх">{card(root, 'УДМЫН ЭХ')}{rootPartner && <><span className="shared-tree__union" aria-label="Гэрлэлтийн холбоо">♡</span>{card(rootPartner, 'УДМЫН ЭХ')}</>}</div>
-          {firstGeneration.length > 0 ? <div className="shared-tree__descendants"><h2>Эхний үндсэн салаанууд</h2><ul className="shared-tree__roots">{firstGeneration.map((person) => renderPerson(person, 1, new Set([root.id, ...(rootPartner ? [rootPartner.id] : [])])))}</ul></div> : <p className="shared-tree__missing">Эхний үеийн хүүхдийн холбоо хараахан баталгаажаагүй байна.</p>}
-          {unlinked.length > 0 && <section className="shared-tree__unlinked" aria-label="Үндсэн модонд холбоогүй салаа"><h2>Үндсэн модонд холбоогүй салаа 🌱</h2><p>Эдгээр хүмүүс нийтлэг санд зөвшөөрлөөр орсон боловч үеийн холбоогоо сонгоогүй байна.</p><ul className="shared-tree__roots">{unlinked.map((person) => renderPerson(person, 0, new Set()))}</ul></section>}
-        </div>
-      </div>
     </section>}
-    <section className="shared-join"><div><span>ТАНЫ ГЭР БҮЛИЙН САЛБАР</span><h2>Гэр бүлийн модоо үндэс модтой холбох</h2><p>{linked && ownName ? `${label(ownName)} нийтлэг модонд зөвшөөрөгдсөн байна. ` : ''}Холболтыг таны бодит хүн, сонгосон эцэг/эх, зөвшөөрөл болон админы шалгалтаар батална. Гэр бүлийн хувийн түүх, архив тусдаа хэвээр үлдэнэ.</p></div><div className="shared-join__form"><Link href="/ancestry/connect">Үндэс модтой холбох →</Link><Link href="/tree">Өөрийн гэр бүлийн мод →</Link></div></section><p className="shared-ancestry__privacy">Үндэс модны салбарт харагдах нь бусад гэр бүлийн хувийн мэдээлэлд хандах эрх олгохгүй.</p>
+    <nav className="shared-tree-shell__footer" aria-label="Модны нэмэлт холбоос"><span>Холболтын хүсэлтийг админ шалгаж батална.</span><Link href={familyHref}>Миний гэр бүлийн мод →</Link></nav>
+    <SharedRequestStatus familyId={familyId} revision={requestRevision} />
+    {requestTarget && <SharedRelativeRequest key={`${familyId}:${requestTarget.person.id}:${requestTarget.kind}`} familyId={familyId} canCreate={currentFamily?.role === 'owner' || currentFamily?.role === 'editor'} target={{ id: requestTarget.person.id, name: label(requestTarget.person) }} initialKind={requestTarget.kind} onClose={() => setRequestTarget(null)} onSubmitted={() => { setRequestRevision((value) => value + 1); setNotice('Хүсэлт илгээгдлээ. Админ баталсны дараа үндсэн мод шинэчлэгдэнэ.'); }} />}
   </main>;
 }

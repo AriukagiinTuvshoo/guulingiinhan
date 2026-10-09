@@ -407,6 +407,43 @@ class RootConnection(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class SharedAncestryRequest(Base):
+    """Reviewed changes to sharing and canonical edges; never a separate graph."""
+
+    __tablename__ = "shared_ancestry_requests"
+    __table_args__ = (
+        CheckConstraint("kind IN ('child', 'spouse', 'detach')", name="ck_shared_request_kind"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'cancelled')", name="ck_shared_request_status"),
+        CheckConstraint(
+            "(kind = 'child' AND target_person_id IS NOT NULL AND relationship_type IS NOT NULL AND relationship_type IN ('biological', 'adoptive', 'step')) OR "
+            "(kind = 'spouse' AND target_person_id IS NOT NULL AND relationship_type IS NOT NULL AND relationship_type IN ('married', 'widowed')) OR "
+            "(kind = 'detach' AND target_person_id IS NULL AND relationship_type IS NULL)",
+            name="ck_shared_request_relationship",
+        ),
+        CheckConstraint("target_person_id IS NULL OR person_id <> target_person_id", name="ck_shared_request_not_self"),
+        CheckConstraint("kind = 'detach' OR consented_at IS NOT NULL", name="ck_shared_request_consent"),
+        Index("ix_shared_request_family_requester", "family_id", "requested_by", "requested_at"),
+        Index("ix_shared_request_status", "status", "requested_at"),
+        Index("uq_shared_request_pending_person", "person_id", unique=True,
+              sqlite_where=text("status = 'pending'"), postgresql_where=text("status = 'pending'")),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="RESTRICT"))
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"))
+    target_person_id: Mapped[UUID | None] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    relationship_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    status: Mapped[str] = mapped_column(String(9), default="pending", server_default="pending")
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    canonical_edge_id: Mapped[UUID | None] = mapped_column(ForeignKey("parent_child_relationships.id", ondelete="SET NULL"), nullable=True)
+    canonical_marriage_id: Mapped[UUID | None] = mapped_column(ForeignKey("marriages.id", ondelete="SET NULL"), nullable=True)
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SharedDonationInfo(Base):
     """Public, account-wide bank transfer and optional QR instructions."""
 

@@ -48,20 +48,10 @@ def _request_photo_edit(
         raise HTTPException(status_code=403, detail="Энэ хүний зургийг өөрчлөх эрхгүй.")
 
 
-@router.post("/{family_id}/persons/{person_id}/profile-photo", status_code=201)
-async def upload_profile_photo(
-    family_id: UUID,
-    person_id: UUID,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    storage: ObjectStorage = Depends(get_storage),
-):
-    member, _ = _member(db, family_id, user)
-    person = _person_in_family(db, family_id, person_id)
-    _assert_person_visible(db, person, user)
-    _request_photo_edit(db, family_id, member, person, user)
-
+async def _read_sanitized_profile_upload(
+    request: Request, user: User, family_id: UUID, db: Session
+) -> bytes:
+    """Apply the shared portrait rate, size, format, and metadata-stripping rules."""
     settings = get_settings()
     ip = _normalized_ip(request)
     if any(
@@ -91,9 +81,23 @@ async def upload_profile_photo(
 
     filename = request.headers.get("x-file-name", "profile-photo")
     _, _, _, sanitized_jpeg = _image_payload(filename, request.headers.get("content-type", ""), bytes(data))
+    return sanitized_jpeg
+
+
+def _store_profile_photo(
+    db: Session,
+    user: User,
+    family_id: UUID,
+    person: Person,
+    storage: ObjectStorage,
+    sanitized_jpeg: bytes,
+    *,
+    operation: str,
+) -> str:
     version = str(uuid4())
     key = _object_key(person.id, version)
     old_key = person.profile_photo_key
+    settings = get_settings()
     storage_started = time.perf_counter()
     try:
         storage.put(key, sanitized_jpeg, "image/jpeg")
@@ -108,13 +112,13 @@ async def upload_profile_photo(
         except Exception as cleanup_error:  # noqa: BLE001 - cleanup is best effort after storage failure.
             logger.warning(
                 "Failed profile photo cleanup deferred",
-                extra={"event": "photo_cleanup_failed", "operation": "profile_upload_rollback",
+                extra={"event": "photo_cleanup_failed", "operation": f"{operation}_rollback",
                        "error_code": "STORAGE_UNAVAILABLE", "error_type": type(cleanup_error).__name__,
                        "family_id": str(family_id), "provider": settings.storage_provider},
             )
         logger.warning(
             "Profile photo upload failed",
-            extra={"event": "photo_upload_failed", "operation": "profile_upload",
+            extra={"event": "photo_upload_failed", "operation": operation,
                    "error_code": "STORAGE_UNAVAILABLE", "error_type": type(error).__name__,
                    "family_id": str(family_id), "provider": settings.storage_provider},
         )
@@ -126,16 +130,36 @@ async def upload_profile_photo(
         except Exception as error:  # noqa: BLE001 - do not fail a committed replacement.
             logger.warning(
                 "Previous profile photo cleanup failed",
-                extra={"event": "photo_cleanup_failed", "operation": "profile_replace",
+                extra={"event": "photo_cleanup_failed", "operation": f"{operation}_replace",
                        "error_code": "STORAGE_UNAVAILABLE", "error_type": type(error).__name__,
                        "family_id": str(family_id), "provider": settings.storage_provider},
             )
     logger.info(
         "Profile photo stored",
-        extra={"event": "photo_upload_completed", "operation": "profile_upload",
+        extra={"event": "photo_upload_completed", "operation": operation,
                "storage_duration_ms": round((time.perf_counter() - storage_started) * 1000, 2),
                "family_id": str(family_id), "provider": settings.storage_provider},
     )
+    return version
+
+
+@router.post("/{family_id}/persons/{person_id}/profile-photo", status_code=201)
+async def upload_profile_photo(
+    family_id: UUID,
+    person_id: UUID,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    member, _ = _member(db, family_id, user)
+    person = _person_in_family(db, family_id, person_id)
+    _assert_person_visible(db, person, user)
+    _request_photo_edit(db, family_id, member, person, user)
+
+    sanitized_jpeg = await _read_sanitized_profile_upload(request, user, family_id, db)
+    version = _store_profile_photo(db, user, family_id, person, storage, sanitized_jpeg,
+                                   operation="profile_upload")
     return {"profile_photo_url": f"/families/{family_id}/persons/{person.id}/profile-photo?v={version}"}
 
 

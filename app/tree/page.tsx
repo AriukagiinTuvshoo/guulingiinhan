@@ -207,7 +207,7 @@ function TreePageContent() {
         if (!family || family.id !== id) return;
         let treeData: TreeData;
         const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth)
-          + '&scope=' + (viewModeRef.current === 'full' ? 'all&node_limit=1000' : 'context');
+          + '&scope=family&node_limit=1000';
         try {
           const query = preferredPersonId
             ? treeBase + '&person_id=' + encodeURIComponent(preferredPersonId)
@@ -237,12 +237,15 @@ function TreePageContent() {
           Boolean(treeData.root_person_id) &&
           treeData.persons.some((person) => person.id === treeData.root_person_id);
 
-        // Never substitute an unrelated Person when a requested Person is unavailable.
-        // Only the backend-provided root is eligible as the initial selection.
+        // The family scope's backend root is the signed-in person's branch anchor.
+        // If an old URL points at a person outside that branch, fall back to this
+        // authorized anchor rather than loading an unrelated person.
         const nextSelectedId = preferredPersonId
           ? preferredIsAvailable
             ? preferredPersonId
-            : ''
+            : viewModeRef.current === 'full' && backendRootIsAvailable
+              ? treeData.root_person_id ?? ''
+              : ''
           : backendRootIsAvailable
             ? treeData.root_person_id ?? ''
             : '';
@@ -636,7 +639,7 @@ function TreePageContent() {
 
   function beginRelation(kind: RelationKind) {
     setRelationError('');
-    setRelationMode('existing');
+    setRelationMode('new');
     setRelationPersonId('');
     setRelationPersonQuery('');
     setRelationPersonResults([]);
@@ -909,6 +912,13 @@ function TreePageContent() {
           </div>
         )}
 
+        {tree && viewMode === 'full' && !tree.linked_person_id && (
+          <div className="tree-alert tree-alert--info" role="status">
+            <span>Өөрийн гэр бүлийн модыг харахын тулд эхлээд Хүмүүс хэсгээс өөрийн бүртгэлтэй хүнийг холбож баталгаажуулна уу.</span>
+            <Link href={'/people?family=' + encodeURIComponent(familyId)}>Хүмүүс рүү очих →</Link>
+          </div>
+        )}
+
         {Boolean(tree?.persons.length && (!tree.lineage_root_person_id || !tree.linked_person_id)) && <details className="tree-studio-context"><summary>Удмын эх, миний бүртгэл</summary>{!tree?.lineage_root_person_id && <p>Удмын эх хараахан сонгогдоогүй. Гэр бүлийн эзэн хүн сонгоод цэснээс удмын эхийг батална.</p>}{!tree?.linked_person_id && <p>“Хүмүүс” хэсгээс өөрийн бүртгэлийг олж, гэр бүлийн эзнээр холбоосоо баталгаажуулаарай.</p>}</details>}
         {family?.role === 'owner' && linkRequests.length > 0 && <section className="tree-link-requests" aria-label="Холбох хүсэлтүүд"><h2>Хүнтэй холбох хүсэлт</h2><p>Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.</p>{linkRequests.map((request) => <div key={request.id}><span><strong>{request.user_name}</strong> → {request.person_name}</span><button type="button" disabled={linkBusy} onClick={() => setLinkToApprove(request)}>Шалгаж батлах</button></div>)}</section>}
 
@@ -1033,6 +1043,7 @@ function TreePageContent() {
               <FamilyMap
                 key={familyId}
                 data={displayedTree}
+                canManageTree={canManageTree}
                 familyId={familyId}
                 selectedId={selectedId}
                 mode={mapMode}

@@ -10,6 +10,7 @@ export function resolveFamilyScope(families: { id: string }[], requested: string
       ? { id: requested, error: '' }
       : { id: '', error: 'Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.' };
   }
+  if (required && families.length === 1) return { id: families[0].id, error: '' };
   if (required) return { id: '', error: 'Гэр бүлээ сонгоно уу. Сонголт баталгаажих хүртэл хувийн мэдээллийг ачаалахгүй.' };
   return { id: families[0]?.id || '', error: '' };
 }

@@ -2023,6 +2023,25 @@ def approve_person_link_request(
     return Response(status_code=204)
 
 
+def _guard_shared_relationship_change(db: Session, first_id: UUID, second_id: UUID) -> None:
+    """Family editing must not bypass review of a visible shared-tree edge."""
+    # Import at call time: shared ancestry already reuses family authorization.
+    from app.models import SharedAncestry, SharedAncestryPerson
+    from app.shared_ancestry import _shared_reachable_person_ids
+
+    lock_ancestry_writes(db)
+    root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+    if root_id is None:
+        return
+    shared_ids = set(db.scalars(select(SharedAncestryPerson.person_id).where(
+        SharedAncestryPerson.person_id.in_((first_id, second_id)),
+    )).all()) | {root_id}
+    if first_id in shared_ids and second_id in shared_ids and (
+        {first_id, second_id} & _shared_reachable_person_ids(db)
+    ):
+        raise HTTPException(status_code=409, detail="Үндсэн модны холбоог админ шалгаж батална. Их модны + товчоор хүсэлт илгээх эсвэл админд хандана уу.")
+
+
 @router.post("/{family_id}/relationships/parent-child", status_code=201)
 def add_parent_child(
     family_id: UUID,
@@ -2037,6 +2056,7 @@ def add_parent_child(
     _assert_person_visible(db, _person_in_family(db, family_id, body.child_id), user)
     lock_ancestry_writes(db)
     db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
+    _guard_shared_relationship_change(db, body.parent_id, body.child_id)
     edges = db.execute(
         select(ParentChildRelationship.parent_id, ParentChildRelationship.child_id)
     ).all()
@@ -2088,6 +2108,7 @@ def update_parent_child(
         raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
     _assert_person_visible(db, _person_in_family(db, family_id, edge.parent_id), user)
     _assert_person_visible(db, _person_in_family(db, family_id, edge.child_id), user)
+    _guard_shared_relationship_change(db, edge.parent_id, edge.child_id)
     edge.relationship_type = body.relationship_type
     _audit(db, user, family_id, "relationship.parent_child.updated", "parent_child", edge.id)
     db.commit()
@@ -2122,6 +2143,7 @@ def remove_parent_child(
         raise HTTPException(status_code=404, detail="Эцэг эх-хүүхдийн холбоо олдсонгүй.")
     _assert_person_visible(db, _person_in_family(db, family_id, edge.parent_id), user)
     _assert_person_visible(db, _person_in_family(db, family_id, edge.child_id), user)
+    _guard_shared_relationship_change(db, edge.parent_id, edge.child_id)
     _audit(db, user, family_id, "relationship.parent_child.deleted", "parent_child", edge.id)
     db.delete(edge)
     db.commit()
@@ -2140,6 +2162,7 @@ def create_marriage(
     _person_in_family(db, family_id, body.person_2_id)
     _assert_person_visible(db, _person_in_family(db, family_id, body.person_1_id), user)
     _assert_person_visible(db, _person_in_family(db, family_id, body.person_2_id), user)
+    _guard_shared_relationship_change(db, body.person_1_id, body.person_2_id)
     try:
         first, second = canonical_pair(body.person_1_id, body.person_2_id)
         assert_date_order(body.start_date, body.end_date)
@@ -2279,6 +2302,7 @@ def update_marriage(
         raise HTTPException(status_code=404, detail="Гэрлэлтийн мэдээлэл олдсонгүй.")
     _marriage_person_access(db, family_id, marriage, user)
     updates = body.model_dump(exclude_unset=True)
+    _guard_shared_relationship_change(db, marriage.person_1_id, marriage.person_2_id)
     next_start = updates.get("start_date", marriage.start_date)
     next_end = updates.get("end_date", marriage.end_date)
     try:
@@ -2315,6 +2339,7 @@ def remove_marriage(
         raise HTTPException(status_code=404, detail="Гэрлэлтийн мэдээлэл олдсонгүй.")
     _person_in_family(db, family_id, marriage.person_1_id)
     _person_in_family(db, family_id, marriage.person_2_id)
+    _guard_shared_relationship_change(db, marriage.person_1_id, marriage.person_2_id)
     marriage.deleted_at = datetime.now(UTC)
     _audit(db, user, family_id, "marriage.archived", "marriage", marriage.id)
     db.commit()
@@ -3575,7 +3600,7 @@ def family_tree(
     family_id: UUID,
     person_id: UUID | None = Query(default=None, description="Контекстийн гол хүн."),
     depth: int = Query(default=2, ge=0, le=5, description="Холбооны гүн, хамгийн ихдээ 5."),
-    scope: str = Query(default="context", pattern="^(context|all)$"),
+    scope: str = Query(default="context", pattern="^(context|all|family)$"),
     node_limit: int = Query(default=300, ge=1, le=1000),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -3587,7 +3612,12 @@ def family_tree(
         .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
         .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == family_id)
     )
-    if person_id is None:
+    if scope == "family":
+        # The family-tree view is the current account's own branch. Shared root
+        # ancestry is rendered separately from /shared-lineage and must not make
+        # every root branch appear inside this household view.
+        person_id = linked_person_id
+    elif person_id is None:
         person_id = family.root_person_id or linked_person_id or db.scalar(
             select(Person.id)
             .join(FamilyPerson, FamilyPerson.person_id == Person.id)
@@ -3601,7 +3631,7 @@ def family_tree(
     if person_id is None:
         return {
             "root_person_id": None,
-            "lineage_root_person_id": family.root_person_id,
+            "lineage_root_person_id": linked_person_id if scope == "family" else family.root_person_id,
             "linked_person_id": linked_person_id,
             "persons": [],
             "parent_child_relationships": [],
@@ -3623,7 +3653,114 @@ def family_tree(
     truncated = False
     edge_limit = 1200
 
-    if scope == "all":
+    if scope == "family":
+        ancestor_frontier = {root.id}
+        descendant_frontier = {root.id}
+
+        def branch_visible_candidates(candidate_ids: set[UUID]) -> dict[UUID, Person]:
+            if not candidate_ids:
+                return {}
+            rows = list(db.scalars(
+                select(Person)
+                .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+                .where(
+                    FamilyPerson.family_id == family_id,
+                    Person.id.in_(candidate_ids),
+                    or_(
+                        Person.visibility != "private",
+                        Person.created_by == user.id,
+                        Person.id == own_person_id,
+                    ),
+                )
+                .order_by(Person.search_last_name, Person.search_first_name, Person.id)
+                .limit(node_limit + 1)
+            ).all())
+            nonlocal truncated
+            if len(rows) > node_limit:
+                truncated = True
+                rows = rows[:node_limit]
+            candidate_scopes = active_guardian_scopes(db, user.id, family_id, [row.id for row in rows])
+            scopes.update(candidate_scopes)
+            return {
+                row.id: row for row in rows
+                if not person_is_minor(row) or "view_profile" in candidate_scopes.get(row.id, set())
+            }
+
+        def admit_branch_person(person_id: UUID, allowed: dict[UUID, Person], next_ids: set[UUID]) -> bool:
+            nonlocal truncated
+            if person_id in people:
+                return True
+            person = allowed.get(person_id)
+            if person is None:
+                return False
+            if len(people) >= node_limit:
+                truncated = True
+                return False
+            people[person_id] = person
+            next_ids.add(person_id)
+            return True
+
+        for _level in range(depth):
+            if not ancestor_frontier and not descendant_frontier:
+                break
+            ancestor_rows = list(db.scalars(
+                select(ParentChildRelationship)
+                .where(ParentChildRelationship.child_id.in_(ancestor_frontier))
+                .order_by(ParentChildRelationship.id)
+                .limit(edge_limit + 1)
+            ).all()) if ancestor_frontier else []
+            descendant_rows = list(db.scalars(
+                select(ParentChildRelationship)
+                .where(ParentChildRelationship.parent_id.in_(descendant_frontier))
+                .order_by(ParentChildRelationship.id)
+                .limit(edge_limit + 1)
+            ).all()) if descendant_frontier else []
+            if len(ancestor_rows) > edge_limit or len(descendant_rows) > edge_limit:
+                truncated = True
+            ancestor_rows = ancestor_rows[:edge_limit]
+            descendant_rows = descendant_rows[:edge_limit]
+            candidate_ids = {
+                edge.parent_id for edge in ancestor_rows
+            } | {
+                edge.child_id for edge in descendant_rows
+            }
+            allowed = branch_visible_candidates(candidate_ids - people.keys())
+            next_ancestors: set[UUID] = set()
+            next_descendants: set[UUID] = set()
+            for edge in ancestor_rows:
+                if admit_branch_person(edge.parent_id, allowed, next_ancestors):
+                    parent_edges[edge.id] = edge
+            for edge in descendant_rows:
+                if admit_branch_person(edge.child_id, allowed, next_descendants):
+                    parent_edges[edge.id] = edge
+            ancestor_frontier = next_ancestors
+            descendant_frontier = next_descendants
+
+        # Keep a person's active spouse next to them, without opening the spouse's
+        # unrelated ancestry or siblings in this account-scoped projection.
+        marriage_rows = list(db.scalars(
+            select(Marriage)
+            .where(
+                Marriage.deleted_at.is_(None),
+                or_(Marriage.person_1_id.in_(set(people)), Marriage.person_2_id.in_(set(people))),
+            )
+            .order_by(*_marriage_order())
+            .limit(edge_limit + 1)
+        ).all()) if people else []
+        if len(marriage_rows) > edge_limit:
+            truncated = True
+        marriage_rows = marriage_rows[:edge_limit]
+        spouse_ids = {
+            marriage.person_2_id if marriage.person_1_id in people else marriage.person_1_id
+            for marriage in marriage_rows
+        } - people.keys()
+        visible_spouses = branch_visible_candidates(spouse_ids)
+        for marriage in marriage_rows:
+            spouse_id = marriage.person_2_id if marriage.person_1_id in people else marriage.person_1_id
+            if spouse_id in people or admit_branch_person(spouse_id, visible_spouses, set()):
+                marriages[marriage.id] = marriage
+        frontier = set()
+    elif scope == "all":
         family_rows = list(db.scalars(
             select(Person)
             .join(FamilyPerson, FamilyPerson.person_id == Person.id)
@@ -3837,7 +3974,7 @@ def family_tree(
     return {
         "persons": tree_persons,
         "root_person_id": root.id,
-        "lineage_root_person_id": family.root_person_id,
+        "lineage_root_person_id": root.id if scope == "family" else family.root_person_id,
         "linked_person_id": linked_person_id,
         "parent_child_relationships": list(parent_edges.values()),
         "marriages": list(marriages.values()),

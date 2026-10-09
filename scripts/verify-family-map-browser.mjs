@@ -105,7 +105,7 @@ try {
   for (const width of widths) {
     await page.setViewportSize({ width, height: width < 600 ? 844 : 1000 });
     const started = performance.now();
-    await page.goto(`${base}/tree?family=${familyId}`);
+    await page.goto(`${base}/tree?view=family&family=${familyId}`);
     await page.locator('.family-map-node').first().waitFor({ timeout: 20000 });
     await page.waitForFunction(() => {
       const scene = document.querySelector('.family-map__scene');
@@ -143,7 +143,7 @@ try {
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${base}/tree?family=${familyId}`);
+  await page.goto(`${base}/tree?view=family&family=${familyId}`);
   await page.locator('.family-map-node').first().waitFor();
   await page.getByRole('button', { name: 'Бүгдийг харах', exact: true }).click();
   const viewport = page.locator('.family-map__viewport');
@@ -168,7 +168,7 @@ try {
   assert.ok(await page.locator('.family-map-list li').count() > 0, 'list fallback exposes semantic people rows');
   await page.getByRole('button', { name: 'Ерөнхий', exact: true }).click();
   activeTree = tree;
-  await page.goto(`${base}/tree?family=${familyId}`);
+  await page.goto(`${base}/tree?view=family&family=${familyId}`);
   await page.locator('.family-map-node').first().waitFor();
   assert.ok(await page.locator('.family-map-node').count() <= 240, '800-person map window stays bounded');
   await page.getByLabel('Гэр бүлийн хүн хайх', { exact: true }).fill('Хүн 250');

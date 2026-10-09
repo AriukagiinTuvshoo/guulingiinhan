@@ -34,6 +34,8 @@ from app.profile_photos import router as profile_photos_router
 from app.shared_ancestry import admin_router as admin_shared_ancestry_router
 from app.shared_ancestry import family_router as family_root_connection_router
 from app.shared_ancestry import router as shared_ancestry_router
+from app.shared_ancestry_requests import admin_router as admin_ancestry_requests_router
+from app.shared_ancestry_requests import family_router as family_ancestry_requests_router
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.app_env)
@@ -191,6 +193,8 @@ app.include_router(memory_interactions_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
 app.include_router(public_funds_router, prefix="/api/v1")
+app.include_router(admin_ancestry_requests_router, prefix="/api/v1")
+app.include_router(family_ancestry_requests_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(heritage_discovery_router, prefix="/api/v1")
 app.include_router(heritage_links_router, prefix="/api/v1")

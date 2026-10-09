@@ -5,7 +5,16 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +33,7 @@ from app.auth import (
 from app.config import get_settings
 from app.db import SessionLocal, get_db
 from app.email import EmailDeliveryError, EmailProvider, get_email_provider, send_email_safely
+from app.families import _audit
 from app.models import (
     AdminBootstrap,
     AdminGrant,
@@ -39,6 +49,15 @@ from app.models import (
     UserPersonLink,
     UserSession,
 )
+from app.privacy import person_is_minor, require_minor_scope
+from app.profile_photos import (
+    _object_key as _profile_photo_object_key,
+)
+from app.profile_photos import (
+    _read_sanitized_profile_upload,
+    _store_profile_photo,
+)
+from app.storage import ObjectStorage, get_storage
 
 
 class AdminRole(StrEnum):
@@ -235,6 +254,117 @@ def require_operator(
     if current[1] == AdminRole.MODERATOR:
         raise HTTPException(status_code=403, detail="Энэ үйлдэлд эрх хүрэхгүй.")
     return current
+
+
+def _admin_photo_person(db: Session, family_id: UUID, person_id: UUID) -> Person:
+    family = db.get(Family, family_id)
+    if family is None or family.archived_at is not None:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
+    person = db.scalar(
+        select(Person).join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(FamilyPerson.family_id == family_id, Person.id == person_id)
+    )
+    if person is None:
+        raise HTTPException(status_code=404, detail="Энэ гэр бүлд хүн олдсонгүй.")
+    return person
+
+
+def _admin_photo_version(person: Person, requested_version: str | None = None) -> tuple[str, str]:
+    key = person.profile_photo_key
+    prefix = f"profile-photos/{person.id}/"
+    if not key or not key.startswith(prefix) or not key.endswith(".jpg"):
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.")
+    stored_version = key[len(prefix):-4]
+    try:
+        normalized_version = str(UUID(stored_version))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.") from None
+    if _profile_photo_object_key(person.id, normalized_version) != key:
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.")
+    if requested_version is not None and requested_version.lower() != normalized_version:
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.")
+    return key, normalized_version
+
+
+@router.post("/families/{family_id}/people/{person_id}/profile-photo", status_code=201)
+async def admin_upload_person_profile_photo(
+    family_id: UUID,
+    person_id: UUID,
+    request: Request,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    actor = current[0]
+    person = _admin_photo_person(db, family_id, person_id)
+    if person_is_minor(person):
+        require_minor_scope(db, actor.id, family_id, person, "edit_profile")
+    sanitized_jpeg = await _read_sanitized_profile_upload(request, actor, family_id, db)
+    version = _store_profile_photo(db, actor, family_id, person, storage, sanitized_jpeg,
+                                   operation="admin_profile_upload")
+    return {"profile_photo_url": f"/admin/families/{family_id}/people/{person.id}/profile-photo?v={version}"}
+
+
+@router.get("/families/{family_id}/people/{person_id}/profile-photo")
+def admin_get_person_profile_photo(
+    family_id: UUID,
+    person_id: UUID,
+    version: str | None = Query(default=None, alias="v", min_length=36, max_length=36,
+                                pattern=r"^[0-9a-fA-F-]{36}$"),
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    actor = current[0]
+    person = _admin_photo_person(db, family_id, person_id)
+    if person_is_minor(person):
+        require_minor_scope(db, actor.id, family_id, person, "view_profile")
+    key, _ = _admin_photo_version(person, version)
+    try:
+        data = storage.get(key)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Зургийг уншиж чадсангүй.") from error
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.delete("/families/{family_id}/people/{person_id}/profile-photo", status_code=204)
+def admin_delete_person_profile_photo(
+    family_id: UUID,
+    person_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    actor = current[0]
+    person = _admin_photo_person(db, family_id, person_id)
+    if person_is_minor(person):
+        require_minor_scope(db, actor.id, family_id, person, "edit_profile")
+    old_key = person.profile_photo_key
+    if old_key is None and person.profile_photo_url is None:
+        return Response(status_code=204)
+    person.profile_photo_key = None
+    person.profile_photo_url = None
+    _audit(db, actor, family_id, "person.profile_photo_deleted", "person", person.id)
+    try:
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Профайл зургийг шинэчилж чадсангүй.") from error
+    if old_key:
+        try:
+            storage.delete(old_key)
+        except Exception as error:  # noqa: BLE001 - DB reference is already removed; cleanup is best effort.
+            logger.warning(
+                "Admin profile photo cleanup failed",
+                extra={"event": "photo_cleanup_failed", "operation": "admin_profile_delete",
+                       "error_code": "STORAGE_UNAVAILABLE", "error_type": type(error).__name__,
+                       "family_id": str(family_id), "provider": get_settings().storage_provider},
+            )
+    return Response(status_code=204)
 
 
 @router.get("/me", response_model=AdminIdentity)

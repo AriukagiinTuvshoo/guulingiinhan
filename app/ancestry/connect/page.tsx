@@ -42,6 +42,7 @@ type Connection = {
   relationship_type: string | null;
   can_request: boolean;
 };
+type SharedRequest = { id: string; person_id: string; status: string };
 
 const relationshipLabel: Record<string, string> = {
   biological: 'Төрсөн хүүхэд', adoptive: 'Үрчилсэн хүүхэд', step: 'Дагавар хүүхэд',
@@ -79,7 +80,7 @@ function RootConnectionContent() {
   const [candidateError, setCandidateError] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [joinSuccess, setJoinSuccess] = useState(false);
+  const [sharedRequests, setSharedRequests] = useState<SharedRequest[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -116,7 +117,7 @@ function RootConnectionContent() {
     setCandidateQuery('');
     setStep(1);
     setConsent(false);
-    setJoinSuccess(false);
+    setSharedRequests([]);
     setConnectionError(false);
     setCandidateError('');
     if (!familyId || !families.some((family) => family.id === familyId)) return;
@@ -124,8 +125,10 @@ function RootConnectionContent() {
     void Promise.allSettled([
       api<Connection>(`/families/${encodeURIComponent(familyId)}/root-connection`),
       api<Candidate[]>(`/families/${encodeURIComponent(familyId)}/root-connection/candidates`),
-    ]).then(async ([connectionResult, candidateResult]) => {
+      api<SharedRequest[]>(`/families/${encodeURIComponent(familyId)}/shared-ancestry-requests`),
+    ]).then(async ([connectionResult, candidateResult, requestsResult]) => {
       if (!active) return;
+      if (requestsResult.status === 'fulfilled') setSharedRequests(requestsResult.value);
       if (connectionResult.status === 'fulfilled') setConnection(connectionResult.value);
       else {
         setConnectionError(true);
@@ -172,8 +175,8 @@ function RootConnectionContent() {
   const filteredCandidates = candidates.filter((person) => personName(person).toLowerCase().includes(candidateQuery.trim().toLowerCase()));
   const ownCandidate = candidates.find((person) => person.is_current_user);
   const ownPersonId = tree?.my_person_id || ownCandidate?.person_id || null;
-  const isOwnPersonShared = Boolean(ownPersonId && tree?.persons.some((person) => person.id === ownPersonId));
   const sharedPaths = useMemo(() => sharedAncestryPaths(tree), [tree]);
+  const isOwnPersonShared = Boolean(ownPersonId && sharedPaths.has(ownPersonId));
   const joinableParents = useMemo(() => {
     if (!ownPersonId || !familyTree || !tree) return [];
     const people = new Map(familyTree.persons.map((person) => [person.id, person]));
@@ -183,7 +186,7 @@ function RootConnectionContent() {
       .filter((edge): edge is { person: Person; relationshipType: string } => Boolean(edge.person));
   }, [ownPersonId, familyTree, tree, sharedPaths]);
   const selectedJoinParent = joinableParents.find((parent) => parent.person.id === joinParentId);
-  const joinedCurrentUser = Boolean(joinSuccess || isOwnPersonShared);
+  const joinRequested = sharedRequests.some((request) => request.person_id === ownPersonId && request.status === 'pending');
 
   async function submitRootConnection() {
     if (!familyId || !selectedCandidate || !targetId || !consent || saving) return;
@@ -205,22 +208,23 @@ function RootConnectionContent() {
   }
 
   async function joinCurrentUser() {
-    if (!ownPersonId || !selectedJoinParent || saving) return;
+    if (!familyId || !ownPersonId || !selectedJoinParent || !consent || saving) return;
     setSaving(true); setError('');
     try {
-      const updated = await api<SharedTree>('/shared-lineage/join', {
+      const requested = await api<SharedRequest>(`/families/${encodeURIComponent(familyId)}/shared-ancestry-requests`, {
         method: 'POST',
         body: JSON.stringify({
           person_id: ownPersonId,
-          parent_person_id: selectedJoinParent.person.id,
+          target_person_id: selectedJoinParent.person.id,
+          kind: 'child',
           relationship_type: selectedJoinParent.relationshipType,
           share_consent: true,
         }),
       });
-      setTree(updated);
-      setJoinSuccess(true);
+      setSharedRequests((current) => [...current, requested]);
+      setConsent(false);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Таны хүнийг үндэс модонд холбож чадсангүй.');
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Таны хүнийг холбох хүсэлтийг илгээж чадсангүй.');
     } finally { setSaving(false); }
   }
 
@@ -229,7 +233,6 @@ function RootConnectionContent() {
     setSaving(true); setError('');
     try {
       setConnection(await api<Connection>(`/families/${encodeURIComponent(familyId)}/root-connection`, { method: 'DELETE' }));
-      setJoinSuccess(false);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Холболтыг салгаж чадсангүй.');
     } finally { setSaving(false); }
@@ -266,12 +269,12 @@ function RootConnectionContent() {
               <div className={styles.joinCard}>
                 <span className={styles.kicker}>ДАРААГИЙН АЛХАМ · ӨӨРИЙГӨӨ НЭМЭХ</span>
                 <h2>Өөрийн баталгаажсан хүнийг холбоно уу</h2>
-                {!ownPersonId ? <p>Өөрийн профайлыг эхлээд гэр бүлийн модны хүнтэй холбосны дараа эндээс нэмнэ.</p> : joinedCurrentUser ? <p role="status">Таны хүн нийтлэг модонд холбогдсон байна. Таны үе бодит холбоосоор автоматаар тооцогдоно.</p> : familyTreeBusy ? <p role="status">Гэр бүлийн холбоог шалгаж байна…</p> : joinableParents.length ? <>
+                {!ownPersonId ? <p>Өөрийн профайлыг эхлээд гэр бүлийн модны хүнтэй холбосны дараа эндээс нэмнэ.</p> : isOwnPersonShared ? <p role="status">Таны хүн нийтлэг модонд холбогдсон байна. Таны үе бодит холбоосоор автоматаар тооцогдоно.</p> : joinRequested ? <p role="status">Таны хүнийг нэмэх хүсэлт админы зөвшөөрөл хүлээж байна. Батлагдсаны дараа үндсэн модонд харагдана.</p> : familyTreeBusy ? <p role="status">Гэр бүлийн холбоог шалгаж байна…</p> : joinableParents.length ? <>
                   <p>Өөрийн бүртгэлтэй эцэг/эхээс нийтлэг модонд аль хэдийн холбогдсон хүнийг сонгоно. Хүүхдийн бодит холбоог дахин үүсгэхгүй.</p>
                   <label>Миний эцэг/эх<select value={joinParentId} onChange={(event) => setJoinParentId(event.target.value)}><option value="">Эцэг/эхээ сонгоно уу</option>{joinableParents.map(({ person }) => <option key={person.id} value={person.id}>{personName(person)}{person.birth_date ? ` · ${year(person.birth_date)}` : ''}</option>)}</select></label>
                   {selectedJoinParent && ownCandidate && <div className={styles.generationCard}><span>{personName(selectedJoinParent.person)} · {generations.get(selectedJoinParent.person.id)}-р үе</span><b>↓</b><strong>{personName(ownCandidate)} · {(generations.get(selectedJoinParent.person.id) || 0) + 1}-р үе</strong></div>}
                   <label className={styles.check}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> Миний нэр болон энэ холбоог нийтлэг модонд харуулахыг зөвшөөрч байна.</label>
-                  <div className={styles.actions}><button className={styles.primary} type="button" disabled={!selectedJoinParent || !consent || saving} onClick={() => void joinCurrentUser()}>{saving ? 'Холбож байна…' : 'Миний хүнийг нэмэх'}</button></div>
+                  <div className={styles.actions}><button className={styles.primary} type="button" disabled={!selectedJoinParent || !consent || saving} onClick={() => void joinCurrentUser()}>{saving ? 'Хүсэлт илгээж байна…' : 'Админд шалгуулах'}</button></div>
                 </> : <div className={styles.note}>
                   <p>Таны бүртгэлтэй хүн нийтлэг модонд хараахан холбогдсон эцэг/эхгүй байна. Эхлээд гэр бүлийн модонд эцэг/эхийн бодит холбоог бүртгэх эсвэл тэр эцэг/эхийг салбарын эхээр холбож батлуулна.</p>
                   <Link href={`/tree?family=${encodeURIComponent(familyId)}`}>Гэр бүлийн модны холбоог шалгах →</Link>

@@ -4,8 +4,15 @@ from datetime import UTC, datetime
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -29,13 +36,15 @@ from app.models import (
     User,
     UserPersonLink,
 )
-from app.privacy import person_is_minor
+from app.privacy import is_minor, person_is_minor
+from app.profile_photos import _object_key as _profile_photo_object_key
 from app.relationships import (
     RelationshipError,
     assert_parent_child_is_acyclic,
     canonical_pair,
     lock_ancestry_writes,
 )
+from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/shared-lineage", tags=["shared lineage"])
 admin_router = APIRouter(prefix="/admin/shared-lineage", tags=["admin shared lineage"])
@@ -53,6 +62,14 @@ class SharedPersonOut(BaseModel):
     is_alive: bool
     death_date: str | None
     shared_by_me: bool
+    profile_photo_url: str | None = None
+
+    @model_serializer(mode="wrap")
+    def omit_unavailable_portrait(self, handler):
+        result = handler(self)
+        if self.profile_photo_url is None:
+            result.pop("profile_photo_url", None)
+        return result
 
 
 class SharedEdgeOut(BaseModel):
@@ -249,7 +266,9 @@ def _donation_info_out(row: SharedDonationInfo) -> DonationInfoOut:
     return DonationInfoOut.model_validate(row, from_attributes=True)
 
 
-def _person_shared_data(person: Person, shared_by_me: bool) -> SharedPersonOut:
+def _person_shared_data(
+    person: Person, shared_by_me: bool, *, profile_photo_url: str | None = None
+) -> SharedPersonOut:
     return SharedPersonOut(
         id=person.id, first_name=person.first_name, last_name=person.last_name,
         middle_name=person.middle_name, gender=person.gender,
@@ -258,7 +277,36 @@ def _person_shared_data(person: Person, shared_by_me: bool) -> SharedPersonOut:
         is_alive=person.is_alive,
         death_date=str(person.death_date.year) if person.death_date else None,
         shared_by_me=shared_by_me,
+        profile_photo_url=profile_photo_url,
     )
+
+
+def _person_may_show_shared_portrait(person: Person) -> bool:
+    if person.visibility != "public" or person_is_minor(person):
+        return False
+    # A living person's portrait is sensitive when age is unknown. Historical
+    # deceased records continue to follow the existing minor policy.
+    return not person.is_alive or is_minor(person.birth_date) is False
+
+
+def _shared_portrait_version(person: Person) -> str | None:
+    key = person.profile_photo_key
+    prefix = f"profile-photos/{person.id}/"
+    if not key or not key.startswith(prefix) or not key.endswith(".jpg"):
+        return None
+    raw_version = key[len(prefix):-4]
+    try:
+        version = str(UUID(raw_version))
+    except ValueError:
+        return None
+    return version if _profile_photo_object_key(person.id, version) == key else None
+
+
+def _shared_portrait_url(person: Person, reachable_ids: set[UUID]) -> str | None:
+    version = _shared_portrait_version(person)
+    if version is None or person.id not in reachable_ids or not _person_may_show_shared_portrait(person):
+        return None
+    return f"/shared-lineage/people/{person.id}/profile-photo?v={version}"
 
 
 @router.get("", response_model=SharedTreeOut)
@@ -326,6 +374,12 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
                                 if (edge.parent_id, edge.child_id) not in canonical_pairs)]
     linked = _my_linked_person(db, user)
     root_id = ancestry.root_person_id if ancestry else None
+    try:
+        reachable_ids = _shared_reachable_person_ids(db) if root_id else set()
+    except HTTPException:
+        # A stale or invalid root must hide portraits without making the tree
+        # response fail; the photo endpoint independently rechecks eligibility.
+        reachable_ids = set()
     root_partners = {
         marriage.person_2_id if marriage.person_1_id == root_id else marriage.person_1_id
         for marriage in marriages if root_id in (marriage.person_1_id, marriage.person_2_id)
@@ -333,7 +387,10 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
     return SharedTreeOut(
         name="Гуулингийнхан",
         root_person_id=ancestry.root_person_id if ancestry else None,
-        persons=[_person_shared_data(person, added_by == user.id)
+        persons=[_person_shared_data(
+            person, added_by == user.id,
+            profile_photo_url=_shared_portrait_url(person, reachable_ids),
+        )
                  for person, family_id, added_by in rows],
         relationships=[SharedEdgeOut(
             id=edge.id, parent_id=edge.parent_id, child_id=edge.child_id,
@@ -348,8 +405,43 @@ def read_shared_tree(user: User = Depends(get_current_user), db: Session = Depen
     )
 
 
+@router.get("/people/{person_id}/profile-photo")
+def read_shared_profile_photo(
+    person_id: UUID,
+    version: str = Query(alias="v", min_length=36, max_length=36,
+                         pattern=r"^[0-9a-fA-F-]{36}$"),
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage: ObjectStorage = Depends(get_storage),
+):
+    # Re-check root membership, public visibility, minor policy, and the live
+    # consent/projection graph for every request. A tree response URL is not a
+    # durable authorization grant.
+    person = _shared_target(db, person_id)
+    if not _person_may_show_shared_portrait(person):
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.")
+    stored_version = _shared_portrait_version(person)
+    try:
+        requested_version = str(UUID(version))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.") from None
+    if stored_version is None or stored_version != requested_version:
+        raise HTTPException(status_code=404, detail="Зураг олдсонгүй.")
+    key = _profile_photo_object_key(person.id, requested_version)
+    try:
+        data = storage.get(key)
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Зургийг уншиж чадсангүй.") from error
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @router.post("/join", response_model=SharedTreeOut, status_code=201)
 def join_shared_tree(body: JoinTreeInput, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    lock_ancestry_writes(db)
     if not body.share_consent:
         raise HTTPException(status_code=422, detail="Нийтлэг модонд нийтлэх зөвшөөрөл шаардлагатай.")
     linked = _my_linked_person(db, user)
@@ -370,20 +462,22 @@ def join_shared_tree(body: JoinTreeInput, user: User = Depends(get_current_user)
         raise HTTPException(status_code=409, detail="Та нийтлэг модонд аль хэдийн холбогдсон байна.")
 
     if body.parent_person_id:
-        _shared_target(db, body.parent_person_id)
-        if not _person_in_family(db, family_row.family_id, body.parent_person_id):
-            raise HTTPException(status_code=409, detail="Бусад гэр бүлийн салбарт холбогдох хүсэлт илгээнэ үү.")
-        edge = db.scalar(select(ParentChildRelationship).where(
-            ParentChildRelationship.parent_id == body.parent_person_id,
-            ParentChildRelationship.child_id == linked.id,
-        ))
-        if edge is None or edge.relationship_type != body.relationship_type:
-            raise HTTPException(status_code=422, detail="Энэ эцэг/эхийн бодит холбоог гэр бүлийн модонд эхлээд баталгаажуулна уу.")
+        raise HTTPException(status_code=409, detail="Үндсэн модонд холбохдоо админд хүн нэмэх хүсэлт илгээнэ үү.")
     db.add(SharedAncestryPerson(person_id=linked.id, family_id=family_row.family_id, added_by=user.id))
-    db.add(AuditLog(actor_id=user.id, family_id=family_row.family_id,
-                    action="shared_ancestry.person_joined", target_type="person", target_id=linked.id))
     try:
+        # An absent parent field must not bypass review through an existing
+        # canonical parent or spouse edge. Check the hypothetical membership
+        # in this transaction before it can become visible to another account.
+        db.flush()
+        root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+        if root_id and linked.id in _shared_reachable_person_ids(db):
+            raise HTTPException(status_code=409, detail="Таны хүнийг үндсэн модонд нэмэхэд админы зөвшөөрөл шаардлагатай. Холболтын хүсэлт илгээнэ үү.")
+        db.add(AuditLog(actor_id=user.id, family_id=family_row.family_id,
+                        action="shared_ancestry.person_joined", target_type="person", target_id=linked.id))
         db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
     except IntegrityError as error:
         db.rollback()
         raise HTTPException(status_code=409, detail="Энэ хүн нийтлэг модонд аль хэдийн холбогдсон байна.") from error
@@ -394,7 +488,7 @@ def join_shared_tree(body: JoinTreeInput, user: User = Depends(get_current_user)
 def change_my_shared_placement(
     body: MyPlacementInput, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    """Let a person correct or remove only their own global parent placement."""
+    """Legacy placement edits now use the same review boundary as tree additions."""
     person = _my_linked_person(db, user)
     if person is None:
         raise HTTPException(status_code=404, detail="Аккаунттай холбосон хүн олдсонгүй.")
@@ -405,31 +499,7 @@ def change_my_shared_placement(
     if person.id == root_id:
         raise HTTPException(status_code=409, detail="Үндсэн удмын эхийн байрлалыг өөрчлөх боломжгүй.")
 
-    existing = db.scalars(select(SharedAncestryRelationship).where(
-        SharedAncestryRelationship.child_id == person.id,
-    )).all()
-    if body.parent_person_id is not None:
-        _shared_target(db, body.parent_person_id)
-        if not _person_in_family(db, association.family_id, body.parent_person_id):
-            raise HTTPException(status_code=409, detail="Бусад гэр бүлийн салбарт холбогдох хүсэлт илгээнэ үү.")
-        edge = db.scalar(select(ParentChildRelationship).where(
-            ParentChildRelationship.parent_id == body.parent_person_id,
-            ParentChildRelationship.child_id == person.id,
-        ))
-        if edge is None or edge.relationship_type != body.relationship_type:
-            raise HTTPException(status_code=422, detail="Бодит эцэг/эхийн холбоо бүртгэгдээгүй байна.")
-
-    for relation in existing:
-        db.delete(relation)
-    db.flush()
-    # Legacy placement edges can be removed. New ancestry edges always come
-    # from ParentChildRelationship, never a second genealogy graph.
-    db.add(AuditLog(
-        actor_id=user.id, family_id=association.family_id,
-        action="shared_ancestry.placement_changed", target_type="person", target_id=person.id,
-    ))
-    db.commit()
-    return read_shared_tree(user, db)
+    raise HTTPException(status_code=409, detail="Үндсэн модны холбоог өөрчлөхдөө админд хүсэлт илгээнэ үү. Зөвшөөрлөө цуцлах бол үндсэн модноос салгах үйлдлийг сонгоно.")
 
 
 @router.delete("/people/me", status_code=204)
@@ -770,13 +840,8 @@ def detach_shared_person(
     return read_shared_tree(current[0], db)
 
 
-def _shared_target(db: Session, person_id: UUID) -> Person:
+def _shared_reachable_person_ids(db: Session) -> set[UUID]:
     root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
-    person = db.get(Person, person_id)
-    if person is None or person.visibility == "private" or person_is_minor(person) or not (
-        person_id == root_id or db.get(SharedAncestryPerson, person_id) is not None
-    ):
-        raise HTTPException(status_code=404, detail="Үндэс модны зөвшөөрөгдсөн хүн олдсонгүй.")
     if root_id is None:
         raise HTTPException(status_code=409, detail="Үндэс модны эх хүн хараахан батлагдаагүй байна.")
     shared_rows = db.execute(
@@ -847,7 +912,18 @@ def _shared_target(db: Session, person_id: UUID) -> Person:
             if child_id not in seen:
                 seen.add(child_id)
                 frontier.append(child_id)
-    if person_id not in seen:
+    return seen
+
+
+def _shared_target(db: Session, person_id: UUID) -> Person:
+    root_id = db.scalar(select(SharedAncestry.root_person_id).where(SharedAncestry.id == 1))
+    person = db.get(Person, person_id)
+    if person is None or person.visibility == "private" or person_is_minor(person) or not (
+        person_id == root_id or db.get(SharedAncestryPerson, person_id) is not None
+    ):
+        raise HTTPException(status_code=404, detail="Үндэс модны зөвшөөрөгдсөн хүн олдсонгүй.")
+    reachable_ids = _shared_reachable_person_ids(db)
+    if person_id not in reachable_ids:
         raise HTTPException(status_code=422, detail="Зөвхөн үндэс модны баталгаатай салбарыг сонгоно уу.")
     return person
 
@@ -885,9 +961,15 @@ def _root_connection_candidates(db: Session, family_id: UUID, user: User,
     shared_ids = set(db.scalars(select(SharedAncestryPerson.person_id).where(
         SharedAncestryPerson.person_id.in_(person_ids),
     )).all()) if person_ids else set()
+    ancestry = _tree_row(db)
+    try:
+        rooted_ids = _shared_reachable_person_ids(db) if ancestry and ancestry.root_person_id else set()
+    except HTTPException:
+        # A root whose privacy changed cannot authorize another connection.
+        rooted_ids = shared_ids
     candidates: list[Person] = []
     for person, added_by in rows:
-        if person.visibility == "private" or person_is_minor(person) or person.id in shared_ids:
+        if person.visibility == "private" or person_is_minor(person) or person.id in rooted_ids:
             continue
         if linked is not None and person.id == linked.id:
             candidates.append(person)

@@ -605,14 +605,27 @@ def test_family_can_connect_an_existing_deceased_anchor_then_members_join_throug
         "email": "root-picker-owner@example.com", "password": PASSWORD,
     }).status_code == 200
 
-    # A second living person joins only through their own linked account and
-    # an already recorded direct parent edge; no generation is supplied.
-    joined = client.post("/api/v1/shared-lineage/join", json={
+    # Even an existing parent edge cannot publish another person into the
+    # rooted tree until that person's own consent request is reviewed.
+    bypass = client.post("/api/v1/shared-lineage/join", json={
         "person_id": me["id"], "parent_person_id": mother["id"],
         "relationship_type": "biological", "share_consent": True,
     })
-    assert joined.status_code == 201, joined.text
-    shared = joined.json()
+    assert bypass.status_code == 409, bypass.text
+    requested = client.post(base + "/shared-ancestry-requests", json={
+        "person_id": me["id"], "target_person_id": mother["id"], "kind": "child",
+        "relationship_type": "biological", "share_consent": True,
+    })
+    assert requested.status_code == 201, requested.text
+    assert requested.json()["status"] == "pending"
+    assert me["id"] not in {person["id"] for person in client.get("/api/v1/shared-lineage").json()["persons"]}
+    assert client.post("/api/v1/auth/login", json={
+        "email": "root-picker-admin@example.com", "password": PASSWORD,
+    }).status_code == 200
+    approved = client.post(f"/api/v1/admin/shared-lineage/requests/{requested.json()['id']}/decision",
+                           json={"approve": True})
+    assert approved.status_code == 200, approved.text
+    shared = client.get("/api/v1/shared-lineage").json()
     assert {person["id"] for person in shared["persons"]} >= {root["id"], mother["id"], me["id"]}
     assert any(edge["parent_id"] == root["id"] and edge["child_id"] == mother["id"]
                for edge in shared["relationships"])

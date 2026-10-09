@@ -567,7 +567,7 @@ function ProfilePageContent() {
             </p>
             {person.nickname && <p className="profile-nickname">“{person.nickname}”</p>}
             <div className="profile-actions">
-              <Link className="button primary" href={`/tree?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>
+              <Link className="button primary" href={`/tree?view=family&family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>
                 Удмын модонд харах
               </Link>
               {person.can_edit_profile && (
@@ -814,7 +814,7 @@ function ProfilePageContent() {
 
         <footer className="profile-footer">
           <Link href={`/people?family=${encodeURIComponent(family)}`}>← Хүмүүс</Link>
-          <Link href={`/tree?family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>Удмын модонд харах →</Link>
+          <Link href={`/tree?view=family&family=${encodeURIComponent(family)}&person=${encodeURIComponent(person.id)}`}>Удмын модонд харах →</Link>
         </footer>
       </section>
     </main>

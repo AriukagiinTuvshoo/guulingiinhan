@@ -5,7 +5,7 @@ from conftest import register_verified
 from PIL import Image
 from sqlalchemy import select
 
-from app.models import AuditLog, Person
+from app.models import AdminGrant, AuditLog, FamilyMember, Person, PersonGuardianship
 from app.storage import get_storage
 
 
@@ -142,3 +142,100 @@ def test_minor_profile_photo_requires_guardian_edit_scope(client):
     )
     assert response.status_code == 403
     assert storage.objects == {}
+
+
+def test_super_admin_person_portrait_uses_private_storage_and_scoped_minor_access(client, database):
+    storage = PrivateMemoryStorage()
+    from app.main import app
+
+    app.dependency_overrides[get_storage] = lambda: storage
+    register_verified(client, "portrait-family-owner@example.com")
+    owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    family = client.post("/api/v1/families", json={"name": "Удмын хөргийн сан"}).json()
+    family_id = UUID(family["id"])
+    adult = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Ахмад", "visibility": "private"},
+    ).json()
+    minor = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Хүүхэд", "birth_date": "2018-04-06", "visibility": "family"},
+    ).json()
+
+    register_verified(client, "portrait-super-admin@example.com")
+    admin_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    adult_endpoint = f"/api/v1/admin/families/{family['id']}/people/{adult['id']}/profile-photo"
+    photo_headers = {"Content-Type": "image/png", "X-File-Name": "portrait.png"}
+
+    # Global admin can manage a private root portrait without ordinary membership.
+    uploaded = client.post(adult_endpoint, content=png_bytes(), headers=photo_headers)
+    assert uploaded.status_code == 201, uploaded.text
+    first_url = uploaded.json()["profile_photo_url"]
+    assert first_url.startswith(adult_endpoint.removeprefix("/api/v1") + "?v=")
+    assert "profile-photos/" not in first_url
+    assert client.get("/api/v1" + first_url).status_code == 200
+    assert client.get(adult_endpoint).status_code == 200
+    version = first_url.rsplit("?v=", 1)[1]
+    assert client.get(f"/api/v1/families/{family['id']}/persons/{adult['id']}"
+                      f"/profile-photo?v={version}").status_code == 403
+    replaced = client.post(adult_endpoint, content=png_bytes(), headers=photo_headers)
+    assert replaced.status_code == 201
+    assert client.get("/api/v1" + first_url).status_code == 404
+    assert len(storage.objects) == 1
+
+    # Minor editing and reading need separate active guardian scopes.
+    minor_endpoint = f"/api/v1/admin/families/{family['id']}/people/{minor['id']}/profile-photo"
+    assert client.post(minor_endpoint, content=png_bytes(), headers=photo_headers).status_code == 403
+    assert len(storage.objects) == 1
+    with database.begin() as db:
+        db.add(FamilyMember(family_id=family_id, user_id=admin_id, role="member"))
+        db.add(PersonGuardianship(
+            family_id=family_id, person_id=UUID(minor["id"]), guardian_user_id=admin_id,
+            scope="edit_profile", granted_by_user_id=owner_id,
+        ))
+    assert client.post(minor_endpoint, content=png_bytes(), headers=photo_headers).status_code == 201
+    assert client.get(minor_endpoint).status_code == 403
+    with database.begin() as db:
+        db.add(PersonGuardianship(
+            family_id=family_id, person_id=UUID(minor["id"]), guardian_user_id=admin_id,
+            scope="view_profile", granted_by_user_id=owner_id,
+        ))
+    minor_photo = client.get(minor_endpoint)
+    assert minor_photo.status_code == 200
+    assert minor_photo.headers["cache-control"] == "private, no-store"
+    assert minor_photo.headers["x-content-type-options"] == "nosniff"
+
+    assert client.delete(adult_endpoint).status_code == 204
+    assert client.delete(adult_endpoint).status_code == 204
+    with database() as db:
+        actions = set(db.scalars(select(AuditLog.action)).all())
+        adult_person = db.get(Person, UUID(adult["id"]))
+        minor_person = db.get(Person, UUID(minor["id"]))
+        assert adult_person is not None and adult_person.profile_photo_key is None
+        assert minor_person is not None and minor_person.profile_photo_key in storage.objects
+        assert {"person.profile_photo_uploaded", "person.profile_photo_deleted"} <= actions
+
+
+def test_admin_person_portrait_is_super_admin_only(client, database):
+    from app.main import app
+
+    app.dependency_overrides[get_storage] = lambda: PrivateMemoryStorage()
+    register_verified(client, "portrait-role-owner@example.com")
+    family = client.post("/api/v1/families", json={"name": "Admin эрхийн шалгалт"}).json()
+    person = client.post(
+        f"/api/v1/families/{family['id']}/persons",
+        json={"first_name": "Удмын хүн"},
+    ).json()
+    register_verified(client, "portrait-operator@example.com")
+    operator_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=operator_id, role="ADMIN"))
+    endpoint = f"/api/v1/admin/families/{family['id']}/people/{person['id']}/profile-photo"
+    assert client.post(
+        endpoint, content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "portrait.png"},
+    ).status_code == 403
+    assert client.get(endpoint).status_code == 403
+    assert client.delete(endpoint).status_code == 403

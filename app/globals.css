@@ -1063,7 +1063,7 @@
 .app-shell__context-pill small{padding-left:6px;border-left:1px solid #d8cbb4;color:#8c7c5d;font-size:8px;text-transform:uppercase}
 .app-shell__context-empty{padding:9px 11px;border:1px dashed #cdbf9e;border-radius:8px;color:#7c6840;font-size:10px;text-decoration:none}
 .app-shell__context-skeleton{display:block;width:210px;height:38px;border:1px solid #e0d8ca;border-radius:8px;background:linear-gradient(90deg,#eee7da 20%,#f6f1e8 50%,#eee7da 80%);background-size:200% 100%;animation:app-shell-sheen 1.4s linear infinite}
-.app-shell__account{position:relative;justify-self:end}
+.app-shell__account{position:relative;justify-self:end;display:flex;align-items:center;gap:6px}
 .app-shell__account-button{display:flex;align-items:center;gap:8px;min-height:40px;border:1px solid transparent;border-radius:8px;background:transparent;color:#40574d;padding:4px 7px;cursor:pointer}
 .app-shell__account-button:hover,.app-shell__account-button:focus-visible{border-color:#d4c7ae;background:#f4eddf;outline:2px solid #aa8d50;outline-offset:2px}
 .app-shell__avatar{width:30px;height:30px;display:grid;place-items:center;border:1px solid #c6b58e;background:#e8e0ce;color:#426053;border-radius:50%;font:600 11px Georgia,"Times New Roman",serif}
@@ -1075,6 +1075,19 @@
 .app-shell__account-menu>a,.app-shell__account-menu-button{display:flex;align-items:center;gap:7px;min-height:38px;border:0;border-radius:7px;background:transparent;color:#586a61;padding:0 10px;font-size:9px;text-decoration:none;text-align:left;cursor:pointer}
 .app-shell__account-menu>a:hover,.app-shell__account-menu>a:focus-visible,.app-shell__account-menu-button:hover:not(:disabled),.app-shell__account-menu-button:focus-visible{background:#eee7d9;color:#3e574a;outline:2px solid #aa8d50;outline-offset:-2px}
 .app-shell__account-menu-button:disabled{opacity:.55;cursor:not-allowed}
+.app-shell__notifications{position:relative;display:flex;align-items:center}
+.app-shell__notification-button{position:relative;display:grid;place-items:center;width:40px;height:40px;border:1px solid rgba(222,194,125,.38);border-radius:50%;background:rgba(4,38,29,.36);color:#f5e9c9;cursor:pointer}
+.app-shell__notification-button:hover,.app-shell__notification-button:focus-visible{background:#1a4b3b;border-color:#d7b56a;outline:2px solid #d7b56a;outline-offset:2px}
+.app-shell__notification-count{position:absolute;top:-3px;right:-3px;display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border:1px solid #082e25;border-radius:999px;background:#b94c35;color:#fff;font:700 9px/1 system-ui,sans-serif}
+.app-shell__notification-panel{position:absolute;z-index:90;top:49px;right:0;width:min(360px,calc(100vw - 18px));max-height:min(480px,calc(100vh - 88px));overflow:auto;border:1px solid #bda36c;border-radius:13px;background:#fbf7ee;color:#254638;box-shadow:0 18px 48px rgba(0,20,13,.32)}
+.app-shell__notification-panel>header{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px;border-bottom:1px solid #e1d5bc;background:#fbf7ee}
+.app-shell__notification-panel>header strong,.app-shell__notification-panel>header small{display:block}.app-shell__notification-panel>header strong{font:600 17px Georgia,"Times New Roman",serif}.app-shell__notification-panel>header small{margin-top:3px;color:#78877e;font-size:11px}
+.app-shell__notification-panel>header button{display:grid;place-items:center;width:34px;height:34px;border:1px solid #d5c7a8;border-radius:50%;background:#f3ecdc;color:#526858;cursor:pointer}
+.app-shell__notification-panel>header button:focus-visible,.app-shell__notification-panel a:focus-visible{outline:2px solid #9c7e3e;outline-offset:2px}
+.app-shell__notification-panel ul{display:grid;gap:0;margin:0;padding:0;list-style:none}.app-shell__notification-panel li+li{border-top:1px solid #e9dfce}
+.app-shell__notification-panel li a{display:grid;gap:5px;padding:12px 15px;color:inherit;text-decoration:none}.app-shell__notification-panel li a:hover{background:#f2ecdf}.app-shell__notification-panel li strong{font-size:12px}.app-shell__notification-panel li span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;color:#708078;font-size:11px;line-height:1.5}
+.app-shell__notification-state{padding:12px 15px;color:#748078;font-size:11px;line-height:1.5}.app-shell__notification-state button{border:0;background:transparent;color:#846c37;text-decoration:underline;cursor:pointer}
+.app-shell__notification-all{display:block;padding:12px 15px;border-top:1px solid #e1d5bc;color:#725e2f;font-size:11px;font-weight:700;text-decoration:none}
 .app-shell__context-alert{display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 16px;border-bottom:1px solid #dfc7b8;background:#fff3ec;color:#765044;font-size:9px}
 .app-shell__context-alert button{min-height:28px;border:1px solid #c7aa9d;border-radius:6px;background:#fffaf4;color:#684238;padding:0 9px;font-size:9px;cursor:pointer}
 .app-shell__context-alert button:focus-visible{outline:2px solid #aa8d50;outline-offset:2px}
@@ -2095,7 +2108,7 @@ body .heritage-actions .heritage-section-heading h2 { color: #fff7e2; }
 .tree-unified__tabs{display:flex;gap:8px;align-items:center;margin:0 0 18px;padding:6px;width:fit-content;max-width:100%;border:1px solid var(--line);border-radius:999px;background:rgba(255,252,245,.84)}
 .tree-unified__tabs a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 18px;border-radius:999px;color:var(--forest);font-size:13px;font-weight:650;text-decoration:none;transition:background-color .18s ease,color .18s ease}
 .tree-unified__tabs a:hover{background:#edf1e8}
-.tree-unified__tabs a.is-active{background:var(--forest);color:#fffaf0;box-shadow:0 2px 8px #12392a24}
+.tree-unified__tabs a.is-active{background:#173f32;color:#fffaf0;box-shadow:0 2px 8px #12392a24}
 .tree-unified__tabs a:focus-visible{outline:3px solid #c49e44;outline-offset:3px}
 @media(max-width:520px){.tree-unified__tabs{width:100%;display:grid;grid-template-columns:1fr 1fr}.tree-unified__tabs a{padding:0 8px;font-size:12px}}
 .app-shell__nav-group{display:grid;gap:4px;margin:0 0 15px}
