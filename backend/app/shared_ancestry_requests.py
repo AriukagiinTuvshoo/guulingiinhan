@@ -21,6 +21,7 @@ from app.models import (
     Marriage,
     ParentChildRelationship,
     Person,
+    RootConnection,
     SharedAncestry,
     SharedAncestryPerson,
     SharedAncestryRelationship,
@@ -39,6 +40,7 @@ from app.shared_ancestry import (
     _family_member,
     _person_in_family,
     _root_connection_person,
+    _shared_reachable_person_ids,
     _shared_target,
 )
 
@@ -98,13 +100,16 @@ def _out(db: Session, row: SharedAncestryRequest) -> SharedRequestOut:
     target = db.get(Person, row.target_person_id) if row.target_person_id else None
 
     def name(value: Person | None) -> str:
-        return " ".join(filter(None, (value.last_name, value.first_name, value.middle_name))) if value else "Бүртгэл олдсонгүй"
+        if value is None:
+            return "Бүртгэл олдсонгүй"
+        if value.visibility == "private" or person_is_minor(value):
+            return "Харагдах зөвшөөрөл өөрчлөгдсөн"
+        return " ".join(filter(None, (value.last_name, value.first_name, value.middle_name)))
 
     return SharedRequestOut(
         id=row.id, family_id=row.family_id, family_name=family.name if family else "Гэр бүл",
         person_id=row.person_id, person_name=name(person), target_person_id=row.target_person_id,
-        target_name=("Харагдах зөвшөөрөл өөрчлөгдсөн" if target.visibility == "private" or person_is_minor(target)
-                     else name(target)) if target else None, kind=row.kind,
+        target_name=name(target) if target else None, kind=row.kind,
         relationship_type=row.relationship_type, status=row.status,
         requested_at=row.requested_at, decided_at=row.decided_at,
     )
@@ -159,6 +164,46 @@ def _detach_authority(db: Session, family_id: UUID, person_id: UUID, user: User)
     return association
 
 
+def _assert_single_person_admission(db: Session, person_id: UUID, previously_rooted: set[UUID]) -> None:
+    """Review of one Person cannot silently approve another shared branch."""
+    newly_rooted = _shared_reachable_person_ids(db) - previously_rooted
+    if newly_rooted - {person_id}:
+        raise HTTPException(status_code=409, detail="Энэ хүсэлтээр бусад хүн давхар үндсэн модонд орох гэж байна. Тэдний одоогийн нийтлэг модонд харагдах зөвшөөрлийг эхлээд цуцалж, дараа нь хүн бүрийг тусдаа хүсэлтээр батлуулна уу. Гэр бүлийн бодит холбоог устгах шаардлагагүй.")
+
+
+def _cancel_own_pending_consent(db: Session, person_id: UUID, user: User) -> bool:
+    """Withdraw pending consent without touching any canonical family data.
+
+    The caller has authenticated the account's own linked Person and holds the
+    ancestry lock. Both old Family and new person request APIs must respect the
+    same explicit withdrawal.
+    """
+    changed = False
+    now = datetime.now(UTC)
+    for row in db.scalars(select(SharedAncestryRequest).where(
+        SharedAncestryRequest.person_id == person_id, SharedAncestryRequest.requested_by == user.id,
+        SharedAncestryRequest.status == "pending",
+    ).order_by(SharedAncestryRequest.id).with_for_update()).all():
+        row.status = "cancelled"
+        row.decided_by = user.id
+        row.decided_at = now
+        db.add(AuditLog(actor_id=user.id, family_id=row.family_id,
+                        action="shared_ancestry.change_cancelled", target_type="shared_ancestry_request",
+                        target_id=row.id))
+        changed = True
+    for connection in db.scalars(select(RootConnection).where(
+        RootConnection.person_id == person_id, RootConnection.requested_by == user.id,
+        RootConnection.status == "pending",
+    ).order_by(RootConnection.family_id).with_for_update()).all():
+        connection.status = "disconnected"
+        connection.decided_by = user.id
+        connection.decided_at = now
+        db.add(AuditLog(actor_id=user.id, family_id=connection.family_id,
+                        action="root_connection.disconnected", target_type="person", target_id=person_id))
+        changed = True
+    return changed
+
+
 def _validate_addition(db: Session, family_id: UUID, person_id: UUID, target_id: UUID,
                        kind: str, relationship_type: str) -> ParentChildRelationship | Marriage | None:
     _shared_target(db, target_id)
@@ -168,6 +213,7 @@ def _validate_addition(db: Session, family_id: UUID, person_id: UUID, target_id:
     if shared and shared.family_id != family_id:
         raise HTTPException(status_code=409, detail="Энэ хүн өөр гэр бүлийн зөвшөөрлөөр үндсэн модонд байна.")
     edges = _graph_edges(db)
+    already_rooted = shared is not None and person_id in _shared_reachable_person_ids(db)
     if kind == "child":
         existing_edge = db.scalar(select(ParentChildRelationship).where(
             ParentChildRelationship.parent_id == target_id,
@@ -175,7 +221,7 @@ def _validate_addition(db: Session, family_id: UUID, person_id: UUID, target_id:
         ))
         if existing_edge and existing_edge.relationship_type != relationship_type:
             raise HTTPException(status_code=409, detail="Бодит эцэг/эхийн холбооны төрөл өөр байна.")
-        if existing_edge and shared:
+        if existing_edge and already_rooted:
             raise HTTPException(status_code=409, detail="Энэ эцэг/эх–хүүхдийн холбоо үндсэн модонд аль хэдийн байна.")
         if not existing_edge and (target_id, person_id) in edges:
             raise HTTPException(status_code=409, detail="Хуучин холбоог админ эхлээд шалгах шаардлагатай.")
@@ -206,7 +252,7 @@ def _validate_addition(db: Session, family_id: UUID, person_id: UUID, target_id:
         raise HTTPException(status_code=409, detail="Энэ хүний өөр хос бүртгэлтэй байна. Бодит гэрлэлтийн бүртгэлийг шалгана уу.")
     if existing and existing.status != relationship_type:
         raise HTTPException(status_code=409, detail="Бүртгэлтэй хосын төлөв сонголтоос өөр байна.")
-    if existing and shared:
+    if existing and already_rooted:
         raise HTTPException(status_code=409, detail="Энэ хосын холбоо үндсэн модонд аль хэдийн байна.")
     return existing
 
@@ -318,6 +364,7 @@ def decide_shared_request(request_id: UUID, body: SharedRequestDecision,
                     raise HTTPException(status_code=409, detail="Нийтлэх зөвшөөрөл алга.")
                 if row.target_person_id is None or row.relationship_type is None:
                     raise HTTPException(status_code=409, detail="Хүсэлтийн хүн эсвэл холбооны төрөл дутуу байна.")
+                previously_rooted = _shared_reachable_person_ids(db)
                 _root_connection_person(db, row.family_id, row.person_id, requester, member)
                 existing = _validate_addition(db, row.family_id, row.person_id, row.target_person_id,
                                                row.kind, row.relationship_type)
@@ -331,6 +378,24 @@ def decide_shared_request(request_id: UUID, body: SharedRequestDecision,
                         db.add(existing)
                     db.flush()
                     row.canonical_edge_id = existing.id
+                    # An old Family projection must not keep masking this same
+                    # Person after a new, explicit reviewed approval. Resync
+                    # only that existing anchor; never replace another Person
+                    # or the Family's canonical root.
+                    connection = db.scalar(select(RootConnection).where(
+                        RootConnection.family_id == row.family_id,
+                        RootConnection.person_id == row.person_id,
+                    ).with_for_update())
+                    if connection is not None:
+                        connection.target_person_id = row.target_person_id
+                        connection.relationship_type = row.relationship_type
+                        connection.canonical_edge_id = existing.id
+                        connection.status = "approved"
+                        connection.requested_by = row.requested_by
+                        connection.consented_at = row.consented_at
+                        connection.requested_at = row.requested_at
+                        connection.decided_by = current[0].id
+                        connection.decided_at = datetime.now(UTC)
                 else:
                     if existing is not None and not isinstance(existing, Marriage):
                         raise HTTPException(status_code=409, detail="Холбооны төрөл тохирохгүй байна.")
@@ -344,6 +409,8 @@ def decide_shared_request(request_id: UUID, body: SharedRequestDecision,
                 if db.get(SharedAncestryPerson, row.person_id) is None:
                     db.add(SharedAncestryPerson(person_id=row.person_id, family_id=row.family_id,
                                                 added_by=row.requested_by))
+                db.flush()
+                _assert_single_person_admission(db, row.person_id, previously_rooted)
         except HTTPException:
             db.rollback()
             raise

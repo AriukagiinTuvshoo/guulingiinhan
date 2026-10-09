@@ -81,6 +81,7 @@ export default function SharedAncestryPage() {
   }, [paths]);
   useEffect(() => { if (selectedId) detailRef.current?.focus({ preventScroll: true }); }, [selectedId]);
   const selectedSpouses = selected ? (tree?.spouses || []).filter((pair) => pair.person_1_id === selected.id || pair.person_2_id === selected.id).map((pair) => peopleById.get(pair.person_1_id === selected.id ? pair.person_2_id : pair.person_1_id)).filter((person): person is SharedPerson => Boolean(person)) : [];
+  const currentPersonAlreadyShared = Boolean(tree?.my_person_id && paths.has(tree.my_person_id));
   const familyHref = `/tree?view=family${familyId ? `&family=${encodeURIComponent(familyId)}` : ''}`;
   function openRequest(personId: string, kind: SharedRequestKind = 'child') {
     const person = peopleById.get(personId);
@@ -109,6 +110,6 @@ export default function SharedAncestryPage() {
     </section>}
     <nav className="shared-tree-shell__footer" aria-label="Модны нэмэлт холбоос"><span>Холболтын хүсэлтийг админ шалгаж батална.</span><Link href={familyHref}>Миний гэр бүлийн мод →</Link></nav>
     <SharedRequestStatus familyId={familyId} revision={requestRevision} />
-    {requestTarget && <SharedRelativeRequest key={`${familyId}:${requestTarget.person.id}:${requestTarget.kind}`} familyId={familyId} canCreate={currentFamily?.role === 'owner' || currentFamily?.role === 'editor'} target={{ id: requestTarget.person.id, name: label(requestTarget.person) }} initialKind={requestTarget.kind} onClose={() => setRequestTarget(null)} onSubmitted={() => { setRequestRevision((value) => value + 1); setNotice('Хүсэлт илгээгдлээ. Админ баталсны дараа үндсэн мод шинэчлэгдэнэ.'); }} />}
+    {requestTarget && <SharedRelativeRequest key={`${familyId}:${requestTarget.person.id}:${requestTarget.kind}`} familyId={familyId} canCreate={currentFamily?.role === 'owner' || currentFamily?.role === 'editor'} currentPersonAlreadyShared={currentPersonAlreadyShared} target={{ id: requestTarget.person.id, name: label(requestTarget.person) }} initialKind={requestTarget.kind} onClose={() => setRequestTarget(null)} onSubmitted={() => { setRequestRevision((value) => value + 1); setNotice('Хүсэлт илгээгдлээ. Админ баталсны дараа үндсэн мод шинэчлэгдэнэ.'); }} />}
   </main>;
 }

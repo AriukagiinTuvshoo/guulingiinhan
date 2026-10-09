@@ -454,3 +454,180 @@ def test_pure_family_relationships_remain_editable_without_shared_review(client,
     with database() as db:
         assert db.query(ParentChildRelationship).count() == 1
         assert db.get(Marriage, UUID(marriage_id)).deleted_at is not None
+
+
+@pytest.mark.parametrize("changed", ["private", "minor"])
+def test_request_person_name_respects_changed_privacy(client, database, ancestry, changed):
+    requested = _request(client, ancestry)
+    assert requested.status_code == 201
+    with database.begin() as db:
+        person = db.get(Person, ancestry["child"])
+        if changed == "private":
+            person.visibility = "private"
+        else:
+            person.birth_date = date(2018, 1, 1)
+    listed = client.get(f"/api/v1/families/{ancestry['family']}/shared-ancestry-requests")
+    assert listed.status_code == 200
+    assert listed.json()[0]["person_name"] == "Харагдах зөвшөөрөл өөрчлөгдсөн"
+
+
+def test_parent_review_does_not_admit_other_unreviewed_shared_descendants(client, database, ancestry):
+    # Own profile can consent to remain unlinked while the historical parent
+    # is still outside the shared root. Reviewing that parent must not silently
+    # review this other Person too.
+    private_edge = client.post(f"/api/v1/families/{ancestry['family']}/relationships/parent-child", json={
+        "parent_id": str(ancestry["child"]), "child_id": str(ancestry["linked"]),
+    })
+    assert private_edge.status_code == 201
+    consented = client.post("/api/v1/shared-lineage/join", json={
+        "person_id": str(ancestry["linked"]), "share_consent": True,
+    })
+    assert consented.status_code == 201
+    requested = _request(client, ancestry, person="child")
+    assert requested.status_code == 201
+    _login(client, ADMIN_EMAIL)
+    approved = _decide(client, requested.json()["id"])
+    assert approved.status_code == 409, approved.text
+    from app.shared_ancestry import _shared_reachable_person_ids
+    with database() as db:
+        assert ancestry["child"] not in _shared_reachable_person_ids(db)
+        assert ancestry["linked"] not in _shared_reachable_person_ids(db)
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is not None
+        assert db.get(SharedAncestryPerson, ancestry["child"]) is None
+        assert db.query(ParentChildRelationship).count() == 2
+        assert db.get(SharedAncestryRequest, UUID(requested.json()["id"])).status == "pending"
+    # Withdrawing display consent changes no real family relationship. Each
+    # Person can now be approved separately with the original edge reused.
+    _login(client, OWNER_EMAIL)
+    assert client.delete("/api/v1/shared-lineage/people/me").status_code == 204
+    _login(client, ADMIN_EMAIL)
+    assert _decide(client, requested.json()["id"]).status_code == 200
+    _login(client, OWNER_EMAIL)
+    own_request = _request(client, ancestry, person="linked", target="child")
+    assert own_request.status_code == 201, own_request.text
+    _login(client, ADMIN_EMAIL)
+    assert _decide(client, own_request.json()["id"]).status_code == 200
+    with database() as db:
+        assert ancestry["linked"] in _shared_reachable_person_ids(db)
+        assert db.query(ParentChildRelationship).count() == 3
+
+
+def test_reviewed_request_can_reconnect_after_legacy_family_projection_disconnect(client, database, ancestry):
+    base = f"/api/v1/families/{ancestry['family']}"
+    requested = client.post(base + "/root-connection", json={
+        "person_id": str(ancestry["linked"]), "target_person_id": str(ancestry["root"]),
+        "share_consent": True,
+    })
+    assert requested.status_code == 200, requested.text
+    _login(client, ADMIN_EMAIL)
+    assert client.post(f"/api/v1/admin/shared-lineage/connections/{ancestry['family']}/decision",
+                       json={"approve": True}).status_code == 200
+    _login(client, OWNER_EMAIL)
+    assert client.delete(base + "/root-connection").status_code == 200
+    from app.shared_ancestry import _shared_reachable_person_ids
+    with database() as db:
+        assert ancestry["linked"] not in _shared_reachable_person_ids(db)
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is not None
+    requested_again = _request(client, ancestry, person="linked", target="root")
+    assert requested_again.status_code == 201, requested_again.text
+    _login(client, ADMIN_EMAIL)
+    approved = _decide(client, requested_again.json()["id"])
+    assert approved.status_code == 200, approved.text
+    with database() as db:
+        assert ancestry["linked"] in _shared_reachable_person_ids(db)
+        assert db.query(ParentChildRelationship).count() == 2
+        assert db.get(Family, ancestry["family"]).root_person_id == ancestry["linked"]
+    _login(client, OWNER_EMAIL)
+    assert client.delete(base + "/root-connection").status_code == 200
+    with database() as db:
+        assert ancestry["linked"] not in _shared_reachable_person_ids(db)
+    detached = _request(client, ancestry, person="linked", kind="detach", target=None)
+    assert detached.status_code == 201, detached.text
+    _login(client, ADMIN_EMAIL)
+    assert _decide(client, detached.json()["id"]).status_code == 200
+    with database() as db:
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is None
+        assert db.query(ParentChildRelationship).count() == 2
+        assert db.get(Person, ancestry["linked"]) is not None
+
+
+def test_legacy_approval_revalidates_active_requester(client, database, ancestry):
+    base = f"/api/v1/families/{ancestry['family']}"
+    requested = client.post(base + "/root-connection", json={
+        "person_id": str(ancestry["linked"]), "target_person_id": str(ancestry["root"]),
+        "share_consent": True,
+    })
+    assert requested.status_code == 200
+    with database.begin() as db:
+        db.get(User, ancestry["owner"]).is_active = False
+    _login(client, ADMIN_EMAIL)
+    approved = client.post(f"/api/v1/admin/shared-lineage/connections/{ancestry['family']}/decision",
+                           json={"approve": True})
+    assert approved.status_code == 409, approved.text
+    with database() as db:
+        assert db.get(RootConnection, ancestry["family"]).status == "pending"
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is None
+        assert db.query(ParentChildRelationship).count() == 1
+
+
+def test_legacy_review_does_not_implicitly_admit_other_shared_people(client, database, ancestry):
+    base = f"/api/v1/families/{ancestry['family']}"
+    assert client.post(base + "/relationships/parent-child", json={
+        "parent_id": str(ancestry["child"]), "child_id": str(ancestry["linked"]),
+    }).status_code == 201
+    assert client.post("/api/v1/shared-lineage/join", json={
+        "person_id": str(ancestry["linked"]), "share_consent": True,
+    }).status_code == 201
+    requested = client.post(base + "/root-connection", json={
+        "person_id": str(ancestry["child"]), "target_person_id": str(ancestry["root"]),
+        "share_consent": True,
+    })
+    assert requested.status_code == 200
+    _login(client, ADMIN_EMAIL)
+    endpoint = f"/api/v1/admin/shared-lineage/connections/{ancestry['family']}/decision"
+    approved = client.post(endpoint, json={"approve": True})
+    assert approved.status_code == 409, approved.text
+    with database() as db:
+        assert db.get(RootConnection, ancestry["family"]).status == "pending"
+        assert db.get(SharedAncestryPerson, ancestry["child"]) is None
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is not None
+        assert db.query(ParentChildRelationship).count() == 2
+    _login(client, OWNER_EMAIL)
+    assert client.delete("/api/v1/shared-lineage/people/me").status_code == 204
+    _login(client, ADMIN_EMAIL)
+    assert client.post(endpoint, json={"approve": True}).status_code == 200
+
+
+def test_explicit_own_withdrawal_cancels_both_pending_consent_apis(client, database, ancestry):
+    modern = _request(client, ancestry, person="linked")
+    assert modern.status_code == 201
+    base = f"/api/v1/families/{ancestry['family']}"
+    legacy = client.post(base + "/root-connection", json={
+        "person_id": str(ancestry["linked"]), "target_person_id": str(ancestry["root"]),
+        "share_consent": True,
+    })
+    assert legacy.status_code == 200
+    assert client.delete("/api/v1/shared-lineage/people/me").status_code == 204
+    with database() as db:
+        assert db.get(SharedAncestryRequest, UUID(modern.json()["id"])).status == "cancelled"
+        assert db.get(RootConnection, ancestry["family"]).status == "disconnected"
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is None
+        assert db.query(ParentChildRelationship).count() == 1
+    _login(client, ADMIN_EMAIL)
+    assert _decide(client, modern.json()["id"]).status_code == 409
+    assert client.post(f"/api/v1/admin/shared-lineage/connections/{ancestry['family']}/decision",
+                       json={"approve": True}).status_code == 409
+
+
+def test_withdrawal_of_unlinked_display_prevents_pending_republication(client, database, ancestry):
+    assert client.post("/api/v1/shared-lineage/join", json={
+        "person_id": str(ancestry["linked"]), "share_consent": True,
+    }).status_code == 201
+    requested = _request(client, ancestry, person="linked")
+    assert requested.status_code == 201
+    assert client.delete("/api/v1/shared-lineage/people/me").status_code == 204
+    _login(client, ADMIN_EMAIL)
+    assert _decide(client, requested.json()["id"]).status_code == 409
+    with database() as db:
+        assert db.get(SharedAncestryPerson, ancestry["linked"]) is None
+        assert db.query(ParentChildRelationship).count() == 1

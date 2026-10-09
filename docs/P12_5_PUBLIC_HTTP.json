@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-07T23:27:36.383Z",
+  "checked_at": "2026-10-09T15:54:08.389Z",
   "scope": "Live staging public/anonymous HTTP only. No authenticated cookies, account creation, provider deliveries or private records.",
   "latency_note": "Single observations include network latency; these are not authenticated product medians or p95.",
   "results": [
@@ -10,7 +10,7 @@
         200
       ],
       "pass": true,
-      "ms": 717,
+      "ms": 554,
       "bytes": 45,
       "cache_control": null
     },
@@ -21,7 +21,7 @@
         200
       ],
       "pass": true,
-      "ms": 1052,
+      "ms": 880,
       "bytes": 61,
       "cache_control": null
     },
@@ -33,7 +33,7 @@
         403
       ],
       "pass": true,
-      "ms": 490,
+      "ms": 466,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -47,7 +47,7 @@
         403
       ],
       "pass": true,
-      "ms": 491,
+      "ms": 362,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -61,7 +61,7 @@
         403
       ],
       "pass": true,
-      "ms": 813,
+      "ms": 345,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -75,7 +75,7 @@
         403
       ],
       "pass": true,
-      "ms": 538,
+      "ms": 340,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -89,7 +89,7 @@
         403
       ],
       "pass": true,
-      "ms": 528,
+      "ms": 343,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -103,7 +103,7 @@
         403
       ],
       "pass": true,
-      "ms": 476,
+      "ms": 354,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -117,7 +117,7 @@
         403
       ],
       "pass": true,
-      "ms": 799,
+      "ms": 456,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -131,7 +131,7 @@
         403
       ],
       "pass": true,
-      "ms": 853,
+      "ms": 452,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -145,7 +145,7 @@
         403
       ],
       "pass": true,
-      "ms": 783,
+      "ms": 443,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -159,7 +159,7 @@
         403
       ],
       "pass": true,
-      "ms": 511,
+      "ms": 339,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -173,7 +173,7 @@
         403
       ],
       "pass": true,
-      "ms": 536,
+      "ms": 441,
       "bytes": 126,
       "cache_control": "private, no-store",
       "safe_error": true,
@@ -187,7 +187,7 @@
         204
       ],
       "pass": true,
-      "ms": 837,
+      "ms": 378,
       "bytes": 2,
       "cache_control": "private, no-store",
       "exact_origin": true,
@@ -201,7 +201,7 @@
         403
       ],
       "pass": true,
-      "ms": 843,
+      "ms": 432,
       "bytes": 22,
       "cache_control": "private, no-store",
       "no_foreign_allow": true
@@ -213,7 +213,7 @@
         403
       ],
       "pass": true,
-      "ms": 845,
+      "ms": 379,
       "bytes": 128,
       "cache_control": "private, no-store"
     },
@@ -224,7 +224,7 @@
         422
       ],
       "pass": true,
-      "ms": 775,
+      "ms": 453,
       "bytes": 153,
       "cache_control": "private, no-store",
       "input_not_echoed": true
@@ -236,7 +236,7 @@
         422
       ],
       "pass": true,
-      "ms": 835,
+      "ms": 430,
       "bytes": 153,
       "cache_control": "private, no-store"
     }

@@ -504,11 +504,17 @@ def change_my_shared_placement(
 
 @router.delete("/people/me", status_code=204)
 def leave_shared_tree(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Imported at call time: the queue reuses this module's eligibility helpers.
+    from app.shared_ancestry_requests import _cancel_own_pending_consent
+
+    lock_ancestry_writes(db)
     person = _my_linked_person(db, user)
     if person is None:
         raise HTTPException(status_code=404, detail="Аккаунттай холбосон хүн олдсонгүй.")
     association = db.get(SharedAncestryPerson, person.id)
     if association is None:
+        if _cancel_own_pending_consent(db, person.id, user):
+            db.commit()
         return Response(status_code=204)
     if association.added_by != user.id:
         raise HTTPException(status_code=403, detail="Энэ хүнийг нийтлэг модонд өөр хүн нэмсэн байна.")
@@ -519,6 +525,7 @@ def leave_shared_tree(user: User = Depends(get_current_user), db: Session = Depe
     ).limit(1))
     if referenced:
         raise HTTPException(status_code=409, detail="Таны хүн нийтлэг модонд хүүхэдтэй байна. Хүүхэд бүр өөрийн холболтоо цуцалсны дараа салгаж болно.")
+    _cancel_own_pending_consent(db, person.id, user)
     db.execute(delete(SharedAncestryRelationship).where(
         or_(SharedAncestryRelationship.parent_id == person.id, SharedAncestryRelationship.child_id == person.id)
     ))
@@ -1221,15 +1228,22 @@ def decide_root_connection(family_id: UUID, body: RootConnectionDecision,
     if row is None or row.status != "pending":
         raise HTTPException(status_code=409, detail="Шалгах идэвхтэй хүсэлт алга.")
     if body.approve:
-        requester = db.get(User, row.requested_by)
-        if requester is None:
-            raise HTTPException(status_code=409, detail="Хүсэлт гаргасан аккаунт олдсонгүй.")
+        from app.shared_ancestry_requests import (
+            _assert_single_person_admission,
+            _lock_review_context,
+        )
+
+        _lock_review_context(db, family_id, row.person_id, row.target_person_id, row.requested_by)
+        requester = db.get(User, row.requested_by, populate_existing=True)
+        if requester is None or not requester.is_active:
+            raise HTTPException(status_code=409, detail="Хүсэлт гаргасан аккаунт идэвхгүй байна.")
         requester_member = _family_member(db, family_id, requester)
         try:
             _root_connection_person(db, family_id, row.person_id, requester, requester_member)
         except HTTPException as error:
             raise HTTPException(status_code=409, detail="Хүсэлт гаргасан хүнийг холбох эрх эсвэл зөвшөөрөл өөрчлөгдсөн.") from error
         _shared_target(db, row.target_person_id)
+        previously_rooted = _shared_reachable_person_ids(db)
         db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
         edges = db.execute(select(
             ParentChildRelationship.parent_id, ParentChildRelationship.child_id,
@@ -1268,6 +1282,12 @@ def decide_root_connection(family_id: UUID, body: RootConnectionDecision,
                                         added_by=row.requested_by))
         row.canonical_edge_id = existing.id
         row.status = "approved"
+        db.flush()
+        try:
+            _assert_single_person_admission(db, row.person_id, previously_rooted)
+        except HTTPException:
+            db.rollback()
+            raise
     else:
         row.status = "rejected"
     row.decided_by = current[0].id

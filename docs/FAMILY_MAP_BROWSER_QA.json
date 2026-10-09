@@ -14,7 +14,7 @@
   "measurements": [
     {
       "width": 320,
-      "readyMs": 2576,
+      "readyMs": 1716,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -26,7 +26,7 @@
     },
     {
       "width": 360,
-      "readyMs": 992,
+      "readyMs": 821,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -38,7 +38,7 @@
     },
     {
       "width": 375,
-      "readyMs": 903,
+      "readyMs": 664,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -50,7 +50,7 @@
     },
     {
       "width": 390,
-      "readyMs": 1527,
+      "readyMs": 674,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -62,7 +62,7 @@
     },
     {
       "width": 414,
-      "readyMs": 996,
+      "readyMs": 1001,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -74,7 +74,7 @@
     },
     {
       "width": 430,
-      "readyMs": 1057,
+      "readyMs": 873,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -86,7 +86,7 @@
     },
     {
       "width": 768,
-      "readyMs": 883,
+      "readyMs": 933,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -98,7 +98,7 @@
     },
     {
       "width": 1024,
-      "readyMs": 1245,
+      "readyMs": 1343,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -110,7 +110,7 @@
     },
     {
       "width": 1440,
-      "readyMs": 864,
+      "readyMs": 764,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,

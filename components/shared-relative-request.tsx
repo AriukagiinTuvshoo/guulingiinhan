@@ -46,8 +46,8 @@ export function SharedRequestStatus({ familyId, revision }: { familyId: string; 
   </section>;
 }
 
-export default function SharedRelativeRequest({ familyId, canCreate, target, initialKind = 'child', onClose, onSubmitted }: {
-  familyId: string; canCreate: boolean; target: { id: string; name: string }; initialKind?: SharedRequestKind;
+export default function SharedRelativeRequest({ familyId, canCreate, currentPersonAlreadyShared = false, target, initialKind = 'child', onClose, onSubmitted }: {
+  familyId: string; canCreate: boolean; currentPersonAlreadyShared?: boolean; target: { id: string; name: string }; initialKind?: SharedRequestKind;
   onClose: () => void; onSubmitted: () => void;
 }) {
   const [kind, setKind] = useState<SharedRequestKind>(initialKind);
@@ -113,6 +113,7 @@ export default function SharedRelativeRequest({ familyId, canCreate, target, ini
         {kind !== 'detach' && <>
           <fieldset className={styles.options}><legend>Ямар холбоо нэмэх вэ?</legend>{(['child', 'spouse'] as const).map((value) => <label key={value}><input type="radio" name="kind" checked={kind === value} disabled={saving} onChange={() => { setKind(value); setConsent(false); }} />{value === 'child' ? 'Хүүхэд' : 'Хань'}</label>)}</fieldset>
           <div className={styles.tabs} role="group" aria-label="Хүнийг сонгох арга"><button type="button" aria-pressed={mode === 'existing'} disabled={saving} onClick={() => setMode('existing')}>Бүртгэлтэй хүн сонгох</button>{canCreate && <button type="button" aria-pressed={mode === 'new'} disabled={saving} onClick={() => { setMode('new'); setConsent(false); }}>Нас барсан хүн бүртгэх</button>}</div>
+          {currentPersonAlreadyShared && <p className={styles.note}>Таны профайл үндсэн модонд аль хэдийн холбогдсон тул энд дахин сонголт болж харагдахгүй. Холбох хүнээ өөрийн гэр бүлийн бүртгэлээс сонгоно уу.</p>}
           {mode === 'existing' ? <label>Миний гэр бүлийн хүн<select value={personId} disabled={loading || saving} required onChange={(event) => { setPersonId(event.target.value); setConsent(false); }}><option value="">{loading ? 'Ачаалж байна…' : 'Хүн сонгох'}</option>{candidates.map((person) => <option key={person.person_id} value={person.person_id}>{name(person)}{person.is_current_user ? ' · Миний профайл' : ' · Нас барсан'}</option>)}</select></label> : <div className={styles.fields}>
             <label>Нэр<input name="first_name" required maxLength={120} disabled={saving} autoComplete="off" /></label><label>Овог<input name="last_name" maxLength={120} disabled={saving} autoComplete="off" /></label>
             <label>Хүйс<select name="gender" defaultValue="unknown" disabled={saving}><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>

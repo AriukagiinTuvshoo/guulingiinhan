@@ -210,7 +210,8 @@ try {
 
   const readsBeforePendingRefresh = sharedTreeReads;
   await page.getByRole('button', { name: 'Мод шинэчлэх' }).click();
-  await page.waitForFunction(() => document.querySelector('.shared-ancestry__count strong')?.textContent === '10');
+  await page.waitForFunction(() => document.querySelector('.shared-ancestry__count strong')?.textContent === '10'
+    && document.querySelectorAll('.family-map-node').length === 10);
   assert.equal(await page.locator('.family-map-node').count(), beforeRequests, 'pending relative requests do not change shared tree nodes before admin approval');
   assert.equal(await page.locator('.family-map-node').filter({ hasText: 'Туршилтын хүүхэд' }).count(), 0, 'pending child remains outside the shared tree');
   assert.equal(await page.locator('.family-map-node').filter({ hasText: 'Туршилтын хань' }).count(), 0, 'pending spouse remains outside the shared tree');

@@ -34,3 +34,4 @@ backend/.wrangler-staging-build/
 .p12_*.sql
 .p12_*.log
 backend/.mypy_cache_p12_*/
+.integrated-qa/
