@@ -1028,6 +1028,16 @@
 @media(max-width:900px){.settings-layout{grid-template-columns:1fr;gap:8px}.settings-index{position:static;display:flex;gap:4px;overflow-x:auto;padding:0 0 4px;border-bottom:1px solid #d8cdbb}.settings-index a{flex:0 0 auto;border-left:0;border-bottom:2px solid transparent}.settings-index a:hover,.settings-index a:focus-visible{border-left:0;border-bottom-color:#a18750}.settings-security-summary{grid-template-columns:1fr}}
 @media(max-width:640px){.settings-page{padding:15px 10px 50px}.settings-header{grid-template-columns:1fr;gap:14px;padding-top:12px}.settings-mark{width:65px;height:65px}.settings-layout{margin-top:20px}.settings-section{padding:24px 0 28px}.settings-section__head{grid-template-columns:32px minmax(0,1fr);gap:9px}.settings-section__icon{width:32px;height:32px}.settings-section h2{font-size:24px}.settings-account-card{grid-template-columns:1fr;padding:16px}.settings-profile-mark{width:56px;height:56px;font-size:23px}.settings-facts{grid-template-columns:1fr}.settings-action-card,.settings-logout-card{display:grid;grid-template-columns:1fr}.settings-action-card>.settings-button,.settings-action-card>form,.settings-logout-card>.settings-button{width:100%}.settings-button{min-height:40px}}
 @media(max-width:375px){.settings-page{padding-left:7px;padding-right:7px}.settings-header h1{font-size:40px}.settings-intro{font-size:11px}.settings-section h2{font-size:22px}.settings-card{border-radius:8px}}
+.settings-content{counter-reset:settings-section}
+.settings-section__head{position:relative}
+.settings-section__head::after{counter-increment:settings-section;content:"0" counter(settings-section);position:absolute;right:2px;top:0;color:#c9b995;font:400 30px/1 Georgia,"Times New Roman",serif}
+.settings-section:target{outline:2px solid #b59a4f;outline-offset:10px;border-radius:6px}
+.settings-section:target .settings-section__icon{background:#2d5043;border-color:#2d5043;color:#f2e8d2}
+.settings-index a{border-radius:0 6px 6px 0}
+@media(max-width:640px){.settings-section__head::after{font-size:22px}}
+.activities-page select{width:100%;min-width:0;min-height:46px;padding:12px 14px;border:1px solid #cfc5ae;border-radius:10px;background:#fffdf7;color:#173b2d;font:inherit}
+.activities-page select:focus-visible{outline:2px solid #b59a4f;outline-offset:2px}
+.activities-hint{margin:0;padding:10px 12px;border-left:2px solid #ad9253;background:#efe8d9;color:#6f786f;font-size:12px;line-height:1.6}
 @media(max-width:320px){.settings-page{padding-left:5px;padding-right:5px}.settings-action-title strong{font-size:10px}.settings-action-title span{font-size:8px}.settings-button{padding-left:9px;padding-right:9px}}
 
 .settings-family-single{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:20px}

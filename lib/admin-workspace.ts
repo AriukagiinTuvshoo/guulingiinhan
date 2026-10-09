@@ -4,6 +4,12 @@ export type WorkspacePerson = {
   last_name: string;
   birth_date: string | null;
   is_alive: boolean;
+  gender?: string;
+  birth_place?: string | null;
+  death_date?: string | null;
+  short_description?: string | null;
+  visibility?: string;
+  updated_at?: string;
 };
 
 export type FamilyWorkspacePeople = { people: WorkspacePerson[] };
