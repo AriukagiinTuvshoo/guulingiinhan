@@ -510,6 +510,9 @@ class FamilyMember(Base):
 
 class FamilyFund(Base):
     __tablename__ = "family_funds"
+    __table_args__ = (
+        CheckConstraint("visibility IN ('family', 'public')", name="ck_family_fund_visibility"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"), index=True)
@@ -517,6 +520,7 @@ class FamilyFund(Base):
     purpose: Mapped[str] = mapped_column(Text)
     currency: Mapped[str] = mapped_column(String(3))
     payment_instruction: Mapped[str] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(8), default="family", nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)

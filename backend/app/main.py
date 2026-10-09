@@ -21,6 +21,7 @@ from app.config import get_settings
 from app.db import engine
 from app.families import invitations_router, lineages_router
 from app.families import router as families_router
+from app.family_activities import public_funds_router
 from app.family_activities import router as family_activities_router
 from app.heritage_discovery import router as heritage_discovery_router
 from app.heritage_links import router as heritage_links_router
@@ -189,6 +190,7 @@ app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(memory_interactions_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
+app.include_router(public_funds_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(heritage_discovery_router, prefix="/api/v1")
 app.include_router(heritage_links_router, prefix="/api/v1")

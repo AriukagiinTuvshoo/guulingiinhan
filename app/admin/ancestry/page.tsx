@@ -53,6 +53,11 @@ export default function SharedAncestryAdminPage() {
   const [firstBranchName, setFirstBranchName] = useState('');
   const [createdPerson, setCreatedPerson] = useState<WorkspacePerson | null>(null);
   const [inspectedPersonId, setInspectedPersonId] = useState('');
+  const [editorPersonId, setEditorPersonId] = useState('');
+  const [editorFamilyId, setEditorFamilyId] = useState('');
+  const [editorDraft, setEditorDraft] = useState<{ first_name: string; last_name: string; gender: string; birth_date: string; birth_place: string; is_alive: boolean; death_date: string; short_description: string; visibility: string } | null>(null);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const [editorError, setEditorError] = useState('');
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [loadReady, setLoadReady] = useState(false);
   const load = useCallback(async () => {
@@ -246,6 +251,58 @@ export default function SharedAncestryAdminPage() {
     finally { setSaving(false); }
   }
   const sharedName = (id: string) => { const person = tree?.persons.find((item) => item.id === id); return person ? `${person.last_name} ${person.first_name}`.trim() : 'Хүн олдсонгүй'; };
+  const editorFamilyFor = (personId: string) => candidates.find((person) => person.id === personId)?.family_id || '';
+  async function openEditor(personId: string) {
+    const familyId = editorFamilyFor(personId);
+    if (!familyId || editorBusy) return;
+    setEditorBusy(true); setEditorError(''); setEditorPersonId(personId); setEditorFamilyId(familyId); setEditorDraft(null);
+    window.setTimeout(() => document.getElementById('person-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    try {
+      const workspace = await api<FamilyWorkspacePeople>(`/admin/families/${encodeURIComponent(familyId)}/workspace`);
+      const person = readWorkspacePeople(workspace).find((item) => item.id === personId);
+      if (!person) { setEditorError('Хүний бүртгэл олдсонгүй.'); return; }
+      setEditorDraft({
+        first_name: person.first_name, last_name: person.last_name, gender: person.gender || 'unknown',
+        birth_date: person.birth_date || '', birth_place: person.birth_place || '', is_alive: person.is_alive,
+        death_date: person.is_alive ? '' : person.death_date || '',
+        short_description: person.short_description || '', visibility: person.visibility || 'family',
+      });
+    } catch (cause) { setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хүний бүртгэлийг нээж чадсангүй.'); }
+    finally { setEditorBusy(false); }
+  }
+  async function saveEditor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editorDraft || !editorPersonId || !editorFamilyId || editorBusy) return;
+    if (!editorDraft.first_name.trim()) { setEditorError('Нэр шаардлагатай.'); return; }
+    if (editorDraft.death_date && editorDraft.birth_date && editorDraft.death_date < editorDraft.birth_date) {
+      setEditorError('Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй.'); return;
+    }
+    setEditorBusy(true); setEditorError('');
+    try {
+      await api(`/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          first_name: editorDraft.first_name.trim(), last_name: editorDraft.last_name.trim(), gender: editorDraft.gender,
+          birth_date: editorDraft.birth_date || null, birth_place: editorDraft.birth_place.trim() || null,
+          is_alive: editorDraft.is_alive, death_date: editorDraft.is_alive ? null : editorDraft.death_date || null,
+          short_description: editorDraft.short_description.trim() || null, visibility: editorDraft.visibility,
+        }),
+      });
+      const [options, updated] = await Promise.all([
+        api<Candidate[]>('/admin/shared-lineage/candidates'), api<Tree>('/shared-lineage'),
+      ]);
+      setCandidates(options); setTree(updated);
+      if (editorFamilyId === ancestorFamilyId) {
+        try {
+          const workspace = await api<FamilyWorkspacePeople>(`/admin/families/${encodeURIComponent(editorFamilyId)}/workspace`);
+          setFamilyPeople(readWorkspacePeople(workspace));
+        } catch { /* List refresh is best-effort; the save already succeeded. */ }
+      }
+      setEditorDraft(null); setEditorPersonId(''); setEditorFamilyId('');
+      setNotice('Хүний мэдээллийг шинэчиллээ. Холбоо, аккаунт, түүх өөрчлөгдөөгүй; засвар админы түүхэнд бүртгэгдсэн.');
+    } catch (cause) { setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хүний мэдээллийг хадгалж чадсангүй.'); }
+    finally { setEditorBusy(false); }
+  }
   const chosenPerson = candidates.find((person) => person.id === connectPersonId);
   const eligibleSecondParents = (tree?.spouses || []).filter((pair) => pair.person_1_id === connectRelatedId || pair.person_2_id === connectRelatedId).map((pair) => pair.person_1_id === connectRelatedId ? pair.person_2_id : pair.person_1_id);
   const ancestryPaths = sharedAncestryPaths(tree);
@@ -336,7 +393,31 @@ export default function SharedAncestryAdminPage() {
           {connectionStatus === 'approved' && <button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void disconnectConnection(row.family_id)}>Зөвхөн үндэс модноос салгах</button>}
         </div>)}</div> : <p className={styles.state}>Энэ төлөвийн хүсэлт алга.</p>}
       </div>
-      <div className={styles.panel}><h3>Баталгаажсан модны хүмүүс</h3><p className={styles.muted}>Хүнээ нээгээд эцэг/эх, хань, хүүхдүүдийг шалгаж, дараагийн хүнийг тухайн салаанд нэмнэ.</p><div className={styles.branchSlots}>{tree?.persons.filter((person) => reachableIds.has(person.id)).map((person) => <div key={person.id}><button type="button" aria-expanded={inspectedPersonId === person.id} onClick={() => setInspectedPersonId(inspectedPersonId === person.id ? '' : person.id)}>{sharedName(person.id)}</button>{inspectedPersonId === person.id && <><small>Эцэг/эх: {tree.relationships.filter((edge) => edge.child_id === person.id).map((edge) => sharedName(edge.parent_id)).join(' · ') || 'Бүртгэлгүй'}</small><small>Хань: {tree.spouses.filter((pair) => pair.person_1_id === person.id || pair.person_2_id === person.id).map((pair) => sharedName(pair.person_1_id === person.id ? pair.person_2_id : pair.person_1_id)).join(' · ') || 'Бүртгэлгүй'}</small><small>Хүүхэд: {[...new Set(tree.relationships.filter((edge) => edge.parent_id === person.id).map((edge) => edge.child_id))].map(sharedName).join(' · ') || 'Бүртгэлгүй'}</small><button type="button" disabled={saving} onClick={() => startConnection(person.id, 'child')}>+ Хүүхэд нэмэх</button><button type="button" disabled={saving} onClick={() => startConnection(person.id, 'spouse')}>+ Хань нэмэх</button>{person.id !== tree.root_person_id && person.id !== tree.root_partner_person_id && <button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void detachPerson(person.id)}>Үндсэн модноос салгах</button>}</>}</div>)}</div><Link href="/ancestry">Бүх модыг харах →</Link></div>
+      <div className={styles.panel}><h3>Баталгаажсан модны хүмүүс</h3><p className={styles.muted}>Хүнээ нээгээд эцэг/эх, хань, хүүхдүүдийг шалгаж, дараагийн хүнийг тухайн салаанд нэмнэ.</p><div className={styles.branchSlots}>{tree?.persons.filter((person) => reachableIds.has(person.id)).map((person) => <div key={person.id}><button type="button" aria-expanded={inspectedPersonId === person.id} onClick={() => setInspectedPersonId(inspectedPersonId === person.id ? '' : person.id)}>{sharedName(person.id)}</button>{inspectedPersonId === person.id && <><small>Эцэг/эх: {tree.relationships.filter((edge) => edge.child_id === person.id).map((edge) => sharedName(edge.parent_id)).join(' · ') || 'Бүртгэлгүй'}</small><small>Хань: {tree.spouses.filter((pair) => pair.person_1_id === person.id || pair.person_2_id === person.id).map((pair) => sharedName(pair.person_1_id === person.id ? pair.person_2_id : pair.person_1_id)).join(' · ') || 'Бүртгэлгүй'}</small><small>Хүүхэд: {[...new Set(tree.relationships.filter((edge) => edge.parent_id === person.id).map((edge) => edge.child_id))].map(sharedName).join(' · ') || 'Бүртгэлгүй'}</small><button type="button" disabled={saving} onClick={() => startConnection(person.id, 'child')}>+ Хүүхэд нэмэх</button><button type="button" disabled={saving} onClick={() => startConnection(person.id, 'spouse')}>+ Хань нэмэх</button><button type="button" className={styles.secondaryButton} disabled={saving || editorBusy || !editorFamilyFor(person.id)} title={editorFamilyFor(person.id) ? 'Хүний бүртгэлийг засах' : 'Гэр бүл тодорхойгүй тул засах боломжгүй'} onClick={() => void openEditor(person.id)}>Мэдээлэл засах</button>{person.id !== tree.root_person_id && person.id !== tree.root_partner_person_id && <button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void detachPerson(person.id)}>Үндсэн модноос салгах</button>}</>}</div>)}</div><Link href="/ancestry">Бүх модыг харах →</Link></div>
+      {editorPersonId && <form id="person-editor" className={styles.panel} aria-busy={editorBusy} onSubmit={(event) => void saveEditor(event)}>
+        <span className={styles.eyebrow}>ХҮНИЙ МЭДЭЭЛЭЛ ЗАСАХ</span>
+        <h3>{sharedName(editorPersonId)}</h3>
+        <p className={styles.muted}>Зөвхөн мэдээллийн талбарууд өөрчлөгдөнө. Эцэг/эх, хань, хүүхдийн холбоо, аккаунтын холбоос, түүх болон архивт хүрэхгүй; огнооны зөрчил сервер талд шалгагдаж, засвар админы түүхэнд бүртгэгдэнэ. Устгах үйлдэл энд байхгүй.</p>
+        {editorError && <div role="alert" className={styles.error}>{editorError}</div>}
+        {!editorDraft ? <p role="status" className={styles.muted}>Хүний бүртгэлийг ачаалж байна…</p> : <>
+          <div className={styles.formGrid}>
+            <label>Нэр *<input required maxLength={120} value={editorDraft.first_name} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, first_name: event.target.value })} /></label>
+            <label>Овог, эцгийн нэр<input maxLength={120} value={editorDraft.last_name} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, last_name: event.target.value })} /></label>
+            <label>Хүйс<select value={editorDraft.gender} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, gender: event.target.value })}><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>
+            <label>Амьдралын төлөв<select value={editorDraft.is_alive ? 'alive' : 'deceased'} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, is_alive: event.target.value === 'alive', death_date: '' })}><option value="deceased">Нас барсан</option><option value="alive">Амьд</option></select></label>
+            <label>Төрсөн огноо<input type="date" value={editorDraft.birth_date} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, birth_date: event.target.value })} /></label>
+            <label>Төрсөн газар<input maxLength={240} value={editorDraft.birth_place} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, birth_place: event.target.value })} /></label>
+            {!editorDraft.is_alive && <label>Нас барсан огноо<input type="date" min={editorDraft.birth_date || undefined} value={editorDraft.death_date} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, death_date: event.target.value })} /></label>}
+            <label>Харагдах хүрээ<select value={editorDraft.visibility} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, visibility: event.target.value })}><option value="family">Гэр бүл</option><option value="public">Нийтэд</option><option value="private">Хувийн</option></select></label>
+            <label className={styles.wide}>Товч намтар<textarea rows={3} maxLength={1000} value={editorDraft.short_description} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, short_description: event.target.value })} /></label>
+          </div>
+          <p className={styles.muted}>Хувийн болговол тухайн хүн нийтлэг модонд харагдахаа болино.</p>
+          <div className={styles.panelActions}>
+            <button type="submit" disabled={editorBusy}>{editorBusy ? 'Хадгалж байна…' : 'Өөрчлөлт хадгалах'}</button>
+            <button type="button" className={styles.secondaryButton} disabled={editorBusy} onClick={() => { setEditorDraft(null); setEditorPersonId(''); setEditorFamilyId(''); setEditorError(''); }}>Болих</button>
+          </div>
+        </>}
+      </form>}
       <details className={styles.advanced}><summary>Бүртгэлтэй холбоог засах, салгах</summary><div className={styles.panel}><h3>Бодит холбооны засвар</h3><p className={styles.muted}>Өмнө бүртгэгдсэн хүний холбоог засах хэсэг. Бодит холбоог устгах нь гэр бүлийн модонд нөлөөлнө; Үндсэн модноос салгах үйлдэл нь зөвхөн нийтлэг холболтыг салгана.</p><div className={styles.formGrid}>
         <label>Эцэг / эх<select value={parentId} onChange={(event) => setParentId(event.target.value)}><option value="">Хүн сонгох</option>{tree?.persons.map((person) => <option key={person.id} value={person.id}>{sharedName(person.id)}{person.id === tree.root_person_id ? ' · Үндсэн эх' : ''}</option>)}</select></label>
         <label>Хүүхэд<select value={childId} onChange={(event) => setChildId(event.target.value)}><option value="">Хүн сонгох</option>{tree?.persons.filter((person) => person.id !== tree.root_person_id).map((person) => <option key={person.id} value={person.id}>{sharedName(person.id)}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label>
