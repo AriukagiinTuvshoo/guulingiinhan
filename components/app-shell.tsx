@@ -31,6 +31,7 @@ import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
 import { FamilyContext } from './family-context';
 import { useDialogFocus } from './use-dialog-focus';
 import SharedDonationBanner from './shared-donation-banner';
+import { InstallAppButton } from './install-app';
 
 type NavItem = {
   key: 'dashboard' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
@@ -156,7 +157,7 @@ function playNotificationChime(context: AudioContext) {
   });
 }
 
-function NotificationBell({ userId }: { userId: string }) {
+function NotificationBell({ userId, closeSignal, onOpen }: { userId: string; closeSignal: boolean; onOpen(): void }) {
   const [notices, setNotices] = useState<PublishedNotice[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState(false);
@@ -236,6 +237,7 @@ function NotificationBell({ userId }: { userId: string }) {
     };
   }, [open]);
 
+  useEffect(() => { if (closeSignal) setOpen(false); }, [closeSignal]);
   const unreadCount = notices.filter((notice) => !readIds.has(notice.id)).length;
 
   function markVisibleRead() {
@@ -267,7 +269,7 @@ function NotificationBell({ userId }: { userId: string }) {
       onClick={() => {
         const next = !open;
         setOpen(next);
-        if (next) markVisibleRead();
+        if (next) { onOpen(); markVisibleRead(); }
         if (soundEnabledRef.current) {
           try {
             const context = audioContext.current ?? new AudioContext();
@@ -281,7 +283,7 @@ function NotificationBell({ userId }: { userId: string }) {
       {unreadCount > 0 && <span className="app-shell__notification-count" aria-hidden="true">{unreadCount > 9 ? '9+' : unreadCount}</span>}
     </button>
     {open && <section id="app-shell-notification-panel" className="app-shell__notification-panel" role="dialog" aria-label="Мэдэгдлийн төв">
-      <header><div><strong>Мэдэгдэл</strong><small>{unreadCount ? `${unreadCount} уншаагүй` : 'Шинэ мэдээ алга'}</small></div><button type="button" aria-label={`Хонхны дууг ${soundEnabled ? 'унтраах' : 'асаах'}`} onClick={toggleSound}>{soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}</button></header>
+      <header><div><strong>Мэдэгдэл</strong><small>{unreadCount ? `${unreadCount} уншаагүй` : notices.length ? 'Бүх мэдээг уншсан' : 'Шинэ мэдээ алга'}</small></div><button type="button" aria-label={`Хонхны дууг ${soundEnabled ? 'унтраах' : 'асаах'}`} onClick={toggleSound}>{soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}</button><button type="button" aria-label="Мэдэгдлийг хаах" onClick={() => setOpen(false)}><X size={18} /></button></header>
       {loadError && <p className="app-shell__notification-state" role="status">Мэдээг түр ачаалж чадсангүй. <button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></p>}
       {!loadError && notices.length === 0 && <p className="app-shell__notification-state">Одоогоор шинэ мэдээ алга.</p>}
       <ul>{notices.map((notice) => <li key={notice.id}>
@@ -557,13 +559,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="app-shell__account" ref={accountRef}>
-          {user && <NotificationBell userId={user.id} />}
+          {user && <NotificationBell userId={user.id} closeSignal={accountOpen || mobileOpen} onOpen={() => { setAccountOpen(false); setMobileOpen(false); }} />}
           <button
             type="button"
             className="app-shell__account-button"
             aria-haspopup="menu"
+            aria-label="Миний бүртгэлийн цэс"
             aria-expanded={accountOpen}
-            onClick={() => setAccountOpen((value) => !value)}
+            onClick={() => { setMobileOpen(false); setAccountOpen((value) => !value); }}
           >
             <ProfilePhoto url={user?.profile_photo_url} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
             <span className="app-shell__account-name">{user?.display_name || 'Хэрэглэгч'}</span>
@@ -610,6 +613,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <LogOut size={14} aria-hidden="true" />
                 {logoutBusy ? 'Гарч байна…' : 'Гарах'}
               </button>
+              <InstallAppButton menuItem />
             </div>
           )}
         </div>

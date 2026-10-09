@@ -1,0 +1,80 @@
+{
+  "checked_at": "2026-10-09T17:55:21.899Z",
+  "scope": "Synthetic disposable localhost browser → real API → SQLite. No live staging or production mutations. Native OS install prompt not claimed; Chromium installability manifest/worker and offline privacy verified. One deliberate request-abort fault injection validates unknown loading/error counts.",
+  "mock_api": false,
+  "fault_injection": "One aborted local admin request only; all normal scenarios use real API.",
+  "scenarios": [
+    {
+      "name": "mobile shell controls, popovers and navigation 320px",
+      "pass": true,
+      "ms": 2289
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 375px",
+      "pass": true,
+      "ms": 1482
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 390px",
+      "pass": true,
+      "ms": 1400
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 768px",
+      "pass": true,
+      "ms": 1447
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 1024px",
+      "pass": true,
+      "ms": 1409
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 1440px",
+      "pass": true,
+      "ms": 1570
+    },
+    {
+      "name": "tree family/shared mobile headers preserve profile and notification controls",
+      "pass": true,
+      "ms": 5634
+    },
+    {
+      "name": "admin overview and full navigation 320px",
+      "pass": true,
+      "ms": 2306
+    },
+    {
+      "name": "admin overview and full navigation 390px",
+      "pass": true,
+      "ms": 1868
+    },
+    {
+      "name": "admin overview and full navigation 768px",
+      "pass": true,
+      "ms": 1734
+    },
+    {
+      "name": "admin overview and full navigation 1440px",
+      "pass": true,
+      "ms": 2065
+    },
+    {
+      "name": "admin request count remains unknown while loading or unavailable",
+      "pass": true,
+      "ms": 861
+    },
+    {
+      "name": "PWA manifest actual PNG sizes and network-only worker privacy",
+      "pass": true,
+      "ms": 4713
+    },
+    {
+      "name": "no browser JavaScript exceptions or unexpected real API failures",
+      "pass": true,
+      "ms": 0
+    }
+  ],
+  "passed": 14,
+  "total": 14
+}

@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import AdminOverview from '../../components/admin-overview';
+import { InstallAppButton } from '../../components/install-app';
 import AccountPhoto from '../../components/account-photo';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,6 +29,19 @@ const labels: Record<Role, string> = {
 };
 const pageSize = 25;
 
+function AdminIcon({ kind }: { kind: 'overview' | 'users' | 'families' | 'root' | 'announcements' | 'audit' | 'admins' }) {
+  const paths = {
+    overview: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+    users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+    families: 'M12 8v5M5 13h14M5 13v3M19 13v3M8 3h8v5H8zM2 16h6v5H2zM16 16h6v5h-6z',
+    root: 'M12 3 5 12h4l-5 6h16l-5-6h4L12 3M12 18v4',
+    announcements: 'M3 10v4h4l12 5V5L7 10H3M7 14l2 7h3l-2-6M22 9v6',
+    audit: 'M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2',
+    admins: 'M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4M8 12l3 3 5-6',
+  };
+  return <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[kind]} /></svg>;
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [identity, setIdentity] = useState<Identity | null>(null);
@@ -42,6 +57,7 @@ export default function AdminPage() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [listSearch, setListSearch] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [selectedUser, setSelectedUser] = useState<UserRow | null>(null);
@@ -99,7 +115,7 @@ export default function AdminPage() {
   });
 
   function show(sectionName: Section) {
-    setSection(sectionName); setOffset(0); setError(''); setNotice(''); setConfirmation(null);
+    setSection(sectionName); setListSearch(''); setOffset(0); setError(''); setNotice(''); setConfirmation(null);
   }
 
   async function accountAction(action: 'recovery' | 'revoke-phone') {
@@ -223,7 +239,11 @@ export default function AdminPage() {
     } finally { setWorking(false); setConfirmation(null); }
   }
 
-  const title = section === 'overview' ? 'Ерөнхий мэдээлэл'
+  const searchTerm = listSearch.trim().toLocaleLowerCase('mn-MN');
+  const visibleUsers = users.filter(user => `${user.display_name} ${user.email || ''}`.toLocaleLowerCase('mn-MN').includes(searchTerm));
+  const visibleFamilies = families.filter(family => family.name.toLocaleLowerCase('mn-MN').includes(searchTerm));
+
+  const title = section === 'overview' ? 'Удирдлагын төв'
     : section === 'users' ? 'Хэрэглэгчид'
       : section === 'families' ? 'Гэр бүлүүд'
         : section === 'user_detail' ? 'Хэрэглэгчийн мэдээлэл'
@@ -235,17 +255,22 @@ export default function AdminPage() {
     <div className={styles.shell}>
       <header className={styles.header}>
         <div><Link className={styles.brand} href="/dashboard">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>УДИРДЛАГЫН ОРЧИН</span></div>
-        <div className={styles.headerActions}><Link className={styles.back} href="/dashboard">Апп руу буцах →</Link><button type="button" disabled={working} onClick={logout}>Гарах</button></div>
+        <div className={styles.headerActions}><InstallAppButton /><Link className={styles.back} href="/dashboard">Апп руу буцах →</Link><button type="button" disabled={working} onClick={logout}>Гарах</button></div>
       </header>
       <div className={styles.layout}>
         <nav className={styles.nav} aria-label="Админ цэс">
-          <button aria-current={section === 'overview' ? 'page' : undefined} onClick={() => show('overview')}><span aria-hidden="true">⌂</span> Ерөнхий</button>
-          <button aria-current={section === 'users' || section === 'user_detail' ? 'page' : undefined} onClick={() => show('users')}><span aria-hidden="true">♙</span> Хэрэглэгчид</button>
-          <button aria-current={section === 'families' || section === 'family_studio' ? 'page' : undefined} onClick={() => show('families')}><span aria-hidden="true">♧</span> Гэр бүл, удам</button>
-          {identity?.role === 'SUPER_ADMIN' && <button onClick={() => router.push('/admin/ancestry')}><span aria-hidden="true">♥</span> Эх мод · хандив</button>}
-          <button aria-current={section === 'announcements' ? 'page' : undefined} onClick={() => show('announcements')}><span aria-hidden="true">✦</span> Мэдэгдэл</button>
-          {identity?.role === 'SUPER_ADMIN' && <button aria-current={section === 'audit' ? 'page' : undefined} onClick={() => show('audit')}><span aria-hidden="true">◷</span> Өөрчлөлтийн түүх</button>}
-          {identity?.role === 'SUPER_ADMIN' && <button aria-current={section === 'admins' ? 'page' : undefined} onClick={() => show('admins')}><span aria-hidden="true">⚙</span> Админ эрхүүд</button>}
+          <div className={styles.navGroup}><span className={styles.navGroupLabel}>УДИРДЛАГА</span>
+            <button aria-current={section === 'overview' ? 'page' : undefined} onClick={() => show('overview')}><AdminIcon kind="overview" /><span className={styles.navText}><strong>Ерөнхий</strong><small>Системийн тойм</small></span></button>
+            <button aria-current={section === 'users' || section === 'user_detail' ? 'page' : undefined} onClick={() => show('users')}><AdminIcon kind="users" /><span className={styles.navText}><strong>Хэрэглэгчид</strong><small>Бүртгэл ба төлөв</small></span></button>
+            <button aria-current={section === 'families' || section === 'family_studio' ? 'page' : undefined} onClick={() => show('families')}><AdminIcon kind="families" /><span className={styles.navText}><strong>Гэр бүл, удам</strong><small>Хүн ба холбоос</small></span></button>
+          </div>
+          <div className={styles.navGroup}><span className={styles.navGroupLabel}>ӨВИЙН САН</span>
+            {identity?.role === 'SUPER_ADMIN' && <button onClick={() => router.push('/admin/ancestry')}><AdminIcon kind="root" /><span className={styles.navText}><strong>Эх мод · хандив</strong><small>Хүсэлт ба үндсэн удам</small></span></button>}
+            <button aria-current={section === 'announcements' ? 'page' : undefined} onClick={() => show('announcements')}><AdminIcon kind="announcements" /><span className={styles.navText}><strong>Мэдэгдэл</strong><small>Нийтэлсэн, ноорог</small></span></button>
+            {identity?.role === 'SUPER_ADMIN' && <button aria-current={section === 'audit' ? 'page' : undefined} onClick={() => show('audit')}><AdminIcon kind="audit" /><span className={styles.navText}><strong>Өөрчлөлтийн түүх</strong><small>Үйлдлийн бүртгэл</small></span></button>}
+          </div>
+          {identity?.role === 'SUPER_ADMIN' && <div className={styles.navGroup}><span className={styles.navGroupLabel}>ХАНДАЛТ</span><button aria-current={section === 'admins' ? 'page' : undefined} onClick={() => show('admins')}><AdminIcon kind="admins" /><span className={styles.navText}><strong>Админ эрхүүд</strong><small>Баг ба хамгаалалт</small></span></button></div>}
+          <p className={styles.navFootnote}>ГУУЛИНГИЙНХАН<br />Удмын сангийн удирдлага</p>
         </nav>
         <div className={styles.content}>
           <div className={styles.heading}><div><span className={styles.eyebrow}>СИСТЕМИЙН ХЭМЖЭЭНД</span><h1>{title}</h1></div>
@@ -254,26 +279,13 @@ export default function AdminPage() {
           {error && <div className={styles.error} role="alert">{error}</div>}
           {notice && <div className={styles.notice} role="status">{notice}</div>}
           {busy && <p role="status" className={styles.state}>Ачаалж байна…</p>}
-          {!busy && identity && section === 'overview' && overview && <>
-            <div className={styles.overviewHero}><span>🌿 УДМЫН САНГИЙН УДИРДЛАГА</span><h2>Өвийг хамгаалж,<br/>ирээдүйд үлдээнэ.</h2><p>Хэрэглэгч, гэр бүл, удам, мэдэгдэл болон эрхийн удирдлагыг нэг орчноос хийнэ.</p></div>
-            <div className={styles.stats}>
-              <div><span>Хэрэглэгч</span><strong>{overview.users}</strong></div>
-              <div><span>Идэвхтэй гэр бүл</span><strong>{overview.families}</strong></div>
-              <div><span>Админ эрхтэй</span><strong>{overview.admins}</strong></div>
-            </div>
-            <div className={styles.overviewActions}>
-              <button type="button" onClick={() => show('users')}><span>👥</span><strong>Хэрэглэгчид</strong><small>Аккаунт харах, урих, блоклох</small><b>→</b></button>
-              <button type="button" onClick={() => show('families')}><span>🌳</span><strong>Гэр бүл ба удам</strong><small>Хүн, холбоос, түүхийг удирдах</small><b>→</b></button>
-              {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => router.push('/admin/ancestry')}><span>🌲</span><strong>Нийтлэг эх мод · хандив</strong><small>Нэг удмын эх, бүх гишүүнд харагдах данс ба QR</small><b>→</b></button>}
-              <button type="button" onClick={() => show('announcements')}><span>📣</span><strong>Мэдэгдэл</strong><small>Нийтлэх, засах, ноорог хадгалах</small><b>→</b></button>
-              {identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => show('audit')}><span>🕘</span><strong>Өөрчлөлтийн түүх</strong><small>Хийсэн үйлдлийг шалгах</small><b>→</b></button>}
-            </div>
-          </>}
+          {!busy && identity && section === 'overview' && overview && <AdminOverview counts={overview} canManageRoot={identity.role === 'SUPER_ADMIN'} onOpen={show} />}
           {!busy && identity && section === 'users' && <>
             <p className={styles.intro}>Аккаунтын мэдээлэл, гэр бүлийн гишүүнчлэл болон төлөвийг шалгана. Блоклосон хэрэглэгчийн бүх session хүчингүй болно.</p>
             {identity.role === 'SUPER_ADMIN' && <form className={styles.invite} onSubmit={(event) => { event.preventDefault(); void inviteAccount(); }}><label>Шинэ хэрэглэгчийг бүртгүүлэхээр урих<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@example.com" required /></label><button type="submit" disabled={working || !inviteEmail.trim()}>{working ? 'Илгээж байна…' : 'Урилга илгээх'}</button><p>Урилга нь аккаунт эсвэл гэр бүлийн гишүүнчлэл автоматаар үүсгэхгүй. Хүлээн авагч өөрөө бүртгүүлж, имэйлээ баталгаажуулна.</p></form>}
-            {users.length === 0 ? <p className={styles.state}>Хэрэглэгч алга.</p> : <div className={styles.list}>{users.map((user) => <div className={styles.row} key={user.id}><div><strong>{user.display_name}</strong><span>{user.email || 'Имэйлгүй аккаунт'} · {user.is_active ? 'Идэвхтэй' : 'Блоклогдсон'}</span></div><button type="button" onClick={() => openUser(user.id)}>Дэлгэрэнгүй</button></div>)}</div>}
-            <div className={styles.pagination}><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Өмнөх</button><span>{offset + 1}–{offset + users.length}</span><button disabled={users.length < pageSize} onClick={() => setOffset(offset + pageSize)}>Дараах</button></div>
+            <div className={styles.listToolbar}><label>Энэ хуудсын хэрэглэгчээс хайх<input type="search" value={listSearch} onChange={event => setListSearch(event.target.value)} placeholder="Нэр эсвэл имэйл" /></label><span>{visibleUsers.length} / {users.length} бүртгэл</span></div>
+            {visibleUsers.length === 0 ? <p className={styles.state}>{users.length ? 'Энэ хуудсанд тохирох хэрэглэгч алга.' : 'Хэрэглэгч алга.'}</p> : <div className={styles.list}>{visibleUsers.map((user) => <div className={styles.row} key={user.id}><div><strong>{user.display_name}</strong><span>{user.email || 'Имэйлгүй аккаунт'} · {user.is_active ? 'Идэвхтэй' : 'Блоклогдсон'}</span></div><button type="button" onClick={() => openUser(user.id)}>Дэлгэрэнгүй</button></div>)}</div>}
+            <div className={styles.pagination}><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Өмнөх</button><span>{users.length ? offset + 1 : 0}–{offset + users.length}</span><button disabled={users.length < pageSize} onClick={() => setOffset(offset + pageSize)}>Дараах</button></div>
           </>}
           {!busy && identity && section === 'user_detail' && detail && <>
             <button className={styles.textButton} type="button" onClick={() => show('users')}>← Хэрэглэгчид рүү буцах</button>
@@ -296,8 +308,9 @@ export default function AdminPage() {
           </>}
           {!busy && identity && section === 'families' && <>
             <p className={styles.muted}>Эдгээр нь гэр бүлийн ажлын орчин. Гуулингийнхны нийтлэг эх, дөрвөн үндсэн салааг <Link href="/admin/ancestry">Үндсэн удмын админ</Link>-аас удирдана. Туршилтын орчныг архивлаж, дараа сэргээж болно.</p>
-            {families.length === 0 ? <p className={styles.state}>Идэвхтэй гэр бүл алга.</p> : <div className={styles.list}>{families.map((family) => <div className={styles.row} key={family.id}><div><strong>{family.name}</strong><small>{new Date(family.created_at).toLocaleDateString('mn-MN')}</small></div>{identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => { setSelectedFamilyId(family.id); show('family_studio'); }}>Удмыг удирдах →</button>}</div>)}</div>}
-            <div className={styles.pagination}><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Өмнөх</button><span>{offset + 1}–{offset + families.length}</span><button disabled={families.length < pageSize} onClick={() => setOffset(offset + pageSize)}>Дараах</button></div>
+            <div className={styles.listToolbar}><label>Энэ хуудсын гэр бүлээс хайх<input type="search" value={listSearch} onChange={event => setListSearch(event.target.value)} placeholder="Гэр бүлийн нэр" /></label><span>{visibleFamilies.length} / {families.length} бүртгэл</span></div>
+            {visibleFamilies.length === 0 ? <p className={styles.state}>{families.length ? 'Энэ хуудсанд тохирох гэр бүл алга.' : 'Идэвхтэй гэр бүл алга.'}</p> : <div className={styles.list}>{visibleFamilies.map((family) => <div className={styles.row} key={family.id}><div><strong>{family.name}</strong><small>{new Date(family.created_at).toLocaleDateString('mn-MN')}</small></div>{identity.role === 'SUPER_ADMIN' && <button type="button" onClick={() => { setSelectedFamilyId(family.id); show('family_studio'); }}>Удмыг удирдах →</button>}</div>)}</div>}
+            <div className={styles.pagination}><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>Өмнөх</button><span>{families.length ? offset + 1 : 0}–{offset + families.length}</span><button disabled={families.length < pageSize} onClick={() => setOffset(offset + pageSize)}>Дараах</button></div>
           </>}
           {identity?.role === 'SUPER_ADMIN' && section === 'families' && <ArchivedFamilies onRestored={() => { setFamilyRevision(value => value + 1); void api<Overview>('/admin/overview').then(setOverview).catch(() => {}); }} />}
           {!busy && identity?.role === 'SUPER_ADMIN' && section === 'family_studio' && selectedFamilyId && <AdminFamilyStudio familyId={selectedFamilyId} onBack={() => { show('families'); void api<Overview>('/admin/overview').then(setOverview).catch(() => {}); }} />}

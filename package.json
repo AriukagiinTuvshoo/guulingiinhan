@@ -11,6 +11,8 @@
     "test:family-map": "node scripts/verify-family-map.mjs",
     "test:family-map-browser": "node scripts/verify-family-map-browser.mjs",
     "test:integrated-browser": "node scripts/verify-integrated-browser.mjs",
+    "test:mobile-admin": "node scripts/verify-mobile-admin.mjs",
+    "test:pwa": "node scripts/verify-pwa.mjs",
     "test:root-linking": "node --experimental-strip-types scripts/verify-root-linking.mjs",
     "test:heritage": "node --experimental-strip-types scripts/verify-heritage-readiness.mjs",
     "regression:routes": "node scripts/verify-core-routes.mjs",
