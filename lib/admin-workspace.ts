@@ -4,6 +4,14 @@ export type WorkspacePerson = {
   last_name: string;
   birth_date: string | null;
   is_alive: boolean;
+  // Optional extended fields returned by GET /admin/families/{id}/workspace
+  // (WorkspacePerson). Older call sites use only the core fields above.
+  gender?: string;
+  birth_place?: string | null;
+  death_date?: string | null;
+  short_description?: string | null;
+  visibility?: string;
+  updated_at?: string;
 };
 
 export type FamilyWorkspacePeople = { people: WorkspacePerson[] };
@@ -15,4 +23,3 @@ export function readWorkspacePeople(workspace: FamilyWorkspacePeople): Workspace
   }
   return workspace.people;
 }
-
