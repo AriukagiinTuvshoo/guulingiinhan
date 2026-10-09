@@ -102,6 +102,18 @@ class RootConnectionOut(BaseModel):
     can_request: bool
 
 
+class RootConnectionCandidateOut(BaseModel):
+    person_id: UUID
+    first_name: str
+    last_name: str
+    middle_name: str | None
+    birth_date: str | None
+    death_date: str | None
+    is_alive: bool
+    is_current_user: bool
+    parent_person_ids: list[UUID] = Field(default_factory=list)
+
+
 class RootConnectionDecision(BaseModel):
     approve: bool
 
@@ -856,11 +868,75 @@ def _person_in_family(db: Session, family_id: UUID, person_id: UUID) -> bool:
     ).limit(1)) is not None
 
 
+def _root_connection_candidates(db: Session, family_id: UUID, user: User,
+                                member: FamilyMember) -> list[Person]:
+    linked = _my_linked_person(db, user)
+    rows = db.execute(
+        select(Person, FamilyPerson.added_by)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(FamilyPerson.family_id == family_id)
+        .order_by(Person.search_last_name, Person.search_first_name, Person.id)
+        .limit(300)
+    ).all()
+    person_ids = [person.id for person, _added_by in rows]
+    linked_ids = set(db.scalars(select(UserPersonLink.person_id).where(
+        UserPersonLink.person_id.in_(person_ids),
+    )).all()) if person_ids else set()
+    shared_ids = set(db.scalars(select(SharedAncestryPerson.person_id).where(
+        SharedAncestryPerson.person_id.in_(person_ids),
+    )).all()) if person_ids else set()
+    candidates: list[Person] = []
+    for person, added_by in rows:
+        if person.visibility == "private" or person_is_minor(person) or person.id in shared_ids:
+            continue
+        if linked is not None and person.id == linked.id:
+            candidates.append(person)
+            continue
+        # A living person's record can only be shared by that person's own
+        # verified account. Never let a relative publish it on their behalf.
+        if person.is_alive:
+            continue
+        if person.id in linked_ids:
+            continue
+        if member.role in {"owner", "editor"} or added_by == user.id:
+            candidates.append(person)
+    return candidates
+
+
+def _root_connection_person(db: Session, family_id: UUID, person_id: UUID,
+                            user: User, member: FamilyMember) -> Person:
+    row = db.execute(
+        select(Person, FamilyPerson.added_by)
+        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+        .where(FamilyPerson.family_id == family_id, Person.id == person_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Сонгосон хүн энэ гэр бүлийн модонд алга.")
+    person, added_by = row
+    if person.visibility == "private" or person_is_minor(person):
+        raise HTTPException(status_code=422, detail="Хувийн эсвэл насанд хүрээгүй хүнийг нийтлэг модонд холбох боломжгүй.")
+    linked = _my_linked_person(db, user)
+    if linked is not None and linked.id == person.id:
+        return person
+    if person.is_alive:
+        raise HTTPException(status_code=403, detail="Амьд хүнийг зөвхөн өөрийн баталгаажсан аккаунтаар холбож болно.")
+    linked_account = db.scalar(select(UserPersonLink.id).where(
+        UserPersonLink.person_id == person.id,
+    ).limit(1))
+    if linked_account is not None:
+        raise HTTPException(status_code=403, detail="Энэ хүн аккаунттай холбогдсон байна. Тухайн аккаунтын зөвшөөрөл шаардлагатай.")
+    if member.role not in {"owner", "editor"} and added_by != user.id:
+        raise HTTPException(status_code=403, detail="Зөвхөн өөрийн бүртгэсэн хүнийг эсвэл эзэн/засварлагч холбож болно.")
+    return person
+
+
 def _connection_out(db: Session, family_id: UUID, user: User) -> RootConnectionOut:
     row = db.get(RootConnection, family_id)
     family = db.get(Family, family_id)
-    linked = _my_linked_person(db, user)
-    can_request = bool(linked and _person_in_family(db, family_id, linked.id))
+    member = db.scalar(select(FamilyMember).where(
+        FamilyMember.family_id == family_id, FamilyMember.user_id == user.id,
+    ))
+    can_request = bool(member and _root_connection_candidates(db, family_id, user, member))
     if row is None:
         return RootConnectionOut(family_id=family_id, family_name=family.name if family else None,
                                  status="not_connected", can_request=can_request)
@@ -886,20 +962,79 @@ def read_root_connection(family_id: UUID, user: User = Depends(get_current_user)
     return _connection_out(db, family_id, user)
 
 
+@family_router.get("/{family_id}/root-connection/candidates",
+                   response_model=list[RootConnectionCandidateOut])
+def list_root_connection_candidates(family_id: UUID, user: User = Depends(get_current_user),
+                                    db: Session = Depends(get_db)):
+    member = _family_member(db, family_id, user)
+    linked = _my_linked_person(db, user)
+    candidates = _root_connection_candidates(db, family_id, user, member)
+    parent_map: dict[UUID, list[UUID]] = {}
+    candidate_ids = [person.id for person in candidates]
+    if candidate_ids:
+        parent_rows = db.execute(
+            select(ParentChildRelationship.child_id, ParentChildRelationship.parent_id)
+            .join(FamilyPerson, FamilyPerson.person_id == ParentChildRelationship.parent_id)
+            .where(
+                FamilyPerson.family_id == family_id,
+                ParentChildRelationship.child_id.in_(candidate_ids),
+            )
+        ).all()
+        for child_id, parent_id in parent_rows:
+            parent_map.setdefault(child_id, []).append(parent_id)
+    return [RootConnectionCandidateOut(
+        person_id=person.id, first_name=person.first_name, last_name=person.last_name,
+        middle_name=person.middle_name,
+        birth_date=str(person.birth_date) if person.birth_date else None,
+        death_date=str(person.death_date) if person.death_date else None,
+        is_alive=person.is_alive,
+        is_current_user=linked is not None and person.id == linked.id,
+        parent_person_ids=parent_map.get(person.id, []),
+    ) for person in candidates]
+
+
 @family_router.post("/{family_id}/root-connection", response_model=RootConnectionOut)
 def request_root_connection(family_id: UUID, body: RootConnectionInput,
                             user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    _family_member(db, family_id, user)
+    member = _family_member(db, family_id, user)
     if not body.share_consent:
         raise HTTPException(status_code=422, detail="Үндэс модонд харуулах зөвшөөрөл шаардлагатай.")
-    person = _my_linked_person(db, user)
-    if person is None or person.id != body.person_id or not _person_in_family(db, family_id, body.person_id):
-        raise HTTPException(status_code=403, detail="Зөвхөн өөрийн баталгаажсан хүнийг холбож болно.")
-    if person.visibility == "private" or person_is_minor(person):
-        raise HTTPException(status_code=422, detail="Хувийн эсвэл насанд хүрээгүй хүнийг холбох боломжгүй.")
+    person = _root_connection_person(db, family_id, body.person_id, user, member)
     if body.person_id == body.target_person_id:
         raise HTTPException(status_code=422, detail="Хүнийг өөртэй нь холбох боломжгүй.")
     _shared_target(db, body.target_person_id)
+    existing_parent = db.scalar(select(ParentChildRelationship).where(
+        ParentChildRelationship.parent_id == body.target_person_id,
+        ParentChildRelationship.child_id == body.person_id,
+    ))
+    recorded_family_parents = set(db.scalars(
+        select(ParentChildRelationship.parent_id)
+        .join(FamilyPerson, FamilyPerson.person_id == ParentChildRelationship.parent_id)
+        .where(
+            ParentChildRelationship.child_id == body.person_id,
+            FamilyPerson.family_id == family_id,
+        )
+    ).all())
+    if recorded_family_parents and body.target_person_id not in recorded_family_parents:
+        raise HTTPException(status_code=409, detail="Гэр бүлийн модонд бүртгэсэн эцэг/эхээ сонгоно уу.")
+    if existing_parent is not None and existing_parent.relationship_type != body.relationship_type:
+        raise HTTPException(status_code=409, detail="Гэр бүлийн модонд энэ холбоо өөр төрлөөр бүртгэгдсэн байна.")
+    if existing_parent is None:
+        parent_ids = db.scalars(select(ParentChildRelationship.id).where(
+            ParentChildRelationship.child_id == body.person_id,
+        ).limit(2)).all()
+        if len(parent_ids) >= 2:
+            raise HTTPException(status_code=409, detail="Энэ хүн хоёр эцэг/эхийн холбоотой бүртгэгдсэн байна.")
+    graph_edges = db.execute(select(
+        ParentChildRelationship.parent_id, ParentChildRelationship.child_id,
+    )).all()
+    legacy_edges = db.execute(select(
+        SharedAncestryRelationship.parent_id, SharedAncestryRelationship.child_id,
+    )).all()
+    try:
+        assert_parent_child_is_acyclic([*graph_edges, *legacy_edges], body.target_person_id, body.person_id)
+    except RelationshipError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     row = db.scalar(select(RootConnection).where(
         RootConnection.family_id == family_id,
     ).with_for_update())
@@ -914,6 +1049,7 @@ def request_root_connection(family_id: UUID, body: RootConnectionInput,
             family_id=family_id, person_id=body.person_id,
             target_person_id=body.target_person_id,
             relationship_type=body.relationship_type, status="pending", requested_by=user.id,
+            consented_at=datetime.now(UTC),
         )
         db.add(row)
     else:
@@ -1006,12 +1142,11 @@ def decide_root_connection(family_id: UUID, body: RootConnectionDecision,
         requester = db.get(User, row.requested_by)
         if requester is None:
             raise HTTPException(status_code=409, detail="Хүсэлт гаргасан аккаунт олдсонгүй.")
-        _family_member(db, family_id, requester)
-        linked = _my_linked_person(db, requester)
-        if linked is None or linked.id != row.person_id or not _person_in_family(db, family_id, row.person_id):
-            raise HTTPException(status_code=409, detail="Хүсэлт гаргасан хүний баталгаажсан холбоос өөрчлөгдсөн.")
-        if linked.visibility == "private" or person_is_minor(linked):
-            raise HTTPException(status_code=422, detail="Энэ хүнийг нийтлэг модонд харуулах боломжгүй.")
+        requester_member = _family_member(db, family_id, requester)
+        try:
+            _root_connection_person(db, family_id, row.person_id, requester, requester_member)
+        except HTTPException as error:
+            raise HTTPException(status_code=409, detail="Хүсэлт гаргасан хүнийг холбох эрх эсвэл зөвшөөрөл өөрчлөгдсөн.") from error
         _shared_target(db, row.target_person_id)
         db.execute(select(Family.id).where(Family.id == family_id).with_for_update())
         edges = db.execute(select(
