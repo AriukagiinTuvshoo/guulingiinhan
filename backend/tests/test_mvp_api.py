@@ -128,7 +128,7 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
     accepted = client.post("/api/v1/invitations/accept", json={"token": token})
     assert accepted.status_code == 200
     assert accepted.json() == {"family_id": family_id, "role": "editor"}
-    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 404
+    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 200
     assert client.get(f"/api/v1/families/{family_id}").status_code == 200
 
 

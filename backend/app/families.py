@@ -474,6 +474,7 @@ class MemberOut(BaseModel):
     user_id: UUID
     display_name: str
     role: str
+    person_id: UUID | None = None
 
 
 class InvitationCreate(BaseModel):
@@ -954,11 +955,25 @@ def list_members(
 ):
     _member(db, family_id, user)
     rows = db.execute(
-        select(User.id, User.display_name, FamilyMember.role)
+        select(User.id, User.display_name, FamilyMember.role, Person)
         .join(FamilyMember, FamilyMember.user_id == User.id)
+        .outerjoin(UserPersonLink, UserPersonLink.user_id == User.id)
+        .outerjoin(FamilyPerson, and_(FamilyPerson.person_id == UserPersonLink.person_id,
+                                    FamilyPerson.family_id == family_id))
+        .outerjoin(Person, Person.id == FamilyPerson.person_id)
         .where(FamilyMember.family_id == family_id)
     ).all()
-    return [MemberOut(user_id=r.id, display_name=r.display_name, role=r.role) for r in rows]
+    members = []
+    for user_id, display_name, role, person in rows:
+        person_id = None
+        if person is not None and (user_id == user.id or (
+            not person_is_minor(person)
+            and (person.visibility != "private" or person.created_by == user.id)
+        )):
+            person_id = person.id
+        members.append(MemberOut(user_id=user_id, display_name=display_name, role=role,
+                                 person_id=person_id))
+    return members
 
 
 @router.get("/{family_id}/lineages", response_model=list[LineageOut])
@@ -1952,11 +1967,15 @@ def link_me(
 ):
     _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
+    db.execute(select(User.id).where(User.id == user.id).with_for_update())
+    existing_link = db.scalar(select(UserPersonLink).where(UserPersonLink.user_id == user.id))
+    if existing_link is not None and existing_link.person_id == person_id:
+        return Response(status_code=204)
     if person_is_minor(person):
         raise HTTPException(status_code=403, detail="Энэ хүнийг бүртгэлтэй хэрэглэгчтэй холбох боломжгүй.")
     if person.created_by != user.id:
         raise HTTPException(status_code=403, detail="Байгаа хүнтэй холбогдох хүсэлтийг гэр бүлийн эзэн батална.")
-    if db.scalar(select(UserPersonLink).where(UserPersonLink.user_id == user.id)):
+    if existing_link is not None:
         raise HTTPException(
             status_code=409, detail="Таны бүртгэл хүнтэй аль хэдийн холбогдсон байна."
         )
@@ -1973,6 +1992,7 @@ def request_person_link(
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     _member(db, family_id, user)
+    db.execute(select(User.id).where(User.id == user.id).with_for_update())
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
     if person_is_minor(person) or db.scalar(select(UserPersonLink.id).where(
@@ -1995,6 +2015,34 @@ def request_person_link(
                                 user_name=user.display_name,
                                 person_name=f"{person.last_name} {person.first_name}".strip(),
                                 status=row.status, created_at=row.created_at)
+
+
+@router.get("/{family_id}/link-requests/me", response_model=list[PersonLinkRequestOut])
+def list_my_person_link_requests(
+    family_id: UUID, user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    _member(db, family_id, user)
+    rows = db.execute(select(PersonLinkRequest, Person)
+        .join(Person, Person.id == PersonLinkRequest.person_id)
+        .where(PersonLinkRequest.family_id == family_id, PersonLinkRequest.user_id == user.id)
+        .order_by(PersonLinkRequest.created_at.desc(), PersonLinkRequest.id).limit(100)).all()
+    result = []
+    for row, person in rows:
+        name = "Хүний мэдээлэл хязгаарлагдсан"
+        attached = db.scalar(select(FamilyPerson.id).where(
+            FamilyPerson.family_id == family_id, FamilyPerson.person_id == person.id,
+        ))
+        try:
+            _assert_person_visible(db, person, user)
+            if attached is not None and not person_is_minor(person):
+                name = f"{person.last_name} {person.first_name}".strip()
+        except HTTPException:
+            pass
+        result.append(PersonLinkRequestOut(
+            id=row.id, person_id=row.person_id, user_id=user.id, user_name=user.display_name,
+            person_name=name, status=row.status, created_at=row.created_at,
+        ))
+    return result
 
 
 @router.get("/{family_id}/link-requests", response_model=list[PersonLinkRequestOut])
@@ -2022,6 +2070,12 @@ def approve_person_link_request(
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     _member(db, family_id, user, {"owner"})
+    requester_id = db.scalar(select(PersonLinkRequest.user_id).where(
+        PersonLinkRequest.id == request_id, PersonLinkRequest.family_id == family_id,
+        PersonLinkRequest.status == "pending",
+    ))
+    requester = db.scalar(select(User).where(User.id == requester_id).with_for_update()
+                          .execution_options(populate_existing=True)) if requester_id else None
     row = db.scalar(select(PersonLinkRequest).where(
         PersonLinkRequest.id == request_id, PersonLinkRequest.family_id == family_id,
         PersonLinkRequest.status == "pending",
@@ -2029,12 +2083,13 @@ def approve_person_link_request(
     if row is None:
         raise HTTPException(status_code=404, detail="Хүлээгдэж буй хүсэлт олдсонгүй.")
     person = _person_in_family(db, family_id, row.person_id)
+    db.refresh(person, with_for_update=True)
     if person_is_minor(person):
         raise HTTPException(status_code=409, detail="Насанд хүрээгүй хүний аккаунтын холбоосыг эндээс батлах боломжгүй.")
-    requester = db.get(User, row.user_id)
     if requester is None or not requester.is_active:
         raise HTTPException(status_code=409, detail="Хүсэлт гаргасан аккаунт идэвхгүй байна.")
     _member(db, family_id, requester)
+    _assert_person_visible(db, person, requester)
     if db.scalar(select(UserPersonLink.id).where(or_(
         UserPersonLink.user_id == row.user_id, UserPersonLink.person_id == row.person_id
     ))):
@@ -3552,7 +3607,6 @@ def accept_invitation(
         select(Invitation)
         .where(
             Invitation.token_hash == token_hash,
-            Invitation.accepted_at.is_(None),
             Invitation.revoked_at.is_(None),
             Invitation.expires_at > datetime.now(UTC),
         )
@@ -3575,16 +3629,21 @@ def accept_invitation(
         raise HTTPException(
             status_code=403, detail="Урилгыг авахын өмнө имэйлээ баталгаажуулна уу."
         )
-    if db.scalar(
-        select(FamilyMember.id).where(
-            FamilyMember.family_id == invitation.family_id, FamilyMember.user_id == user.id
-        )
-    ):
-        raise HTTPException(status_code=409, detail="Та энэ гэр бүлийн гишүүн байна.")
-    invitation.accepted_at = datetime.now(UTC)
     family = db.get(Family, invitation.family_id)
     if family is None or family.archived_at is not None:
         raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
+    member = db.scalar(
+        select(FamilyMember).where(
+            FamilyMember.family_id == invitation.family_id, FamilyMember.user_id == user.id
+        )
+    )
+    if invitation.accepted_at is not None:
+        if member is None:
+            raise HTTPException(status_code=409, detail="Урилгыг ашигласан бөгөөд гэр бүлийн эрх өөрчлөгдсөн байна.")
+        return {"family_id": invitation.family_id, "role": member.role}
+    if member is not None:
+        raise HTTPException(status_code=409, detail="Та энэ гэр бүлийн гишүүн байна.")
+    invitation.accepted_at = datetime.now(UTC)
     db.add(FamilyMember(family_id=invitation.family_id, user_id=user.id, role=invitation.role))
     _audit(db, user, invitation.family_id, "invitation.accepted", "invitation", invitation.id)
     _commit(db, "Урилгыг ашиглах боломжгүй байна.")

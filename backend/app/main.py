@@ -29,6 +29,7 @@ from app.invitation_preview import router as invitation_preview_router
 from app.memory_interactions import router as memory_interactions_router
 from app.memory_photos import router as memory_photos_router
 from app.observability import configure_logging, error_classification, request_id_context
+from app.onboarding import router as onboarding_router
 from app.phone_verification import router as phone_verification_router
 from app.profile_photos import router as profile_photos_router
 from app.shared_ancestry import admin_router as admin_shared_ancestry_router
@@ -195,6 +196,7 @@ app.include_router(family_activities_router, prefix="/api/v1")
 app.include_router(public_funds_router, prefix="/api/v1")
 app.include_router(admin_ancestry_requests_router, prefix="/api/v1")
 app.include_router(family_ancestry_requests_router, prefix="/api/v1")
+app.include_router(onboarding_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(heritage_discovery_router, prefix="/api/v1")
 app.include_router(heritage_links_router, prefix="/api/v1")

@@ -15,6 +15,7 @@ import sys
 import tempfile
 from datetime import UTC, date, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -33,6 +34,10 @@ EMAILS = {
     "familyAEditor": "qa-family-a-editor@example.com",
     "familyAMember": "qa-family-a-member@example.com",
     "familyBOwner": "qa-family-b-owner@example.com",
+    "onboardingOwner": "qa-onboarding-owner@example.com",
+    "invitedFreshMember": "qa-invited-fresh-member@example.com",
+    "invitedExistingMember": "qa-invited-existing-member@example.com",
+    "existingLinkedMember": "qa-existing-linked-member@example.com",
 }
 
 
@@ -127,6 +132,7 @@ def seed_fixture(db, password: str) -> dict[str, Any]:
         FamilyMember(family_id=family_a_id, user_id=user_ids["familyAEditor"], role="editor"),
         FamilyMember(family_id=family_a_id, user_id=user_ids["familyAMember"], role="member"),
         FamilyMember(family_id=family_b_id, user_id=user_ids["familyBOwner"], role="owner"),
+        FamilyMember(family_id=family_b_id, user_id=user_ids["existingLinkedMember"], role="member"),
     )
     db.add_all(memberships)
 
@@ -179,8 +185,13 @@ def seed_fixture(db, password: str) -> dict[str, Any]:
         created_by=user_ids["familyBOwner"], birth_date=date(1985, 1, 1), is_alive=True,
         visibility="private",
     )
+    existing_linked_person = _person(
+        person_id=uuid4(), first_name="QA Existing Linked Adult", last_name="Fixture",
+        created_by=user_ids["existingLinkedMember"], birth_date=date(1984, 1, 1), is_alive=True,
+        visibility="family",
+    )
     db.add_all([*root_people, *child_people, owner_person, deceased_child_candidate,
-                spouse_candidate, family_b_person])
+                spouse_candidate, family_b_person, existing_linked_person])
     db.flush()
 
     family_a_person_ids = [root_father_id, root_mother_id, *child_ids.values(), owner_person_id,
@@ -202,6 +213,10 @@ def seed_fixture(db, password: str) -> dict[str, Any]:
                        linked_by=user_ids["familyAOwner"]),
         UserPersonLink(user_id=user_ids["familyBOwner"], person_id=family_b_person_id,
                        linked_by=user_ids["familyBOwner"]),
+        FamilyPerson(family_id=family_b_id, person_id=existing_linked_person.id,
+                     added_by=user_ids["existingLinkedMember"]),
+        UserPersonLink(user_id=user_ids["existingLinkedMember"], person_id=existing_linked_person.id,
+                       linked_by=user_ids["existingLinkedMember"]),
     ))
 
     # Synthetic fixture: use the linked adult to verify dashboard portrait refresh.
@@ -247,6 +262,7 @@ def seed_fixture(db, password: str) -> dict[str, Any]:
             "familyADeceasedChildCandidate": str(deceased_child_candidate_id),
             "familyASpouseCandidate": str(spouse_candidate_id),
             "familyBPrivatePerson": str(family_b_person_id),
+            "existingLinkedPerson": str(existing_linked_person.id),
         },
         "adminRoles": {"superAdmin": "SUPER_ADMIN", "globalAdmin": "ADMIN",
                        "globalModerator": "MODERATOR"},
@@ -340,6 +356,34 @@ def _write_manifest(fixture: dict[str, Any], password: str) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
+def _record_fake_mailbox(run_dir: Path) -> Path:
+    """Record only this disposable process's fake deliveries for browser QA.
+
+    The real invitation endpoints and token validation remain unchanged. No
+    real provider, request override, test HTTP endpoint or token output exists.
+    """
+    from app.email import FakeEmailProvider
+
+    mailbox = run_dir / "fake-mailbox.json"
+    mailbox.write_text("[]", encoding="utf-8")
+    mailbox.chmod(0o600)
+    original = FakeEmailProvider._send
+    mutex = Lock()
+
+    def recording_send(self, recipient: str, subject: str, text: str) -> None:
+        original(self, recipient, subject, text)
+        with mutex:
+            rows = json.loads(mailbox.read_text(encoding="utf-8"))
+            rows.append({"recipient": recipient, "subject": subject, "text": text})
+            temporary = mailbox.with_suffix(".pending")
+            temporary.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+            temporary.chmod(0o600)
+            temporary.replace(mailbox)
+
+    FakeEmailProvider._send = recording_send
+    return mailbox
+
+
 def main() -> int:
     if os.environ.get("APP_ENV") != "test":
         print("Refusing to start: set APP_ENV=test for disposable local QA.", file=sys.stderr)
@@ -378,6 +422,7 @@ def main() -> int:
         alternate_image_path = run_dir / "qa-alternate-photo.png"
         Image.new("RGB", (96, 96), (172, 76, 52)).save(alternate_image_path)
         fixture["alternateImagePath"] = str(alternate_image_path)
+        fixture["mailboxPath"] = str(_record_fake_mailbox(run_dir))
         _write_manifest(fixture, password)
 
         from app.main import app

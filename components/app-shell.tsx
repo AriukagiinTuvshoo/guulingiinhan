@@ -48,7 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Үндсэн удам · Манай гэр бүл', icon: GitFork, path: '/tree', needsFamily: false },
-  { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
+  { key: 'people', label: 'Гишүүд', description: 'Урилга ба миний бүртгэл', icon: Users, path: '/people', needsFamily: true },
   { key: 'search', label: 'Хайлт', description: 'Гэр бүлийн сангаас хайх', icon: Search, path: '/search', needsFamily: true },
   { key: 'relationships', label: 'Хамаарал', description: 'Хоёр хүний холбооны зам', icon: GitFork, path: '/relationships', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
@@ -60,7 +60,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
   { label: 'ТОЙМ', keys: ['dashboard'] },
-  { label: 'УДАМ', keys: ['tree', 'relationships', 'search'] },
+  { label: 'УДАМ', keys: ['tree', 'people', 'relationships', 'search'] },
   { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
   { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities'] },
   { label: 'АККАУНТ', keys: ['settings'] },

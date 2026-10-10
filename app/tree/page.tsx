@@ -19,6 +19,7 @@ import {
   api,
   Marriage,
   Person,
+  PersonProfile,
   PersonSearchPage,
   personName,
   TreeData,
@@ -139,6 +140,7 @@ function TreePageContent() {
   const [relationPersonId, setRelationPersonId] = useState('');
   const [relationPersonBusy, setRelationPersonBusy] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [selectedPersonProfile, setSelectedPersonProfile] = useState<PersonProfile | null>(null);
   const [editingPersonIsAlive, setEditingPersonIsAlive] = useState(true);
   const [editPersonError, setEditPersonError] = useState('');
   const [editPersonBusy, setEditPersonBusy] = useState(false);
@@ -410,6 +412,15 @@ function TreePageContent() {
     Boolean(tree?.root_person_id) &&
     Boolean(tree?.persons.some((person) => person.id === tree.root_person_id));
   const canManageTree = family?.role === 'owner' || family?.role === 'editor';
+  useEffect(() => {
+    setSelectedPersonProfile(null);
+    if (!familyId || !selectedId) return;
+    const controller = new AbortController();
+    api<PersonProfile>(`/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(selectedId)}`, { signal: controller.signal })
+      .then(profile => { if (!controller.signal.aborted) setSelectedPersonProfile(profile); })
+      .catch(() => { /* The edit action stays unavailable until permission is verified. */ });
+    return () => controller.abort();
+  }, [familyId, selectedId]);
 
   const selectedMarriages = useMemo(
     () =>
@@ -650,9 +661,10 @@ function TreePageContent() {
     setEditPersonError('');
     setEditPersonBusy(true);
     try {
-      const profile = await api<Person>(
+      const profile = await api<PersonProfile>(
         '/families/' + encodeURIComponent(familyId) + '/persons/' + encodeURIComponent(personId),
       );
+      if (!profile.can_edit_profile) throw new ApiError(403, 'Энэ хүний мэдээллийг өөрийн аккаунт эсвэл эрхтэй админ засна.');
       setEditingPerson(profile);
       setEditingPersonIsAlive(profile.is_alive);
     } catch (cause) {
@@ -871,7 +883,7 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions">
-            <Link className="tree-studio-action" aria-label="Гэр бүлийн хүмүүс" href={'/people?family=' + encodeURIComponent(familyId)}><Users size={19} /></Link>
+            <Link className="tree-studio-action" aria-label="Гэр бүлийн гишүүд, миний бүртгэл" href={'/people?family=' + encodeURIComponent(familyId)}><Users size={19} /></Link>
             <details className="tree-studio-menu"><summary aria-label="Удмын модны цэс"><Menu size={19} /></summary><div>
             <Link className="tree-button tree-button--secondary" href={`/relationships?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(selectedId)}`}>Хамаарлыг харах</Link>
             <button type="button" className="tree-button tree-button--secondary" disabled={!selectedId} onClick={() => setBranchRoot(branchRoot ? '' : selectedId)}>{branchRoot ? 'Бүх салааг харах' : 'Сонгосон хүний үр удам'}</button>
@@ -914,12 +926,12 @@ function TreePageContent() {
 
         {tree && viewMode === 'full' && !tree.linked_person_id && (
           <div className="tree-alert tree-alert--info" role="status">
-            <span>Өөрийн гэр бүлийн модыг харахын тулд эхлээд Хүмүүс хэсгээс өөрийн бүртгэлтэй хүнийг холбож баталгаажуулна уу.</span>
-            <Link href={'/people?family=' + encodeURIComponent(familyId)}>Хүмүүс рүү очих →</Link>
+            <span>Өөрийн гэр бүлийн модыг харахын тулд өөрийн удмын бүртгэлээ холбоорой. Байгаа бүртгэлд хүсэлт илгээх эсвэл өөрийн мэдээллийг шинээр бүртгэнэ.</span>
+            <Link href={'/people?family=' + encodeURIComponent(familyId)}>Миний бүртгэлийг холбох →</Link>
           </div>
         )}
 
-        {Boolean(tree?.persons.length && (!tree.lineage_root_person_id || !tree.linked_person_id)) && <details className="tree-studio-context"><summary>Удмын эх, миний бүртгэл</summary>{!tree?.lineage_root_person_id && <p>Удмын эх хараахан сонгогдоогүй. Гэр бүлийн эзэн хүн сонгоод цэснээс удмын эхийг батална.</p>}{!tree?.linked_person_id && <p>“Хүмүүс” хэсгээс өөрийн бүртгэлийг олж, гэр бүлийн эзнээр холбоосоо баталгаажуулаарай.</p>}</details>}
+        {Boolean(tree?.persons.length && (!tree.lineage_root_person_id || !tree.linked_person_id)) && <details className="tree-studio-context"><summary>Удмын эх, миний бүртгэл</summary>{!tree?.lineage_root_person_id && <p>Удмын эх хараахан сонгогдоогүй. Гэр бүлийн эзэн хүн сонгоод цэснээс удмын эхийг батална.</p>}{!tree?.linked_person_id && <p>“Гишүүд ба миний бүртгэл” хэсгээс өөрийн удмын хүнийг сонгоод гэр бүлийн эзнээр холбоосоо баталгаажуулаарай.</p>}</details>}
         {family?.role === 'owner' && linkRequests.length > 0 && <section className="tree-link-requests" aria-label="Холбох хүсэлтүүд"><h2>Хүнтэй холбох хүсэлт</h2><p>Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.</p>{linkRequests.map((request) => <div key={request.id}><span><strong>{request.user_name}</strong> → {request.person_name}</span><button type="button" disabled={linkBusy} onClick={() => setLinkToApprove(request)}>Шалгаж батлах</button></div>)}</section>}
 
         <section className="tree-workspace" aria-label="Удмын модны ажлын хэсэг">
@@ -1016,9 +1028,9 @@ function TreePageContent() {
             <section className="tree-state tree-state--empty tree-state--in-shell" role="status">
               <div className="tree-state-mark" aria-hidden="true">!</div>
               <h2>Удмын мод бүрэн бэлэн болоогүй байна.</h2>
-              <p>Энэ гэр бүлийн модонд backend-ээс баталгаатай төв хүн ирээгүй тул буруу холбоос таамаглан харуулахгүй.</p>
+              <p>Энэ гэр бүлд өөрийн удмын бүртгэлээ холбож, холбоосоо баталгаажуулна уу.</p>
               <Link className="tree-button tree-button--primary" href={'/people?family=' + encodeURIComponent(familyId)}>
-                Хүмүүс рүү очих
+                Гишүүд ба миний бүртгэл
               </Link>
             </section>
           ) : !tree?.persons.length ? (
@@ -1027,7 +1039,7 @@ function TreePageContent() {
               <h2>Удмын мод одоогоор хоосон байна.</h2>
               <p>Энэ гэр бүлийн зөвшөөрөгдсөн орчинд одоогоор хүн эсвэл холбоос алга байна.</p>
               <Link className="tree-button tree-button--primary" href={'/people?family=' + encodeURIComponent(familyId)}>
-                Хүмүүс рүү очих
+                Гишүүд ба миний бүртгэл
               </Link>
             </section>
           ) : (
@@ -1113,11 +1125,11 @@ function TreePageContent() {
                       <Link className="tree-button tree-button--primary" href={profileHref(selectedPerson.id)}>
                         Профайл үзэх
                       </Link>
+                      {selectedPersonProfile?.id === selectedPerson.id && selectedPersonProfile.can_edit_profile && <button type="button" className="tree-button tree-button--secondary" onClick={() => void openPersonEditor(selectedPerson.id)} disabled={editPersonBusy}>
+                        {editPersonBusy ? 'Нээж байна…' : 'Мэдээлэл засах'}
+                      </button>}
                       {canManageTree && (
                         <>
-                          <button type="button" className="tree-button tree-button--secondary" onClick={() => void openPersonEditor(selectedPerson.id)} disabled={editPersonBusy}>
-                            {editPersonBusy ? 'Нээж байна…' : 'Мэдээлэл засах'}
-                          </button>
                           <div className="tree-add-relation-grid">
                             <button type="button" className="tree-button tree-button--secondary" onClick={() => beginRelation('parent')}>+ Эцэг/эх</button>
                             <button type="button" className="tree-button tree-button--secondary" onClick={() => beginRelation('child')}>+ Хүүхэд</button>
