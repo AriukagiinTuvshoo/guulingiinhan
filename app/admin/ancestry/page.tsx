@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import AdminShell from '../../../components/admin-shell';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import ProfilePhoto from '../../../components/profile-photo';
+import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../../lib/image-upload';
 import SharedAncestryReview from '../../../components/shared-ancestry-review';
 import { ApiError, api } from '../../../lib/api';
 import { sharedAncestryPaths } from '../../../lib/shared-ancestry';
@@ -290,16 +292,20 @@ export default function SharedAncestryAdminPage() {
     setPortraitBusy(true); setEditorError('');
     try {
       const endpoint = `/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}/profile-photo`;
+      const upload = await prepareImageUpload(portraitFile);
       const result = await api<{ profile_photo_url: string }>(endpoint, {
-        method: 'POST', body: portraitFile,
-        headers: { 'Content-Type': portraitFile.type, 'X-File-Name': portraitFile.name },
+        method: 'POST', body: upload,
+        headers: { 'Content-Type': upload.type, 'X-File-Name': upload.name },
       });
       setEditorPhotoUrl(result.profile_photo_url);
+      const canonicalEndpoint = `/families/${encodeURIComponent(editorFamilyId)}/persons/${encodeURIComponent(editorPersonId)}/profile-photo`;
+      announcePhotoChange({ endpoint: canonicalEndpoint, hasPhoto: true, url: canonicalEndpoint });
+      announcePhotoChange({ endpoint, hasPhoto: true, url: result.profile_photo_url });
       setPortraitFile(null);
       setPortraitInputKey((key) => key + 1);
       setNotice('Зургийг хувийн хадгалалтад байршууллаа. Нийтийн модонд зургийг автоматаар нийтлэхгүй.');
     } catch (cause) {
-      setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Зургийг хадгалж чадсангүй.');
+      setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : cause instanceof Error ? cause.message : 'Зургийг хадгалж чадсангүй.');
     } finally { setPortraitBusy(false); }
   }
   async function deleteEditorPortrait() {
@@ -308,6 +314,8 @@ export default function SharedAncestryAdminPage() {
     setPortraitBusy(true); setEditorError('');
     try {
       await api(`/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}/profile-photo`, { method: 'DELETE' });
+      announcePhotoChange({ endpoint: `/families/${encodeURIComponent(editorFamilyId)}/persons/${encodeURIComponent(editorPersonId)}/profile-photo`, hasPhoto: false, url: null });
+      announcePhotoChange({ endpoint: `/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}/profile-photo`, hasPhoto: false, url: null });
       setEditorPhotoUrl(null);
       setPortraitFile(null);
       setPortraitInputKey((key) => key + 1);
@@ -382,9 +390,7 @@ export default function SharedAncestryAdminPage() {
     setConnectSecondParentId(firstName ? tree?.root_partner_person_id || '' : ''); setConnectStep(1);
     window.setTimeout(() => document.getElementById('relationship-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
-  return <main className={styles.page}><div className={styles.shell}>
-    <header className={styles.header}><div><Link className={styles.brand} href="/admin">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>НИЙТЛЭГ УДМЫН МОД</span></div><div className={styles.headerActions}><Link className={styles.back} href="/admin">← Админ руу буцах</Link></div></header>
-    <section className={styles.content}><div className={styles.heading}><div><span className={styles.eyebrow}>УДМЫН БҮРТГЭЛ</span><h1>Үндсэн удмын эх</h1></div></div>
+  return <AdminShell active="root" title="Үндсэн удмын эх" superOnly>
       {error && <div id="ancestry-error" tabIndex={-1} role="alert" className={styles.error}>{error}</div>}{notice && <div role="status" className={styles.notice}>{notice}</div>}
       {!loadReady && <div className={styles.panel} aria-busy={busy}>{busy ? <p role="status">Удмын эх, гэр бүлийн бүртгэл болон сангийн мэдээллийг ачаалж байна…</p> : <><h3>Бүртгэлийн мэдээлэл ачаалагдсангүй</h3><p className={styles.muted}>Одоогийн эх, хүмүүс болон дансны мэдээллийг шалгасны дараа засварлах боломж нээгдэнэ. Ачаалалт амжилтгүй болсон нь бүртгэл байхгүй гэсэн үг биш.</p><div className={styles.panelActions}><button type="button" onClick={() => void load()}>Дахин ачаалах</button><Link href="/login">Нэвтрэлтээ шалгах →</Link></div></>}</div>}
       {loadReady && <>
@@ -453,9 +459,11 @@ export default function SharedAncestryAdminPage() {
               <span className={styles.muted}>Хувийн хөрөг · Зөвхөн эрхтэй админ харах ба солих боломжтой</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
                 <ProfilePhoto url={portraitPreviewUrl || editorPhotoUrl} name={sharedName(editorPersonId)} fallback={editorDraft.first_name.slice(0, 1) || '?'} className={styles.personAvatar} />
-                <label style={{ flex: '1 1 230px' }}>Хөрөг сонгох
-                  <input key={portraitInputKey} type="file" accept="image/jpeg,image/png,image/webp" disabled={editorBusy || portraitBusy} onChange={(event) => setPortraitFile(event.target.files?.[0] || null)} />
-                </label>
+                <div className={styles.portraitPicker}>
+                  <input id="admin-portrait-file" aria-label="Хөрөг сонгох" className="account-photo-editor__file" key={portraitInputKey} type="file" accept={IMAGE_ACCEPT} disabled={editorBusy || portraitBusy} onChange={(event) => { setPortraitFile(event.target.files?.[0] || null); setEditorError(''); }} />
+                  <label htmlFor="admin-portrait-file" aria-disabled={editorBusy || portraitBusy}>Хөрөг сонгох</label>
+                  {portraitFile && <p role="status">{portraitFile.name}</p>}
+                </div>
                 <div className={styles.panelActions}>
                   <button type="button" disabled={!portraitFile || editorBusy || portraitBusy} onClick={() => void uploadEditorPortrait()}>{portraitBusy ? 'Зураг хадгалж байна…' : 'Зураг байршуулах'}</button>
                   <button type="button" className={styles.outlineDanger} disabled={editorBusy || portraitBusy} onClick={() => void deleteEditorPortrait()}>Зураг арилгах</button>
@@ -499,7 +507,5 @@ export default function SharedAncestryAdminPage() {
         <label className={styles.wide}>Зориулалт<textarea maxLength={4000} rows={3} value={donation.purpose} onChange={(event) => setDonation({ ...donation, purpose: event.target.value })} /></label>
       </div><div className={styles.panelActions}><button disabled={saving}>{saving ? 'Хадгалж байна…' : donation.is_published ? 'Хадгалаад нийтлэх' : 'Хадгалах'}</button></div></form>
       </>}
-    </section>
-  </div></main>;
+    </AdminShell>;
 }
-

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -16,6 +16,7 @@ import {
 } from "../../lib/api";
 import type { SectionData } from "./use-dashboard-section";
 import ProfilePhoto from "../profile-photo";
+import { PHOTO_CHANGED_EVENT, type PhotoChange } from '../../lib/image-upload';
 export type MemoryPage = {
   items: MemoryListItem[];
   total: number;
@@ -51,10 +52,11 @@ export function SectionHeading({
   href?: string;
   linkText?: string;
 }) {
+  const marker = /ЦОМОГ|ДУРСАМЖ/.test(eyebrow) ? '📷' : /ТҮҮХ/.test(eyebrow) ? '📜' : /АРХИВ/.test(eyebrow) ? '📚' : /ҮНДЭС/.test(eyebrow) ? '🌳' : '';
   return (
     <header className="heritage-section-heading">
       <div>
-        <p className="heritage-eyebrow">{eyebrow}</p>
+        <p className="heritage-eyebrow">{marker && <span aria-hidden="true">{marker} </span>}{eyebrow}</p>
         <h2>{title}</h2>
       </div>
       {href && (
@@ -283,12 +285,22 @@ function PersonPortrait({
   person: Person;
   familyId: string;
 }) {
+  const [url, setUrl] = useState(person.profile_photo_url);
+  useEffect(() => { setUrl(person.profile_photo_url); }, [person.profile_photo_url]);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent<PhotoChange>).detail;
+      if (detail?.endpoint === `/families/${familyId}/persons/${person.id}/profile-photo`) setUrl(detail.url);
+    };
+    window.addEventListener(PHOTO_CHANGED_EVENT, changed);
+    return () => window.removeEventListener(PHOTO_CHANGED_EVENT, changed);
+  }, [familyId, person.id]);
   const initials = [person.last_name, person.first_name]
     .filter(Boolean)
     .map((part) => part[0])
     .join("")
     .slice(0, 2);
-  return <div className="heritage-portrait"><ProfilePhoto className="heritage-portrait__image" url={person.profile_photo_url} name={personName(person)} fallback={initials || "🌳"} /></div>;
+  return <div className="heritage-portrait"><ProfilePhoto className="heritage-portrait__image" url={url} name={personName(person)} fallback={initials || "🌳"} /></div>;
 }
 
 export function FeaturedPerson({
@@ -312,7 +324,7 @@ export function FeaturedPerson({
     <article className="heritage-featured">
       <PersonPortrait key={person.id} person={person} familyId={familyId} />
       <div>
-        <p className="heritage-eyebrow">ОНЦЛОХ ХҮН</p>
+        <p className="heritage-eyebrow"><span aria-hidden="true">🌿 </span>ОНЦЛОХ ХҮН</p>
         <h2>{personName(person)}</h2>
         {person.birth_date && (
           <p className="heritage-person-dates">
@@ -407,7 +419,7 @@ export function MemoryAlbum({
         </div>
       ) : (
         <EmptyState
-          title="Дурсамж бий. Зургийн хуудас хараахан нээгдээгүй."
+          title="Дурсамжууддаа зураг нэмээрэй."
           href={familyLink("/memories", familyId)}
           action="Дурсамжуудаа үзэх"
         >

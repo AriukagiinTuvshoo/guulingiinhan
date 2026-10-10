@@ -140,12 +140,57 @@ try {
       await noOverflow(admin);
     }
     await admin.screenshot({ path: path.join(artifacts, `mobile-admin-overview-${width}.png`) });
-    const ancestry = nav.getByRole('button', { name: /Эх мод|Удмын эх|Үндсэн удам/ });
+    const ancestry = nav.getByRole('link', { name: /Эх мод|Удмын эх|Үндсэн удам/ });
     assert.equal(await ancestry.count(), 1, 'Admin ancestry navigation missing');
     await ancestry.click(); await poll(() => admin.url().includes('/admin/ancestry'), 'Ancestry link failed'); await settled(admin); await noOverflow(admin);
     await admin.screenshot({ path: path.join(artifacts, `mobile-admin-ancestry-${width}.png`) });
   });
 
+  await scenario('people administration is gated; self profile remains editable', async () => {
+    await owner.goto(`${frontend}/dashboard?family=${family}`); await settled(owner);
+    assert.equal(await owner.getByRole('navigation', { name: 'Үндсэн навигаци' }).getByRole('link', { name: /^Хүмүүс/ }).count(), 0);
+    assert.equal((await ownerContext.request.get(`${api}/families/${family}/people`)).status(), 403);
+    assert.equal((await ownerContext.request.get(`${api}/families/${family}/persons`)).status(), 200);
+    await owner.goto(`${frontend}/people?family=${family}`);
+    await poll(() => owner.url().includes('/tree'), 'Ordinary directory route did not return to private tree');
+    await owner.goto(`${frontend}/profile?family=${family}&person=${fixture.personIds.familyAOwnerPerson}`); await settled(owner);
+    await owner.locator('#person-profile-photo').waitFor({ state: 'attached' });
+    assert.equal(await owner.getByRole('button', { name: /Мэдээлэл засах/ }).count(), 1, 'Own edit affordance lost');
+  });
+  await scenario('mobile MIME normalization uploads own portrait and refreshes featured image', async () => {
+    const bytes = await fs.readFile(fixture.imagePath);
+    const endpoint = `/families/${family}/persons/${fixture.personIds.familyAOwnerPerson}/profile-photo`;
+    const uploaded = owner.waitForResponse(r => r.url() === api + endpoint && r.request().method() === 'POST');
+    await owner.locator('#person-profile-photo').setInputFiles({ name: 'IPHONE_EXPORT.HEIC', mimeType: '', buffer: bytes });
+    assert.equal((await uploaded).status(), 201);
+    const featuredResponse = await ownerContext.request.get(`${api}/families/${family}/featured-person`);
+    assert.equal(featuredResponse.status(), 200);
+    const featuredPerson = await featuredResponse.json();
+    assert.equal(featuredPerson?.id, fixture.personIds.familyAOwnerPerson, 'Synthetic featured person not persisted');
+    assert.ok(featuredPerson.profile_photo_url, 'Featured person API omitted saved portrait');
+    await owner.goto(`${frontend}/dashboard?family=${family}`); await settled(owner);
+    const portrait = owner.locator('.heritage-portrait img');
+    await poll(() => portrait.evaluateAll(images => images.some(i => i.complete && i.naturalWidth > 0)), 'Saved person photo did not render on dashboard');
+    const previous = await portrait.getAttribute('src');
+    const response = await ownerContext.request.post(api + endpoint, { data: bytes, headers: { 'Content-Type': 'image/png', 'X-File-Name': 'replacement.png' } });
+    assert.equal(response.status(), 201); const value = await response.json();
+    await owner.evaluate(detail => window.dispatchEvent(new CustomEvent('guulingiinhan:photo-changed', { detail })), { endpoint, hasPhoto: true, url: value.profile_photo_url });
+    await poll(async () => (await portrait.getAttribute('src')) !== previous && await portrait.evaluate(i => i.complete && i.naturalWidth > 0), 'Stable dashboard portrait did not refresh');
+    await owner.goto(`${frontend}/settings?family=${family}`); await settled(owner);
+    await owner.getByLabel('Аккаунтын зураг', { exact: true }).setInputFiles({ name: 'EMPTY_MIME.PNG', mimeType: '', buffer: bytes });
+    const accountUpload = owner.waitForResponse(r => r.url() === api + '/auth/me/photo' && r.request().method() === 'POST');
+    await owner.getByRole('button', { name: 'Зураг хадгалах', exact: true }).click(); assert.equal((await accountUpload).status(), 201);
+    await poll(() => owner.locator('.app-shell__account-button img').evaluateAll(images => images.some(i => i.complete && i.naturalWidth > 0)), 'Header did not refresh first account photo');
+  });
+  await scenario('admin people and ancestry retain persistent navigation', async () => {
+    await admin.goto(`${frontend}/admin/people`); await settled(admin);
+    const nav = admin.getByRole('navigation', { name: 'Админ цэс' });
+    await nav.getByRole('link', { name: /Эх мод/ }).click(); await settled(admin);
+    assert.equal(await admin.getByRole('link', { name: /Админ руу буцах/ }).count(), 0);
+    await nav.getByRole('link', { name: /^Хүмүүс/ }).click(); await settled(admin); await noOverflow(admin);
+    await nav.getByRole('link', { name: /^Хэрэглэгчид/ }).click(); await settled(admin);
+    assert.ok(admin.url().includes('section=users')); await noOverflow(admin);
+  });
   await scenario('admin request count remains unknown while loading or unavailable', async () => {
     const pattern = `${api}/admin/shared-lineage/requests?*`;
     let release;

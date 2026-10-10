@@ -3,11 +3,11 @@ from uuid import UUID
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import FamilyMember, PersonLinkRequest
+from app.models import AdminGrant, FamilyMember, PersonLinkRequest
 from tests.conftest import register_verified
 
 
-def test_owner_selects_canonical_root_without_losing_people(client, email_provider):
+def test_owner_selects_canonical_root_without_losing_people(client, email_provider, database):
     assert register_verified(client, "root-owner@example.com", "strong-password-123", email_provider).status_code == 201
     family = client.post("/api/v1/families", json={"name": "Recorded lineage"}).json()
     family_id = family["id"]
@@ -23,6 +23,9 @@ def test_owner_selects_canonical_root_without_losing_people(client, email_provid
     assert tree["lineage_root_person_id"] == person_id
     assert tree["root_person_id"] == person_id
     assert any(item["id"] == person_id for item in tree["persons"])
+    assert client.delete(f"/api/v1/families/{family_id}/persons/{person_id}").status_code == 403
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
     assert client.delete(f"/api/v1/families/{family_id}/persons/{person_id}").status_code == 409
     assert client.put(f"/api/v1/families/{family_id}/root", json={"person_id": person_id}).status_code == 200
     personal = client.get(f"/api/v1/families/{family_id}/tree?scope=family")
@@ -87,7 +90,7 @@ def test_pending_person_link_request_is_unique_per_user_and_family(client, datab
         db.flush()
 
 
-def test_detach_preserves_historical_relationships(client, email_provider):
+def test_detach_preserves_historical_relationships(client, email_provider, database):
     assert register_verified(client, "history-owner@example.com", "strong-password-123", email_provider).status_code == 201
     family_id = client.post("/api/v1/families", json={"name": "Historical family"}).json()["id"]
     people = [client.post(f"/api/v1/families/{family_id}/persons", json={
@@ -99,6 +102,8 @@ def test_detach_preserves_historical_relationships(client, email_provider):
     assert client.post(f"/api/v1/families/{family_id}/marriages", json={
         "person_1_id": people[0], "person_2_id": people[2],
     }).status_code == 201
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
     for person_id in people:
         assert client.delete(f"/api/v1/families/{family_id}/persons/{person_id}").status_code == 409
     tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={people[0]}&depth=2").json()

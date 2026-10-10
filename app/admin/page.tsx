@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import AdminOverview from '../../components/admin-overview';
-import { InstallAppButton } from '../../components/install-app';
+import AdminShell, { type AdminSection } from '../../components/admin-shell';
 import AccountPhoto from '../../components/account-photo';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -28,19 +28,6 @@ const labels: Record<Role, string> = {
   SUPER_ADMIN: 'Ерөнхий админ', ADMIN: 'Админ', MODERATOR: 'Хяналтын админ',
 };
 const pageSize = 25;
-
-function AdminIcon({ kind }: { kind: 'overview' | 'users' | 'families' | 'root' | 'announcements' | 'audit' | 'admins' }) {
-  const paths = {
-    overview: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
-    users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
-    families: 'M12 8v5M5 13h14M5 13v3M19 13v3M8 3h8v5H8zM2 16h6v5H2zM16 16h6v5h-6z',
-    root: 'M12 3 5 12h4l-5 6h16l-5-6h4L12 3M12 18v4',
-    announcements: 'M3 10v4h4l12 5V5L7 10H3M7 14l2 7h3l-2-6M22 9v6',
-    audit: 'M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2',
-    admins: 'M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4M8 12l3 3 5-6',
-  };
-  return <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[kind]} /></svg>;
-}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -116,6 +103,8 @@ export default function AdminPage() {
 
   function show(sectionName: Section) {
     setSection(sectionName); setListSearch(''); setOffset(0); setError(''); setNotice(''); setConfirmation(null);
+    const destination = sectionName === 'user_detail' ? 'users' : sectionName === 'family_studio' ? 'families' : sectionName;
+    window.history.replaceState(window.history.state, '', destination === 'overview' ? '/admin' : `/admin?section=${destination}`);
   }
 
   async function accountAction(action: 'recovery' | 'revoke-phone') {
@@ -167,17 +156,6 @@ export default function AdminPage() {
       setInviteEmail('');
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Урилга илгээж чадсангүй.'); }
     finally { setWorking(false); }
-  }
-
-  async function logout() {
-    setWorking(true);
-    try {
-      await api<void>('/auth/logout', { method: 'POST' });
-      router.replace('/login');
-    } catch {
-      setError('Гарах үйлдэл амжилтгүй боллоо. Дахин оролдоно уу.');
-      setWorking(false);
-    }
   }
 
   async function saveStory() {
@@ -251,31 +229,7 @@ export default function AdminPage() {
             : section === 'announcements' ? 'Мэдэгдлийн төв'
               : section === 'audit' ? 'Өөрчлөлтийн түүх' : 'Админ эрхүүд';
 
-  return <main className={styles.page}>
-    <div className={styles.shell}>
-      <header className={styles.header}>
-        <div><Link className={styles.brand} href="/dashboard">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>УДИРДЛАГЫН ОРЧИН</span></div>
-        <div className={styles.headerActions}><InstallAppButton /><Link className={styles.back} href="/dashboard">Апп руу буцах →</Link><button type="button" disabled={working} onClick={logout}>Гарах</button></div>
-      </header>
-      <div className={styles.layout}>
-        <nav className={styles.nav} aria-label="Админ цэс">
-          <div className={styles.navGroup}><span className={styles.navGroupLabel}>УДИРДЛАГА</span>
-            <button aria-current={section === 'overview' ? 'page' : undefined} onClick={() => show('overview')}><AdminIcon kind="overview" /><span className={styles.navText}><strong>Ерөнхий</strong><small>Системийн тойм</small></span></button>
-            <button aria-current={section === 'users' || section === 'user_detail' ? 'page' : undefined} onClick={() => show('users')}><AdminIcon kind="users" /><span className={styles.navText}><strong>Хэрэглэгчид</strong><small>Бүртгэл ба төлөв</small></span></button>
-            <button aria-current={section === 'families' || section === 'family_studio' ? 'page' : undefined} onClick={() => show('families')}><AdminIcon kind="families" /><span className={styles.navText}><strong>Гэр бүл, удам</strong><small>Хүн ба холбоос</small></span></button>
-          </div>
-          <div className={styles.navGroup}><span className={styles.navGroupLabel}>ӨВИЙН САН</span>
-            {identity?.role === 'SUPER_ADMIN' && <button onClick={() => router.push('/admin/ancestry')}><AdminIcon kind="root" /><span className={styles.navText}><strong>Эх мод · хандив</strong><small>Хүсэлт ба үндсэн удам</small></span></button>}
-            <button aria-current={section === 'announcements' ? 'page' : undefined} onClick={() => show('announcements')}><AdminIcon kind="announcements" /><span className={styles.navText}><strong>Мэдэгдэл</strong><small>Нийтэлсэн, ноорог</small></span></button>
-            {identity?.role === 'SUPER_ADMIN' && <button aria-current={section === 'audit' ? 'page' : undefined} onClick={() => show('audit')}><AdminIcon kind="audit" /><span className={styles.navText}><strong>Өөрчлөлтийн түүх</strong><small>Үйлдлийн бүртгэл</small></span></button>}
-          </div>
-          {identity?.role === 'SUPER_ADMIN' && <div className={styles.navGroup}><span className={styles.navGroupLabel}>ХАНДАЛТ</span><button aria-current={section === 'admins' ? 'page' : undefined} onClick={() => show('admins')}><AdminIcon kind="admins" /><span className={styles.navText}><strong>Админ эрхүүд</strong><small>Баг ба хамгаалалт</small></span></button></div>}
-          <p className={styles.navFootnote}>ГУУЛИНГИЙНХАН<br />Удмын сангийн удирдлага</p>
-        </nav>
-        <div className={styles.content}>
-          <div className={styles.heading}><div><span className={styles.eyebrow}>СИСТЕМИЙН ХЭМЖЭЭНД</span><h1>{title}</h1></div>
-            {identity && <div className={styles.identity}><strong>{identity.display_name}</strong><span>{labels[identity.role]}</span></div>}
-          </div>
+  return <><AdminShell active={section === 'user_detail' ? 'users' : section === 'family_studio' ? 'families' : section} title={title} identity={identity} onOpen={(next: AdminSection) => { if (next === 'root' || next === 'people') return; show(next); }}>
           {error && <div className={styles.error} role="alert">{error}</div>}
           {notice && <div className={styles.notice} role="status">{notice}</div>}
           {busy && <p role="status" className={styles.state}>Ачаалж байна…</p>}
@@ -327,9 +281,7 @@ export default function AdminPage() {
             {selectedUser && <p className={styles.intro}>Олдсон аккаунт: {selectedUser.display_name} · {selectedUser.is_active ? 'идэвхтэй' : 'идэвхгүй'}</p>}
             {admins.length === 0 ? <p className={styles.state}>Админ эрхтэй хэрэглэгч алга.</p> : <div className={styles.list}>{admins.map((admin) => <div className={styles.row} key={admin.id}><div><strong>{admin.display_name}</strong><span>{admin.email || 'Имэйлгүй аккаунт'} · {labels[admin.role]}</span></div>{admin.role !== 'SUPER_ADMIN' && <button onClick={() => setConfirmation({ userId: admin.id, action: 'revoke', label: admin.email || admin.display_name })}>Эрх цуцлах</button>}</div>)}</div>}
           </>}
-        </div>
-      </div>
-    </div>
+      </AdminShell>
     {confirmation && <div className={styles.overlay} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !working) setConfirmation(null); }}>
       <div className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="admin-confirm-title">
         <h2 id="admin-confirm-title">Үйлдлийг батлах</h2>
@@ -337,5 +289,5 @@ export default function AdminPage() {
         <div><button disabled={working} onClick={() => setConfirmation(null)}>Болих</button><button disabled={working} onClick={applyRoleChange}>{working ? 'Хадгалж байна…' : 'Батлах'}</button></div>
       </div>
     </div>}
-  </main>;
+  </>;
 }

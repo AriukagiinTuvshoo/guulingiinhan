@@ -4,7 +4,7 @@ from uuid import UUID
 from conftest import register_verified
 from sqlalchemy import select
 
-from app.models import AuditLog, FamilyMember, PersonGuardianship
+from app.models import AdminGrant, AuditLog, FamilyMember, PersonGuardianship
 from app.privacy import is_minor
 
 
@@ -246,6 +246,8 @@ def test_expired_grants_are_inactive_and_can_be_reissued(client, database):
 
 def test_minor_profile_projection_applies_to_search_and_tree(client, database):
     _, family, child, _ = setup_family(client, database)
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="ADMIN"))
     directory = client.get(f"/api/v1/families/{family['id']}/people")
     assert directory.status_code == 200
     child_row = next(item for item in directory.json()["items"] if item["id"] == child["id"])

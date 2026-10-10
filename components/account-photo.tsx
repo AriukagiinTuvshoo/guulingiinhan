@@ -1,7 +1,10 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { Camera, ImagePlus, Trash2 } from 'lucide-react';
 import { API_BASE, api } from '../lib/api';
+import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../lib/image-upload';
+import './account-photo.css';
 
 export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, onChanged }: {
   endpoint?: string; hasPhoto: boolean; onChanged: () => void;
@@ -11,6 +14,9 @@ export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [selected, setSelected] = useState<File | null>(null);
+  const [preview, setPreview] = useState('');
+  const input = useRef<HTMLInputElement>(null);
   const fieldId = `account-photo-${endpoint.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
   useEffect(() => {
@@ -18,7 +24,7 @@ export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, on
     let blobUrl = '';
     setUrl('');
     if (hasPhoto) {
-      fetch(API_BASE + endpoint, { credentials: 'include', signal: controller.signal })
+      fetch(API_BASE + endpoint, { credentials: 'include', cache: 'no-store', signal: controller.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error('Photo unavailable');
           const blob = await response.blob();
@@ -29,40 +35,53 @@ export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, on
     return () => { controller.abort(); if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [endpoint, hasPhoto, revision]);
 
+  useEffect(() => {
+    if (!selected) { setPreview(''); return; }
+    const objectUrl = URL.createObjectURL(selected);
+    setPreview(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selected]);
+
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const file = new FormData(form).get('photo');
+    const file = selected;
     if (!(file instanceof File) || !file.size || busy) return;
     if (file.size > 10 * 1024 * 1024) { setError('Зураг 10 МБ-аас хэтрэхгүй байна.'); return; }
     setBusy(true); setError(''); setNotice('');
     try {
-      const result = await api<{ cleanup_pending: boolean }>(endpoint, { method: 'POST', body: file,
-        headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) } });
-      form.reset(); setRevision((value) => value + 1); onChanged();
+      const prepared = await prepareImageUpload(file);
+      const result = await api<{ cleanup_pending: boolean }>(endpoint, { method: 'POST', body: prepared,
+        headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) } });
+      form.reset(); setSelected(null); setRevision((value) => value + 1); onChanged();
+      announcePhotoChange({ endpoint, hasPhoto: true, url: endpoint });
       setNotice(result.cleanup_pending ? 'Зураг хадгалагдлаа. Өмнөх зургийн цэвэрлэгээ хүлээгдэж байна.' : 'Зураг хадгалагдлаа.');
-    } catch { setError('Зургийг хадгалж чадсангүй. JPG, PNG эсвэл WebP зураг сонгоно уу.'); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Зургийг хадгалж чадсангүй. Дахин оролдоно уу.'); }
     finally { setBusy(false); }
   }
 
   async function remove() {
     if (busy) return;
     setBusy(true); setError(''); setNotice('');
-    try { await api(endpoint, { method: 'DELETE' }); setUrl(''); onChanged(); setNotice('Профайл зураг хасагдлаа.'); }
+    try { await api(endpoint, { method: 'DELETE' }); setUrl(''); setSelected(null); if (input.current) input.current.value = ''; onChanged(); announcePhotoChange({ endpoint, hasPhoto: false, url: null }); setNotice('Профайл зураг хасагдлаа.'); }
     catch { setError('Зургийг хасаж чадсангүй.'); }
     finally { setBusy(false); }
   }
 
-  return <div className="account-photo-editor">
-    {url && <img src={url} width={96} height={96} alt="Аккаунтын профайл зураг" style={{ objectFit: 'cover', borderRadius: '50%' }} />}
+  return <div className="account-photo-editor" aria-busy={busy}>
+    <div className="account-photo-editor__portrait">
+      {(preview || url) ? <img src={preview || url} width={96} height={96} alt={selected ? 'Сонгосон зургийн урьдчилан харах' : 'Аккаунтын профайл зураг'} onError={() => setPreview('')} /> : <Camera size={32} aria-hidden="true" />}
+    </div>
     {error && <p id={`${fieldId}-error`} role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <form className="settings-inline-form" onSubmit={upload} aria-describedby={error ? `${fieldId}-error` : undefined}>
       <label htmlFor={fieldId}>Аккаунтын зураг</label>
-      <input id={fieldId} name="photo" type="file" accept="image/jpeg,image/png,image/webp" required disabled={busy} />
-      <p className="settings-help">Зураг хувийн орчинд хадгалагдана. JPG, PNG, WebP · 10 МБ хүртэл.</p>
-      <button className="settings-button settings-button--dark" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Зураг хадгалах'}</button>
+      <input ref={input} className="account-photo-editor__file" id={fieldId} name="photo" type="file" accept={IMAGE_ACCEPT} required disabled={busy} onChange={event => { setSelected(event.target.files?.[0] ?? null); setError(''); setNotice(''); }} />
+      <button type="button" className="account-photo-editor__pick" disabled={busy} onClick={() => input.current?.click()}><ImagePlus size={18} aria-hidden="true" />{selected ? 'Өөр зураг сонгох' : 'Зураг сонгох'}</button>
+      {selected && <p className="account-photo-editor__filename" role="status">{selected.name} · {(selected.size / 1024 / 1024).toFixed(1)} МБ</p>}
+      <p className="settings-help">Таны аккаунтын зураг. Ургийн хүний зурагтай тусдаа хадгалагдана. JPG, PNG, WebP · 10 МБ хүртэл. HEIC хөрвүүлэлт browser-ийн дэмжлэгээс хамаарна.</p>
+      <button className="settings-button settings-button--dark" disabled={busy || !selected}>{busy ? 'Хадгалж байна…' : 'Зураг хадгалах'}</button>
     </form>
-    {hasPhoto && <button className="settings-button settings-button--text" type="button" disabled={busy} onClick={() => void remove()}>Аккаунтын зураг хасах</button>}
+    {hasPhoto && <button className="settings-button settings-button--text" type="button" disabled={busy} onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Аккаунтын зураг хасах</button>}
   </div>;
 }

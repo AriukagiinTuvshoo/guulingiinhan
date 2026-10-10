@@ -11,8 +11,6 @@ import {
   ArchiveListPage,
   Marriage,
   MemoryListItem,
-  LineageSummary,
-  BranchSummary,
   PersonProfile,
   StoryListPage,
   ProfileRelationPerson,
@@ -20,6 +18,7 @@ import {
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
+import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
 
 type EventItem = {
   id: string;
@@ -80,10 +79,6 @@ function ProfilePageContent() {
   const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(false);
   const [editingIsAlive, setEditingIsAlive] = useState(true);
-  const [lineages, setLineages] = useState<LineageSummary[]>([]);
-  const [branches, setBranches] = useState<BranchSummary[]>([]);
-  const [selectedLineageId, setSelectedLineageId] = useState('');
-  const [selectedBranchId, setSelectedBranchId] = useState('');
   const [loading, setLoading] = useState(true);
 
   async function load(fid: string, pid: string, requestId?: number) {
@@ -102,8 +97,6 @@ function ProfilePageContent() {
     if (requestId !== undefined && requestId !== profileRequestRef.current) return;
 
     setPerson(profile);
-    setSelectedLineageId(profile.lineage_id ?? '');
-    setSelectedBranchId(profile.branch_id ?? '');
     setLoading(false);
 
     const [bio, eventList, marriageList, storyPage, archivePage] = await Promise.allSettled([
@@ -164,46 +157,6 @@ function ProfilePageContent() {
       setArchiveState('restricted');
     } else {
       setArchiveState('error');
-    }
-  }
-
-  useEffect(() => {
-    if (!family) return;
-    let active = true;
-    api<LineageSummary[]>(`/families/${family}/lineages`)
-      .then((items) => { if (active) setLineages(items); })
-      .catch(() => { if (active) setLineages([]); });
-    return () => { active = false; };
-  }, [family]);
-
-  useEffect(() => {
-    if (!selectedLineageId) { setBranches([]); return; }
-    let active = true;
-    api<BranchSummary[]>(`/lineages/${selectedLineageId}/branches`)
-      .then((items) => { if (active) setBranches(items); })
-      .catch(() => { if (active) setBranches([]); });
-    return () => { active = false; };
-  }, [selectedLineageId]);
-
-  async function saveLineageAssignment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!family || !id || mutationBusy || !currentFamily || !['owner', 'editor'].includes(currentFamily.role)) return;
-    setMutationBusy(true);
-    setError('');
-    try {
-      const endpoint = `/families/${family}/persons/${id}/lineage-assignment`;
-      if (selectedLineageId) {
-        await api(endpoint, { method: 'PUT', body: JSON.stringify({ lineage_id: selectedLineageId, branch_id: selectedBranchId || null }) });
-      } else if (person?.lineage_id) {
-        await api(endpoint, { method: 'DELETE' });
-      }
-      const refreshId = ++profileRequestRef.current;
-      await load(family, id, refreshId);
-      setNotice('Удам, салааны хуваарилалт хадгалагдлаа.');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Хуваарилалтыг хадгалж чадсангүй.');
-    } finally {
-      setMutationBusy(false);
     }
   }
 
@@ -398,20 +351,22 @@ function ProfilePageContent() {
     setMutationBusy(true);
     setError('');
     try {
+      const prepared = await prepareImageUpload(file);
       const result = await api<{ profile_photo_url: string }>(
         `/families/${family}/persons/${id}/profile-photo`,
         {
           method: 'POST',
-          body: file,
-          headers: { 'Content-Type': file.type, 'X-File-Name': encodeURIComponent(file.name) },
+          body: prepared,
+          headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) },
         },
       );
       if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
       setPerson((current) => current ? { ...current, profile_photo_url: result.profile_photo_url } : current);
+      announcePhotoChange({ endpoint: `/families/${family}/persons/${id}/profile-photo`, hasPhoto: true, url: result.profile_photo_url });
       setNotice('Профайл зургийг шинэчиллээ.');
     } catch (cause) {
       if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) {
-        setError(cause instanceof ApiError && [401, 403, 404, 413, 415, 422, 429].includes(cause.status)
+        setError(cause instanceof Error && !(cause instanceof ApiError) ? cause.message : cause instanceof ApiError && [401, 403, 404, 413, 415, 422, 429].includes(cause.status)
           ? cause.message
           : 'Зургийг хадгалж чадсангүй. Дахин оролдоно уу.');
       }
@@ -430,6 +385,7 @@ function ProfilePageContent() {
       await api<void>(`/families/${family}/persons/${id}/profile-photo`, { method: 'DELETE' });
       if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
       setPerson((current) => current ? { ...current, profile_photo_url: null } : current);
+      announcePhotoChange({ endpoint: `/families/${family}/persons/${id}/profile-photo`, hasPhoto: false, url: null });
       setNotice('Профайл зургийг устгалаа.');
     } catch (cause) {
       if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) {
@@ -529,7 +485,7 @@ function ProfilePageContent() {
               name={personName(person) || 'Нэргүй хүн'}
               fallback={initials(person)}
             />
-            {editing && person.can_edit_profile && (
+            {person.can_edit_profile && (
               <div className="profile-photo-tools">
                 <label className="profile-photo-upload" htmlFor="person-profile-photo">
                   <Camera size={15} aria-hidden="true" />
@@ -538,7 +494,7 @@ function ProfilePageContent() {
                     ref={photoInputRef}
                     id="person-profile-photo"
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept={IMAGE_ACCEPT}
                     onChange={(event) => void uploadProfilePhoto(event)}
                     disabled={mutationBusy}
                     aria-label="JPEG, PNG эсвэл WebP зураг сонгох"
@@ -572,7 +528,7 @@ function ProfilePageContent() {
               </Link>
               {person.can_edit_profile && (
                 <button type="button" onClick={() => { setEditingIsAlive(person.is_alive); setEditing((value) => !value); }}>
-                  {editing ? 'Засахыг хаах' : 'Профайл засах'}
+                  {editing ? 'Засахыг хаах' : 'Мэдээлэл засах'}
                 </button>
               )}
             </div>
@@ -604,12 +560,7 @@ function ProfilePageContent() {
               <div><dt>Удам</dt><dd>{person.lineage_name ?? 'Томилогдоогүй'}</dd></div>
               <div><dt>Салаа</dt><dd>{person.branch_name ?? 'Томилогдоогүй'}</dd></div>
             </dl>
-            <p className="profile-note">Удам, салаа нь зөвхөн explicit assignment-аас харагдана. Бусад мэдээллээс автоматаар таамаглахгүй.</p>
-            {currentFamily && ['owner', 'editor'].includes(currentFamily.role) && <form className="profile-lineage-form" onSubmit={saveLineageAssignment}>
-              <label>Удам угсаа<select value={selectedLineageId} onChange={(event) => { setSelectedLineageId(event.target.value); setSelectedBranchId(''); }}><option value="">Томилохгүй</option>{lineages.map((lineage) => <option key={lineage.id} value={lineage.id}>{lineage.name}</option>)}</select></label>
-              <label>Салаа<select value={selectedBranchId} onChange={(event) => setSelectedBranchId(event.target.value)} disabled={!selectedLineageId}><option value="">Салаа сонгоогүй</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
-              <button type="submit" disabled={mutationBusy}>Хуваарилалт хадгалах</button>
-            </form>}
+            <p className="profile-note">Удам, салааны хуваарилалтыг админ бүртгэж баталгаажуулна.</p>
           </section>
 
           <section className="card profile-card profile-relationships">

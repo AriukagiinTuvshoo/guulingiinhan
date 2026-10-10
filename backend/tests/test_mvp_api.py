@@ -4,7 +4,7 @@ from uuid import UUID
 from conftest import confirm_registration_email, register_verified
 from sqlalchemy import select
 
-from app.models import AuditLog, FamilyMember, FamilyPerson, Person, User
+from app.models import AdminGrant, AuditLog, FamilyMember, FamilyPerson, Person, User
 
 
 def register(client, email):
@@ -236,6 +236,8 @@ def test_family_tree_relationships_can_be_corrected_and_person_detached(client, 
     assert client.delete(f"{base}/relationships/parent-child/{relationship_id}").status_code == 204
     assert client.get(f"{base}/tree").json()["parent_child_relationships"] == []
 
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
     assert client.delete(f"{base}/persons/{child['id']}").status_code == 204
     with database() as db:
         assert db.get(Person, UUID(child["id"])) is not None
@@ -393,6 +395,7 @@ def test_biography_timeline_and_memory_round_trip(client):
     ).json()
     person_id = person["id"]
     base = f"/api/v1/families/{family_id}"
+    assert client.post(f"{base}/persons/{person_id}/link-me").status_code == 204
     bio = client.put(f"{base}/persons/{person_id}/biography", json={"content": "Амьдралын намтар."})
     assert bio.status_code == 200 and bio.json()["content"] == "Амьдралын намтар."
 

@@ -204,6 +204,8 @@ def seed_fixture(db, password: str) -> dict[str, Any]:
                        linked_by=user_ids["familyBOwner"]),
     ))
 
+    # Synthetic fixture: use the linked adult to verify dashboard portrait refresh.
+    family_a.featured_person_id = owner_person_id
     first, second = sorted((root_father_id, root_mother_id), key=str)
     db.add(Marriage(person_1_id=first, person_2_id=second, status="widowed", created_by=admin_id))
     db.add_all(

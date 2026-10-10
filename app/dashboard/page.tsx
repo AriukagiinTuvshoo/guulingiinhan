@@ -4,7 +4,6 @@ import Link from "next/link";
 import type {
   Family,
   Person,
-  PersonDirectoryPage,
   StoryListPage,
   ArchiveListPage,
 } from "../../lib/api";
@@ -30,8 +29,8 @@ import {
 
 function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
   const base = `/families/${encodeURIComponent(family.id)}`;
-  const people = useDashboardSection<PersonDirectoryPage>(
-    `${base}/people?page=1&page_size=6`,
+  const people = useDashboardSection<Person[]>(
+    `${base}/persons`,
   );
   const featured = useDashboardSection<Person | null>(`${base}/featured-person`);
   const tree = useDashboardSection<SharedLineagePreview>("/shared-lineage");
@@ -45,7 +44,7 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
     `${base}/archives?page=1&page_size=3`,
   );
   const metrics = [
-    { label: "Гэр бүлийн хүн", value: people.data?.total, href: "/people" },
+    { label: "Гэр бүлийн хүн", value: people.data?.length, href: "/tree" },
     { label: "Хадгалсан түүх", value: stories.data?.total, href: "/stories" },
     { label: "Нандин дурсамж", value: memories.data?.total, href: "/memories" },
     { label: "Архивын баримт", value: archives.data?.total, href: "/archives" },

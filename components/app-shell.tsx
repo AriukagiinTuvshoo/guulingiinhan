@@ -59,7 +59,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
   { label: 'ТОЙМ', keys: ['dashboard'] },
-  { label: 'УДАМ', keys: ['tree', 'people', 'relationships', 'search'] },
+  { label: 'УДАМ', keys: ['tree', 'relationships', 'search'] },
   { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
   { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities'] },
   { label: 'АККАУНТ', keys: ['settings'] },
@@ -375,6 +375,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
       if (requestId === contextRequestRef.current) setContextLoading(false);
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!shouldRenderShell || !user?.id) return;
+    let active = true;
+    const refreshPhoto = (event: Event) => {
+      if ((event as CustomEvent<{ endpoint?: string }>).detail?.endpoint !== '/auth/me/photo') return;
+      void api<User>('/auth/me').then(current => { if (active) setUser(current); }).catch(() => undefined);
+    };
+    window.addEventListener('guulingiinhan:photo-changed', refreshPhoto);
+    return () => { active = false; window.removeEventListener('guulingiinhan:photo-changed', refreshPhoto); };
+  }, [shouldRenderShell, user?.id]);
 
   useEffect(() => {
     if (!shouldRenderShell) {

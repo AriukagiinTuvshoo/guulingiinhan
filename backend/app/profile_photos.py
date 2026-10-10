@@ -7,17 +7,22 @@ import time
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import _consume_otp_rate, _normalized_ip, get_current_user
 from app.config import get_settings
 from app.db import get_db
-from app.families import _assert_person_visible, _audit, _member, _person_in_family
+from app.families import (
+    _assert_person_visible,
+    _audit,
+    _can_edit_person_profile,
+    _member,
+    _person_in_family,
+)
 from app.memory_photos import _image_payload
-from app.models import FamilyMember, Person, User, UserPersonLink
-from app.privacy import has_guardian_scope, person_is_minor, require_minor_scope
+from app.models import FamilyMember, Person, User
+from app.privacy import require_minor_scope
 from app.storage import ObjectStorage, get_storage
 
 router = APIRouter(prefix="/families", tags=["person profile photos"])
@@ -31,14 +36,7 @@ def _object_key(person_id: UUID, version: str) -> str:
 def _can_edit_photo(
     db: Session, family_id: UUID, member: FamilyMember, person: Person, user: User
 ) -> bool:
-    linked = db.scalar(
-        select(UserPersonLink.id).where(
-            UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
-        )
-    ) is not None
-    if person_is_minor(person):
-        return has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
-    return member.role in {"owner", "editor"} or linked
+    return _can_edit_person_profile(db, family_id, person, user)
 
 
 def _request_photo_edit(

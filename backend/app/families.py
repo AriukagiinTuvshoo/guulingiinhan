@@ -19,6 +19,7 @@ from app.db import get_db
 from app.email import EmailDeliveryError, EmailProvider, get_email_provider
 from app.identity import normalize_email
 from app.models import (
+    AdminGrant,
     Archive,
     ArchivePerson,
     AuditLog,
@@ -223,6 +224,10 @@ class PersonOut(BaseModel):
     visibility: str
     created_at: datetime
     updated_at: datetime
+
+
+class FeaturedPersonOut(PersonOut):
+    profile_photo_url: str | None = None
 
 
 class ProfileRelationPersonOut(BaseModel):
@@ -825,8 +830,8 @@ def _audit(
 
 
 def _can_edit_person(db: Session, family_id: UUID, person: Person, user: User) -> bool:
-    member, _ = _member(db, family_id, user)
-    if member.role in {"owner", "editor"}:
+    _member(db, family_id, user)
+    if _is_person_admin(db, user):
         return True
     return (
         db.scalar(
@@ -836,6 +841,17 @@ def _can_edit_person(db: Session, family_id: UUID, person: Person, user: User) -
         )
         is not None
     )
+
+
+def _is_person_admin(db: Session, user: User) -> bool:
+    """Global person administration never follows from family ownership."""
+    grant = db.get(AdminGrant, user.id)
+    return grant is not None and grant.role == "SUPER_ADMIN"
+
+
+def _require_person_admin(db: Session, user: User) -> None:
+    if not _is_person_admin(db, user):
+        raise HTTPException(status_code=403, detail="Хүний бүртгэлийг удирдах админ эрх шаардлагатай.")
 
 
 @router.post("", response_model=FamilyOut, status_code=201)
@@ -1069,7 +1085,8 @@ def upsert_person_lineage_assignment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _member(db, family_id, user, {"owner", "editor"})
+    _require_person_admin(db, user)
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
 
@@ -1143,7 +1160,8 @@ def delete_person_lineage_assignment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _member(db, family_id, user, {"owner", "editor"})
+    _require_person_admin(db, user)
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
     assignment = db.scalar(
@@ -1231,6 +1249,9 @@ def list_people_directory(
     db: Session = Depends(get_db),
 ):
     """Return a paginated, family-scoped People Directory without loading the genealogy graph."""
+    grant = db.get(AdminGrant, user.id)
+    if grant is None or grant.role not in {"SUPER_ADMIN", "ADMIN", "MODERATOR"}:
+        raise HTTPException(status_code=403, detail="Хүмүүсийн удирдлагын жагсаалтад админ эрх шаардлагатай.")
     _member(db, family_id, user)
 
     own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
@@ -1448,7 +1469,7 @@ def _can_edit_person_profile(db: Session, family_id: UUID, person: Person, user:
     ) is not None
     if person_is_minor(person):
         return has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
-    return (member is not None and member.role in {"owner", "editor"}) or linked
+    return member is not None and (_is_person_admin(db, user) or linked)
 
 
 def _person_profile_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonProfileOut:
@@ -1565,7 +1586,7 @@ class FeaturedPersonInput(BaseModel):
     person_id: UUID | None = None
 
 
-@router.get("/{family_id}/featured-person")
+@router.get("/{family_id}/featured-person", response_model=FeaturedPersonOut | None)
 def featured_person(family_id: UUID, user: User = Depends(get_current_user),
                     db: Session = Depends(get_db)):
     _, family = _member(db, family_id, user)
@@ -1577,8 +1598,10 @@ def featured_person(family_id: UUID, user: User = Depends(get_current_user),
             _assert_person_visible(db, person, user)
             if person_is_minor(person):
                 continue
-            return _person_output(db, family_id, person, user).model_copy(
-                update={"profile_photo_url": _person_profile_photo_url(family_id, person)})
+            return FeaturedPersonOut(
+                **_person_output(db, family_id, person, user).model_dump(),
+                profile_photo_url=_person_profile_photo_url(family_id, person),
+            )
         except HTTPException as error:
             if error.status_code != 404:
                 raise
@@ -1588,7 +1611,8 @@ def featured_person(family_id: UUID, user: User = Depends(get_current_user),
 @router.put("/{family_id}/featured-person")
 def set_featured_person(family_id: UUID, body: FeaturedPersonInput,
                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    _, family = _member(db, family_id, user, {"owner", "editor"})
+    _require_person_admin(db, user)
+    _, family = _member(db, family_id, user)
     if body.person_id is not None:
         person = _person_in_family(db, family_id, body.person_id)
         _assert_person_visible(db, person, user)
@@ -1621,7 +1645,7 @@ def update_person(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    member, _ = _member(db, family_id, user)
+    _member(db, family_id, user)
     person = _person_in_family(db, family_id, person_id)
     _assert_person_visible(db, person, user)
     data = body.model_dump(exclude_unset=True)
@@ -1635,7 +1659,7 @@ def update_person(
             UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
         )
     )
-    baseline_edit = member.role in {"owner", "editor"} or linked_to_user is not None
+    baseline_edit = _is_person_admin(db, user) or linked_to_user is not None
     has_scoped_edit = (
         has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
         if is_minor_record
@@ -1860,7 +1884,8 @@ def remove_person_from_family(
     db: Session = Depends(get_db),
 ):
     """Detach from this family; preserve the person and relationship history."""
-    _, family = _member(db, family_id, user, {"owner", "editor"})
+    _require_person_admin(db, user)
+    _, family = _member(db, family_id, user)
     if family.root_person_id == person_id:
         raise HTTPException(status_code=409, detail="Удмын эхийг гэр бүлээс салгах боломжгүй.")
     _person_in_family(db, family_id, person_id)

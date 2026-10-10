@@ -90,6 +90,7 @@ def test_public_memory_thumbnail_requires_public_adult_photo_tags(client, email_
     person = client.post(f"/api/v1/families/{family_id}/persons", json={
         "first_name": "Adult", "birth_date": "1980-01-01", "visibility": "public",
     }).json()
+    assert client.post(f"/api/v1/families/{family_id}/persons/{person['id']}/link-me").status_code == 204
     memory = client.post(f"/api/v1/families/{family_id}/memories", json={
         "title": "Shared photograph", "visibility": "public", "person_ids": [person["id"]],
     }).json()

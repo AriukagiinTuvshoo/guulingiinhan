@@ -35,6 +35,41 @@ def png_bytes() -> bytes:
     return output.getvalue()
 
 
+def test_uploaded_portrait_is_serialized_in_featured_person_and_remains_authorized(client, database):
+    from app.main import app
+
+    storage = PrivateMemoryStorage()
+    app.dependency_overrides[get_storage] = lambda: storage
+    register_verified(client, "featured-portrait@example.com")
+    user_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    family_id = client.post("/api/v1/families", json={"name": "Featured portrait regression"}).json()["id"]
+    person_id = client.post(f"/api/v1/families/{family_id}/persons", json={
+        "first_name": "Adult portrait fixture", "birth_date": "1980-01-01",
+    }).json()["id"]
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=user_id, role="SUPER_ADMIN"))
+    featured = f"/api/v1/families/{family_id}/featured-person"
+    assert client.put(featured, json={"person_id": person_id}).status_code == 200
+    assert client.get(featured).json()["profile_photo_url"] is None
+    photo = f"/api/v1/families/{family_id}/persons/{person_id}/profile-photo"
+    uploaded = client.post(photo, content=png_bytes(), headers={
+        "Content-Type": "image/png", "X-File-Name": "portrait.png",
+    })
+    assert uploaded.status_code == 201
+    result = client.get(featured)
+    assert result.status_code == 200
+    url = result.json()["profile_photo_url"]
+    assert url == uploaded.json()["profile_photo_url"]
+    assert "profile-photos/" not in url
+    assert client.get("/api/v1" + url).status_code == 200
+    assert client.get("/api/v1" + url).headers["cache-control"] == "private, no-store"
+    assert client.delete(photo).status_code == 204
+    assert client.get(featured).json()["profile_photo_url"] is None
+    register_verified(client, "featured-portrait-outsider@example.com")
+    assert client.get(featured).status_code == 403
+    assert client.get("/api/v1" + url).status_code == 403
+
+
 def test_profile_photo_upload_get_replace_and_delete(client, database):
     storage = PrivateMemoryStorage()
     from app.main import app
@@ -48,6 +83,7 @@ def test_profile_photo_upload_get_replace_and_delete(client, database):
         json={"first_name": "Туршилт", "visibility": "family"},
     ).json()
     endpoint = f"/api/v1/families/{family_id}/persons/{person['id']}/profile-photo"
+    assert client.post(f"/api/v1/families/{family_id}/persons/{person['id']}/link-me").status_code == 204
     headers = {"Content-Type": "image/png", "X-File-Name": "portrait.png"}
 
     uploaded = client.post(endpoint, content=png_bytes(), headers=headers)
@@ -57,6 +93,11 @@ def test_profile_photo_upload_get_replace_and_delete(client, database):
     tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={person['id']}")
     assert tree.status_code == 200
     assert tree.json()["persons"][0]["profile_photo_url"] == url
+    # Portrait self-service does not confer People administration.
+    assert client.get(f"/api/v1/families/{family_id}/people").status_code == 403
+    with database() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="ADMIN"))
+        db.commit()
     directory = client.get(f"/api/v1/families/{family_id}/people")
     assert directory.status_code == 200
     assert directory.json()["items"][0]["profile_photo_url"] == url
@@ -106,6 +147,7 @@ def test_profile_photo_requires_membership_edit_permission_and_valid_image(clien
         json={"first_name": "Нууц", "visibility": "family"},
     ).json()
     endpoint = f"/api/v1/families/{family_id}/persons/{person['id']}/profile-photo"
+    assert client.post(f"/api/v1/families/{family_id}/persons/{person['id']}/link-me").status_code == 204
     invalid = client.post(
         endpoint, content=b"not an image",
         headers={"Content-Type": "image/png", "X-File-Name": "portrait.png"},
