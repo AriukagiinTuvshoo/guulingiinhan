@@ -375,6 +375,9 @@ def main() -> int:
         image_path = run_dir / "qa-photo.png"
         Image.new("RGB", (96, 96), (20, 76, 52)).save(image_path)
         fixture["imagePath"] = str(image_path)
+        alternate_image_path = run_dir / "qa-alternate-photo.png"
+        Image.new("RGB", (96, 96), (172, 76, 52)).save(alternate_image_path)
+        fixture["alternateImagePath"] = str(alternate_image_path)
         _write_manifest(fixture, password)
 
         from app.main import app

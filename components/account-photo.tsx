@@ -79,7 +79,7 @@ export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, on
       <input ref={input} className="account-photo-editor__file" id={fieldId} name="photo" type="file" accept={IMAGE_ACCEPT} required disabled={busy} onChange={event => { setSelected(event.target.files?.[0] ?? null); setError(''); setNotice(''); }} />
       <button type="button" className="account-photo-editor__pick" disabled={busy} onClick={() => input.current?.click()}><ImagePlus size={18} aria-hidden="true" />{selected ? 'Өөр зураг сонгох' : 'Зураг сонгох'}</button>
       {selected && <p className="account-photo-editor__filename" role="status">{selected.name} · {(selected.size / 1024 / 1024).toFixed(1)} МБ</p>}
-      <p className="settings-help">Таны аккаунтын зураг. Ургийн хүний зурагтай тусдаа хадгалагдана. JPG, PNG, WebP · 10 МБ хүртэл. HEIC хөрвүүлэлт browser-ийн дэмжлэгээс хамаарна.</p>
+      <p className="settings-help">Өөрийн удмын профайл зурагтай бол дээд аватарт тэр зураг харагдана. Энэ аккаунтын зураг нь профайл зураггүй үед харагдана. JPG, PNG, WebP · 10 МБ хүртэл. HEIC хөрвүүлэлт browser-ийн дэмжлэгээс хамаарна.</p>
       <button className="settings-button settings-button--dark" disabled={busy || !selected}>{busy ? 'Хадгалж байна…' : 'Зураг хадгалах'}</button>
     </form>
     {hasPhoto && <button className="settings-button settings-button--text" type="button" disabled={busy} onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Аккаунтын зураг хасах</button>}

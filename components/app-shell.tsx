@@ -25,8 +25,9 @@ import {
 import Link from 'next/link';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Family, User } from '../lib/api';
+import { ApiError, api, Family, User, PersonProfile } from '../lib/api';
 import ProfilePhoto from './profile-photo';
+import { PHOTO_CHANGED_EVENT, type PhotoChange } from '../lib/image-upload';
 import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
 import { FamilyContext } from './family-context';
 import { useDialogFocus } from './use-dialog-focus';
@@ -334,6 +335,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
     [families, scopedFamilyId],
   );
 
+  // The signed-in person's portrait is their visible identity throughout the app.
+  // A profile being viewed or edited by an admin must never become their avatar.
+  const portraitIdentity = user?.person_id && currentFamily
+    ? `/families/${currentFamily.id}/persons/${user.person_id}` : '';
+  const portraitScope = `${user?.id ?? ''}:${portraitIdentity}`;
+  const [ownPortrait, setOwnPortrait] = useState<{ identity: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (!shouldRenderShell || !portraitIdentity) return;
+    let active = true;
+    let controller: AbortController;
+    const refresh = () => {
+      controller?.abort();
+      controller = new AbortController();
+      const signal = controller.signal;
+      void api<PersonProfile>(portraitIdentity, { signal })
+        .then(person => {
+          if (active && !signal.aborted) setOwnPortrait({ identity: portraitScope, url: person.profile_photo_url ?? null });
+        })
+        .catch(() => {
+          if (active && !signal.aborted) setOwnPortrait({ identity: portraitScope, url: null });
+        });
+    };
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent<PhotoChange>).detail;
+      if (detail?.endpoint === `${portraitIdentity}/profile-photo`) refresh();
+    };
+    refresh();
+    window.addEventListener(PHOTO_CHANGED_EVENT, changed);
+    return () => { active = false; controller?.abort(); window.removeEventListener(PHOTO_CHANGED_EVENT, changed); };
+  }, [shouldRenderShell, portraitIdentity, portraitScope]);
+  const headerPhoto = ownPortrait?.identity === portraitScope && ownPortrait.url
+    ? ownPortrait.url : user?.profile_photo_url;
+
   const retryContext = useCallback(async () => {
     const requestId = ++contextRequestRef.current;
     setContextLoading(true);
@@ -579,7 +613,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             aria-expanded={accountOpen}
             onClick={() => { setMobileOpen(false); setAccountOpen((value) => !value); }}
           >
-            <ProfilePhoto url={user?.profile_photo_url} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
+            <ProfilePhoto url={headerPhoto} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
             <span className="app-shell__account-name">{user?.display_name || 'Хэрэглэгч'}</span>
           </button>
 

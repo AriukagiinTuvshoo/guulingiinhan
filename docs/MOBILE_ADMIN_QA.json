@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-10T03:19:15.166Z",
+  "checked_at": "2026-10-10T03:43:37.694Z",
   "scope": "Synthetic disposable localhost browser → real API → SQLite. No live staging or production mutations. Native OS install prompt not claimed; Chromium installability manifest/worker and offline privacy verified. One deliberate request-abort fault injection validates unknown loading/error counts.",
   "mock_api": false,
   "fault_injection": "One aborted local admin request only; all normal scenarios use real API.",
@@ -7,87 +7,87 @@
     {
       "name": "mobile shell controls, popovers and navigation 320px",
       "pass": true,
-      "ms": 2434
+      "ms": 2346
     },
     {
       "name": "mobile shell controls, popovers and navigation 375px",
       "pass": true,
-      "ms": 1631
+      "ms": 1575
     },
     {
       "name": "mobile shell controls, popovers and navigation 390px",
       "pass": true,
-      "ms": 1541
+      "ms": 1759
     },
     {
       "name": "mobile shell controls, popovers and navigation 768px",
       "pass": true,
-      "ms": 1550
+      "ms": 1581
     },
     {
       "name": "mobile shell controls, popovers and navigation 1024px",
       "pass": true,
-      "ms": 1517
+      "ms": 1535
     },
     {
       "name": "mobile shell controls, popovers and navigation 1440px",
       "pass": true,
-      "ms": 1372
+      "ms": 1249
     },
     {
       "name": "tree family/shared mobile headers preserve profile and notification controls",
       "pass": true,
-      "ms": 6152
+      "ms": 6322
     },
     {
       "name": "admin overview and full navigation 320px",
       "pass": true,
-      "ms": 1972
+      "ms": 2459
     },
     {
       "name": "admin overview and full navigation 390px",
       "pass": true,
-      "ms": 1389
+      "ms": 1328
     },
     {
       "name": "admin overview and full navigation 768px",
       "pass": true,
-      "ms": 1402
+      "ms": 1359
     },
     {
       "name": "admin overview and full navigation 1440px",
       "pass": true,
-      "ms": 1441
+      "ms": 1434
     },
     {
       "name": "people administration is gated; self profile remains editable",
       "pass": true,
-      "ms": 1796
+      "ms": 1948
     },
     {
       "name": "mobile MIME normalization uploads own portrait and refreshes featured image",
       "pass": true,
-      "ms": 1988
+      "ms": 5440
     },
     {
       "name": "admin people and ancestry retain persistent navigation",
       "pass": true,
-      "ms": 696
+      "ms": 667
     },
     {
       "name": "admin request count remains unknown while loading or unavailable",
       "pass": true,
-      "ms": 771
+      "ms": 742
     },
     {
       "name": "PWA manifest actual PNG sizes and network-only worker privacy",
       "pass": true,
-      "ms": 4249
+      "ms": 4484
     },
     {
       "name": "no browser JavaScript exceptions or unexpected real API failures",
       "pass": true,
-      "ms": 1
+      "ms": 0
     }
   ],
   "passed": 17,

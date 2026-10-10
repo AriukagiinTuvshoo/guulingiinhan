@@ -40,6 +40,18 @@ async function login(context, identifier) {
 async function settled(page) {
   await poll(() => page.evaluate(() => !document.querySelector('[aria-busy="true"]') && !/[Аа]чаалж байна|[Аа]чааллаж байна|хуудсыг нээж байна/.test(document.body.innerText)), 'UI remained loading');
 }
+async function headerMatches(context, page, photoUrl) {
+  const expected = await context.request.get(api + photoUrl);
+  assert.equal(expected.status(), 200);
+  const bytes = await expected.body();
+  await poll(async () => {
+    const images = await page.locator('.app-shell__account-button img').evaluateAll(async images => {
+      if (!images[0]?.complete || !images[0].naturalWidth) return [];
+      return Array.from(new Uint8Array(await (await fetch(images[0].src)).arrayBuffer()));
+    });
+    return Buffer.from(images).equals(bytes);
+  }, 'Header avatar does not match the signed-in person portrait');
+}
 async function within(page, locator, label, minTarget = 0) {
   await locator.waitFor({ state: 'visible' });
   // Visibility can precede the end of the drawer's slide-in transition.
@@ -159,6 +171,10 @@ try {
   });
   await scenario('mobile MIME normalization uploads own portrait and refreshes featured image', async () => {
     const bytes = await fs.readFile(fixture.imagePath);
+    const oldAccountPhoto = await fs.readFile(fixture.alternateImagePath);
+    assert.equal((await ownerContext.request.post(api + '/auth/me/photo', { data: oldAccountPhoto, headers: { 'Content-Type': 'image/png', 'X-File-Name': 'old-account.png' } })).status(), 201);
+    await owner.reload(); await settled(owner);
+    await headerMatches(ownerContext, owner, '/auth/me/photo');
     const endpoint = `/families/${family}/persons/${fixture.personIds.familyAOwnerPerson}/profile-photo`;
     const uploaded = owner.waitForResponse(r => r.url() === api + endpoint && r.request().method() === 'POST');
     await owner.locator('#person-profile-photo').setInputFiles({ name: 'IPHONE_EXPORT.HEIC', mimeType: '', buffer: bytes });
@@ -168,6 +184,7 @@ try {
     const featuredPerson = await featuredResponse.json();
     assert.equal(featuredPerson?.id, fixture.personIds.familyAOwnerPerson, 'Synthetic featured person not persisted');
     assert.ok(featuredPerson.profile_photo_url, 'Featured person API omitted saved portrait');
+    await headerMatches(ownerContext, owner, featuredPerson.profile_photo_url);
     await owner.goto(`${frontend}/dashboard?family=${family}`); await settled(owner);
     const portrait = owner.locator('.heritage-portrait img');
     await poll(() => portrait.evaluateAll(images => images.some(i => i.complete && i.naturalWidth > 0)), 'Saved person photo did not render on dashboard');
@@ -176,11 +193,20 @@ try {
     assert.equal(response.status(), 201); const value = await response.json();
     await owner.evaluate(detail => window.dispatchEvent(new CustomEvent('guulingiinhan:photo-changed', { detail })), { endpoint, hasPhoto: true, url: value.profile_photo_url });
     await poll(async () => (await portrait.getAttribute('src')) !== previous && await portrait.evaluate(i => i.complete && i.naturalWidth > 0), 'Stable dashboard portrait did not refresh');
+    await headerMatches(ownerContext, owner, value.profile_photo_url);
+    await owner.reload(); await settled(owner);
+    await headerMatches(ownerContext, owner, value.profile_photo_url);
+    await owner.goto(`${frontend}/profile?family=${family}&person=${fixture.personIds.rootFather}`); await settled(owner);
+    await headerMatches(ownerContext, owner, value.profile_photo_url);
     await owner.goto(`${frontend}/settings?family=${family}`); await settled(owner);
     await owner.getByLabel('Аккаунтын зураг', { exact: true }).setInputFiles({ name: 'EMPTY_MIME.PNG', mimeType: '', buffer: bytes });
     const accountUpload = owner.waitForResponse(r => r.url() === api + '/auth/me/photo' && r.request().method() === 'POST');
     await owner.getByRole('button', { name: 'Зураг хадгалах', exact: true }).click(); assert.equal((await accountUpload).status(), 201);
-    await poll(() => owner.locator('.app-shell__account-button img').evaluateAll(images => images.some(i => i.complete && i.naturalWidth > 0)), 'Header did not refresh first account photo');
+    await headerMatches(ownerContext, owner, value.profile_photo_url);
+    await owner.goto(`${frontend}/profile?family=${family}&person=${fixture.personIds.familyAOwnerPerson}`); await settled(owner);
+    const deleted = owner.waitForResponse(r => r.url() === api + endpoint && r.request().method() === 'DELETE');
+    await owner.getByRole('button', { name: 'Профайл зургийг устгах', exact: true }).click(); assert.equal((await deleted).status(), 204);
+    await headerMatches(ownerContext, owner, '/auth/me/photo');
   });
   await scenario('admin people and ancestry retain persistent navigation', async () => {
     await admin.goto(`${frontend}/admin/people`); await settled(admin);
