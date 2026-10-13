@@ -1,7 +1,26 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _https_url(value: str, *, origin_only: bool = False) -> bool:
+    """Reject malformed hosted URLs before clients or CORS silently fail."""
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+        return bool(
+            parsed.scheme == "https" and parsed.hostname
+            and not any(character.isspace() for character in value)
+            and "\\" not in value
+            and parsed.username is None and parsed.password is None
+            and not parsed.query and not parsed.fragment
+            and (port is None or 1 <= port <= 65535)
+            and (not origin_only or parsed.path == "")
+        )
+    except ValueError:
+        return False
 
 
 class Settings(BaseSettings):
@@ -59,7 +78,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_settings(self):
-        app_env = self.app_env.lower()
+        app_env = self.app_env.strip().lower()
+        if app_env not in {"development", "test", "staging", "production"}:
+            raise ValueError("APP_ENV must be development, test, staging, or production.")
+        self.app_env = app_env
         hosted_env = app_env in {"production", "staging"}
         if not 1 <= self.db_pool_size <= 50:
             raise ValueError("DB_POOL_SIZE must be between 1 and 50.")
@@ -89,8 +111,8 @@ class Settings(BaseSettings):
             origins = self.cors_origin_list
             if not origins or "*" in origins:
                 raise ValueError("Production CORS_ORIGINS must list explicit HTTPS origins.")
-            if any(not origin.startswith("https://") for origin in origins):
-                raise ValueError("Production CORS_ORIGINS may contain HTTPS origins only.")
+            if any(not _https_url(origin, origin_only=True) for origin in origins):
+                raise ValueError("Hosted CORS_ORIGINS must be exact HTTPS origins without paths or credentials.")
             if not self.otp_hash_secret or len(self.otp_hash_secret) < 32:
                 raise ValueError("Production requires OTP_HASH_SECRET with at least 32 characters.")
         if app_env == "production":
@@ -109,8 +131,8 @@ class Settings(BaseSettings):
                 raise ValueError("Production email requires sender and authenticated SMTP configuration.")
             if not self.email_smtp_starttls:
                 raise ValueError("Production SMTP must use STARTTLS.")
-            if not self.email_public_base_url.startswith("https://"):
-                raise ValueError("Production EMAIL_PUBLIC_BASE_URL must use HTTPS.")
+            if not _https_url(self.email_public_base_url.rstrip("/"), origin_only=True):
+                raise ValueError("Production EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
         elif app_env == "staging":
             if self.sms_provider.lower() not in {"disabled", "twilio"}:
                 raise ValueError("Staging SMS_PROVIDER must be disabled or twilio.")
@@ -127,8 +149,10 @@ class Settings(BaseSettings):
                 raise ValueError("Staging SMTP configuration is incomplete.")
             if self.email_provider.lower() == "smtp" and not self.email_smtp_starttls:
                 raise ValueError("Staging SMTP must use STARTTLS.")
-            if self.email_provider.lower() == "smtp" and not self.email_public_base_url.startswith("https://"):
-                raise ValueError("Staging EMAIL_PUBLIC_BASE_URL must use HTTPS.")
+            if self.email_provider.lower() == "smtp" and not _https_url(
+                self.email_public_base_url.rstrip("/"), origin_only=True,
+            ):
+                raise ValueError("Staging EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
         if self.google_oidc_enabled:
             if not all(
                 (
@@ -141,7 +165,7 @@ class Settings(BaseSettings):
             if not self.google_oidc_issuer.rstrip("/") == "https://accounts.google.com":
                 raise ValueError("Google OIDC issuer must be https://accounts.google.com.")
             if hosted_env:
-                if not self.google_oidc_redirect_uri or not self.google_oidc_redirect_uri.startswith("https://"):
+                if not self.google_oidc_redirect_uri or not _https_url(self.google_oidc_redirect_uri):
                     raise ValueError("Production Google OIDC redirect URI must use HTTPS.")
                 if not self.google_oidc_state_secret or len(self.google_oidc_state_secret) < 32:
                     raise ValueError(
@@ -165,7 +189,7 @@ class Settings(BaseSettings):
                 self.storage_secret_key,
             )):
                 raise ValueError("Production requires complete S3-compatible storage settings.")
-            if not self.storage_endpoint or not self.storage_endpoint.startswith("https://"):
+            if not self.storage_endpoint or not _https_url(self.storage_endpoint):
                 raise ValueError("Production STORAGE_ENDPOINT must use HTTPS.")
         return self
 

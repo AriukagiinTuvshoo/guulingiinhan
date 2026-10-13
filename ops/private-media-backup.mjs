@@ -12,16 +12,23 @@ const hex = bytes => [...bytes].map(byte => byte.toString(16).padStart(2, '0')).
 
 export async function backupMedia(env) {
   if (env.BACKUP_ENVIRONMENT !== 'staging' || !env.SOURCE || !env.BACKUP) throw new Error('Invalid recovery environment');
+  const expires = Number(env.BACKUP_EXPIRES_AT);
+  if (!Number.isFinite(expires) || Date.now() > expires) throw new Error('Recovery authorization expired');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/.test(env.BACKUP_RUN_ID || '')) throw new Error('Invalid recovery run ID');
   const encoder = new TextEncoder();
   const publicDer = Uint8Array.from(atob(env.RECOVERY_PUBLIC_KEY.replace(/-----[^-]+-----|\s/g, '')), c => c.charCodeAt(0));
   const publicKey = await crypto.subtle.importKey('spki', publicDer, {name:'RSA-OAEP',hash:'SHA-256'}, false, ['encrypt']);
-  const runId = env.BACKUP_RUN_ID || new Date().toISOString().replace(/[:.]/g, '-');
+  const runId = env.BACKUP_RUN_ID;
   const prefix = `staging/${runId}/`;
+  if (await env.BACKUP.head(`${prefix}media-manifest.json`)) throw new Error('Recovery run already completed');
   const records = [];
+  const sourceVersions = new Map();
   let cursor, totalBytes = 0;
   do {
     const page = await env.SOURCE.list({limit: 1000, cursor});
     for (const listed of page.objects) {
+      if (sourceVersions.has(listed.key)) throw new Error('Duplicate source object');
+      sourceVersions.set(listed.key, listed.etag);
       const object = await env.SOURCE.get(listed.key);
       if (!object || object.etag !== listed.etag) throw new Error('Source changed during backup; retry after writes stop');
       if (object.size > 10 * 1024 * 1024 || (totalBytes += object.size) > 50 * 1024 * 1024) throw new Error('Backup size limit exceeded; use the operator bulk procedure');
@@ -39,8 +46,22 @@ export async function backupMedia(env) {
         nonce:bytesToBase64(nonce),ciphertext:bytesToBase64(new Uint8Array(ciphertext))}), {httpMetadata:{contentType:'application/octet-stream'}});
       records.push({backup_key:backupKey,bytes:bytes.length});
     }
+    if (page.truncated && (!page.cursor || page.cursor === cursor)) throw new Error('Invalid source pagination');
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
+  // Detect additions, removals or replacement while encrypting. This is a
+  // bounded consistency check, not an atomic snapshot across database/R2.
+  const remaining = new Map(sourceVersions);
+  do {
+    const page = await env.SOURCE.list({limit: 1000, cursor});
+    for (const listed of page.objects) {
+      if (!remaining.has(listed.key) || remaining.get(listed.key) !== listed.etag) throw new Error('Source changed during backup; no completed manifest written');
+      remaining.delete(listed.key);
+    }
+    if (page.truncated && (!page.cursor || page.cursor === cursor)) throw new Error('Invalid source pagination');
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  if (remaining.size) throw new Error('Source changed during backup; no completed manifest written');
   const manifest = {format:FORMAT,environment:'staging',run_id:runId,object_count:records.length,total_bytes:totalBytes,objects:records};
   await env.BACKUP.put(`${prefix}media-manifest.json`, JSON.stringify(manifest), {httpMetadata:{contentType:'application/octet-stream'}});
   return manifest;

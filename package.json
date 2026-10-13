@@ -24,7 +24,7 @@
     "deploy:staging": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy"
   },
   "dependencies": {
-    "lucide-react": "latest",
+    "lucide-react": "1.47.0",
     "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0",

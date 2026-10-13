@@ -2,7 +2,9 @@
 
 Current verification: 2026-10-13 (Asia/Tokyo). The owner confirms the project domain has not been purchased. This runbook prepares cutover after purchase and active-zone verification; it does not modify DNS or Worker routes.
 
-Current API readiness/CORS/anonymous gate: 18/18 PASS. Staging PostgreSQL is healthy; all 47 application tables have RLS enabled and anon/authenticated direct table privileges are absent. Actual SMTP verification/reset links and session revocation were checked with an authorized disposable mailbox alias. These observations do not prove DNS/TLS, email links, cookies or PWA installation on a future hostname.
+Current postdeployment API/CORS/anonymous/frontend-header gate: 19/19 PASS (`STAGING_GATE.json`). Staging PostgreSQL is healthy; all 47 application tables have RLS enabled and anon/authenticated direct table privileges are absent. Actual SMTP verification/reset links and session revocation were checked with an authorized disposable mailbox alias. These observations do not prove DNS/TLS, email links, cookies or PWA installation on a future hostname.
+
+Current deployed application commit: `ffe741e5c15e024a1ce5d36b75b212bd248ac619`. Frontend version `b0e50ad9-5dca-462e-9dc4-09b3f10e7079` and backend version `f2b30b86-e976-4687-a6d2-c9ed71e8196e` each received 100% staging traffic. See `DOMAIN_READINESS_FINAL_2026_10_13.md` for current audit and recovery evidence. The older release section below is historical.
 
 The existing backend wrapper explicitly sets APP_ENV=staging and a staging media bucket. A production launch must select and verify separate runtime/provider configuration rather than copy a staging Worker under a different name. Earlier release/version entries below are historical, not the current deployed revision.
 

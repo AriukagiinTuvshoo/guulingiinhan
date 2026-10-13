@@ -50,8 +50,8 @@ Exact mapping/checklist: [CLOUDFLARE_CUSTOM_DOMAIN.md](docs/CLOUDFLARE_CUSTOM_DO
 
 ## Backup, хяналт, rollback
 
-Историк encrypted application snapshot restore drill бий. Үүнийг provider-native backup/PITR, өнөөгийн DB/media restore болон portable key custody-тэй адилтгахгүй. Native/provider backup, private media backup, key custody, retention/RPO/RTO, missed-backup alert-ийг production нээлтээс өмнө батална. Бодлого батлагдаагүй үед schedule эсвэл автомат устгал идэвхжүүлэхгүй.
+2026-10-13-нд бодит staging application DB (47 хүснэгт/729 мөр) болон private R2-ийн 6 объектыг шифрлэн нөөцөлж, тусгаарласан орчинд сэргээсэн. Бүх мөр, FK, binary SHA-256 болон protected original/thumbnail API шалгалт давсан. Энэ нь provider-native backup/PITR, atomic DB/R2 snapshot эсвэл portable key custody-ийн баталгаа биш. Native/provider backup, зөөврийн key custody, retention/RPO/RTO, missed-backup alert-ийг production нээлтээс өмнө батална. Бодлого батлагдаагүй үед schedule эсвэл автомат устгал идэвхжүүлэхгүй.
 
-[BACKUP_RECOVERY.md](docs/BACKUP_RECOVERY.md), [2026-10-13 recovery audit](docs/DOMAIN_RECOVERY_AUDIT_2026_10_13.md)-ийг ашиглана. Logs body/query/token/credential агуулахгүй; request_id, 5xx, 429, photo_cleanup_exhausted зэрэг aggregate дохиог operator хянана.
+[BACKUP_RECOVERY.md](docs/BACKUP_RECOVERY.md), [2026-10-13 бодит restore](docs/DOMAIN_ACTUAL_RESTORE_2026_10_13.md)-ийг ашиглана. Logs body/query/token/credential агуулахгүй; request_id, 5xx, 429, photo_cleanup_exhausted зэрэг aggregate дохиог operator хянана.
 
 Кодын rollback-д өмнөх staging frontend/backend Worker versions болон matching API/CORS/email тохиргоог сэргээнэ. Cutover батлагдтал workers.dev хаягийг хадгална. Кодын rollback нь database downgrade эсвэл өгөгдөл устгах зөвшөөрөл биш.

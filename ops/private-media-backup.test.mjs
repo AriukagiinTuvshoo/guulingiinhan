@@ -43,3 +43,32 @@ test('backup rejects production bindings, source races and large objects',async(
   await assert.rejects(backupMedia({...env,SOURCE:{...env.SOURCE,get:async()=>({etag:'changed'})}}),/Source changed/);
   await assert.rejects(backupMedia({...env,SOURCE:{...env.SOURCE,get:async()=>({etag:'v1',size:11*1024*1024})}}),/size limit/);
 });
+
+test('backup never completes a manifest after source replacement, addition or deletion', async()=>{
+  for (const mutation of ['replacement','addition','deletion']) {
+    const {env,records}=await fixture(); let reads=0;
+    env.SOURCE.list=async()=>({objects:++reads===1?[{key:'private/photo.jpg',etag:'v1'}]:
+      mutation==='replacement'?[{key:'private/photo.jpg',etag:'v2'}]:
+      mutation==='addition'?[{key:'private/photo.jpg',etag:'v1'},{key:'private/new.jpg',etag:'v1'}]:[],truncated:false});
+    await assert.rejects(backupMedia(env),/Source changed/);
+    assert.equal(records.has('staging/test/media-manifest.json'),false);
+  }
+});
+
+test('direct workflow helper enforces expiry, unique completed run and valid paths',async()=>{
+  const {env,records}=await fixture();
+  await assert.rejects(backupMedia({...env,BACKUP_EXPIRES_AT:'1'}),/expired/);
+  await assert.rejects(backupMedia({...env,BACKUP_RUN_ID:'../other'}),/run ID/);
+  await assert.rejects(backupMedia({...env,BACKUP_RUN_ID:''}),/run ID/);
+  await backupMedia(env);
+  const completed=records.get('staging/test/media-manifest.json');
+  await assert.rejects(backupMedia(env),/already completed/);
+  assert.equal(records.get('staging/test/media-manifest.json'),completed);
+});
+
+test('backup rejects broken pagination without claiming completion',async()=>{
+  const {env,records}=await fixture();
+  env.SOURCE.list=async()=>({objects:[],truncated:true});
+  await assert.rejects(backupMedia(env),/pagination/);
+  assert.equal(records.size,0);
+});

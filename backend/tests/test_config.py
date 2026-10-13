@@ -178,3 +178,45 @@ def test_production_rejects_each_missing_provider_independently():
         values = {**real_providers, **{name: None for name in missing}}
         with pytest.raises(ValidationError):
             staging_settings(app_env="production", **values)
+
+
+@pytest.mark.parametrize("environment", ["prod", "stagng", "", "preview"])
+def test_unknown_environment_cannot_bypass_hosted_guards(environment):
+    with pytest.raises(ValidationError, match="APP_ENV"):
+        Settings(app_env=environment, _env_file=None)
+
+
+def test_environment_is_normalized_before_runtime_checks():
+    assert staging_settings(app_env=" STAGING ").app_env == "staging"
+
+
+@pytest.mark.parametrize("origin", [
+    "https://", "https://example.com/", "https://example.com/app",
+    "https://example.com?redirect=other", "https://example.com#fragment",
+    "https://user:password@example.com", "https://example.com:invalid",
+    "https://example.com:0", "https://example.com\\other", "https://example .com",
+])
+def test_hosted_cors_rejects_urls_that_are_not_browser_origins(origin):
+    with pytest.raises(ValidationError, match="CORS_ORIGINS"):
+        staging_settings(cors_origins=origin)
+
+
+@pytest.mark.parametrize("url", [
+    "https://", "https://user:password@example.com", "https://example.com?secret=value",
+    "https://example.com#fragment", "https://example.com:invalid",
+])
+def test_hosted_storage_endpoint_rejects_malformed_or_credential_urls(url):
+    with pytest.raises(ValidationError, match="STORAGE_ENDPOINT"):
+        staging_settings(storage_endpoint=url)
+
+
+def test_email_base_requires_origin_but_accepts_trailing_slash():
+    values = {
+        "email_provider": "smtp", "email_from": "sender@example.com",
+        "email_smtp_host": "smtp.example.com", "email_smtp_username": "username",
+        "email_smtp_password": "password",
+    }
+    assert staging_settings(**values, email_public_base_url="https://staging.example/")
+    for url in ("https://", "https://example.com/app", "https://example.com?token=value"):
+        with pytest.raises(ValidationError, match="EMAIL_PUBLIC_BASE_URL"):
+            staging_settings(**values, email_public_base_url=url)
