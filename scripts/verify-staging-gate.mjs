@@ -1,8 +1,14 @@
 /** Read-only/public P12.5 staging checks. Never reads browser cookies or private data. */
 import fs from 'node:fs/promises';
 
-const frontend = 'https://guulingiinhan-staging.tuvshoo0331.workers.dev';
-const backend = 'https://guulingiinhan-backend-staging.tuvshoo0331.workers.dev';
+const frontend = process.env.QA_FRONTEND_ORIGIN || 'https://guulingiinhan-staging.tuvshoo0331.workers.dev';
+const backend = process.env.QA_API_ORIGIN || 'https://guulingiinhan-backend-staging.tuvshoo0331.workers.dev';
+for (const origin of [frontend, backend]) {
+  const parsed = new URL(origin);
+  if (parsed.protocol !== 'https:' || parsed.origin !== origin) {
+    throw new Error('QA origins must be exact HTTPS origins without credentials, paths or tokens.');
+  }
+}
 const id = '00000000-0000-4000-8000-000000000000';
 const protectedPaths = [
   ['people', `/families/${id}/people`],
@@ -55,8 +61,25 @@ const results = await Promise.all([
     Origin: frontend, 'Content-Type': 'application/json',
   }, body: JSON.stringify({ email: 'not-an-email', password: '' }) }),
 ]);
-const evidence = { checked_at: new Date().toISOString(), scope: 'Live staging public/anonymous HTTP only. No authenticated cookies, account creation, provider deliveries or private records.',
+try {
+  const response = await fetch(frontend + '/login', { signal: AbortSignal.timeout(30000) });
+  const headers = response.headers;
+  const flags = {
+    frame_ancestors: headers.get('content-security-policy')?.includes("frame-ancestors 'none'") === true,
+    no_objects: headers.get('content-security-policy')?.includes("object-src 'none'") === true,
+    frame_deny: headers.get('x-frame-options') === 'DENY',
+    nosniff: headers.get('x-content-type-options') === 'nosniff',
+    referrer_policy: headers.get('referrer-policy') === 'strict-origin-when-cross-origin',
+    https_policy: headers.get('strict-transport-security')?.includes('max-age=31536000') === true,
+  };
+  results.push({ label: 'frontend HTTP protection headers', status: response.status, expected: [200],
+    pass: response.status === 200 && Object.values(flags).every(Boolean), ...flags });
+} catch (error) {
+  results.push({ label: 'frontend HTTP protection headers', pass: false, error_type: error.name });
+}
+const evidence = { checked_at: new Date().toISOString(), frontend_origin: frontend, api_origin: backend,
+  scope: 'Live staging public/anonymous HTTP only. No authenticated cookies, account creation, provider deliveries or private records.',
   latency_note: 'Single observations include network latency; these are not authenticated product medians or p95.', results };
-await fs.writeFile('docs/P12_5_PUBLIC_HTTP.json', JSON.stringify(evidence, null, 2) + '\n');
+await fs.writeFile('docs/STAGING_GATE.json', JSON.stringify(evidence, null, 2) + '\n');
 console.log(JSON.stringify(evidence));
 if (results.some(r => !r.pass)) process.exitCode = 1;

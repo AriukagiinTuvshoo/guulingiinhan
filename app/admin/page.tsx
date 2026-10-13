@@ -40,6 +40,8 @@ export default function AdminPage() {
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [offset, setOffset] = useState(0);
   const [familyRevision, setFamilyRevision] = useState(0);
+  const [authRevision, setAuthRevision] = useState(0);
+  const [canRetryAuth, setCanRetryAuth] = useState(false);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
@@ -59,18 +61,33 @@ export default function AdminPage() {
   const [confirmation, setConfirmation] = useState<{ userId: string; action: 'grant' | 'revoke' | 'block' | 'unblock'; label: string } | null>(null);
 
   useEffect(() => {
+    const syncSection = () => {
+      const requested = new URLSearchParams(window.location.search).get('section');
+      setSection(requested && ['overview', 'users', 'families', 'admins', 'announcements', 'audit'].includes(requested) ? requested as Section : 'overview');
+      setOffset(0); setListSearch('');
+    };
+    syncSection();
+    window.addEventListener('popstate', syncSection);
+    return () => window.removeEventListener('popstate', syncSection);
+  }, []);
+
+  useEffect(() => {
     let active = true;
+    setBusy(true); setError(''); setCanRetryAuth(false);
     Promise.all([api<Identity>('/admin/me'), api<Overview>('/admin/overview')])
       .then(([who, counts]) => { if (active) { setIdentity(who); setOverview(counts); } })
       .catch((cause) => {
         if (!active) return;
         if (cause instanceof ApiError && cause.status === 401) router.replace('/login');
-        else setError(cause instanceof ApiError && cause.status === 403
-          ? 'Энэ хэсэгт хандах админ эрх алга.' : 'Админ мэдээллийг ачаалж чадсангүй.');
+        else {
+          const forbidden = cause instanceof ApiError && cause.status === 403;
+          setError(forbidden ? 'Энэ хэсэгт хандах админ эрх алга.' : 'Админ мэдээллийг ачаалж чадсангүй.');
+          setCanRetryAuth(!forbidden);
+        }
       })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [router]);
+  }, [router, authRevision]);
 
   useEffect(() => {
     if (!identity || !(['users', 'families', 'admins', 'audit'] as Section[]).includes(section)) return;
@@ -230,7 +247,7 @@ export default function AdminPage() {
               : section === 'audit' ? 'Өөрчлөлтийн түүх' : 'Админ эрхүүд';
 
   return <><AdminShell active={section === 'user_detail' ? 'users' : section === 'family_studio' ? 'families' : section} title={title} identity={identity} onOpen={(next: AdminSection) => { if (next === 'root' || next === 'people') return; show(next); }}>
-          {error && <div className={styles.error} role="alert">{error}</div>}
+          {error && <div className={styles.error} role="alert">{error}{(!identity && canRetryAuth || identity && ['users', 'families', 'admins', 'audit'].includes(section)) && <div className={styles.panelActions}><button type="button" disabled={busy || working} onClick={() => { if (!identity) setAuthRevision(value => value + 1); else setFamilyRevision(value => value + 1); }}>Дахин ачаалах</button></div>}</div>}
           {notice && <div className={styles.notice} role="status">{notice}</div>}
           {busy && <p role="status" className={styles.state}>Ачаалж байна…</p>}
           {!busy && identity && section === 'overview' && overview && <AdminOverview counts={overview} canManageRoot={identity.role === 'SUPER_ADMIN'} onOpen={show} />}

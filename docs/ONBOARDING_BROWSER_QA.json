@@ -1,47 +1,47 @@
 {
-  "checked_at": "2026-10-10T14:37:57.827Z",
+  "checked_at": "2026-10-13T05:50:24.779Z",
   "scope": "Disposable synthetic localhost browser → actual FastAPI → SQLite. Actual fake-email invitation deliveries read only from ignored local mailbox. No request overrides, real emails or staging/production data.",
   "mock_api": false,
   "scenarios": [
     {
       "name": "new account atomic browser onboarding creates one canonical linked person",
       "pass": true,
-      "ms": 1298
+      "ms": 1250
     },
     {
       "name": "same-key and existing identity retries leave no orphan family/person",
       "pass": true,
-      "ms": 505
+      "ms": 522
     },
     {
       "name": "actual owner invitation email is accepted only by its verified recipient",
       "pass": true,
-      "ms": 911
+      "ms": 844
     },
     {
       "name": "invited member creates only own canonical profile in the existing family",
       "pass": true,
-      "ms": 1303
+      "ms": 1231
     },
     {
       "name": "existing canonical identity needs explicit reuse consent after invitation",
       "pass": true,
-      "ms": 2540
+      "ms": 2579
     },
     {
       "name": "existing person claim waits for owner approval and persists after member reload",
       "pass": true,
-      "ms": 4071
+      "ms": 3755
     },
     {
       "name": "explicit parent relation has reciprocal tree views without ancestry inference",
       "pass": true,
-      "ms": 2009
+      "ms": 1876
     },
     {
       "name": "membership does not grant admin or cross-family private access",
       "pass": true,
-      "ms": 1329
+      "ms": 1377
     }
   ],
   "passed": 8,

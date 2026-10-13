@@ -14,7 +14,7 @@
   "measurements": [
     {
       "width": 320,
-      "readyMs": 1716,
+      "readyMs": 1684,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -26,7 +26,7 @@
     },
     {
       "width": 360,
-      "readyMs": 821,
+      "readyMs": 670,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -38,7 +38,7 @@
     },
     {
       "width": 375,
-      "readyMs": 664,
+      "readyMs": 744,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -50,7 +50,7 @@
     },
     {
       "width": 390,
-      "readyMs": 674,
+      "readyMs": 669,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -62,7 +62,7 @@
     },
     {
       "width": 414,
-      "readyMs": 1001,
+      "readyMs": 675,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -74,7 +74,7 @@
     },
     {
       "width": 430,
-      "readyMs": 873,
+      "readyMs": 631,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -86,19 +86,19 @@
     },
     {
       "width": 768,
-      "readyMs": 933,
+      "readyMs": 667,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
       "renderedNodes": 19,
       "connectors": 14,
       "headerControlsFit": true,
-      "minTouchHeight": 43.99993896484375,
+      "minTouchHeight": 44,
       "mode": "family-map family-map--overview family-map--portrait "
     },
     {
       "width": 1024,
-      "readyMs": 1343,
+      "readyMs": 1161,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -110,7 +110,7 @@
     },
     {
       "width": 1440,
-      "readyMs": 764,
+      "readyMs": 1174,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,

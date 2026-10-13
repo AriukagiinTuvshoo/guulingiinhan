@@ -1,107 +1,107 @@
 {
-  "checked_at": "2026-10-09T16:55:00.587Z",
+  "checked_at": "2026-10-13T05:45:31.014Z",
   "scope": "Disposable localhost Next frontend → real FastAPI HTTP → isolated SQLite/private storage. Synthetic local records only; no staging/production data or provider deliveries.",
   "mock_api": false,
   "scenarios": [
     {
       "name": "real password login for owner and SUPER_ADMIN",
       "pass": true,
-      "ms": 4986
+      "ms": 5853
     },
     {
       "name": "root couple, four branches and isolated personal tree",
       "pass": true,
-      "ms": 1025
+      "ms": 1154
     },
     {
       "name": "child request stays pending; duplicate is blocked",
       "pass": true,
-      "ms": 819
+      "ms": 840
     },
     {
       "name": "SUPER_ADMIN approval updates the real tree and reuses canonical edge",
       "pass": true,
-      "ms": 1147
+      "ms": 1277
     },
     {
       "name": "spouse rejection preserves person; retry and approval show spouse beside branch",
       "pass": true,
-      "ms": 2541
+      "ms": 2744
     },
     {
       "name": "deceased relative requires no account; request can be withdrawn safely",
       "pass": true,
-      "ms": 594
+      "ms": 526
     },
     {
       "name": "reviewed detachment preserves canonical person and parent relationship",
       "pass": true,
-      "ms": 1251
+      "ms": 1353
     },
     {
       "name": "admin person edit survives reload; portrait upload/read/delete is secure",
       "pass": true,
-      "ms": 2683
+      "ms": 2808
     },
     {
       "name": "account photo form upload, reload and removal protect private bytes",
       "pass": true,
-      "ms": 1206
+      "ms": 1628
     },
     {
       "name": "memory form uploads a real image and renders its protected preview",
       "pass": true,
-      "ms": 1141
+      "ms": 1352
     },
     {
       "name": "story editor inserts authorized memory image and persists formatted text",
       "pass": true,
-      "ms": 1231
+      "ms": 1542
     },
     {
       "name": "archive form persists a private document",
       "pass": true,
-      "ms": 687
+      "ms": 1059
     },
     {
       "name": "public heritage sharing preserves private Person and media boundaries",
       "pass": true,
-      "ms": 479
+      "ms": 683
     },
     {
       "name": "family/public fund selection persists and hides private funds cross-family",
       "pass": true,
-      "ms": 588
+      "ms": 847
     },
     {
       "name": "meeting form creates a gathering and registration can be cancelled",
       "pass": true,
-      "ms": 763
+      "ms": 1162
     },
     {
       "name": "admin announcement draft stays private; published bell appears for another account",
       "pass": true,
-      "ms": 905
+      "ms": 1173
     },
     {
       "name": "real authenticated role matrix denies unauthorized admin decisions and private writes",
       "pass": true,
-      "ms": 159
+      "ms": 167
     },
     {
       "name": "own living profile joins by consent and cannot be selected as a duplicate",
       "pass": true,
-      "ms": 1734
+      "ms": 2012
     },
     {
       "name": "responsive real-data routes and keyboard dialogs have no crash or overflow",
       "pass": true,
-      "ms": 13910
+      "ms": 14912
     },
     {
       "name": "logout revokes the real authenticated session",
       "pass": true,
-      "ms": 29
+      "ms": 35
     }
   ],
   "passed": 20,

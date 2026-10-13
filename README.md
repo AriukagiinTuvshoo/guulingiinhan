@@ -41,4 +41,12 @@ uv run ruff check app tests migrations
 uv run alembic check
 ```
 
-Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Email verification, нууц үг сэргээх, invitation хүргэлтэд local `EMAIL_PROVIDER=fake`, production-д TLS-тэй SMTP тохируулна. Email хүргэлт болон object storage production-д хараахан тохируулагдаагүй.
+Үндсэн урсгал: `/register` → имэйл баталгаажуулалт → `/onboarding` → `/tree` → `/profile`. Урилгаар нэгдсэн хүн шинэ гэр бүл үүсгэхийн оронд байгаа гэр бүлдээ `/people` хэсгээс өөрийн бүртгэлээ холбоно. Local орчинд `EMAIL_PROVIDER=fake`; hosted орчинд TLS-тэй SMTP ашиглана.
+
+## Одоогийн hosted орчин
+
+Frontend нь Cloudflare Workers дээр vinext, backend нь Cloudflare Containers дотор FastAPI-аар ажиллана. Backend-ийн managed PostgreSQL нь Supabase staging; зураг private R2-д хадгалагдаж, эрх шалгасан API-аар дамжина. Supabase Auth/Data API-г browser шууд ашиглахгүй.
+
+Одоогийн ажиллах хаяг: [staging](https://guulingiinhan-staging.tuvshoo0331.workers.dev). Домэйн худалдаж аваагүй; production DNS/cutover хийгдээгүй. Одоогийн тохиргоо, release gates, rollback-ийг [DEPLOYMENT.md](DEPLOYMENT.md), [домэйн холбох заавар](docs/CLOUDFLARE_CUSTOM_DOMAIN.md), [backup/restore](docs/BACKUP_RECOVERY.md)-оос шалгана. Өмнөх огноотой тайлан нь тухайн үеийн нотолгоо бөгөөд шинэ release-ийн шалгалтыг орлохгүй.
+
+Windows Application Control native SWC-г хаасан үед `npm run build -- --webpack` гэсэн Next-ийн дэмждэг хувилбар ашиглаж болно. Native binary ажиллуулахын тулд OS хамгаалалтыг сулруулахгүй.

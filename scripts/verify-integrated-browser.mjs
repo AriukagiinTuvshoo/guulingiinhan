@@ -111,7 +111,7 @@ try {
   await fs.mkdir(artifacts, { recursive: true });
   const startedAt = Date.now();
   const runId = randomUUID();
-  const backendProcess = launch(python, ['backend/ops/qa_fixture_server.py'], { APP_ENV: 'test', GUULINGIINHAN_QA_RUN_ID: runId });
+  const backendProcess = launch(python, ['-u', 'backend/ops/qa_fixture_server.py'], { APP_ENV: 'test', GUULINGIINHAN_QA_RUN_ID: runId });
   const fixture = await poll(async () => {
     assert.ok(!backendProcess.stopped(), 'Disposable API stopped during startup');
     try {
@@ -119,7 +119,7 @@ try {
       if (!manifest.disposableLocalFixture || manifest.runId !== runId || Date.parse(manifest.generatedAt) < startedAt) return false;
       return (await fetch(`${backend}/health`)).ok ? manifest : false;
     } catch { return false; }
-  }, 'Disposable API failed to start', 30000);
+  }, 'Disposable API failed to start', 90000);
   fixturePassword = fixture.password;
   assert.equal(fixture.baseUrl, api, 'Fixture points outside the isolated local API');
   const nextProcess = launch(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '8841'], { NEXT_PUBLIC_API_BASE_URL: api });
@@ -354,7 +354,7 @@ try {
   });
   await scenario('admin announcement draft stays private; published bell appears for another account', async () => {
     await adminPage.goto(`${frontend}/admin`);
-    await adminPage.getByRole('button', { name: 'Мэдэгдэл', exact: true }).click();
+    await adminPage.getByRole('navigation', { name: 'Админ цэс', exact: true }).getByRole('button', { name: /^Мэдэгдэл/ }).click();
     await adminPage.getByLabel('Гарчиг', { exact: true }).fill('QA Published News');
     await adminPage.getByLabel('Агуулга', { exact: true }).fill('Local organization announcement');
     await adminPage.getByRole('checkbox', { name: 'Бүх гишүүнд нийтлэх', exact: true }).check();

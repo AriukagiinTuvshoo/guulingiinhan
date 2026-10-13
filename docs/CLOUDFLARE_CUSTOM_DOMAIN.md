@@ -1,6 +1,10 @@
 # Cloudflare custom-domain readiness
 
-Audit date: 2026-10-06 (Asia/Tokyo). This runbook describes the domain cutover after the domain owner confirms the exact domain and its Cloudflare zone is active. It does not modify DNS or Worker routes.
+Current verification: 2026-10-13 (Asia/Tokyo). The owner confirms the project domain has not been purchased. This runbook prepares cutover after purchase and active-zone verification; it does not modify DNS or Worker routes.
+
+Current API readiness/CORS/anonymous gate: 18/18 PASS. Staging PostgreSQL is healthy; all 47 application tables have RLS enabled and anon/authenticated direct table privileges are absent. Actual SMTP verification/reset links and session revocation were checked with an authorized disposable mailbox alias. These observations do not prove DNS/TLS, email links, cookies or PWA installation on a future hostname.
+
+The existing backend wrapper explicitly sets APP_ENV=staging and a staging media bucket. A production launch must select and verify separate runtime/provider configuration rather than copy a staging Worker under a different name. Earlier release/version entries below are historical, not the current deployed revision.
 
 ## Current account state
 

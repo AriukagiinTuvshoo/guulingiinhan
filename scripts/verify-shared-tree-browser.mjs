@@ -69,7 +69,9 @@ try {
   assert.ok(ready, `Next server did not start: ${serverOutput}`);
   browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: true });
   const context = await browser.newContext();
-  await context.route('https://ci.invalid/api/v1/**', async (route) => {
+  // Reuse the localhost API build without contacting a real backend: this
+  // supplementary suite measures synthetic rendering and request UI only.
+  await context.route(/^(https:\/\/ci\.invalid|http:\/\/127\.0\.0\.1:8840)\/api\/v1\//, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace('/api/v1', '');

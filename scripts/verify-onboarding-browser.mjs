@@ -81,13 +81,13 @@ async function accept(page, token) {
 try {
   await fs.access('.next/BUILD_ID'); await fs.mkdir(artifacts, { recursive: true });
   const runId = randomUUID(), startedAt = Date.now();
-  const fixtureServer = launch(process.env.QA_PYTHON || path.join(root, '.p12_3_backend_venv/Scripts/python.exe'), ['backend/ops/qa_fixture_server.py'], { APP_ENV: 'test', GUULINGIINHAN_QA_RUN_ID: runId });
+  const fixtureServer = launch(process.env.QA_PYTHON || path.join(root, '.p12_3_backend_venv/Scripts/python.exe'), ['-u', 'backend/ops/qa_fixture_server.py'], { APP_ENV: 'test', GUULINGIINHAN_QA_RUN_ID: runId });
   const fixture = await poll(async () => {
     assert.ok(fixtureServer.exitCode === null, 'Disposable backend stopped');
     const row = JSON.parse(await fs.readFile(path.join(artifacts, 'fixture.json'), 'utf8'));
     if (!row.disposableLocalFixture || row.runId !== runId || Date.parse(row.generatedAt) < startedAt) return false;
     return (await fetch(backend + '/health')).ok ? row : false;
-  }, 'Fresh local API fixture unavailable', 30000);
+  }, 'Fresh local API fixture unavailable', 90000);
   assert.equal(fixture.baseUrl, api); password = fixture.password;
   const next = launch(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '8841'], { NEXT_PUBLIC_API_BASE_URL: api });
   await poll(async () => next.exitCode === null && (await fetch(frontend + '/login')).ok, 'Local frontend unavailable', 30000);

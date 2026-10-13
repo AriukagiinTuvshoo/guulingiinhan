@@ -45,19 +45,20 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: guulingiinhan_test
+          POSTGRES_DB: guulingiinhan_domain_test_ci
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U test_user -d guulingiinhan_test"
+          --health-cmd "pg_isready -U test_user -d guulingiinhan_domain_test_ci"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
       APP_ENV: test
-      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_test
+      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_domain_test_ci
+      DOMAIN_POSTGRES_TEST_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_domain_test_ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -133,6 +133,9 @@ def seed_fixture(db, password: str) -> dict[str, Any]:
         FamilyMember(family_id=family_a_id, user_id=user_ids["familyAMember"], role="member"),
         FamilyMember(family_id=family_b_id, user_id=user_ids["familyBOwner"], role="owner"),
         FamilyMember(family_id=family_b_id, user_id=user_ids["existingLinkedMember"], role="member"),
+        # Global administration does not grant family privacy access. Give the
+        # readonly operator one explicit synthetic membership for directory QA.
+        FamilyMember(family_id=family_b_id, user_id=user_ids["globalAdmin"], role="member"),
     )
     db.add_all(memberships)
 

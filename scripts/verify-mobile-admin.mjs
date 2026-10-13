@@ -72,7 +72,7 @@ async function noOverflow(page) {
 try {
   await fs.access('.next/BUILD_ID'); await fs.mkdir(artifacts, { recursive: true });
   const runId = randomUUID(), startedAt = Date.now();
-  const fixtureServer = launch(process.env.QA_PYTHON || path.join(root, '.p12_3_backend_venv/Scripts/python.exe'), ['backend/ops/qa_fixture_server.py'], { APP_ENV: 'test', GUULINGIINHAN_QA_RUN_ID: runId });
+  const fixtureServer = launch(process.env.QA_PYTHON || path.join(root, '.p12_3_backend_venv/Scripts/python.exe'), ['-u', 'backend/ops/qa_fixture_server.py'], { APP_ENV: 'test', GUULINGIINHAN_QA_RUN_ID: runId });
   let fixture;
   await poll(async () => {
     assert.ok(fixtureServer.exitCode === null, 'Disposable backend stopped');
@@ -80,7 +80,7 @@ try {
     if (!candidate.disposableLocalFixture || candidate.runId !== runId || Date.parse(candidate.generatedAt) < startedAt) return false;
     if (!(await fetch(`${backend}/health`)).ok) return false;
     fixture = candidate; return true;
-  }, 'Fresh disposable fixture unavailable', 30000);
+  }, 'Fresh disposable fixture unavailable', 90000);
   assert.equal(fixture.baseUrl, api); password = fixture.password;
   const next = launch(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '8841'], { NEXT_PUBLIC_API_BASE_URL: api });
   await poll(async () => next.exitCode === null && (await fetch(`${frontend}/login`)).ok, 'Local frontend unavailable', 30000);
@@ -164,7 +164,9 @@ try {
     assert.equal((await ownerContext.request.get(`${api}/families/${family}/people`)).status(), 403);
     assert.equal((await ownerContext.request.get(`${api}/families/${family}/persons`)).status(), 200);
     await owner.goto(`${frontend}/people?family=${family}`);
-    await poll(() => owner.url().includes('/tree'), 'Ordinary directory route did not return to private tree');
+    await owner.getByRole('heading', { name: 'Гишүүд ба миний бүртгэл', exact: true }).waitFor({ state: 'visible' });
+    await owner.getByRole('link', { name: 'Миний профайлыг харах →', exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await owner.getByLabel('Удирдах гэр бүл').count(), 0, 'Ordinary member page exposed person administration');
     await owner.goto(`${frontend}/profile?family=${family}&person=${fixture.personIds.familyAOwnerPerson}`); await settled(owner);
     await owner.locator('#person-profile-photo').waitFor({ state: 'attached' });
     assert.equal(await owner.getByRole('button', { name: /Мэдээлэл засах/ }).count(), 1, 'Own edit affordance lost');
@@ -215,7 +217,50 @@ try {
     assert.equal(await admin.getByRole('link', { name: /Админ руу буцах/ }).count(), 0);
     await nav.getByRole('link', { name: /^Хүмүүс/ }).click(); await settled(admin); await noOverflow(admin);
     await nav.getByRole('link', { name: /^Хэрэглэгчид/ }).click(); await settled(admin);
-    assert.ok(admin.url().includes('section=users')); await noOverflow(admin);
+    assert.ok(admin.url().includes('section=users'));
+    await admin.getByRole('heading', { name: 'Хэрэглэгчид', exact: true, level: 1 }).waitFor({ state: 'visible' }); await noOverflow(admin);
+    for (const [section, heading] of [['users', 'Хэрэглэгчид'], ['families', 'Гэр бүлүүд'], ['announcements', 'Мэдэгдлийн төв']]) {
+      await admin.goto(`${frontend}/admin?section=${section}`); await settled(admin);
+      await admin.getByRole('heading', { name: heading, exact: true, level: 1 }).waitFor({ state: 'visible' }); await noOverflow(admin);
+    }
+  });
+  await scenario('temporary admin identity load failures recover through real API retry', async () => {
+    for (const route of ['/admin', '/admin/people', '/admin/ancestry']) {
+      let first = true;
+      await admin.route(`${api}/admin/me`, async request => {
+        if (first) { first = false; await request.abort('failed'); }
+        else await request.continue();
+      });
+      await admin.goto(frontend + route);
+      const alert = admin.locator('[role="alert"]:not(#__next-route-announcer__)').filter({ has: admin.getByRole('button', { name: 'Дахин ачаалах', exact: true }) });
+      await alert.waitFor({ state: 'visible' });
+      const retry = admin.waitForResponse(response => response.url() === `${api}/admin/me` && response.status() === 200);
+      await alert.getByRole('button', { name: 'Дахин ачаалах', exact: true }).click(); await retry;
+      await settled(admin); await alert.waitFor({ state: 'hidden' }); await noOverflow(admin);
+      await admin.unroute(`${api}/admin/me`);
+    }
+  });
+  await scenario('authorized readonly admin directory hides stale rows while a new query loads', async () => {
+    const operatorContext = await browser.newContext({ viewport: { width: 390, height: 1000 } });
+    const operator = await login(operatorContext, fixture.emails.globalAdmin);
+    await operator.goto(`${frontend}/admin/people`); await settled(operator);
+    const selection = operator.getByLabel('Удирдах гэр бүл');
+    await selection.selectOption(fixture.familyIds.familyB);
+    const name = 'Fixture QA Existing Linked Adult';
+    await operator.getByText(name, { exact: true }).waitFor({ state: 'visible' });
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const pattern = `${api}/families/${fixture.familyIds.familyB}/people?*`;
+    await operator.route(pattern, async request => {
+      if (new URL(request.request().url()).searchParams.get('q') === 'ZZZ NO MATCH') await gate;
+      await request.continue();
+    });
+    await operator.getByLabel('Хүний нэрээр хайх', { exact: true }).fill('ZZZ NO MATCH');
+    await operator.getByText('Хайлтын бүртгэлийг ачаалж байна…', { exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await operator.getByText(name, { exact: true }).count(), 0, 'Previous query rows remained actionable while new query was pending');
+    release();
+    await operator.getByText('Тохирох бүртгэл алга.', { exact: true }).waitFor({ state: 'visible' });
+    await noOverflow(operator); await operator.unroute(pattern); await operatorContext.close();
   });
   await scenario('admin request count remains unknown while loading or unavailable', async () => {
     const pattern = `${api}/admin/shared-lineage/requests?*`;
@@ -282,6 +327,6 @@ try {
   if (installContext) await installContext.close();
   if (browser) await browser.close();
   for (const child of children.reverse()) if (child.exitCode === null) child.kill();
-  const report = { checked_at: new Date().toISOString(), scope: 'Synthetic disposable localhost browser → real API → SQLite. No live staging or production mutations. Native OS install prompt not claimed; Chromium installability manifest/worker and offline privacy verified. One deliberate request-abort fault injection validates unknown loading/error counts.', mock_api: false, fault_injection: 'One aborted local admin request only; all normal scenarios use real API.', scenarios: results, passed: results.filter(r => r.pass).length, total: results.length };
+  const report = { checked_at: new Date().toISOString(), scope: 'Synthetic disposable localhost browser → real API → SQLite. No live staging or production mutations. Native OS install prompt not claimed; Chromium installability manifest/worker and offline privacy verified. Explicit local request faults validate auth retry, pending counts and stale search rows.', mock_api: false, fault_injection: 'Three single admin identity network aborts, one pending-summary abort and one delayed directory query; all successful/retry responses use the real API.', scenarios: results, passed: results.filter(r => r.pass).length, total: results.length };
   await fs.writeFile('docs/MOBILE_ADMIN_QA.json', JSON.stringify(report, null, 2) + '\n'); console.log(JSON.stringify({ passed: report.passed, total: report.total, evidence: 'docs/MOBILE_ADMIN_QA.json' }));
 }

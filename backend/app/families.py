@@ -782,22 +782,27 @@ def _assert_memory_minor_scopes(
 def _memory_visible_to_member(
     db: Session, family_id: UUID, user: User, memory_ids: list[UUID]
 ) -> set[UUID]:
+    """Keep list text/counts behind the same tagged-person boundary as detail."""
     if not memory_ids:
         return set()
     tagged = db.execute(
-        select(MemoryPersonTag.memory_id, Person.id, Person.birth_date)
+        select(MemoryPersonTag.memory_id, Person.id, Person.birth_date,
+               Person.visibility, Person.created_by, FamilyPerson.id)
         .join(Person, Person.id == MemoryPersonTag.person_id)
-        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-        .where(
-            MemoryPersonTag.memory_id.in_(memory_ids),
-            FamilyPerson.family_id == family_id,
-        )
+        .outerjoin(FamilyPerson, and_(FamilyPerson.person_id == Person.id,
+                                    FamilyPerson.family_id == family_id))
+        .where(MemoryPersonTag.memory_id.in_(memory_ids))
     ).all()
-    person_ids = [person_id for _, person_id, _ in tagged]
+    person_ids = [row[1] for row in tagged]
     scopes = active_guardian_scopes(db, user.id, family_id, person_ids)
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
     visible = set(memory_ids)
-    for memory_id, person_id, birth_date in tagged:
-        if is_minor(birth_date) is True and "manage_memories" not in scopes.get(person_id, set()):
+    for memory_id, person_id, birth_date, visibility, created_by, association_id in tagged:
+        if association_id is None or (
+            visibility == "private" and created_by != user.id and person_id != own_link
+        ) or (
+            is_minor(birth_date) is True and "manage_memories" not in scopes.get(person_id, set())
+        ):
             visible.discard(memory_id)
     return visible
 

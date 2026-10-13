@@ -3,7 +3,7 @@
 .install-app__button:hover{background:#eee7d9}
 .install-app button:focus-visible{outline:2px solid #9c7e3e;outline-offset:2px}
 .install-app__help{position:relative;margin:4px;padding:14px;border:1px solid #d8c9a9;background:#fffaf0;border-radius:8px;color:#385347;font-size:13px;line-height:1.6}
-.install-app__help>button{float:right;display:grid;place-items:center;width:32px;height:32px;border:0;background:transparent;color:inherit;cursor:pointer}
+.install-app__help>button{float:right;display:grid;place-items:center;width:44px;height:44px;border:0;background:transparent;color:inherit;cursor:pointer}
 .install-app__help p{margin:8px 0}.install-app__help small{color:#68786d}
 @media(max-width:960px){
   .app-shell .app-shell__header,.app-shell.app-shell--tree .app-shell__header{display:grid;grid-template-columns:44px minmax(0,1fr) auto;grid-template-rows:auto auto;gap:4px 8px;height:auto;min-height:72px;padding:calc(7px + env(safe-area-inset-top)) 10px 7px}
