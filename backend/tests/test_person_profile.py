@@ -3,11 +3,33 @@ from uuid import UUID, uuid4
 
 from conftest import register_verified
 
-from app.models import Person
+from app.models import AdminGrant, Person
 
 
-def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client):
+def test_living_person_cannot_keep_death_details(client, database):
+    register_verified(client, "living-person@example.com")
+    with database() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
+        db.commit()
+    family_id = client.post("/api/v1/families", json={"name": "Амьдралын мэдээлэл"}).json()["id"]
+    endpoint = f"/api/v1/families/{family_id}/persons"
+    invalid = client.post(endpoint, json={"first_name": "Амьд", "death_place": "Алдаа"})
+    assert invalid.status_code == 422
+
+    person = client.post(endpoint, json={"first_name": "Өвөг", "is_alive": False, "death_place": "Нутаг"}).json()
+    patch = client.patch(
+        f"{endpoint}/{person['id']}",
+        json={"is_alive": True, "death_date": None, "death_place": None},
+    )
+    assert patch.status_code == 200
+    assert patch.json()["death_place"] is None
+
+
+def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client, database):
     register_verified(client, "profile-foundation@example.com")
+    with database() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
+        db.commit()
     family_id = client.post("/api/v1/families", json={"name": "Профайлын гэр бүл"}).json()["id"]
 
     parent = client.post(

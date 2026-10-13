@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from typing import Protocol
 
+from fastapi import HTTPException
+
 from app.config import get_settings
 
 logger = logging.getLogger("guulingiinhan.email")
@@ -20,6 +22,8 @@ class EmailProvider(Protocol):
     def send_password_reset_email(self, recipient: str, link: str) -> None: ...
 
     def send_invitation_email(self, recipient: str, family_name: str, link: str) -> None: ...
+
+    def send_account_invitation_email(self, recipient: str, link: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,9 @@ class FakeEmailProvider:
 
     def send_invitation_email(self, recipient: str, family_name: str, link: str) -> None:
         self._send(recipient, f"{family_name} гэр бүлд урьж байна", f"Урилгыг нээх: {link}")
+
+    def send_account_invitation_email(self, recipient: str, link: str) -> None:
+        self._send(recipient, "Гуулингийнхан — бүртгүүлэх урилга", f"Бүртгэл үүсгэх: {link}")
 
 
 class SmtpEmailProvider:
@@ -102,10 +109,15 @@ class SmtpEmailProvider:
     def send_invitation_email(self, recipient: str, family_name: str, link: str) -> None:
         self._send(recipient, f"{family_name} гэр бүлд урьж байна", f"Урилгыг нээх: {link}")
 
+    def send_account_invitation_email(self, recipient: str, link: str) -> None:
+        self._send(recipient, "Гуулингийнхан — бүртгүүлэх урилга", f"Бүртгэл үүсгэх: {link}")
+
 
 def get_email_provider() -> EmailProvider:
     settings = get_settings()
     provider = settings.email_provider.lower()
+    if provider == "disabled" and settings.app_env.lower() == "staging":
+        raise HTTPException(status_code=503, detail="Имэйл үйлчилгээ түр боломжгүй байна.")
     if provider == "fake":
         if settings.app_env.lower() == "production":
             raise RuntimeError("Fake email provider is not allowed in production")
@@ -137,6 +149,8 @@ def send_email_safely(
                 "provider": get_settings().email_provider,
                 "event": "email_delivery_failed",
                 "error_type": type(exc).__name__,
+                "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else None,
+                "cause_errno": getattr(exc.__cause__, "errno", None),
                 "request_id": request_id,
             },
         )

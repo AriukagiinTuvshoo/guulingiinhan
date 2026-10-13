@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-10-13T05:55:22.445Z",
+  "next": "16.3.8",
+  "production": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "all_dependencies": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 7,
+    "critical": 0,
+    "total": 7
+  },
+  "build_only_exception": {
+    "package": "braces",
+    "version": "3.0.3",
+    "advisory": "GHSA-vfj7-8cjw-p6xm",
+    "context": "Build-only glob processing through vinext/Vite dependencies. Repository import/glob patterns are trusted; no application HTTP input reaches this dependency. Registry latest remains affected; npm suggested downgrades of the adapter are not applied.",
+    "release_limit": "Do not accept untrusted generated code or hostile glob patterns into build jobs without review."
+  }
+}

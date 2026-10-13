@@ -1,10 +1,14 @@
 'use client';
 
+import AccountPhoto from '../../components/account-photo';
+import PhoneVerification from '../../components/phone-verification';
+
 import Link from 'next/link';
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle, Check, Globe2, LogOut, Mail, Phone, RefreshCw, ShieldCheck, TreeDeciduous, UserRound, UsersRound } from 'lucide-react';
-import { ApiError, api, Family, User } from '../../lib/api';
+import { API_BASE, ApiError, api, Family, User } from '../../lib/api';
+import RootConnectionCard from '../../components/root-connection-card';
 
 type Identity = {
   id: string;
@@ -12,12 +16,6 @@ type Identity = {
   display_identifier: string | null;
   verified: boolean;
   created_at: string;
-};
-
-type Challenge = {
-  challenge_id: string;
-  expires_in: number;
-  resend_after: number;
 };
 
 type Notice = { kind: 'success' | 'error'; text: string };
@@ -54,9 +52,7 @@ function SettingsContent() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [securityBusy, setSecurityBusy] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
-  const [phone, setPhone] = useState('');
-  const [resendSeconds, setResendSeconds] = useState(0);
+  const [accountBusy, setAccountBusy] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const loadSequence = useRef(0);
   const identitySequence = useRef(0);
@@ -68,6 +64,21 @@ function SettingsContent() {
     () => families.find((family) => family.id === familyId) ?? null,
     [families, familyId],
   );
+
+  async function saveDisplayName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (accountBusy) return;
+    const displayName = String(new FormData(event.currentTarget).get('display_name') ?? '').trim();
+    if (!displayName) { setNotice({ kind: 'error', text: 'Дэлгэцийн нэр шаардлагатай.' }); return; }
+    setAccountBusy(true); setNotice(null);
+    try {
+      const updated = await api<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ display_name: displayName }) });
+      setUser(updated);
+      setNotice({ kind: 'success', text: 'Дэлгэцийн нэр хадгалагдлаа.' });
+    } catch (cause) {
+      setNotice({ kind: 'error', text: friendlyError(cause, 'Дэлгэцийн нэрийг хадгалж чадсангүй.') });
+    } finally { setAccountBusy(false); }
+  }
 
   const refreshIdentities = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++identitySequence.current;
@@ -132,14 +143,7 @@ function SettingsContent() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!challenge || resendSeconds <= 0) return;
-    const timer = window.setInterval(
-      () => setResendSeconds((value) => Math.max(0, value - 1)),
-      1000,
-    );
-    return () => window.clearInterval(timer);
-  }, [challenge, resendSeconds]);
+
 
   function switchFamily(nextId: string) {
     if (!families.some((family) => family.id === nextId) || nextId === familyId) return;
@@ -151,9 +155,6 @@ function SettingsContent() {
     setFamilyId('');
     setUser(null);
     setIdentities([]);
-    setChallenge(null);
-    setPhone('');
-    setResendSeconds(0);
     setNotice(null);
     setLoading(true);
     setSecurityBusy(false);
@@ -182,87 +183,6 @@ function SettingsContent() {
     }
   }
 
-  async function requestPhone(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const requestedPhone = String(new FormData(event.currentTarget).get('phone') ?? '').trim();
-    if (!requestedPhone || securityBusy) return;
-    const mutationId = ++mutationSequence.current;
-    setSecurityBusy(true);
-    setNotice(null);
-    try {
-      const result = await api<Challenge>('/auth/me/phone/request', {
-        method: 'POST',
-        body: JSON.stringify({ phone: requestedPhone }),
-      });
-      if (mutationId !== mutationSequence.current) return;
-      setPhone(requestedPhone);
-      setChallenge(result);
-      setResendSeconds(result.resend_after);
-      setNotice({ kind: 'success', text: 'Баталгаажуулах код илгээгдлээ.' });
-    } catch (cause) {
-      if (mutationId !== mutationSequence.current) return;
-      setNotice({ kind: 'error', text: friendlyError(cause, 'Код илгээж чадсангүй.') });
-    } finally {
-      if (mutationId !== mutationSequence.current) return;
-      setSecurityBusy(false);
-    }
-  }
-
-  async function resendPhone() {
-    if (!phone || securityBusy || resendSeconds > 0) return;
-    const mutationId = ++mutationSequence.current;
-    setSecurityBusy(true);
-    setNotice(null);
-    try {
-      const result = await api<Challenge>('/auth/me/phone/request', {
-        method: 'POST',
-        body: JSON.stringify({ phone }),
-      });
-      if (mutationId !== mutationSequence.current) return;
-      setChallenge(result);
-      setResendSeconds(result.resend_after);
-      setNotice({ kind: 'success', text: 'Шинэ баталгаажуулах код илгээгдлээ.' });
-    } catch (cause) {
-      if (mutationId !== mutationSequence.current) return;
-      setNotice({ kind: 'error', text: friendlyError(cause, 'Код дахин илгээж чадсангүй.') });
-    } finally {
-      if (mutationId !== mutationSequence.current) return;
-      setSecurityBusy(false);
-    }
-  }
-
-  async function verifyPhone(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!challenge || securityBusy) return;
-    const code = String(new FormData(event.currentTarget).get('code') ?? '').trim();
-    if (!/^[0-9]{6}$/.test(code)) {
-      setNotice({ kind: 'error', text: '6 оронтой кодоо оруулна уу.' });
-      return;
-    }
-
-    const mutationId = ++mutationSequence.current;
-    setSecurityBusy(true);
-    setNotice(null);
-    try {
-      await api<Identity>('/auth/me/phone/verify', {
-        method: 'POST',
-        body: JSON.stringify({ phone, challenge_id: challenge.challenge_id, code }),
-      });
-      if (mutationId !== mutationSequence.current) return;
-      setChallenge(null);
-      setPhone('');
-      setResendSeconds(0);
-      await refreshIdentities();
-      setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж, account-той холбогдлоо.' });
-    } catch (cause) {
-      if (mutationId !== mutationSequence.current) return;
-      setNotice({ kind: 'error', text: friendlyError(cause, 'Утас баталгаажуулж чадсангүй.') });
-    } finally {
-      if (mutationId !== mutationSequence.current) return;
-      setSecurityBusy(false);
-    }
-  }
-
   async function logout() {
     if (logoutBusy) return;
     const mutationId = ++mutationSequence.current;
@@ -272,9 +192,6 @@ function SettingsContent() {
     identityAbortRef.current?.abort();
     setLogoutBusy(true);
     setNotice(null);
-    setChallenge(null);
-    setPhone('');
-    setResendSeconds(0);
     try {
       await api<void>('/auth/logout', { method: 'POST' });
       if (mutationId !== mutationSequence.current) return;
@@ -293,13 +210,14 @@ function SettingsContent() {
   }
 
   const emailIdentity = identities.find((item) => item.provider === 'email');
-  const phoneIdentity = identities.find((item) => item.provider === 'phone' && item.verified);
+  const phoneIdentity = identities.find((item) => item.provider === 'phone');
   const googleIdentity = identities.find((item) => item.provider === 'google' && item.verified);
 
   if (loading) {
     return (
       <main className="settings-page">
         <div className="settings-shell settings-loading">
+          <h1 className="sr-only">Тохиргоо</h1>
           <div className="settings-skeleton" aria-busy="true" aria-live="polite">
             <span className="settings-skeleton__line settings-skeleton__line--small" />
             <span className="settings-skeleton__line settings-skeleton__line--title" />
@@ -348,8 +266,8 @@ function SettingsContent() {
             <p className="settings-eyebrow">ХУВИЙН ОРОН ЗАЙ</p>
             <h1>Тохиргоо</h1>
             <p className="settings-intro">
-              Өөрийн account, нэвтрэх аргууд болон одоогийн гэр бүлийн орчноо эндээс шалгана.
-              Зөвхөн таны account-д хамаарах мэдээлэл харагдана.
+              Өөрийн бүртгэл, нэвтрэх аргууд болон одоогийн гэр бүлийн орчноо эндээс шалгана.
+              Зөвхөн танд хандах эрхтэй мэдээлэл харагдана.
             </p>
           </div>
           <div className="settings-mark" aria-hidden="true"><TreeDeciduous size={52} strokeWidth={1.05} /></div>
@@ -364,10 +282,11 @@ function SettingsContent() {
 
         <div className="settings-layout">
           <aside className="settings-index" aria-label="Тохиргооны хэсгүүд">
-            <a href="#account">Account</a>
-            <a href="#family">Family</a>
-            <a href="#security">Security</a>
-            <a href="#signout">Sign out</a>
+            <a href="#account">Бүртгэл</a>
+            <a href="#family">Гэр бүл ба удам</a>
+            <a href="#privacy">Нууцлал</a>
+            <a href="#security">Аюулгүй байдал</a>
+            <a href="#signout">Гарах</a>
           </aside>
 
           <div className="settings-content">
@@ -375,9 +294,9 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><UserRound size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">ACCOUNT</p>
-                  <h2 id="settings-account-title">Таны account</h2>
-                  <p>Одоогийн authenticated user API болон identity API-аас ирсэн мэдээллийг харуулна.</p>
+                  <p className="settings-eyebrow">БҮРТГЭЛ</p>
+                  <h2 id="settings-account-title">Таны бүртгэл</h2>
+                  <p>Таны бүртгэл болон баталгаажсан нэвтрэх аргууд.</p>
                 </div>
               </div>
 
@@ -388,22 +307,27 @@ function SettingsContent() {
                 <div>
                   <dl className="settings-facts">
                     <div><dt>Дэлгэцийн нэр</dt><dd>{user?.display_name || 'Тодорхойгүй'}</dd></div>
-                    <div><dt>Имэйл</dt><dd>{user?.email || 'Account-д имэйл холбогдоогүй'}</dd></div>
-                    <div><dt>Account ID</dt><dd className="settings-mono">{user?.id}</dd></div>
+                    <div><dt>Имэйл</dt><dd>{user?.email || 'Имэйл холбогдоогүй'}</dd></div>
+                    <div><dt>Бүртгэлийн ID</dt><dd className="settings-mono">{user?.id}</dd></div>
                   </dl>
+                  <form className="settings-inline-form" onSubmit={saveDisplayName}>
+                    <label htmlFor="account-display-name">Дэлгэцийн нэрээ засах</label>
+                    <input id="account-display-name" name="display_name" defaultValue={user?.display_name ?? ''} maxLength={120} required disabled={accountBusy} />
+                    <button className="settings-button settings-button--dark" type="submit" disabled={accountBusy}>{accountBusy ? 'Хадгалж байна…' : 'Нэр хадгалах'}</button>
+                  </form>
                   {user?.person_id && selectedFamily ? (
                     <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>
-                      Миний холбоотой Person профайлыг харах
+                      Удам дахь миний профайлыг харах
                     </Link>
                   ) : null}
                   <p className="settings-note">
-                    Одоогийн backend-д өөрийн display name, email эсвэл account талбарыг засах authenticated mutation байхгүй.
-                    Тиймээс immutable мэдээллийг editable мэтээр үзүүлээгүй.
+                    Имэйл солиход тусдаа баталгаажуулалт шаардлагатай. Хүний профайл зураг өөрийн зөвшөөрлөөр тусад нь хадгалагдана.
                   </p>
                 </div>
               </div>
 
               <div className="settings-security-summary" aria-label="Холбогдсон нэвтрэх аргууд">
+                <AccountPhoto hasPhoto={Boolean(user?.profile_photo_url)} onChanged={() => { void api<User>('/auth/me').then(setUser).catch(() => setNotice({ kind: 'error', text: 'Профайлын мэдээллийг шинэчилж чадсангүй.' })); }} />
                 {identities.map((identity) => (
                   <div key={identity.id} className="settings-mini-card">
                     <span className="settings-mini-card__icon">
@@ -422,9 +346,9 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><UsersRound size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">FAMILY CONTEXT</p>
-                  <h2 id="settings-family-title">Гэр бүлийн орчин</h2>
-                  <p>Зөвхөн /families API-аас таны эрхтэй membership-үүдийг ашиглана.</p>
+                  <p className="settings-eyebrow">ГЭР БҮЛИЙН УДАМ</p>
+                  <h2 id="settings-family-title">Гэр бүл ба удам</h2>
+                  <p>Таны гишүүнчлэлтэй гэр бүл, удмын модонд очих холбоос.</p>
                 </div>
               </div>
 
@@ -432,15 +356,15 @@ function SettingsContent() {
                 {families.length === 0 ? (
                   <div className="settings-empty">
                     <strong>Одоогоор харагдах гэр бүл алга.</strong>
-                    <span>Энд зөвхөн таны membership-тэй гэр бүлүүд харагдана.</span>
-                    <Link className="settings-button settings-button--light" href="/onboarding">Гэр бүл үүсгэх</Link>
+                    <span>Одоо байгаа удмын орчинд орохын тулд гэр бүлийн урилга хүлээн авна уу.</span>
+                    <Link className="settings-button settings-button--light" href="/invite">Урилга хүлээн авах</Link>
                   </div>
                 ) : families.length === 1 ? (
                   <div className="settings-family-single">
                     <span className="settings-family-single__name">{families[0].name}</span>
                     <span className="settings-family-badge">{families[0].role}</span>
                     <p className="settings-help">
-                      Танд одоогоор нэг л authorized family context байна.
+                      Таны хандах эрхтэй гэр бүл энэ байна.
                     </p>
                   </div>
                 ) : (
@@ -455,19 +379,38 @@ function SettingsContent() {
                       {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
                     </select>
                     <p id="settings-family-help" className="settings-help">
-                      URL дахь family ID өөрөө эрх олгохгүй; backend membership шалгалт нь үргэлж authoritative хэвээр.
+                      Гэр бүл солиход таны гишүүнчлэл сервер талд шалгагдана.
                     </p>
                     {selectedFamily && (
                       <div className="settings-family-meta">
                         <span className="settings-family-badge">{selectedFamily.role}</span>
                         <span>{selectedFamily.description || 'Гэр бүлийн хувийн орон зай.'}</span>
                         <Link className="settings-button settings-button--light" href={'/families?family=' + encodeURIComponent(selectedFamily.id)}>
-                          Family тохиргоо, гишүүдийг удирдах →
+                          Гэр бүлийн гишүүдийг харах →
                         </Link>
                       </div>
                     )}
                   </div>
                 )}
+                {selectedFamily && <div className="settings-lineage-links"><div><strong>Удмын мод</strong><p>{user?.person_id ? 'Таны профайл удмын хүнтэй холбогдсон.' : 'Таны бүртгэл удмын хүнтэй хараахан холбогдоогүй.'}</p></div><Link className="settings-button settings-button--light" href={'/tree?family=' + encodeURIComponent(selectedFamily.id)}>Бүх удмыг харах →</Link></div>}
+              </div>
+            </section>
+
+            {selectedFamily && <RootConnectionCard familyId={selectedFamily.id} />}
+
+            <section id="privacy" className="settings-section" aria-labelledby="settings-privacy-title">
+              <div className="settings-section__head">
+                <div className="settings-section__icon"><ShieldCheck size={18} /></div>
+                <div><p className="settings-eyebrow">НУУЦЛАЛ</p><h2 id="settings-privacy-title">Профайл ба гэр бүлийн мэдээлэл</h2><p>Хувийн удам зөвшөөрөгдсөн гэр бүлийн гишүүдэд харагдана.</p></div>
+              </div>
+              <div className="settings-card settings-privacy-card">
+                {user?.person_id && selectedFamily ? <>
+                  <div><strong>Өөрийн профайлын харагдац</strong><p>Харагдах хүрээг өөрийн хүний профайл дээр засна. Серверийн зөвшөөрөл үйлдэл бүрд шалгагдана.</p></div>
+                  <Link className="settings-button settings-button--light" href={'/profile?family=' + encodeURIComponent(selectedFamily.id) + '&person=' + encodeURIComponent(user.person_id)}>Профайлын нууцлалыг тохируулах</Link>
+                </> : <>
+                  <div><strong>Өөрийгөө удмын хүнтэй холбох</strong><p>Нэрээр таамаглан автоматаар холбохгүй. Гэр бүлийн эзэн хүсэлтийг шалгаж батална.</p></div>
+                  <Link className="settings-button settings-button--light" href={selectedFamily ? '/tree?family=' + encodeURIComponent(selectedFamily.id) : '/families'}>Удам дотроос өөрийгөө олох</Link>
+                </>}
               </div>
             </section>
 
@@ -475,9 +418,9 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><ShieldCheck size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">SECURITY</p>
+                  <p className="settings-eyebrow">АЮУЛГҮЙ БАЙДАЛ</p>
                   <h2 id="settings-security-title">Нэвтрэх ба аюулгүй байдал</h2>
-                  <p>Одоо backend дэмжиж буй verification болон identity linking flow-уудыг л ашиглана.</p>
+                  <p>Одоо ашиглаж буй баталгаажуулалт болон нэвтрэх аргууд.</p>
                 </div>
               </div>
 
@@ -498,47 +441,25 @@ function SettingsContent() {
                   )}
                 </article>
 
-                <article className="settings-card settings-action-card">
-                  <div className="settings-action-copy">
-                    <div className="settings-action-title"><Phone size={17} /><div><strong>Утасны дугаар</strong><span>{phoneIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
-                    <p>{phoneIdentity ? 'Баталгаажсан утас энэ account-той холбогдсон байна.' : 'Утас холбох үед backend-ийн OTP verification заавал хийгдэнэ.'}</p>
-                  </div>
-
-                  {phoneIdentity ? (
-                    <span className="settings-status settings-status--verified"><Check size={13} /> Холбогдсон</span>
-                  ) : !challenge ? (
-                    <form className="settings-inline-form" onSubmit={requestPhone}>
-                      <label htmlFor="settings-phone">Утасны дугаар</label>
-                      <input id="settings-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="+976 99112233" maxLength={20} required disabled={securityBusy} aria-describedby="settings-phone-help" />
-                      <span id="settings-phone-help" className="settings-help">+976 99112233 эсвэл 99112233.</span>
-                      <button className="settings-button settings-button--dark" type="submit" disabled={securityBusy}>{securityBusy ? 'Илгээж байна…' : 'Код авах'}</button>
-                    </form>
-                  ) : (
-                    <form className="settings-inline-form" onSubmit={verifyPhone}>
-                      <div className="settings-otp-summary"><span>Код илгээсэн дугаар</span><strong>{phone}</strong></div>
-                      <label htmlFor="settings-phone-code">Баталгаажуулах код</label>
-                      <input id="settings-phone-code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required disabled={securityBusy} aria-describedby="settings-phone-code-help" />
-                      <span id="settings-phone-code-help" className="settings-help">6 оронтой кодоо оруулна уу.</span>
-                      <div className="settings-otp-actions">
-                        <button className="settings-button settings-button--dark" type="submit" disabled={securityBusy}>{securityBusy ? 'Шалгаж байна…' : 'Баталгаажуулж холбох'}</button>
-                        <button className="settings-button settings-button--text" type="button" disabled={securityBusy} onClick={() => { setChallenge(null); setPhone(''); setResendSeconds(0); }}>Болих</button>
-                        <button className="settings-button settings-button--text" type="button" disabled={securityBusy || resendSeconds > 0} onClick={() => void resendPhone()}>
-                          {resendSeconds > 0 ? 'Дахин код авах · ' + resendSeconds + ' сек' : 'Дахин код авах'}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                <article className="settings-card settings-phone-card">
+                  <div className="settings-action-title"><Phone size={17} /><h3>Утасны дугаар</h3></div>
+                  <p>{phoneIdentity?.display_identifier || 'Утас холбогдоогүй'} · {phoneIdentity?.verified ? 'Баталгаажсан' : 'Баталгаажаагүй'}</p>
+                  <p>Шинэ дугаар баталгаажсаны дараа хуучин дугаар солигдоно. Нэвтрэхэд SMS шаардахгүй.</p>
+                  <PhoneVerification purpose="account" currentPhone={phoneIdentity?.verified ? '' : phoneIdentity?.display_identifier ?? ''} onVerified={() => {
+                    void api<Identity[]>('/auth/me/identities').then(setIdentities);
+                    setNotice({ kind: 'success', text: 'Утасны дугаар баталгаажиж хадгалагдлаа.' });
+                  }} />
                 </article>
 
                 <article className="settings-card settings-action-card">
                   <div className="settings-action-copy">
                     <div className="settings-action-title"><Globe2 size={17} /><div><strong>Google account</strong><span>{googleIdentity?.display_identifier || 'Холбогдоогүй'}</span></div></div>
-                    <p>Google linking enabled бол existing OAuth flow-оор холбоно. Credential энэ хуудсанд хадгалагдахгүй.</p>
+                    <p>Үйлчилгээ идэвхтэй үед Google аккаунтаа холбож болно.</p>
                   </div>
                   {googleIdentity ? (
                     <span className="settings-status settings-status--verified"><Check size={13} /> Холбогдсон</span>
-                  ) : googleEnabled ? (
-                    <form method="post" action={(process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1') + '/auth/me/google/start'}>
+                  ) : googleEnabled && API_BASE ? (
+                    <form method="post" action={API_BASE + '/auth/me/google/start'}>
                       <button className="settings-button settings-button--light" type="submit">Google account холбох</button>
                     </form>
                   ) : (
@@ -550,8 +471,8 @@ function SettingsContent() {
                   <ShieldCheck size={17} />
                   <div>
                     <strong>Нууц үг солих</strong>
-                    <p>Authenticated password-change endpoint байхгүй. Existing password reset нь reset token-оор ажилладаг тул энд зохиомол password-change API нэмээгүй.</p>
-                    <Link href="/password-reset">Нууц үг сэргээх</Link>
+                    <p>Одоогийн нууц үгээ баталгаажуулж шинэ нууц үг тохируулна. Шинэчилсний дараа бүх төхөөрөмжөөс гарна.</p>
+                    <Link href="/account/security#password">Нууц үг өөрчлөх</Link><Link href="/password-reset">Нууц үг сэргээх</Link>
                   </div>
                 </article>
               </div>
@@ -563,15 +484,15 @@ function SettingsContent() {
               <div className="settings-section__head">
                 <div className="settings-section__icon"><LogOut size={18} /></div>
                 <div>
-                  <p className="settings-eyebrow">SESSION</p>
-                  <h2 id="settings-signout-title">Sign out</h2>
-                  <p>Одоогийн browser session-ийг existing logout endpoint-оор хүчингүй болгоно.</p>
+                  <p className="settings-eyebrow">НЭВТРЭЛТ</p>
+                  <h2 id="settings-signout-title">Гарах</h2>
+                  <p>Энэ төхөөрөмж дээрх нэвтрэлтийг дуусгана.</p>
                 </div>
               </div>
               <div className="settings-card settings-logout-card">
                 <div>
                   <strong>Энэ device-ээс гарах</strong>
-                  <p>Амжилттай гарсны дараа Login руу очно. Password, session token, secret дэлгэцэнд гаргахгүй.</p>
+                  <p>Дараа нь бүртгэлтэй имэйл эсвэл утас, нууц үгээрээ дахин нэвтэрнэ.</p>
                 </div>
                 <button className="settings-button settings-button--dark" type="button" disabled={logoutBusy} onClick={() => void logout()}>
                   <LogOut size={15} /> {logoutBusy ? 'Гарч байна…' : 'Гарах'}
@@ -587,5 +508,5 @@ function SettingsContent() {
 
 
 export default function SettingsPage() {
-  return <Suspense fallback={<main className="settings-page"><div className="settings-shell settings-loading"><div className="settings-skeleton" aria-busy="true"><small>Тохиргоог ачаалж байна…</small></div></div></main>}><SettingsContent /></Suspense>;
+  return <Suspense fallback={<main className="settings-page"><div className="settings-shell settings-loading"><h1 className="sr-only">Тохиргоо</h1><div className="settings-skeleton" aria-busy="true"><small>Тохиргоог ачаалж байна…</small></div></div></main>}><SettingsContent /></Suspense>;
 }

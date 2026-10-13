@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -29,6 +30,8 @@ class User(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     display_name: Mapped[str] = mapped_column(String(120))
+    profile_photo_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    profile_photo_cleanup: Mapped[str | None] = mapped_column(Text, nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -46,6 +49,30 @@ class UserSession(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class AdminGrant(Base):
+    """Global authorization, independent of family membership."""
+
+    __tablename__ = "admin_grants"
+    __table_args__ = (
+        CheckConstraint("role IN ('SUPER_ADMIN', 'ADMIN', 'MODERATOR')", name="ck_admin_grant_role"),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    granted_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+class AdminBootstrap(Base):
+    """Durable one-time marker so a removed super admin cannot be re-granted on restart."""
+
+    __tablename__ = "admin_bootstrap"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
@@ -147,6 +174,11 @@ class Invitation(Base):
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
         Index("ix_invitation_expiry", "expires_at"),
+        Index(
+            "uq_invitation_active_family_email", "family_id", "invited_email", unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -172,6 +204,7 @@ class EmailVerificationToken(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    target_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
@@ -240,6 +273,8 @@ class PhoneOtpChallenge(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     request_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_session_id: Mapped[str | None] = mapped_column(String(36), unique=True, nullable=True)
+    provider_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuditLog(Base):
@@ -262,12 +297,174 @@ class Family(Base):
     __tablename__ = "families"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    root_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(180))
+    featured_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), nullable=True
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SharedAncestry(Base):
+    """The single account-wide ancestry root configured by a super admin."""
+
+    __tablename__ = "shared_ancestry"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_shared_ancestry_singleton"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    root_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class SharedAncestryPerson(Base):
+    """A Person that its linked account explicitly shares in the common tree."""
+
+    __tablename__ = "shared_ancestry_persons"
+    __table_args__ = (Index("ix_shared_ancestry_person_family", "family_id"),)
+
+    person_id: Mapped[UUID] = mapped_column(
+        ForeignKey("persons.id", ondelete="CASCADE"), primary_key=True
+    )
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    added_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    shared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class SharedAncestryRelationship(Base):
+    """Explicit parent-child edges in the account-wide shared tree."""
+
+    __tablename__ = "shared_ancestry_relationships"
+    __table_args__ = (
+        UniqueConstraint("parent_id", "child_id", name="uq_shared_ancestry_parent_child"),
+        CheckConstraint("parent_id <> child_id", name="ck_shared_ancestry_not_self"),
+        CheckConstraint(
+            "relationship_type IN ('biological', 'adoptive', 'step')",
+            name="ck_shared_ancestry_relationship_type",
+        ),
+        Index("ix_shared_ancestry_relationship_child", "child_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    parent_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    child_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    relationship_type: Mapped[str] = mapped_column(String(16), default="biological")
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class RootConnection(Base):
+    """Explicit, reviewed Family projection into the shared ancestry.
+
+    Person and parent-child identity remain in their canonical tables. This row
+    records consent and approval for showing a Family at a chosen root anchor.
+    """
+
+    __tablename__ = "root_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'disconnected')",
+            name="ck_root_connection_status",
+        ),
+        CheckConstraint(
+            "relationship_type IN ('biological', 'adoptive', 'step')",
+            name="ck_root_connection_relationship_type",
+        ),
+        CheckConstraint("person_id <> target_person_id", name="ck_root_connection_not_self"),
+        Index("ix_root_connection_target", "target_person_id"),
+        Index("ix_root_connection_status", "status"),
+    )
+
+    family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), primary_key=True
+    )
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"))
+    target_person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"))
+    relationship_type: Mapped[str] = mapped_column(String(16), default="biological")
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    canonical_edge_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("parent_child_relationships.id", ondelete="SET NULL"), nullable=True
+    )
+    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SharedAncestryRequest(Base):
+    """Reviewed changes to sharing and canonical edges; never a separate graph."""
+
+    __tablename__ = "shared_ancestry_requests"
+    __table_args__ = (
+        CheckConstraint("kind IN ('child', 'spouse', 'detach')", name="ck_shared_request_kind"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'cancelled')", name="ck_shared_request_status"),
+        CheckConstraint(
+            "(kind = 'child' AND target_person_id IS NOT NULL AND relationship_type IS NOT NULL AND relationship_type IN ('biological', 'adoptive', 'step')) OR "
+            "(kind = 'spouse' AND target_person_id IS NOT NULL AND relationship_type IS NOT NULL AND relationship_type IN ('married', 'widowed')) OR "
+            "(kind = 'detach' AND target_person_id IS NULL AND relationship_type IS NULL)",
+            name="ck_shared_request_relationship",
+        ),
+        CheckConstraint("target_person_id IS NULL OR person_id <> target_person_id", name="ck_shared_request_not_self"),
+        CheckConstraint("kind = 'detach' OR consented_at IS NOT NULL", name="ck_shared_request_consent"),
+        Index("ix_shared_request_family_requester", "family_id", "requested_by", "requested_at"),
+        Index("ix_shared_request_status", "status", "requested_at"),
+        Index("uq_shared_request_pending_person", "person_id", unique=True,
+              sqlite_where=text("status = 'pending'"), postgresql_where=text("status = 'pending'")),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="RESTRICT"))
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"))
+    target_person_id: Mapped[UUID | None] = mapped_column(ForeignKey("persons.id", ondelete="RESTRICT"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    relationship_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    status: Mapped[str] = mapped_column(String(9), default="pending", server_default="pending")
+    requested_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    canonical_edge_id: Mapped[UUID | None] = mapped_column(ForeignKey("parent_child_relationships.id", ondelete="SET NULL"), nullable=True)
+    canonical_marriage_id: Mapped[UUID | None] = mapped_column(ForeignKey("marriages.id", ondelete="SET NULL"), nullable=True)
+    consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SharedDonationInfo(Base):
+    """Public, account-wide bank transfer and optional QR instructions."""
+
+    __tablename__ = "shared_donation_info"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_shared_donation_info_singleton"),
+        CheckConstraint("length(currency) = 3", name="ck_shared_donation_currency"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    title: Mapped[str] = mapped_column(String(180))
+    purpose: Mapped[str] = mapped_column(Text)
+    currency: Mapped[str] = mapped_column(String(3), default="MNT")
+    bank_name: Mapped[str] = mapped_column(String(120), default="")
+    account_name: Mapped[str] = mapped_column(String(180), default="")
+    account_number: Mapped[str] = mapped_column(String(80), default="")
+    qr_image_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    is_published: Mapped[bool] = mapped_column(default=False)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 
 
 class Lineage(Base):
@@ -348,6 +545,88 @@ class FamilyMember(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class FamilyFund(Base):
+    __tablename__ = "family_funds"
+    __table_args__ = (
+        CheckConstraint("visibility IN ('family', 'public')", name="ck_family_fund_visibility"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    purpose: Mapped[str] = mapped_column(Text)
+    currency: Mapped[str] = mapped_column(String(3))
+    payment_instruction: Mapped[str] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(8), default="family", nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class Donation(Base):
+    __tablename__ = "donations"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="ck_donation_positive_amount"),
+        CheckConstraint("status IN ('pledged', 'reported', 'confirmed', 'cancelled')", name="ck_donation_status"),
+        Index("ix_donation_family_created", "family_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    fund_id: Mapped[UUID] = mapped_column(ForeignKey("family_funds.id", ondelete="RESTRICT"))
+    donor_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[str] = mapped_column(String(12), default="pledged")
+    private_donor: Mapped[bool] = mapped_column(default=False)
+    confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class FamilyEvent(Base):
+    __tablename__ = "family_events"
+    __table_args__ = (
+        CheckConstraint("capacity IS NULL OR capacity > 0", name="ck_family_event_positive_capacity"),
+        CheckConstraint("adult_fee_minor >= 0 AND child_fee_minor >= 0", name="ck_family_event_nonnegative_fees"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    location: Mapped[str] = mapped_column(String(300))
+    registration_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    capacity: Mapped[int | None] = mapped_column(nullable=True)
+    adult_fee_minor: Mapped[int] = mapped_column(BigInteger, default=0)
+    child_fee_minor: Mapped[int] = mapped_column(BigInteger, default=0)
+    currency: Mapped[str] = mapped_column(String(3))
+    payment_instruction: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class EventRegistration(Base):
+    __tablename__ = "event_registrations"
+    __table_args__ = (
+        UniqueConstraint("event_id", "user_id", name="uq_event_registration_user"),
+        CheckConstraint("adult_count >= 0 AND child_count >= 0 AND adult_count + child_count > 0", name="ck_event_attendee_counts"),
+        CheckConstraint("status IN ('registered', 'cancelled')", name="ck_event_registration_status"),
+        CheckConstraint("payment_status IN ('unpaid', 'reported', 'confirmed')", name="ck_event_payment_status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(ForeignKey("family_events.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    adult_count: Mapped[int] = mapped_column(default=1)
+    child_count: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String(12), default="registered")
+    payment_status: Mapped[str] = mapped_column(String(12), default="unpaid")
+    confirmed_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class Person(Base):
     __tablename__ = "persons"
     __table_args__ = (
@@ -388,6 +667,7 @@ class Person(Base):
     death_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     death_place: Mapped[str | None] = mapped_column(String(240), nullable=True)
     death_cause: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    profile_photo_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     profile_photo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     short_description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     visibility: Mapped[str] = mapped_column(String(12), default="family")
@@ -430,6 +710,48 @@ class UserPersonLink(Base):
     person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
     linked_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class PersonLinkRequest(Base):
+    """Owner-reviewed claim of an existing Person by a family member."""
+
+    __tablename__ = "person_link_requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_person_link_request_status"),
+        Index("ix_person_link_request_family_status", "family_id", "status"),
+        Index(
+            "uq_person_link_request_pending_user",
+            "family_id",
+            "user_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(12), default="pending")
+    decided_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Announcement(Base):
+    """A published notice shown to authenticated users in the application."""
+
+    __tablename__ = "announcements"
+    __table_args__ = (Index("ix_announcements_created_at", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    title: Mapped[str] = mapped_column(String(180))
+    body: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_published: Mapped[bool] = mapped_column(default=False)
 
 
 class PersonGuardianship(Base):
@@ -506,7 +828,7 @@ class ParentChildRelationship(Base):
         UniqueConstraint("parent_id", "child_id", name="uq_parent_child"),
         CheckConstraint("parent_id <> child_id", name="ck_parent_child_not_self"),
         CheckConstraint(
-            "relationship_type IN ('biological', 'adoptive')", name="ck_parent_child_type"
+            "relationship_type IN ('biological', 'adoptive', 'step')", name="ck_parent_child_type"
         ),
         Index("ix_parent_child_child", "child_id"),
     )
@@ -712,6 +1034,35 @@ class Memory(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc
     )
+
+
+class MemoryLike(Base):
+    __tablename__ = "memory_likes"
+
+    memory_id: Mapped[UUID] = mapped_column(
+        ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class MemoryComment(Base):
+    __tablename__ = "memory_comments"
+    __table_args__ = (
+        UniqueConstraint("memory_id", "user_id", "request_key", name="uq_memory_comment_request"),
+        Index("ix_memory_comment_page", "memory_id", "created_at", "id"),
+        CheckConstraint("length(body) > 0 AND length(body) <= 2000", name="ck_memory_comment_body"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    memory_id: Mapped[UUID] = mapped_column(ForeignKey("memories.id", ondelete="CASCADE"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    request_key: Mapped[UUID] = mapped_column(Uuid)
+    body: Mapped[str] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class MemoryPersonTag(Base):

@@ -1,0 +1,131 @@
+{
+  "source_commit": "48bcd8868ddaf737c5da55ea8d7bc99e26528d9a",
+  "branch": "codex/integration-regression-2026-10-02",
+  "ci_run": 37702074406,
+  "ci_conclusion": "success",
+  "builds": {
+    "frontend": "00122df8-26f6-4adc-b167-3c7ee861b892",
+    "backend": "cb282855-7df0-48ea-8f17-f36ad479e74d"
+  },
+  "live": [
+    {
+      "name": "guulingiinhan-staging",
+      "deployments": [
+        {
+          "id": "d49ff819-2d72-4d7d-8545-1ac29c50ad86",
+          "created_on": "2026-10-07T23:30:06.420608Z",
+          "versions": [
+            {
+              "version_id": "72283f38-28b1-45f8-9ecc-28bda396b7d1",
+              "percentage": 100
+            }
+          ]
+        },
+        {
+          "id": "a0703232-28fc-498f-bdaf-232620783a60",
+          "created_on": "2026-10-07T23:29:57.2252Z",
+          "versions": [
+            {
+              "version_id": "47715e5e-5e58-4186-8447-0383a28d0511",
+              "percentage": 100
+            }
+          ]
+        },
+        {
+          "id": "ac115410-8c29-4dc8-a9ba-3763239852d9",
+          "created_on": "2026-10-07T23:24:55.892522Z",
+          "versions": [
+            {
+              "version_id": "72283f38-28b1-45f8-9ecc-28bda396b7d1",
+              "percentage": 100
+            }
+          ]
+        },
+        {
+          "id": "dd75bc71-42a0-4df5-a8f6-300a06359efe",
+          "created_on": "2026-10-07T16:30:38.983102Z",
+          "versions": [
+            {
+              "version_id": "47715e5e-5e58-4186-8447-0383a28d0511",
+              "percentage": 100
+            }
+          ]
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "redact_query_string": true
+      }
+    },
+    {
+      "name": "guulingiinhan-backend-staging",
+      "deployments": [
+        {
+          "id": "c30c670d-3130-4941-a7de-8f38195330b3",
+          "created_on": "2026-10-07T23:25:27.482833Z",
+          "versions": [
+            {
+              "version_id": "61b01230-c0c1-4fc0-ba2b-730b2667ead2",
+              "percentage": 100
+            }
+          ]
+        },
+        {
+          "id": "71e6c14b-e4f9-480d-8da1-6d416e4e9ac4",
+          "created_on": "2026-10-07T16:30:43.606988Z",
+          "versions": [
+            {
+              "version_id": "36ca5787-4e37-48be-b791-78def8043714",
+              "percentage": 100
+            }
+          ]
+        },
+        {
+          "id": "fef310a1-e090-4a86-ae9c-a56f38514c4b",
+          "created_on": "2026-10-07T05:29:11.260616Z",
+          "versions": [
+            {
+              "version_id": "83017e62-88e5-4424-a061-0498aee60958",
+              "percentage": 100
+            }
+          ]
+        },
+        {
+          "id": "e20ce87d-54da-471f-8fdf-fdb4545b6536",
+          "created_on": "2026-10-06T10:32:30.552775Z",
+          "versions": [
+            {
+              "version_id": "5b5326b5-82e1-4744-a9aa-7105d8ca06c1",
+              "percentage": 100
+            }
+          ]
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "redact_query_string": true
+      }
+    }
+  ],
+  "rollback": {
+    "scope": "Staging frontend only; no backend, database, media or production rollback",
+    "current": "72283f38-28b1-45f8-9ecc-28bda396b7d1",
+    "previous": "47715e5e-5e58-4186-8447-0383a28d0511",
+    "rollback": {
+      "success": true,
+      "status": 200,
+      "id": "a0703232-28fc-498f-bdaf-232620783a60",
+      "errors": []
+    },
+    "smoke": {
+      "exit_code": 0,
+      "output": "{\"status\":200,\"mongolian_shell\":true,\"bytes\":7601}"
+    },
+    "restored": {
+      "success": true,
+      "status": 200,
+      "id": "d49ff819-2d72-4d7d-8545-1ac29c50ad86",
+      "errors": []
+    }
+  }
+}

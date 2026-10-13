@@ -1,7 +1,26 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _https_url(value: str, *, origin_only: bool = False) -> bool:
+    """Reject malformed hosted URLs before clients or CORS silently fail."""
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+        return bool(
+            parsed.scheme == "https" and parsed.hostname
+            and not any(character.isspace() for character in value)
+            and "\\" not in value
+            and parsed.username is None and parsed.password is None
+            and not parsed.query and not parsed.fragment
+            and (port is None or 1 <= port <= 65535)
+            and (not origin_only or parsed.path == "")
+        )
+    except ValueError:
+        return False
 
 
 class Settings(BaseSettings):
@@ -16,6 +35,7 @@ class Settings(BaseSettings):
     slow_request_threshold_ms: int = 1000
     photo_cleanup_max_attempts: int = 8
     cors_origins: str = "http://localhost:3000"
+    trust_cloudflare_proxy_ip: bool = False
     session_cookie_name: str = "guulingiinhan_session"
     storage_provider: str = "local"
     storage_local_path: str = "./uploads"
@@ -30,6 +50,7 @@ class Settings(BaseSettings):
     photo_upload_family_per_minute: int = 100
     otp_hash_secret: str | None = None
     sms_provider: str = "fake"
+    verify_mn_api_key: str | None = None
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
     twilio_from_number: str | None = None
@@ -49,11 +70,19 @@ class Settings(BaseSettings):
     email_smtp_username: str | None = None
     email_smtp_password: str | None = None
     email_smtp_starttls: bool = True
+    admin_bootstrap_email: EmailStr | None = None
+    admin_bootstrap_admin_email: EmailStr | None = None
+    admin_bootstrap_moderator_email: EmailStr | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")
     def validate_production_settings(self):
+        app_env = self.app_env.strip().lower()
+        if app_env not in {"development", "test", "staging", "production"}:
+            raise ValueError("APP_ENV must be development, test, staging, or production.")
+        self.app_env = app_env
+        hosted_env = app_env in {"production", "staging"}
         if not 1 <= self.db_pool_size <= 50:
             raise ValueError("DB_POOL_SIZE must be between 1 and 50.")
         if not 0 <= self.db_max_overflow <= 100:
@@ -70,27 +99,28 @@ class Settings(BaseSettings):
             raise ValueError("SLOW_REQUEST_THRESHOLD_MS must be between 1 and 120000.")
         if not 1 <= self.photo_cleanup_max_attempts <= 20:
             raise ValueError("PHOTO_CLEANUP_MAX_ATTEMPTS must be between 1 and 20.")
-        if self.email_provider.lower() not in {"fake", "smtp"}:
-            raise ValueError("EMAIL_PROVIDER must be fake or smtp.")
+        if self.email_provider.lower() not in {"fake", "smtp", "disabled"}:
+            raise ValueError("EMAIL_PROVIDER must be fake, smtp, or disabled.")
         if self.email_verification_ttl_seconds < 300 or self.email_verification_ttl_seconds > 86400:
             raise ValueError("EMAIL_VERIFICATION_TTL_SECONDS must be between 300 and 86400.")
         if self.email_password_reset_ttl_seconds < 300 or self.email_password_reset_ttl_seconds > 86400:
             raise ValueError("EMAIL_PASSWORD_RESET_TTL_SECONDS must be between 300 and 86400.")
-        if self.app_env.lower() == "production":
+        if hosted_env:
             if not self.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
                 raise ValueError("Production requires PostgreSQL in DATABASE_URL.")
             origins = self.cors_origin_list
             if not origins or "*" in origins:
                 raise ValueError("Production CORS_ORIGINS must list explicit HTTPS origins.")
-            if any(not origin.startswith("https://") for origin in origins):
-                raise ValueError("Production CORS_ORIGINS may contain HTTPS origins only.")
+            if any(not _https_url(origin, origin_only=True) for origin in origins):
+                raise ValueError("Hosted CORS_ORIGINS must be exact HTTPS origins without paths or credentials.")
             if not self.otp_hash_secret or len(self.otp_hash_secret) < 32:
                 raise ValueError("Production requires OTP_HASH_SECRET with at least 32 characters.")
+        if app_env == "production":
             if (
-                self.sms_provider.lower() != "twilio"
+                not self.verify_mn_api_key and (self.sms_provider.lower() != "twilio"
                 or not self.twilio_account_sid
                 or not self.twilio_auth_token
-                or not self.twilio_from_number
+                or not self.twilio_from_number)
             ):
                 raise ValueError("Production requires a configured SMS provider.")
             if self.email_provider.lower() != "smtp":
@@ -101,8 +131,28 @@ class Settings(BaseSettings):
                 raise ValueError("Production email requires sender and authenticated SMTP configuration.")
             if not self.email_smtp_starttls:
                 raise ValueError("Production SMTP must use STARTTLS.")
-            if not self.email_public_base_url.startswith("https://"):
-                raise ValueError("Production EMAIL_PUBLIC_BASE_URL must use HTTPS.")
+            if not _https_url(self.email_public_base_url.rstrip("/"), origin_only=True):
+                raise ValueError("Production EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
+        elif app_env == "staging":
+            if self.sms_provider.lower() not in {"disabled", "twilio"}:
+                raise ValueError("Staging SMS_PROVIDER must be disabled or twilio.")
+            if self.sms_provider.lower() == "twilio" and not all((
+                self.twilio_account_sid, self.twilio_auth_token, self.twilio_from_number,
+            )):
+                raise ValueError("Staging Twilio configuration is incomplete.")
+            if self.email_provider.lower() not in {"disabled", "smtp"}:
+                raise ValueError("Staging EMAIL_PROVIDER must be disabled or smtp.")
+            if self.email_provider.lower() == "smtp" and not all((
+                self.email_from, self.email_smtp_host,
+                self.email_smtp_username, self.email_smtp_password,
+            )):
+                raise ValueError("Staging SMTP configuration is incomplete.")
+            if self.email_provider.lower() == "smtp" and not self.email_smtp_starttls:
+                raise ValueError("Staging SMTP must use STARTTLS.")
+            if self.email_provider.lower() == "smtp" and not _https_url(
+                self.email_public_base_url.rstrip("/"), origin_only=True,
+            ):
+                raise ValueError("Staging EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
         if self.google_oidc_enabled:
             if not all(
                 (
@@ -114,14 +164,14 @@ class Settings(BaseSettings):
                 raise ValueError("Google OIDC requires client ID, client secret, and redirect URI.")
             if not self.google_oidc_issuer.rstrip("/") == "https://accounts.google.com":
                 raise ValueError("Google OIDC issuer must be https://accounts.google.com.")
-            if self.app_env.lower() == "production":
-                if not self.google_oidc_redirect_uri.startswith("https://"):
+            if hosted_env:
+                if not self.google_oidc_redirect_uri or not _https_url(self.google_oidc_redirect_uri):
                     raise ValueError("Production Google OIDC redirect URI must use HTTPS.")
                 if not self.google_oidc_state_secret or len(self.google_oidc_state_secret) < 32:
                     raise ValueError(
                         "Production Google OIDC requires GOOGLE_OIDC_STATE_SECRET with at least 32 characters."
                     )
-        elif self.sms_provider.lower() not in {"fake", "twilio"}:
+        if app_env not in {"production", "staging"} and self.sms_provider.lower() not in {"fake", "twilio"}:
             raise ValueError("SMS_PROVIDER must be fake or twilio.")
         if self.storage_provider.lower() not in {"local", "s3"}:
             raise ValueError("STORAGE_PROVIDER must be local or s3.")
@@ -133,13 +183,13 @@ class Settings(BaseSettings):
             raise ValueError("PHOTO_UPLOAD_IP_PER_MINUTE must be between 1 and 300.")
         if not 1 <= self.photo_upload_family_per_minute <= 1000:
             raise ValueError("PHOTO_UPLOAD_FAMILY_PER_MINUTE must be between 1 and 1000.")
-        if self.app_env.lower() == "production":
+        if hosted_env:
             if self.storage_provider.lower() != "s3" or not all((
                 self.storage_endpoint, self.storage_bucket, self.storage_access_key,
                 self.storage_secret_key,
             )):
                 raise ValueError("Production requires complete S3-compatible storage settings.")
-            if not self.storage_endpoint.startswith("https://"):
+            if not self.storage_endpoint or not _https_url(self.storage_endpoint):
                 raise ValueError("Production STORAGE_ENDPOINT must use HTTPS.")
         return self
 

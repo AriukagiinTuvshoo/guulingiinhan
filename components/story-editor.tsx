@@ -2,8 +2,12 @@
 
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, Family, PersonSearchPage, Story } from '../lib/api';
-import { useParams, useSearchParams } from 'next/navigation';
+import { ApiError, api, MemoryListItem, MemoryPhotoPage, PersonSearchPage, Story } from '../lib/api';
+import { useAppShellContext } from './app-shell';
+import ProfilePhoto from './profile-photo';
+import HeritageLinkPicker from './heritage-link-picker';
+import { editHeritageText, heritageEditorText } from '../lib/heritage-links';
+import { useParams } from 'next/navigation';
 
 type Props = {
   mode: 'create' | 'edit';
@@ -18,6 +22,7 @@ const visibilityOptions = [
   { value: 'private', label: 'Зөвхөн би' },
   { value: 'public', label: 'Нийтийн' },
 ];
+const STORY_PHOTO_TOKEN = /\[\[photo:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\|([^\]\n]{0,180}))?\]\]/g;
 
 function personName(person: { first_name: string; last_name: string; middle_name: string | null }) {
   return [person.last_name, person.first_name, person.middle_name].filter(Boolean).join(' ') || 'Нэргүй хүн';
@@ -35,8 +40,7 @@ function friendlyError(cause: unknown, fallback: string) {
 }
 
 function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
-  const [family, setFamily] = useState<Family | null>(null);
-  const [familyId, setFamilyId] = useState(requestedFamilyId);
+  const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [story, setStory] = useState<Story | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -50,10 +54,19 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [initialSnapshot, setInitialSnapshot] = useState('');
-  const searchParams = useSearchParams();
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [photoAlbums, setPhotoAlbums] = useState<MemoryListItem[]>([]);
+  const [photoMemoryPage, setPhotoMemoryPage] = useState(1);
+  const [photoMemoriesHaveNext, setPhotoMemoriesHaveNext] = useState(false);
+  const [photoPagesByMemory, setPhotoPagesByMemory] = useState<Record<string, MemoryPhotoPage>>({});
+  const [photoMemoryLoading, setPhotoMemoryLoading] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const routeParams = useParams<{ id?: string }>();
   const loadRequestRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
+  const photoRequestRef = useRef(0);
   const personSearchRequestRef = useRef(0);
   const personSearchAbortRef = useRef<AbortController | null>(null);
 
@@ -63,6 +76,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   );
   const dirty = initialSnapshot !== '' && snapshot !== initialSnapshot;
   const canMutate = family?.role === 'owner' || family?.role === 'editor';
+  const embeddedPhotos = Array.from(body.matchAll(STORY_PHOTO_TOKEN));
 
   useEffect(() => {
     if (!dirty) return;
@@ -82,40 +96,34 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     loadAbortRef.current = controller;
 
     async function load() {
-      const effectiveFamilyId = requestedFamilyId || searchParams.get('family') || '';
       const effectiveStoryId = requestedStoryId || routeParams.id || '';
-      if (loadRequestRef.current !== requestId) return;
+      if (requestId !== loadRequestRef.current) return;
       setLoading(true);
       setError('');
+
+      if (contextLoading || !contextLoaded) return;
+      if (contextError) {
+        setLoading(false);
+        setError(contextError);
+        return;
+      }
+      if (!family || !familyId) {
+        setLoading(false);
+        setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
+        return;
+      }
       try {
         if (mode === 'create') {
-          const items = await api<Family[]>('/families', { signal: controller.signal });
-          if (cancelled || requestId !== loadRequestRef.current) return;
-          const requested = effectiveFamilyId;
-          const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0] ?? null;
-          if (!selected) {
-            setFamily(null);
-            setFamilyId('');
-            setError('Энэ гэр бүлийн түүхийг засах эрхгүй байна.');
-            return;
-          }
-          setFamily(selected);
-          setFamilyId(selected?.id ?? '');
+          setStory(null);
           setInitialSnapshot(JSON.stringify({ title: '', body: '', eventDate: '', place: '', visibility: 'family', people: [] }));
           return;
         }
-
-        if (!effectiveFamilyId || !effectiveStoryId) {
+        if (!effectiveStoryId) {
           setError('Түүхийн хаяг буруу байна.');
           return;
         }
-        const [familyResult, storyResult] = await Promise.all([
-          api<Family>('/families/' + effectiveFamilyId, { signal: controller.signal }),
-          api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId, { signal: controller.signal }),
-        ]);
+        const storyResult = await api<Story>('/families/' + familyId + '/stories/' + effectiveStoryId, { signal: controller.signal });
         if (cancelled || requestId !== loadRequestRef.current) return;
-        setFamily(familyResult);
-        setFamilyId(effectiveFamilyId);
         setStory(storyResult);
         setTitle(storyResult.title);
         setBody(storyResult.body);
@@ -132,19 +140,20 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
           people: storyResult.related_people.map((person) => person.id),
         }));
       } catch (cause) {
+        if (controller.signal.aborted || cancelled || requestId !== loadRequestRef.current) return;
         if (cause instanceof ApiError && cause.status === 401) {
           window.location.href = '/login';
           return;
         }
-        if (!cancelled && requestId === loadRequestRef.current) setError(friendlyError(cause, 'Түүхийг ачаалж чадсангүй.'));
+        setError(friendlyError(cause, 'Түүхийг ачаалж чадсангүй.'));
       } finally {
         if (!cancelled && requestId === loadRequestRef.current) setLoading(false);
       }
     }
 
     void load();
-    return () => { cancelled = true; };
-  }, [mode, requestedFamilyId, requestedStoryId, routeParams.id, searchParams]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [contextError, contextLoaded, contextLoading, family, familyId, mode, requestedStoryId, routeParams.id]);
 
   useEffect(() => {
     const requestId = ++personSearchRequestRef.current;
@@ -172,6 +181,18 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     };
   }, [familyId, personQuery]);
 
+  useEffect(() => {
+    photoRequestRef.current += 1;
+    setPhotoAlbums([]);
+    setPhotoMemoryPage(1);
+    setPhotoMemoriesHaveNext(false);
+    setPhotoPagesByMemory({});
+    setPhotoMemoryLoading('');
+    setPhotoLoading(false);
+    setPhotoError('');
+    setShowPhotoPicker(false);
+  }, [familyId]);
+
   useEffect(() => () => {
     loadAbortRef.current?.abort();
     personSearchAbortRef.current?.abort();
@@ -192,6 +213,117 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
         ? current.filter((item) => item.id !== person.id)
         : [...current, person],
     );
+  }
+
+  function insertText(before: string, after = '', placeholder = 'текст') {
+    const field = textareaRef.current;
+    const editorialBody = heritageEditorText(body);
+    const start = field?.selectionStart ?? editorialBody.length;
+    const end = field?.selectionEnd ?? start;
+    const selected = editorialBody.slice(start, end) || placeholder;
+    const next = editorialBody.slice(0, start) + before + selected + after + editorialBody.slice(end);
+    setBody(editHeritageText(next, body));
+    window.requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(start + before.length, start + before.length + selected.length);
+    });
+  }
+
+  async function openPhotoPicker() {
+    if (showPhotoPicker) { setShowPhotoPicker(false); return; }
+    setShowPhotoPicker(true);
+    if (!familyId || photoAlbums.length) return;
+    const operationFamilyId = familyId;
+    const requestId = ++photoRequestRef.current;
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const result = await api<{ items: MemoryListItem[]; page: number; has_next: boolean }>(
+        `/families/${operationFamilyId}/memories?page=1&page_size=18`,
+      );
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoAlbums(result.items);
+      setPhotoMemoryPage(result.page);
+      setPhotoMemoriesHaveNext(result.has_next);
+    } catch {
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoError('Гэр бүлийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (requestId === photoRequestRef.current) setPhotoLoading(false);
+    }
+  }
+
+  async function loadNextPhotoMemories() {
+    if (!familyId || photoLoading || photoMemoryLoading || !photoMemoriesHaveNext) return;
+    const operationFamilyId = familyId;
+    const requestId = ++photoRequestRef.current;
+    setPhotoLoading(true);
+    setPhotoError('');
+    try {
+      const page = photoMemoryPage + 1;
+      const result = await api<{ items: MemoryListItem[]; page: number; has_next: boolean }>(
+        `/families/${operationFamilyId}/memories?page=${page}&page_size=18`,
+      );
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoAlbums((current) => [...current, ...result.items.filter((item) => !current.some((old) => old.id === item.id))]);
+      setPhotoMemoryPage(result.page);
+      setPhotoMemoriesHaveNext(result.has_next);
+    } catch {
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoError('Дараагийн дурсамжийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (requestId === photoRequestRef.current) setPhotoLoading(false);
+    }
+  }
+
+  async function loadMemoryPhotos(memoryId: string, page = 1) {
+    if (!familyId || photoLoading || photoMemoryLoading) return;
+    const operationFamilyId = familyId;
+    const requestId = ++photoRequestRef.current;
+    setPhotoMemoryLoading(memoryId);
+    setPhotoError('');
+    try {
+      const result = await api<MemoryPhotoPage>(
+        `/families/${operationFamilyId}/memories/${memoryId}/photos?page=${page}&page_size=24`,
+      );
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoPagesByMemory((current) => {
+        const previous = current[memoryId];
+        const items = page === 1 ? result.items : [...(previous?.items ?? []), ...result.items];
+        return { ...current, [memoryId]: { ...result, items } };
+      });
+    } catch {
+      if (requestId !== photoRequestRef.current) return;
+      setPhotoError('Энэ дурсамжийн зургийг ачаалж чадсангүй. Дахин оролдоно уу.');
+    } finally {
+      if (requestId === photoRequestRef.current) setPhotoMemoryLoading('');
+    }
+  }
+
+  function removeStoryPhoto(match: RegExpMatchArray) {
+    const start = match.index ?? -1;
+    if (start < 0) return;
+    setBody((current) => current.slice(0, start) + current.slice(start + match[0].length));
+  }
+
+  function updateStoryPhotoCaption(match: RegExpMatchArray, caption: string) {
+    const start = match.index ?? -1;
+    if (start < 0) return;
+    const cleanCaption = caption.replace(/[\]\n|]/g, ' ').slice(0, 180);
+    const replacement = `[[photo:${match[1]}|${cleanCaption}]]`;
+    setBody((current) => current.slice(0, start) + replacement + current.slice(start + match[0].length));
+  }
+
+  function insertPhoto(id: string, caption: string) {
+    const cleanCaption = caption.replace(/[\]\n|]/g, ' ').slice(0, 180) || 'Гэр бүлийн зураг';
+    const field = textareaRef.current;
+    const editorialBody = heritageEditorText(body);
+    const start = field?.selectionStart ?? editorialBody.length;
+    const end = field?.selectionEnd ?? start;
+    const token = `\n\n[[photo:${id}|${cleanCaption}]]\n\n`;
+    setBody(editHeritageText(editorialBody.slice(0, start) + token + editorialBody.slice(end), body));
+    window.requestAnimationFrame(() => { field?.focus(); field?.setSelectionRange(start + token.length, start + token.length); });
+    setShowPhotoPicker(false);
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -306,11 +438,80 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
             </label>
           </div>
 
-          <label>
-            Түүх *
-            <textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
+          <div className="story-writing-field">
+            <HeritageLinkPicker familyId={familyId} value={body} onChange={setBody} />
+            <label htmlFor="story-body">Түүх *</label>
+            <div className="story-writing-toolbar" role="toolbar" aria-label="Түүхийн бичвэр форматлах">
+              <button type="button" onClick={() => insertText('\n## ', '', 'Дэд гарчиг')}>Гарчиг</button>
+              <button type="button" onClick={() => insertText('**', '**', 'тод текст')} aria-label="Тод бичвэр"><strong>Б</strong></button>
+              <button type="button" onClick={() => insertText('*', '*', 'налуу текст')} aria-label="Налуу бичвэр"><em>Н</em></button>
+              <button type="button" onClick={() => insertText('\n- ', '', 'Жагсаалтын зүйл')}>Жагсаалт</button>
+              <button type="button" onClick={() => insertText('\n> ', '', 'Ишлэл')}>Ишлэл</button>
+              <button type="button" onClick={() => insertText('[', '](https://example.com)', 'холбоосын нэр')}>Холбоос</button>
+              <button type="button" onClick={() => insertText('\n\n---\n\n', '', '')}>Зааг</button>
+              <button type="button" onClick={() => void openPhotoPicker()} aria-expanded={showPhotoPicker}>📷 Зураг</button>
+            </div>
+            <textarea id="story-body" ref={textareaRef} value={heritageEditorText(body)} onChange={(event) => setBody(editHeritageText(event.target.value, body))} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
             <span className="story-field-hint">{body.length.toLocaleString()} / 100,000</span>
-          </label>
+            {embeddedPhotos.length > 0 && <section className="story-inserted-photos" aria-label="Түүхэнд оруулсан зургууд">
+              <h3>Түүхэнд оруулсан зураг · {embeddedPhotos.length}</h3>
+              <ul>
+                {embeddedPhotos.map((match, index) => (
+                  <li key={`${match[1]}-${match.index}-${index}`}>
+                    <ProfilePhoto
+                      url={`/families/${familyId}/photos/${match[1]}/content?variant=thumbnail`}
+                      name={match[2] || 'Гэр бүлийн зураг'}
+                      fallback="Зураг харах боломжгүй"
+                      className="story-inserted-photo-image"
+                    />
+                    <label>
+                      <span>Зургийн тайлбар</span>
+                      <input
+                        value={match[2] ?? ''}
+                        maxLength={180}
+                        onChange={(event) => updateStoryPhotoCaption(match, event.target.value)}
+                        aria-label={`Зураг ${index + 1}-ийн тайлбар`}
+                      />
+                    </label>
+                    <button type="button" onClick={() => removeStoryPhoto(match)} aria-label={`Зураг ${index + 1}-ийг түүхээс хасах`}>
+                      Зургийг хасах
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>}
+            {showPhotoPicker && <section className="story-photo-picker" aria-label="Дурсамжаас зураг сонгох">
+              <p>Дурсамжид оруулсан зургаа сонгоно. Нийтийн түүхэнд зөвхөн нийтэд зөвшөөрсөн, насанд хүрсэн хүний зураг ашиглана.</p>
+              {photoError && <p role="alert">{photoError}</p>}
+              {photoLoading && <p role="status">Дурсамж ачаалж байна…</p>}
+              {!photoLoading && photoAlbums.length === 0 && !photoError && <p>Зурагтай дурсамж алга. Эхлээд <Link href={`/memories?family=${encodeURIComponent(familyId)}`}>Дурсамж</Link> хэсэгт зураг нэмнэ үү.</p>}
+              <div className="story-photo-albums">
+                {photoAlbums.map((memory) => {
+                  const photoPage = photoPagesByMemory[memory.id];
+                  const photos = photoPage?.items ?? memory.photos ?? [];
+                  return <section key={memory.id} className="story-photo-album">
+                    <header><strong>{memory.title}</strong><span>{photoPage ? `${photoPage.total} зураг` : 'Дурсамж'}</span></header>
+                    <div className="story-photo-options">
+                      {photos.map((photo, index) => <button type="button" key={photo.id} onClick={() => insertPhoto(photo.id, photo.title || memory.title)}>
+                        <ProfilePhoto url={photo.thumbnail_url} name={photo.title || `${memory.title} · зураг ${index + 1}`} fallback="Зураг харах боломжгүй" className="story-photo-option-image" />
+                        <span>{photo.title || `Зураг ${index + 1}`}<small>{memory.title}</small></span>
+                      </button>)}
+                    </div>
+                    {photoPage && !photoPage.items.length && <p>Энэ дурсамжид сонгож болох зураг алга.</p>}
+                    {!photoPage && <button type="button" disabled={photoLoading || !!photoMemoryLoading} onClick={() => void loadMemoryPhotos(memory.id, 1)}>
+                      {photoMemoryLoading === memory.id ? 'Зураг ачаалж байна…' : 'Энэ дурсамжийн бүх зургийг сонгох'}
+                    </button>}
+                    {photoPage?.has_next && <button type="button" disabled={photoLoading || !!photoMemoryLoading} onClick={() => void loadMemoryPhotos(memory.id, photoPage.page + 1)}>
+                      {photoMemoryLoading === memory.id ? 'Ачаалж байна…' : 'Дараагийн зургууд'}
+                    </button>}
+                  </section>;
+                })}
+              </div>
+              {photoMemoriesHaveNext && <button type="button" disabled={photoLoading || !!photoMemoryLoading} onClick={() => void loadNextPhotoMemories()}>
+                {photoLoading ? 'Ачаалж байна…' : 'Дараагийн дурсамжууд'}
+              </button>}
+            </section>}
+          </div>
 
           <fieldset className="story-people-fieldset">
             <legend>Холбоотой хүмүүс</legend>

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Family, StoryListPage } from '../../lib/api';
+import { useRouter } from 'next/navigation';
+import { ApiError, api, StoryListPage } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -18,11 +19,10 @@ function friendlyError(cause: unknown, fallback: string) {
 const PAGE_SIZE = 12;
 
 function StoriesPageContent() {
-  const [family, setFamily] = useState<Family | null>(null);
-  const [familyId, setFamilyId] = useState('');
-  const [families, setFamilies] = useState<Family[]>([]);
+  const { families, currentFamily, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
   const [stories, setStories] = useState<StoryListPage | null>(null);
   const [query, setQuery] = useState('');
+  const [year, setYear] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -30,7 +30,6 @@ function StoriesPageContent() {
   const storyRequestRef = useRef(0);
   const storyAbortRef = useRef<AbortController | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const loadStories = useCallback(async (fid: string, page = 1, q = query) => {
     if (!fid) return;
@@ -44,6 +43,7 @@ function StoriesPageContent() {
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       const safeQuery = q.replace(/\s+/g, ' ').trim();
       if (safeQuery) params.set('q', safeQuery);
+      if (year) params.set('year', year);
       const result = await api<StoryListPage>('/families/' + fid + '/stories?' + params.toString(), { signal: controller.signal });
       if (requestId !== storyRequestRef.current) return;
       setStories(result);
@@ -60,60 +60,14 @@ function StoriesPageContent() {
         setBusy(false);
       }
     }
-  }, [query, router]);
-
-  const loadFamilies = useCallback(async () => {
-    const requestId = ++familyRequestRef.current;
-    setLoading(true);
-    setError('');
-    try {
-      const items = await api<Family[]>('/families');
-      if (requestId !== familyRequestRef.current) return;
-      setFamilies(items);
-      storyRequestRef.current += 1;
-      if (!items.length) {
-        setFamily(null);
-        setFamilyId('');
-        setStories(null);
-        setLoading(false);
-        return;
-      }
-      const requested = searchParams.get('family') ?? '';
-      const selected = requested ? items.find((item) => item.id === requested) ?? null : items[0];
-      if (!selected) {
-        setFamily(null);
-        setFamilyId('');
-        setStories(null);
-        setLoading(false);
-        setError('Энэ гэр бүлийн түүхийг харах боломжгүй байна.');
-        return;
-      }
-      setFamily(selected);
-      setFamilyId(selected.id);
-      setStories(null);
-      if (!requested) {
-        router.replace('/stories?family=' + encodeURIComponent(selected.id));
-      }
-    } catch (cause) {
-      if (requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setLoading(false);
-      setError(friendlyError(cause, 'Гэр бүлийн орчныг ачааллахад алдаа гарлаа. Дахин оролдоно уу.'));
-    }
-  }, [router, searchParams]);
+  }, [query, year, router]);
 
   useEffect(() => {
     storyAbortRef.current?.abort();
-    setFamily(null);
-    setFamilyId('');
+    storyRequestRef.current += 1;
     setStories(null);
     setError('');
-    storyRequestRef.current += 1;
-    void loadFamilies();
-  }, [loadFamilies]);
+  }, [familyId]);
 
   useEffect(() => {
     if (!familyId) return;
@@ -122,11 +76,9 @@ function StoriesPageContent() {
   }, [familyId, loadStories]);
 
   function chooseFamily(next: string) {
+    if (!families.some((item) => item.id === next) || next === familyId) return;
     storyAbortRef.current?.abort();
     storyRequestRef.current += 1;
-    const selected = families.find((item) => item.id === next) ?? null;
-    setFamily(selected);
-    setFamilyId(next);
     setStories(null);
     setError('');
     router.replace('/stories?family=' + encodeURIComponent(next));
@@ -135,6 +87,7 @@ function StoriesPageContent() {
   useEffect(() => () => storyAbortRef.current?.abort(), []);
 
   const page = stories?.page ?? 1;
+  const family = currentFamily;
   const canCreate = family?.role === 'owner' || family?.role === 'editor';
 
   return (
@@ -162,11 +115,12 @@ function StoriesPageContent() {
           </div>
         </header>
 
+        {contextError && <div className="error stories-error" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="error stories-error" role="alert">
             <span>{error}</span>
             <div className="stories-error-actions">
-              <button type="button" onClick={() => void loadFamilies()}>Дахин оролдох</button>
+              <button type="button" onClick={() => window.location.reload()}>Дахин оролдох</button>
               {familyId && <button type="button" onClick={() => void loadStories(familyId, page)} disabled={busy}>Түүх дахин ачаалах</button>}
             </div>
           </div>
@@ -178,6 +132,7 @@ function StoriesPageContent() {
             <input
               id="story-search" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void loadStories(familyId, 1); }} placeholder="Гарчиг эсвэл агуулгаар хайх…" />
           </label>
+          <label>Он<input type="number" min={1} max={9998} value={year} onChange={(event) => setYear(event.target.value)} placeholder="1978" /></label>
           <button type="submit" disabled={busy}>Хайх</button>
         </form>
 

@@ -9,6 +9,7 @@ export class ApiError extends Error {
     message: string,
     public code: string | null = null,
     public requestId: string | null = null,
+    public validationMessage: string | null = null,
   ) {
     super(message);
   }
@@ -35,11 +36,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
     let code: string | null = null;
+    let validationMessage: string | null = null;
     let requestId = response.headers.get('X-Request-ID');
     try {
-      const payload = await response.json();
+      const parsed: unknown = await response.json();
+      const payload = parsed && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : {};
       code = typeof payload.error_code === 'string' ? payload.error_code : null;
       requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
+      if ((response.status === 422 || response.status === 409) && typeof payload.detail === 'string' && payload.detail.length <= 300) {
+        validationMessage = payload.detail;
+      }
       message =
         response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
         response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
@@ -47,17 +55,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status === 409 ? 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.' :
         response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
         response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
-        payload.detail ?? message;
+        response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
+        typeof payload.detail === 'string' ? payload.detail : message;
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
-    throw new ApiError(response.status, message, code, requestId);
+    throw new ApiError(response.status, message, code, requestId, validationMessage);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-export type User = { id: string; email: string | null; display_name: string; person_id: string | null };
+export type User = { id: string; email: string | null; display_name: string; person_id: string | null; profile_photo_url?: string | null };
 export type Family = { id: string; name: string; description: string | null; role: string };
 export type Person = {
   id: string;
@@ -80,9 +89,11 @@ export type TreeData = {
   parent_child_relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[];
   marriages: Marriage[];
   root_person_id?: string | null;
+  lineage_root_person_id?: string | null;
+  linked_person_id?: string | null;
   meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
-export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'> & {
+export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'> & {
   lineage_id?: string | null;
   lineage_name?: string | null;
   branch_id?: string | null;
@@ -94,6 +105,7 @@ export type ProfileRelationPerson = Pick<
   'id' | 'first_name' | 'last_name' | 'middle_name' | 'nickname' | 'gender' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'
 >;
 export type PersonProfile = Person & {
+  can_edit_profile: boolean;
   lineage_id: string | null;
   lineage_name: string | null;
   branch_id: string | null;
@@ -103,7 +115,7 @@ export type PersonProfile = Person & {
   spouses: ProfileRelationPerson[];
 };
 
-export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
+export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null; family_name?: string | null; branch_name?: string | null }[]; page: number; page_size: number; total: number; has_next: boolean };
 export type PersonDirectoryItem = Person & {
   lineage_id: string | null;
   lineage_name: string | null;
@@ -172,6 +184,26 @@ export type ArchiveInput = {
   person_ids: string[];
 };
 
+export type MemoryPhoto = {
+  id: string;
+  title: string | null;
+  description?: string | null;
+  photo_date?: string | null;
+  created_at?: string;
+  thumbnail_url: string;
+  content_url: string;
+  person_ids?: string[];
+  person_names?: string[];
+};
+
+export type MemoryPhotoPage = {
+  items: MemoryPhoto[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
 export type MemoryListItem = {
   id: string;
   title: string;
@@ -180,14 +212,25 @@ export type MemoryListItem = {
   visibility: string;
   person_ids: string[];
   person_names?: string[];
+  liked?: boolean;
+  like_count?: number;
+  comment_count?: number;
+  author_name?: string;
   created_at: string;
-  photos?: {
-    id: string;
-    title: string | null;
-    thumbnail_url: string;
-    content_url: string;
-  }[];
+  photos?: MemoryPhoto[];
+  photos_page?: number;
+  photos_page_size?: number;
+  photos_total?: number;
+  photos_has_next?: boolean;
 };
+
+export type MemoryListPage = { items: MemoryListItem[]; page: number; page_size: number; total: number; has_next: boolean };
+export type RelationshipResult = {
+  status: 'same' | 'found' | 'not_found' | 'limited'; truncated: boolean; paths_limited: boolean;
+  paths: { people: { id: string; name: string }[]; steps: { kind: 'parent' | 'child' | 'spouse'; relationship_type?: string; status?: string }[]; distance: number; generation_distance: number }[];
+  common_ancestors: { id: string; name: string; first_distance: number; second_distance: number }[];
+};
+export type TimelinePage = { items: { id: string; kind: string; date: string | null; title: string; href: string | null }[]; page: number; has_next: boolean; total: number; truncated: boolean };
 
 export type StoryPerson = {
   id: string;

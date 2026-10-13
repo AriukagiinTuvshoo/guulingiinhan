@@ -3,9 +3,11 @@
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { Eye, EyeOff, TreeDeciduous } from 'lucide-react';
+import PhoneVerification from '../../components/phone-verification';
 import { api } from '../../lib/api';
 
 export default function PasswordResetPage() {
+  const [mode, setMode] = useState<'email' | 'phone'>('email');
   const [token, setToken] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -13,8 +15,10 @@ export default function PasswordResetPage() {
   const [complete, setComplete] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
+    api<{ enabled: boolean }>('/auth/email/config').then((result) => setEmailEnabled(result.enabled)).catch(() => setEmailEnabled(false));
     const value = new URLSearchParams(window.location.hash.slice(1)).get('token');
     if (value) {
       setToken(value);
@@ -60,13 +64,17 @@ export default function PasswordResetPage() {
         </div>
         <div className="auth-heading">
           <h1 id="reset-title">Нууц үг сэргээх</h1>
-          <p>Баталгаажсан имэйлд хугацаатай, нэг удаагийн холбоос илгээнэ.</p>
+          <p>Баталгаажсан имэйл эсвэл утасны дугаараар нууц үгээ сэргээнэ.</p>
         </div>
+        {!token && !complete && <div className="authv2-tabs" aria-label="Сэргээх арга"><button type="button" aria-pressed={mode === 'email'} onClick={() => setMode('email')}>Имэйл</button><button type="button" aria-pressed={mode === 'phone'} onClick={() => setMode('phone')}>Утас</button></div>}
+        {!token && !complete && mode === 'phone' && <PhoneVerification purpose="recovery" onVerified={() => { setComplete(true); setNotice('Нууц үг шинэчлэгдлээ. Шинээр нэвтэрнэ үү.'); }} />}
         {notice && <div className="auth-message success" role="status">{notice}</div>}
-        {error && <div className="auth-message error" role="alert">{error}</div>}
-        {!token && !complete && <form className="auth-form" onSubmit={request}>
+        {error && <div id="reset-error" className="auth-message error" role="alert">{error}</div>}
+        {!token && !complete && mode === 'email' && emailEnabled === false && <div className="authv2-unavailable" role="status"><strong>Имэйлээр сэргээх түр хаалттай</strong><p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна.</p></div>}
+        {!token && !complete && mode === 'email' && emailEnabled === null && <p className="authv2-availability" role="status">Үйлчилгээний төлөвийг шалгаж байна…</p>}
+        {!token && !complete && mode === 'email' && emailEnabled === true && <form className="auth-form" onSubmit={request}>
           <label htmlFor="reset-email">Имэйл</label>
-          <input id="reset-email" name="email" type="email" autoComplete="email" maxLength={320} required />
+          <input id="reset-email" name="email" type="email" autoComplete="email" maxLength={320} required aria-invalid={Boolean(error)} aria-describedby={error ? 'reset-error' : undefined} />
           <button className="auth-primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Холбоос илгээх'}</button>
           <span className="auth-help">Бүртгэлтэй эсэхийг харуулахгүй.</span>
         </form>}

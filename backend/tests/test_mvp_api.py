@@ -4,7 +4,7 @@ from uuid import UUID
 from conftest import confirm_registration_email, register_verified
 from sqlalchemy import select
 
-from app.models import AuditLog, FamilyMember, User
+from app.models import AdminGrant, AuditLog, FamilyMember, FamilyPerson, Person, User
 
 
 def register(client, email):
@@ -128,7 +128,7 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
     accepted = client.post("/api/v1/invitations/accept", json={"token": token})
     assert accepted.status_code == 200
     assert accepted.json() == {"family_id": family_id, "role": "editor"}
-    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 404
+    assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 200
     assert client.get(f"/api/v1/families/{family_id}").status_code == 200
 
 
@@ -203,6 +203,66 @@ def test_family_person_relationship_tree_and_family_isolation(client):
         client.get(f"/api/v1/families/{family_id}/persons/search?q=Дорж").status_code == 403
     )
     assert client.get(f"/api/v1/families/{family_id}/tree").status_code == 403
+
+
+def test_family_tree_relationships_can_be_corrected_and_person_detached(client, database):
+    register(client, "tree-editor@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Засварлах мод"}).json()["id"]
+    base = f"/api/v1/families/{family_id}"
+    parent = client.post(f"{base}/persons", json={"first_name": "Эцэг"}).json()
+    child = client.post(f"{base}/persons", json={"first_name": "Хүүхэд"}).json()
+    created = client.post(
+        f"{base}/relationships/parent-child",
+        json={"parent_id": parent["id"], "child_id": child["id"]},
+    )
+    assert created.status_code == 201
+    relationship_id = created.json()["id"]
+
+    changed = client.patch(
+        f"{base}/relationships/parent-child/{relationship_id}",
+        json={"relationship_type": "adoptive"},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["relationship_type"] == "adoptive"
+    assert client.get(f"{base}/tree").json()["parent_child_relationships"][0]["relationship_type"] == "adoptive"
+
+    step = client.patch(
+        f"{base}/relationships/parent-child/{relationship_id}",
+        json={"relationship_type": "step"},
+    )
+    assert step.status_code == 200
+    assert client.get(f"{base}/tree").json()["parent_child_relationships"][0]["relationship_type"] == "step"
+
+    assert client.delete(f"{base}/relationships/parent-child/{relationship_id}").status_code == 204
+    assert client.get(f"{base}/tree").json()["parent_child_relationships"] == []
+
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
+    assert client.delete(f"{base}/persons/{child['id']}").status_code == 204
+    with database() as db:
+        assert db.get(Person, UUID(child["id"])) is not None
+        assert db.scalar(
+            select(FamilyPerson.id).where(
+                FamilyPerson.family_id == UUID(family_id),
+                FamilyPerson.person_id == UUID(child["id"]),
+            )
+        ) is None
+        actions = set(db.scalars(select(AuditLog.action)).all())
+    assert "relationship.parent_child.updated" in actions
+    assert "relationship.parent_child.deleted" in actions
+    assert "person.detached" in actions
+
+    client.post("/api/v1/auth/logout")
+    register(client, "tree-member@example.com")
+    with database() as db:
+        member = db.scalar(select(User).where(User.email == "tree-member@example.com"))
+        db.add(FamilyMember(family_id=UUID(family_id), user_id=member.id, role="member"))
+        db.commit()
+    assert client.patch(
+        f"{base}/relationships/parent-child/{relationship_id}",
+        json={"relationship_type": "biological"},
+    ).status_code == 403
+    assert client.delete(f"{base}/relationships/parent-child/{relationship_id}").status_code == 403
 
 
 def test_spouse_divorce_keeps_parent_relationship(client):
@@ -335,6 +395,7 @@ def test_biography_timeline_and_memory_round_trip(client):
     ).json()
     person_id = person["id"]
     base = f"/api/v1/families/{family_id}"
+    assert client.post(f"{base}/persons/{person_id}/link-me").status_code == 204
     bio = client.put(f"{base}/persons/{person_id}/biography", json={"content": "Амьдралын намтар."})
     assert bio.status_code == 200 and bio.json()["content"] == "Амьдралын намтар."
 
