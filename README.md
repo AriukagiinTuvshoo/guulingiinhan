@@ -42,3 +42,11 @@ uv run alembic check
 ```
 
 Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Email verification, нууц үг сэргээх, invitation хүргэлтэд local `EMAIL_PROVIDER=fake`, production-д TLS-тэй SMTP тохируулна. Email хүргэлт болон object storage production-д хараахан тохируулагдаагүй.
+
+## Хөгжүүлэлтийн дүрэм
+
+- Нэг ажил = нэг богино наслах branch + Pull Request. Merge хийсний дараа branch-ийг устгана; олон долоо хоног тогтдог `codex/*`, `claude/*` branch үлдээхгүй.
+- PR бүр `verify` workflow-г давах ёстой. PR template-ийн жагсаалтыг бөглөнө.
+- Schema өөрчлөх бол `DATABASE.md`-г хамт шинэчилнэ. `uv run alembic heads` нэг head харуулах ёстой.
+- Dependency нэмэхдээ хувилбарыг тогтооно (`latest` ашиглахгүй). Dependabot долоо хоног бүр шинэчлэлтийн PR нээнэ. Хугацаат `security-audit` workflow нэмэгдвэл долоо хоног бүр `npm audit` болон `pip-audit` ажиллуулна.
+- Давхцсан ажил, merge-ийн дараалал, deploy adapter-ийн шийдвэрийг `INTEGRATION_BASELINE.md`-д тэмдэглэнэ.
