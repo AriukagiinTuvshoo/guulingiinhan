@@ -70,9 +70,7 @@ class LocalObjectStorage:
         if not root.exists():
             return []
         return sorted(
-            path.relative_to(self.root).as_posix()
-            for path in root.rglob("*")
-            if path.is_file()
+            path.relative_to(self.root).as_posix() for path in root.rglob("*") if path.is_file()
         )
 
 
@@ -87,8 +85,11 @@ class S3ObjectStorage:
             raise RuntimeError("S3 storage requires boto3") from error
         self.bucket = bucket
         self.client = boto3.client(
-            "s3", endpoint_url=endpoint, region_name=region,
-            aws_access_key_id=access_key, aws_secret_access_key=secret_key,
+            "s3",
+            endpoint_url=endpoint,
+            region_name=region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
             config=Config(
                 signature_version="s3v4",
                 connect_timeout=3,
@@ -137,8 +138,14 @@ def get_storage() -> ObjectStorage:
     settings = get_settings()
     if settings.storage_provider.lower() == "local":
         return LocalObjectStorage(settings.storage_local_path)
-    if not all((settings.storage_endpoint, settings.storage_bucket,
-                settings.storage_access_key, settings.storage_secret_key)):
+    if not all(
+        (
+            settings.storage_endpoint,
+            settings.storage_bucket,
+            settings.storage_access_key,
+            settings.storage_secret_key,
+        )
+    ):
         raise RuntimeError("S3 storage configuration is incomplete")
     return S3ObjectStorage(
         settings.storage_endpoint,

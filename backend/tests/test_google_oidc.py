@@ -38,7 +38,9 @@ def google_enabled(monkeypatch):
     monkeypatch.setenv("GOOGLE_OIDC_ENABLED", "true")
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_ID", "client-id")
     monkeypatch.setenv("GOOGLE_OIDC_CLIENT_SECRET", "client-secret")
-    monkeypatch.setenv("GOOGLE_OIDC_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
+    monkeypatch.setenv(
+        "GOOGLE_OIDC_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback"
+    )
     monkeypatch.setenv("GOOGLE_OIDC_STATE_SECRET", "test-state-secret-with-enough-randomness")
     get_settings.cache_clear()
     yield
@@ -53,7 +55,9 @@ def callback(client, start_response):
     )
 
 
-def test_google_oidc_creates_one_user_and_session_without_person(client, database, monkeypatch, google_enabled):
+def test_google_oidc_creates_one_user_and_session_without_person(
+    client, database, monkeypatch, google_enabled
+):
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle())
     start = client.get("/api/v1/auth/google/start", follow_redirects=False)
     assert start.status_code == 303
@@ -65,7 +69,12 @@ def test_google_oidc_creates_one_user_and_session_without_person(client, databas
     assert client.get("/api/v1/auth/me").status_code == 200
     with database() as db:
         assert db.scalar(select(func.count(User.id))) == 1
-        assert db.scalar(select(func.count(LoginIdentity.id)).where(LoginIdentity.provider == "google")) == 1
+        assert (
+            db.scalar(
+                select(func.count(LoginIdentity.id)).where(LoginIdentity.provider == "google")
+            )
+            == 1
+        )
         assert db.scalar(select(func.count(Person.id))) == 0
 
 
@@ -78,7 +87,9 @@ def test_google_state_is_single_use(client, monkeypatch, google_enabled):
     assert "google=failed" in second.headers["location"]
 
 
-def test_google_email_does_not_auto_link_existing_account(client, database, monkeypatch, google_enabled):
+def test_google_email_does_not_auto_link_existing_account(
+    client, database, monkeypatch, google_enabled
+):
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle(email="person@example.com"))
     registered = register_verified(client, "person@example.com", "safe-password-123")
     assert registered.status_code == 201
@@ -88,7 +99,12 @@ def test_google_email_does_not_auto_link_existing_account(client, database, monk
     assert "google=failed" in result.headers["location"]
     with database() as db:
         assert db.scalar(select(func.count(User.id))) == 1
-        assert db.scalar(select(func.count(LoginIdentity.id)).where(LoginIdentity.provider == "google")) == 0
+        assert (
+            db.scalar(
+                select(func.count(LoginIdentity.id)).where(LoginIdentity.provider == "google")
+            )
+            == 0
+        )
 
 
 def test_google_link_requires_existing_session(client, monkeypatch, google_enabled):
@@ -97,7 +113,9 @@ def test_google_link_requires_existing_session(client, monkeypatch, google_enabl
     assert response.status_code == 401
 
 
-def test_google_identity_can_be_linked_to_authenticated_account(client, database, monkeypatch, google_enabled):
+def test_google_identity_can_be_linked_to_authenticated_account(
+    client, database, monkeypatch, google_enabled
+):
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle())
     registered = register_verified(client, "existing@example.com", "safe-password-123")
     assert registered.status_code == 201
@@ -109,4 +127,9 @@ def test_google_identity_can_be_linked_to_authenticated_account(client, database
     assert [item["provider"] for item in identities] == ["email", "google"]
     with database() as db:
         assert db.scalar(select(func.count(User.id))) == 1
-        assert db.scalar(select(func.count(LoginIdentity.id)).where(LoginIdentity.provider == "google")) == 1
+        assert (
+            db.scalar(
+                select(func.count(LoginIdentity.id)).where(LoginIdentity.provider == "google")
+            )
+            == 1
+        )

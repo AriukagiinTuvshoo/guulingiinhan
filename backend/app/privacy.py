@@ -78,9 +78,9 @@ def has_guardian_scope(
     *,
     now: datetime | None = None,
 ) -> bool:
-    return scope in active_guardian_scopes(
-        db, user_id, family_id, [person_id], now=now
-    ).get(person_id, set())
+    return scope in active_guardian_scopes(db, user_id, family_id, [person_id], now=now).get(
+        person_id, set()
+    )
 
 
 def person_is_minor(person: Person, today: date | None = None) -> bool:

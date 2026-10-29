@@ -37,13 +37,14 @@ def test_invitation_pending_lifecycle_is_family_scoped(client, database):
     assert client.get(f"/api/v1/families/{family_id}/invitations").status_code == 403
 
     client.post("/api/v1/auth/logout")
-    assert client.post(
-        "/api/v1/auth/login",
-        json={"email": "membership-owner@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 200
-    revoked = client.delete(
-        f"/api/v1/families/{family_id}/invitations/{invitation['id']}"
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "membership-owner@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 200
     )
+    revoked = client.delete(f"/api/v1/families/{family_id}/invitations/{invitation['id']}")
     assert revoked.status_code == 204
     assert client.get(f"/api/v1/families/{family_id}/invitations").json() == []
 
@@ -90,7 +91,5 @@ def test_invitation_acceptance_preserves_role_and_prevents_cross_family_access(c
     assert client.get(f"/api/v1/families/{family_a['id']}").status_code == 200
     assert client.get(f"/api/v1/families/{family_b['id']}").status_code == 403
 
-    duplicate_accept = client.post(
-        "/api/v1/invitations/accept", json={"token": raw_token}
-    )
+    duplicate_accept = client.post("/api/v1/invitations/accept", json={"token": raw_token})
     assert duplicate_accept.status_code == 404

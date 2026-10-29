@@ -52,9 +52,7 @@ def test_create_lineage_only_assignment(client):
         "lineage_id": lineage["id"],
         "branch_id": None,
     }
-    fetched = client.get(
-        f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
-    )
+    fetched = client.get(f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment")
     assert fetched.status_code == 200
     assert fetched.json()["lineage_id"] == lineage["id"]
     assert fetched.json()["branch_id"] is None
@@ -113,7 +111,9 @@ def test_delete_assignment_keeps_person_and_relationships(client, database):
 
     url = f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
     assert (
-        client.put(url, json={"lineage_id": lineage["id"], "branch_id": branch_a1["id"]}).status_code
+        client.put(
+            url, json={"lineage_id": lineage["id"], "branch_id": branch_a1["id"]}
+        ).status_code
         == 200
     )
     assert client.delete(url).status_code == 204
@@ -179,13 +179,14 @@ def test_person_not_in_supplied_family_is_rejected(client):
 def test_member_can_read_but_cannot_mutate_assignment(client, database):
     register_verified(client, "assignment-member-owner@example.com")
     family_id, person, lineage, _, _ = _setup_family(client, "Roles")
-    assignment_url = (
-        f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
+    assignment_url = f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
+    assert (
+        client.put(
+            assignment_url,
+            json={"lineage_id": lineage["id"], "branch_id": None},
+        ).status_code
+        == 200
     )
-    assert client.put(
-        assignment_url,
-        json={"lineage_id": lineage["id"], "branch_id": None},
-    ).status_code == 200
     client.post("/api/v1/auth/logout")
     register_verified(client, "assignment-member@example.com")
     with database() as db:
@@ -195,9 +196,12 @@ def test_member_can_read_but_cannot_mutate_assignment(client, database):
         db.add(FamilyMember(family_id=UUID(family_id), user_id=member.id, role="member"))
         db.commit()
 
-    assert client.get(
-        f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
-    ).status_code == 200
+    assert (
+        client.get(
+            f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
+        ).status_code
+        == 200
+    )
     assert (
         client.put(
             f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment",
@@ -224,11 +228,14 @@ def test_existing_person_can_remain_without_assignment(client, database):
     url = f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
     assert client.get(url).status_code == 404
     with database() as db:
-        assert db.scalar(
-            select(PersonLineageAssignment.id).where(
-                PersonLineageAssignment.person_id == UUID(person["id"])
+        assert (
+            db.scalar(
+                select(PersonLineageAssignment.id).where(
+                    PersonLineageAssignment.person_id == UUID(person["id"])
+                )
             )
-        ) is None
+            is None
+        )
 
 
 def test_assignment_does_not_mutate_genealogy_counts(client):
@@ -242,14 +249,20 @@ def test_assignment_does_not_mutate_genealogy_counts(client):
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Хүүхэд"},
     ).json()
-    assert client.post(
-        f"/api/v1/families/{family_id}/relationships/parent-child",
-        json={"parent_id": other["id"], "child_id": child["id"]},
-    ).status_code == 201
-    assert client.post(
-        f"/api/v1/families/{family_id}/marriages",
-        json={"person_1_id": person["id"], "person_2_id": other["id"]},
-    ).status_code == 201
+    assert (
+        client.post(
+            f"/api/v1/families/{family_id}/relationships/parent-child",
+            json={"parent_id": other["id"], "child_id": child["id"]},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/v1/families/{family_id}/marriages",
+            json={"person_1_id": person["id"], "person_2_id": other["id"]},
+        ).status_code
+        == 201
+    )
 
     before = client.get(f"/api/v1/families/{family_id}/tree").json()
     response = client.put(
@@ -274,18 +287,23 @@ def test_assignment_is_removed_when_person_is_detached_from_family(client, datab
     family_id, person, lineage, branch_a1, _ = _setup_family(client, "Detach")
     url = f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
     assert (
-        client.put(url, json={"lineage_id": lineage["id"], "branch_id": branch_a1["id"]}).status_code
+        client.put(
+            url, json={"lineage_id": lineage["id"], "branch_id": branch_a1["id"]}
+        ).status_code
         == 200
     )
 
     assert client.delete(f"/api/v1/families/{family_id}/persons/{person['id']}").status_code == 204
 
     with database() as db:
-        assert db.scalar(
-            select(PersonLineageAssignment.id).where(
-                PersonLineageAssignment.person_id == UUID(person["id"])
+        assert (
+            db.scalar(
+                select(PersonLineageAssignment.id).where(
+                    PersonLineageAssignment.person_id == UUID(person["id"])
+                )
             )
-        ) is None
+            is None
+        )
         assert db.scalar(select(Person.id).where(Person.id == UUID(person["id"]))) is not None
         assert db.scalar(select(Lineage.id).where(Lineage.id == UUID(lineage["id"]))) is not None
 
@@ -332,11 +350,17 @@ def test_assignment_target_ids_do_not_allow_unauthorized_combinations(client):
     ).json()
 
     url = f"/api/v1/families/{family_a}/persons/{person['id']}/lineage-assignment"
-    assert client.put(
-        url,
-        json={"lineage_id": lineage_b["id"], "branch_id": branch_a1["id"]},
-    ).status_code == 404
-    assert client.put(
-        url,
-        json={"lineage_id": lineage["id"], "branch_id": branch_b["id"]},
-    ).status_code == 404
+    assert (
+        client.put(
+            url,
+            json={"lineage_id": lineage_b["id"], "branch_id": branch_a1["id"]},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.put(
+            url,
+            json={"lineage_id": lineage["id"], "branch_id": branch_b["id"]},
+        ).status_code
+        == 404
+    )

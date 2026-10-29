@@ -25,15 +25,21 @@ class GoogleOIDCProvider:
         self.redirect_uri = redirect_uri
 
     def authorization_url(self, state: str, nonce: str) -> str:
-        return AUTHORIZATION_ENDPOINT + "?" + urlencode({
-            "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
-            "response_type": "code",
-            "scope": "openid email profile",
-            "state": state,
-            "nonce": nonce,
-            "prompt": "select_account",
-        })
+        return (
+            AUTHORIZATION_ENDPOINT
+            + "?"
+            + urlencode(
+                {
+                    "client_id": self.client_id,
+                    "redirect_uri": self.redirect_uri,
+                    "response_type": "code",
+                    "scope": "openid email profile",
+                    "state": state,
+                    "nonce": nonce,
+                    "prompt": "select_account",
+                }
+            )
+        )
 
     def exchange(self, code: str) -> str:
         try:

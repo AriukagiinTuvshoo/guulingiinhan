@@ -21,8 +21,15 @@ class ConsistencyReport:
 
     @property
     def ok(self) -> bool:
-        return not any((self.orphaned_metadata, self.orphaned_objects,
-                        self.missing_thumbnails, self.broken_photos, self.invalid_metadata))
+        return not any(
+            (
+                self.orphaned_metadata,
+                self.orphaned_objects,
+                self.missing_thumbnails,
+                self.broken_photos,
+                self.invalid_metadata,
+            )
+        )
 
     def as_dict(self) -> dict[str, object]:
         return {

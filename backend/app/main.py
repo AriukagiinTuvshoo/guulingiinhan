@@ -40,10 +40,16 @@ app = FastAPI(
 
 def _http_error_code(status_code: int) -> str:
     return {
-        400: "BAD_REQUEST", 401: "AUTHENTICATION_REQUIRED", 403: "FORBIDDEN",
-        404: "NOT_FOUND", 409: "CONFLICT", 413: "PAYLOAD_TOO_LARGE",
-        415: "UNSUPPORTED_MEDIA_TYPE", 422: "VALIDATION_ERROR",
-        429: "RATE_LIMITED", 503: "SERVICE_UNAVAILABLE",
+        400: "BAD_REQUEST",
+        401: "AUTHENTICATION_REQUIRED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        409: "CONFLICT",
+        413: "PAYLOAD_TOO_LARGE",
+        415: "UNSUPPORTED_MEDIA_TYPE",
+        422: "VALIDATION_ERROR",
+        429: "RATE_LIMITED",
+        503: "SERVICE_UNAVAILABLE",
     }.get(status_code, "REQUEST_ERROR" if status_code < 500 else "INTERNAL_ERROR")
 
 
@@ -51,8 +57,11 @@ def _http_error_code(status_code: int) -> str:
 async def safe_http_error(request: Request, error: HTTPException):
     return JSONResponse(
         status_code=error.status_code,
-        content={"detail": error.detail, "error_code": _http_error_code(error.status_code),
-                 "request_id": getattr(request.state, "request_id", None)},
+        content={
+            "detail": error.detail,
+            "error_code": _http_error_code(error.status_code),
+            "request_id": getattr(request.state, "request_id", None),
+        },
         headers=error.headers,
     )
 
@@ -61,9 +70,14 @@ async def safe_http_error(request: Request, error: HTTPException):
 async def safe_validation_error(request: Request, _: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"detail": "Хүсэлтийн өгөгдөл буруу байна.", "error_code": "VALIDATION_ERROR",
-                 "request_id": getattr(request.state, "request_id", None)},
+        content={
+            "detail": "Хүсэлтийн өгөгдөл буруу байна.",
+            "error_code": "VALIDATION_ERROR",
+            "request_id": getattr(request.state, "request_id", None),
+        },
     )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -85,8 +99,11 @@ async def request_context(request: Request, call_next):
         if origin and origin not in settings.cors_origin_list:
             response = JSONResponse(
                 status_code=403,
-                content={"detail": "Origin зөвшөөрөгдөөгүй.", "error_code": "FORBIDDEN",
-                         "request_id": request_id},
+                content={
+                    "detail": "Origin зөвшөөрөгдөөгүй.",
+                    "error_code": "FORBIDDEN",
+                    "request_id": request_id,
+                },
             )
             response.headers["X-Request-ID"] = request_id
             request_id_context.reset(context_token)
@@ -97,8 +114,11 @@ async def request_context(request: Request, call_next):
         error_code, status_code = error_classification(error)
         logging.getLogger("guulingiinhan.api").error(
             "Unhandled request error",
-            extra={"event": "request_failed", "error_code": error_code,
-                   "error_type": type(error).__name__},
+            extra={
+                "event": "request_failed",
+                "error_code": error_code,
+                "error_type": type(error).__name__,
+            },
         )
         response = JSONResponse(
             status_code=status_code,
@@ -112,9 +132,11 @@ async def request_context(request: Request, call_next):
     duration_ms = round((time.perf_counter() - started) * 1000, 2)
     route = getattr(request.scope.get("route"), "path", "unmatched")
     rate_limit_namespace = None
-    log_level = logging.WARNING if (
-        duration_ms >= settings.slow_request_threshold_ms or response.status_code >= 400
-    ) else logging.INFO
+    log_level = (
+        logging.WARNING
+        if (duration_ms >= settings.slow_request_threshold_ms or response.status_code >= 400)
+        else logging.INFO
+    )
     if response.status_code == 429:
         event = "rate_limit_hit"
         error_code = "RATE_LIMITED"
@@ -175,13 +197,19 @@ def readiness(request: Request):
     except SQLAlchemyError as error:
         logging.getLogger("guulingiinhan.api").error(
             "Database readiness check failed",
-            extra={"event": "readiness_failed", "error_code": "DATABASE_UNAVAILABLE",
-                   "error_type": type(error).__name__},
+            extra={
+                "event": "readiness_failed",
+                "error_code": "DATABASE_UNAVAILABLE",
+                "error_type": type(error).__name__,
+            },
         )
         return JSONResponse(
             status_code=503,
-            content={"status": "unavailable", "service": "guulingiinhan-api",
-                     "error_code": "DATABASE_UNAVAILABLE",
-                     "request_id": request.state.request_id},
+            content={
+                "status": "unavailable",
+                "service": "guulingiinhan-api",
+                "error_code": "DATABASE_UNAVAILABLE",
+                "request_id": request.state.request_id,
+            },
         )
     return {"status": "ok", "service": "guulingiinhan-api", "database": "ok"}

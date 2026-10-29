@@ -21,10 +21,13 @@ def test_register_login_logout_me_and_email_normalization(client, email_provider
     assert "email" not in response.json()
     assert "set-cookie" not in response.headers
     assert client.get("/api/v1/auth/me").status_code == 401
-    assert client.post(
-        "/api/v1/auth/login",
-        json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 403
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 403
+    )
 
     duplicate = client.post(
         "/api/v1/auth/register",
@@ -39,9 +42,10 @@ def test_register_login_logout_me_and_email_normalization(client, email_provider
         ).status_code
         == 401
     )
-    assert confirm_registration_email(
-        client, email_provider, "Tree.Owner@example.com"
-    ).status_code == 200
+    assert (
+        confirm_registration_email(client, email_provider, "Tree.Owner@example.com").status_code
+        == 200
+    )
     logged_in = client.post(
         "/api/v1/auth/login",
         json={"email": "tree.owner@example.com", "password": "strong-passphrase-123"},
@@ -104,14 +108,20 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
     register(client, "wrong.member@example.com")
     assert client.post("/api/v1/invitations/accept", json={"token": token}).status_code == 403
     client.post("/api/v1/auth/logout")
-    assert client.post(
-        "/api/v1/auth/register",
-        json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 201
-    assert client.post(
-        "/api/v1/auth/login",
-        json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 403
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 403
+    )
     verification = _token_from_mail(
         email_provider, "new.member@example.com", "Гуулингийнхан — имэйл"
     )
@@ -121,10 +131,13 @@ def test_invitation_is_single_use_email_bound_and_revocable(client, database, em
         ).status_code
         == 200
     )
-    assert client.post(
-        "/api/v1/auth/login",
-        json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "new.member@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 200
+    )
     accepted = client.post("/api/v1/invitations/accept", json={"token": token})
     assert accepted.status_code == 200
     assert accepted.json() == {"family_id": family_id, "role": "editor"}
@@ -199,9 +212,7 @@ def test_family_person_relationship_tree_and_family_isolation(client):
     client.post("/api/v1/auth/logout")
     assert register(client, "other@example.com").status_code == 201
     assert client.get(f"/api/v1/families/{family_id}/persons").status_code == 403
-    assert (
-        client.get(f"/api/v1/families/{family_id}/persons/search?q=Дорж").status_code == 403
-    )
+    assert client.get(f"/api/v1/families/{family_id}/persons/search?q=Дорж").status_code == 403
     assert client.get(f"/api/v1/families/{family_id}/tree").status_code == 403
 
 
@@ -261,10 +272,13 @@ def test_same_pair_remarriage_keeps_each_marriage_occurrence(client):
     assert initial.status_code == 201
     duplicate_active = client.post(f"{base}/marriages", json=body)
     assert duplicate_active.status_code == 409
-    assert client.post(
-        f"{base}/relationships/parent-child",
-        json={"parent_id": first["id"], "child_id": child["id"]},
-    ).status_code == 201
+    assert (
+        client.post(
+            f"{base}/relationships/parent-child",
+            json={"parent_id": first["id"], "child_id": child["id"]},
+        ).status_code
+        == 201
+    )
 
     ended = client.patch(
         f"{base}/marriages/{initial.json()['id']}",
@@ -291,7 +305,9 @@ def test_same_pair_remarriage_keeps_each_marriage_occurrence(client):
     assert [item["status"] for item in history.json()] == ["divorced", "divorced", "married"]
     assert [item["start_date"] for item in history.json()] == ["2000-01-01", "2015-01-01", None]
     assert all(item["other_person"]["id"] == second["id"] for item in history.json())
-    assert client.get(f"{base}/marriages/{initial.json()['id']}").json()["id"] == initial.json()["id"]
+    assert (
+        client.get(f"{base}/marriages/{initial.json()['id']}").json()["id"] == initial.json()["id"]
+    )
     tree = client.get(f"{base}/tree").json()
     assert len(tree["marriages"]) == 3
     assert len(tree["parent_child_relationships"]) == 1
@@ -360,12 +376,8 @@ def test_story_and_archive_cross_family_access_mutation_and_person_reference_are
     family_a = client.post("/api/v1/families", json={"name": "Story Archive A"}).json()["id"]
     family_b = client.post("/api/v1/families", json={"name": "Story Archive B"}).json()["id"]
 
-    person_a = client.post(
-        f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}
-    ).json()
-    person_b = client.post(
-        f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}
-    ).json()
+    person_a = client.post(f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}).json()
+    person_b = client.post(f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}).json()
 
     story_a = client.post(
         f"/api/v1/families/{family_a}/stories",
@@ -389,50 +401,70 @@ def test_story_and_archive_cross_family_access_mutation_and_person_reference_are
     )
     assert archive_b.status_code == 201
 
-    assert client.get(f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}").status_code == 404
-    assert client.put(
-        f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}",
-        json={"title": "Cross-family", "body": "Should fail", "person_ids": [person_a["id"]]},
-    ).status_code == 404
-    assert client.delete(
-        f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}"
-    ).status_code == 404
-    assert client.post(
-        f"/api/v1/families/{family_a}/stories",
-        json={"title": "Invalid person", "body": "Should fail", "person_ids": [person_b["id"]]},
-    ).status_code == 404
+    assert (
+        client.get(f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}").status_code == 404
+    )
+    assert (
+        client.put(
+            f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}",
+            json={"title": "Cross-family", "body": "Should fail", "person_ids": [person_a["id"]]},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(f"/api/v1/families/{family_a}/stories/{story_b.json()['id']}").status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/families/{family_a}/stories",
+            json={"title": "Invalid person", "body": "Should fail", "person_ids": [person_b["id"]]},
+        ).status_code
+        == 404
+    )
 
-    assert client.get(f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}").status_code == 404
-    assert client.put(
-        f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}",
-        json={
-            "title": "Cross-family",
-            "description": "Should fail",
-            "person_ids": [person_a["id"]],
-        },
-    ).status_code == 404
-    assert client.delete(
-        f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}"
-    ).status_code == 404
-    assert client.post(
-        f"/api/v1/families/{family_a}/archives",
-        json={"title": "Invalid person", "person_ids": [person_b["id"]]},
-    ).status_code == 404
+    assert (
+        client.get(f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}").status_code
+        == 404
+    )
+    assert (
+        client.put(
+            f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}",
+            json={
+                "title": "Cross-family",
+                "description": "Should fail",
+                "person_ids": [person_a["id"]],
+            },
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(f"/api/v1/families/{family_a}/archives/{archive_b.json()['id']}").status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/families/{family_a}/archives",
+            json={"title": "Invalid person", "person_ids": [person_b["id"]]},
+        ).status_code
+        == 404
+    )
 
-    assert client.get(f"/api/v1/families/{family_b}/stories/{story_b.json()['id']}").status_code == 200
-    assert client.get(f"/api/v1/families/{family_b}/archives/{archive_b.json()['id']}").status_code == 200
+    assert (
+        client.get(f"/api/v1/families/{family_b}/stories/{story_b.json()['id']}").status_code == 200
+    )
+    assert (
+        client.get(f"/api/v1/families/{family_b}/archives/{archive_b.json()['id']}").status_code
+        == 200
+    )
 
 
 def test_memory_cross_family_access_mutation_and_person_reference_are_blocked(client, database):
     register(client, "memory-cross-family@example.com")
     family_a = client.post("/api/v1/families", json={"name": "Memory A"}).json()["id"]
     family_b = client.post("/api/v1/families", json={"name": "Memory B"}).json()["id"]
-    person_a = client.post(
-        f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}
-    ).json()
-    person_b = client.post(
-        f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}
-    ).json()
+    person_a = client.post(f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}).json()
+    person_b = client.post(f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}).json()
     memory_a = client.post(
         f"/api/v1/families/{family_a}/memories",
         json={"title": "A memory", "person_ids": [person_a["id"]]},
@@ -448,22 +480,35 @@ def test_memory_cross_family_access_mutation_and_person_reference_are_blocked(cl
     assert {item["id"] for item in family_a_list.json()["items"]} == {memory_a["id"]}
     assert family_a_list.json()["items"][0]["person_ids"] == [person_a["id"]]
     assert client.get(f"/api/v1/families/{family_a}/memories/{memory_b['id']}").status_code == 404
-    assert client.patch(
-        f"/api/v1/families/{family_a}/memories/{memory_b['id']}",
-        json={"title": "Cross-family", "person_ids": [person_a["id"]]},
-    ).status_code == 404
-    assert client.delete(f"/api/v1/families/{family_a}/memories/{memory_b['id']}").status_code == 404
-    assert client.post(
-        f"/api/v1/families/{family_a}/memories",
-        json={"title": "Invalid person reference", "person_ids": [person_b["id"]]},
-    ).status_code == 404
-    assert client.patch(
-        f"/api/v1/families/{family_a}/memories/{memory_a['id']}",
-        json={"title": "Invalid retag", "person_ids": [person_b["id"]]},
-    ).status_code == 404
+    assert (
+        client.patch(
+            f"/api/v1/families/{family_a}/memories/{memory_b['id']}",
+            json={"title": "Cross-family", "person_ids": [person_a["id"]]},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(f"/api/v1/families/{family_a}/memories/{memory_b['id']}").status_code == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/families/{family_a}/memories",
+            json={"title": "Invalid person reference", "person_ids": [person_b["id"]]},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.patch(
+            f"/api/v1/families/{family_a}/memories/{memory_a['id']}",
+            json={"title": "Invalid retag", "person_ids": [person_b["id"]]},
+        ).status_code
+        == 404
+    )
 
     assert client.get(f"/api/v1/families/{family_b}/memories/{memory_b['id']}").status_code == 200
-    assert client.get(f"/api/v1/families/{family_b}/memories/{memory_b['id']}").json()["person_ids"] == [person_b["id"]]
+    assert client.get(f"/api/v1/families/{family_b}/memories/{memory_b['id']}").json()[
+        "person_ids"
+    ] == [person_b["id"]]
 
     client.post("/api/v1/auth/logout")
     register(client, "memory-non-member@example.com")
@@ -496,9 +541,7 @@ def test_login_rate_limit_and_audit_records(client):
 
 def test_person_scoped_memories_contract_and_isolation(client, database):
     register(client, "memory-scope@example.com")
-    family_id = client.post(
-        "/api/v1/families", json={"name": "Memory scope"}
-    ).json()["id"]
+    family_id = client.post("/api/v1/families", json={"name": "Memory scope"}).json()["id"]
     person_a = client.post(
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "А", "visibility": "family"},
@@ -516,9 +559,7 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
         json={"title": "B memory", "person_ids": [person_b["id"]]},
     ).json()
 
-    scoped = client.get(
-        f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
-    )
+    scoped = client.get(f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories")
     assert scoped.status_code == 200
     assert [item["id"] for item in scoped.json()] == [memory_a["id"]]
     assert scoped.json()[0]["person_ids"] == [person_a["id"]]
@@ -527,18 +568,17 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Хоосон", "visibility": "family"},
     ).json()
-    empty = client.get(
-        f"/api/v1/families/{family_id}/persons/{empty_person['id']}/memories"
-    )
+    empty = client.get(f"/api/v1/families/{family_id}/persons/{empty_person['id']}/memories")
     assert empty.status_code == 200
     assert empty.json() == []
-    assert client.get(
-        f"/api/v1/families/{family_id}/persons/{person_b['id']}/memories"
-    ).json()[0]["id"] == memory_b["id"]
+    assert (
+        client.get(f"/api/v1/families/{family_id}/persons/{person_b['id']}/memories").json()[0][
+            "id"
+        ]
+        == memory_b["id"]
+    )
 
-    other_family = client.post(
-        "/api/v1/families", json={"name": "Other memory scope"}
-    ).json()["id"]
+    other_family = client.post("/api/v1/families", json={"name": "Other memory scope"}).json()["id"]
     foreign_person = client.post(
         f"/api/v1/families/{other_family}/persons",
         json={"first_name": "Г"},
@@ -547,9 +587,12 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
         f"/api/v1/families/{other_family}/memories",
         json={"title": "Foreign memory", "person_ids": [foreign_person["id"]]},
     ).json()
-    assert client.get(
-        f"/api/v1/families/{family_id}/persons/{foreign_person['id']}/memories"
-    ).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/families/{family_id}/persons/{foreign_person['id']}/memories"
+        ).status_code
+        == 404
+    )
     assert foreign_memory["id"] != memory_a["id"]
 
     private_person = client.post(
@@ -567,9 +610,7 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
     client.post("/api/v1/auth/logout")
     register(client, "memory-member@example.com")
     with database() as db:
-        member = db.scalar(
-            select(User).where(User.email == "memory-member@example.com")
-        )
+        member = db.scalar(select(User).where(User.email == "memory-member@example.com"))
         db.add(
             FamilyMember(
                 family_id=UUID(family_id),
@@ -578,9 +619,12 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
             )
         )
         db.commit()
-    assert client.get(
-        f"/api/v1/families/{family_id}/persons/{private_person['id']}/memories"
-    ).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/families/{family_id}/persons/{private_person['id']}/memories"
+        ).status_code
+        == 404
+    )
     visible_to_member = client.get(
         f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
     )
@@ -589,6 +633,7 @@ def test_person_scoped_memories_contract_and_isolation(client, database):
     assert private_memory["id"] != memory_a["id"]
 
     client.post("/api/v1/auth/logout")
-    assert client.get(
-        f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories"
-    ).status_code == 401
+    assert (
+        client.get(f"/api/v1/families/{family_id}/persons/{person_a['id']}/memories").status_code
+        == 401
+    )

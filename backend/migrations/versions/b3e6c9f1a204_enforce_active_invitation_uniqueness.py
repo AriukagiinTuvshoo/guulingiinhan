@@ -42,11 +42,7 @@ def upgrade() -> None:
         key = (str(row["family_id"]), row["invited_email"])
         if key in seen:
             bind.execute(
-                sa.text(
-                    "UPDATE invitations "
-                    "SET revoked_at = :revoked_at "
-                    "WHERE id = :id"
-                ),
+                sa.text("UPDATE invitations SET revoked_at = :revoked_at WHERE id = :id"),
                 {"id": row["id"], "revoked_at": now},
             )
         else:

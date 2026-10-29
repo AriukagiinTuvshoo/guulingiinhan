@@ -274,9 +274,7 @@ class Lineage(Base):
     """An explicit ancestral/descent lineage within one Family."""
 
     __tablename__ = "lineages"
-    __table_args__ = (
-        UniqueConstraint("family_id", "name", name="uq_lineage_family_name"),
-    )
+    __table_args__ = (UniqueConstraint("family_id", "name", name="uq_lineage_family_name"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     family_id: Mapped[UUID] = mapped_column(
@@ -294,9 +292,7 @@ class Branch(Base):
     """An explicit subdivision/path within one Lineage."""
 
     __tablename__ = "branches"
-    __table_args__ = (
-        UniqueConstraint("lineage_id", "name", name="uq_branch_lineage_name"),
-    )
+    __table_args__ = (UniqueConstraint("lineage_id", "name", name="uq_branch_lineage_name"),)
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     lineage_id: Mapped[UUID] = mapped_column(

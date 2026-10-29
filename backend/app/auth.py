@@ -492,9 +492,15 @@ def _user_output(db: Session, user: User) -> UserOutput:
     )
 
 
-GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
-GENERIC_RESET_MESSAGE = "Хэрэв энэ имэйлд баталгаажсан account байвал нууц үг шинэчлэх холбоос илгээнэ."
-GENERIC_REGISTER_MESSAGE = "Бүртгэлийн хүсэлтийг хүлээн авлаа. Шаардлагатай бол баталгаажуулах холбоосыг имэйлээр илгээнэ."
+GENERIC_VERIFICATION_MESSAGE = (
+    "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
+)
+GENERIC_RESET_MESSAGE = (
+    "Хэрэв энэ имэйлд баталгаажсан account байвал нууц үг шинэчлэх холбоос илгээнэ."
+)
+GENERIC_REGISTER_MESSAGE = (
+    "Бүртгэлийн хүсэлтийг хүлээн авлаа. Шаардлагатай бол баталгаажуулах холбоосыг имэйлээр илгээнэ."
+)
 
 
 def _email_request_allowed(db: Session, request: Request, purpose: str, email: str) -> bool:
@@ -598,9 +604,13 @@ def _verification_link_for_user(
             db.flush()
         except IntegrityError:
             db.rollback()
-            logger.info("Email verification skipped for conflicting identity", extra={
-                "event": "email_verification_skipped", "request_id": request_id,
-            })
+            logger.info(
+                "Email verification skipped for conflicting identity",
+                extra={
+                    "event": "email_verification_skipped",
+                    "request_id": request_id,
+                },
+            )
             return
     if identity.verified_at is not None:
         if user.email_verified_at is None:
@@ -630,7 +640,11 @@ def _verification_link_for_user(
 def _google_provider() -> GoogleOIDCProvider:
     settings = get_settings()
     if not settings.google_oidc_enabled or not all(
-        (settings.google_oidc_client_id, settings.google_oidc_client_secret, settings.google_oidc_redirect_uri)
+        (
+            settings.google_oidc_client_id,
+            settings.google_oidc_client_secret,
+            settings.google_oidc_redirect_uri,
+        )
     ):
         raise HTTPException(status_code=404, detail="Google нэвтрэх боломжгүй байна.")
     return GoogleOIDCProvider(
@@ -651,7 +665,9 @@ def _google_state_secret() -> bytes:
 
 
 def _sign_google_state(payload: dict) -> str:
-    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).rstrip(b"=")
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).rstrip(
+        b"="
+    )
     signature = hmac.new(_google_state_secret(), encoded, hashlib.sha256).digest()
     return encoded.decode() + "." + base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
 
@@ -674,7 +690,9 @@ def _read_google_state(value: str) -> dict | None:
 
 
 def _google_state_key(state: str) -> str:
-    return hmac.new(_google_state_secret(), f"google-state\0{state}".encode(), hashlib.sha256).hexdigest()
+    return hmac.new(
+        _google_state_secret(), f"google-state\0{state}".encode(), hashlib.sha256
+    ).hexdigest()
 
 
 def _consume_google_state(db: Session, state: str) -> bool:
@@ -692,11 +710,11 @@ def _consume_google_state(db: Session, state: str) -> bool:
     return result.rowcount == 1
 
 
-def _start_google(
-    flow: str, db: Session, request: Request, user_id: UUID | None = None
-):
+def _start_google(flow: str, db: Session, request: Request, user_id: UUID | None = None):
     if not _consume_otp_rate(db, "google-start", _normalized_ip(request), 10):
-        raise HTTPException(status_code=429, detail="Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.")
+        raise HTTPException(
+            status_code=429, detail="Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу."
+        )
     provider = _google_provider()
     state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
@@ -704,7 +722,13 @@ def _start_google(
     db.add(LoginThrottle(key_hash=_google_state_key(state), window_started=now, attempts=0))
     db.commit()
     cookie = _sign_google_state(
-        {"state": state, "nonce": nonce, "flow": flow, "user_id": str(user_id) if user_id else None, "iat": int(now.timestamp())}
+        {
+            "state": state,
+            "nonce": nonce,
+            "flow": flow,
+            "user_id": str(user_id) if user_id else None,
+            "iat": int(now.timestamp()),
+        }
     )
     redirect = RedirectResponse(provider.authorization_url(state, nonce), status_code=303)
     settings = get_settings()
@@ -765,10 +789,13 @@ def google_callback(
         or not hmac.compare_digest(state, str(state_payload.get("state", "")))
         or not _consume_google_state(db, state)
     ):
-        logger.info("Google OIDC callback rejected", extra={
-            "event": "google_callback_rejected",
-            "request_id": getattr(request.state, "request_id", None),
-        })
+        logger.info(
+            "Google OIDC callback rejected",
+            extra={
+                "event": "google_callback_rejected",
+                "request_id": getattr(request.state, "request_id", None),
+            },
+        )
         result = "failed"
         response = _google_frontend_redirect(result)
         response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
@@ -780,10 +807,13 @@ def google_callback(
         subject = claims["sub"]
         email = normalize_email(str(TypeAdapter(EmailStr).validate_python(claims["email"])))
     except (OIDCError, ValidationError, ValueError, HTTPException):
-        logger.info("Google OIDC claim validation failed", extra={
-            "event": "google_claim_validation_failed",
-            "request_id": getattr(request.state, "request_id", None),
-        })
+        logger.info(
+            "Google OIDC claim validation failed",
+            extra={
+                "event": "google_claim_validation_failed",
+                "request_id": getattr(request.state, "request_id", None),
+            },
+        )
         response = _google_frontend_redirect("failed")
         response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
         return response
@@ -820,17 +850,35 @@ def google_callback(
         ):
             result = "failed"
         elif identity and identity.user_id != expected_user_id:
-            db.add(AuditLog(actor_id=expected_user_id, action="google.identity_conflict", target_type="google_identity"))
+            db.add(
+                AuditLog(
+                    actor_id=expected_user_id,
+                    action="google.identity_conflict",
+                    target_type="google_identity",
+                )
+            )
             db.commit()
             result = "failed"
         elif identity:
             result = "success"
         else:
-            db.add(LoginIdentity(
-                user_id=expected_user_id, provider="google", issuer=issuer, subject=subject,
-                display_identifier=email, verified_at=datetime.now(UTC),
-            ))
-            db.add(AuditLog(actor_id=expected_user_id, action="google.identity_linked", target_type="google_identity"))
+            db.add(
+                LoginIdentity(
+                    user_id=expected_user_id,
+                    provider="google",
+                    issuer=issuer,
+                    subject=subject,
+                    display_identifier=email,
+                    verified_at=datetime.now(UTC),
+                )
+            )
+            db.add(
+                AuditLog(
+                    actor_id=expected_user_id,
+                    action="google.identity_linked",
+                    target_type="google_identity",
+                )
+            )
             try:
                 db.commit()
                 result = "success"
@@ -848,13 +896,32 @@ def google_callback(
         if identity is None and email_is_registered(db, email):
             result = "failed"
         elif identity is None:
-            user = User(email=email, display_name=str(claims.get("name") or email.partition("@")[0])[:120],
-                        password_hash=None, email_verified_at=datetime.now(UTC))
+            user = User(
+                email=email,
+                display_name=str(claims.get("name") or email.partition("@")[0])[:120],
+                password_hash=None,
+                email_verified_at=datetime.now(UTC),
+            )
             db.add(user)
             db.flush()
-            db.add(LoginIdentity(user_id=user.id, provider="google", issuer=issuer, subject=subject,
-                                 display_identifier=email, verified_at=datetime.now(UTC)))
-            db.add(AuditLog(actor_id=user.id, action="google.account_created", target_type="user", target_id=user.id))
+            db.add(
+                LoginIdentity(
+                    user_id=user.id,
+                    provider="google",
+                    issuer=issuer,
+                    subject=subject,
+                    display_identifier=email,
+                    verified_at=datetime.now(UTC),
+                )
+            )
+            db.add(
+                AuditLog(
+                    actor_id=user.id,
+                    action="google.account_created",
+                    target_type="user",
+                    target_id=user.id,
+                )
+            )
             try:
                 db.commit()
                 response = _google_frontend_redirect("success")
@@ -923,9 +990,7 @@ def register(
     return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
 
 
-@router.post(
-    "/email/verification/request", response_model=GenericEmailResponse, status_code=202
-)
+@router.post("/email/verification/request", response_model=GenericEmailResponse, status_code=202)
 def request_email_verification(
     body: EmailAddressInput,
     request: Request,
@@ -962,8 +1027,10 @@ def confirm_email_verification(
     if row is None or not hmac.compare_digest(row.token_hash, supplied_hash):
         logger.info(
             "Email verification rejected",
-            extra={"event": "email_verification_rejected",
-                   "request_id": getattr(request.state, "request_id", None)},
+            extra={
+                "event": "email_verification_rejected",
+                "request_id": getattr(request.state, "request_id", None),
+            },
         )
         raise HTTPException(
             status_code=400,
@@ -988,7 +1055,12 @@ def confirm_email_verification(
         .execution_options(synchronize_session=False)
         .returning(EmailVerificationToken.user_id)
     ).scalar_one_or_none()
-    if consumed_user_id is None or user is None or identity is None or identity.disabled_at is not None:
+    if (
+        consumed_user_id is None
+        or user is None
+        or identity is None
+        or identity.disabled_at is not None
+    ):
         if user:
             _audit_auth_event(
                 db,
@@ -1000,8 +1072,10 @@ def confirm_email_verification(
             db.commit()
         logger.info(
             "Email verification rejected",
-            extra={"event": "email_verification_rejected",
-                   "request_id": getattr(request.state, "request_id", None)},
+            extra={
+                "event": "email_verification_rejected",
+                "request_id": getattr(request.state, "request_id", None),
+            },
         )
         raise HTTPException(
             status_code=400,
@@ -1087,8 +1161,10 @@ def confirm_email_password_reset(
             db.commit()
         logger.info(
             "Password reset rejected",
-            extra={"event": "password_reset_rejected",
-                   "request_id": getattr(request.state, "request_id", None)},
+            extra={
+                "event": "password_reset_rejected",
+                "request_id": getattr(request.state, "request_id", None),
+            },
         )
         raise HTTPException(
             status_code=400,
@@ -1425,7 +1501,9 @@ def verify_phone_registration(
     if identity is not None:
         user = db.get(User, identity.user_id)
         if user is None or not user.is_active:
-            raise HTTPException(status_code=400, detail="Баталгаажуулалт дууссангүй. Дахин оролдоно уу.")
+            raise HTTPException(
+                status_code=400, detail="Баталгаажуулалт дууссангүй. Дахин оролдоно уу."
+            )
         challenge.status = "consumed"
         challenge.consumed_at = datetime.now(UTC)
         _audit(db, user.id, "phone.registration_verified_existing", challenge)

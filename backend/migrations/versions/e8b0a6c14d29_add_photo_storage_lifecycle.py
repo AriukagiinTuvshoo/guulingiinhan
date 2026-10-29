@@ -35,9 +35,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    pending = bind.execute(sa.text(
-        "SELECT count(*) FROM photos WHERE storage_status != 'ready'"
-    )).scalar_one()
+    pending = bind.execute(
+        sa.text("SELECT count(*) FROM photos WHERE storage_status != 'ready'")
+    ).scalar_one()
     if pending:
         raise RuntimeError(
             "Refusing to remove photo lifecycle state while uploads or storage cleanup are pending."

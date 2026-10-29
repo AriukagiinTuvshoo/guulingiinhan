@@ -31,9 +31,7 @@ def upgrade() -> None:
         sa.Column("disabled_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint(
-            "provider IN ('email', 'phone', 'google')", name="ck_identity_provider"
-        ),
+        sa.CheckConstraint("provider IN ('email', 'phone', 'google')", name="ck_identity_provider"),
         sa.CheckConstraint(
             "(provider IN ('email', 'phone') AND normalized_identifier IS NOT NULL "
             "AND normalized_identifier <> '' "

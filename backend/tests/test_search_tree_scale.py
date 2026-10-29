@@ -39,9 +39,7 @@ def test_normalized_person_search_is_paginated_and_family_scoped(client, databas
         )
         rows.append(person)
         memberships.append(
-            FamilyPerson(
-                id=uuid4(), family_id=family_id, person_id=person_id, added_by=owner_id
-            )
+            FamilyPerson(id=uuid4(), family_id=family_id, person_id=person_id, added_by=owner_id)
         )
     private_creator_id = uuid4()
     private_person = Person(
@@ -71,7 +69,9 @@ def test_normalized_person_search_is_paginated_and_family_scoped(client, databas
         client.post("/api/v1/families", json={"name": "Өөр гэр бүл"}).json()["id"]
     )
     with database() as db:
-        db.add(User(id=private_creator_id, email="private-creator@example.com", display_name="Нууц"))
+        db.add(
+            User(id=private_creator_id, email="private-creator@example.com", display_name="Нууц")
+        )
         db.flush()
         db.add_all(rows + [private_person, other_family_person])
         db.flush()
@@ -162,7 +162,9 @@ def test_tree_context_is_bounded_cycle_safe_and_constant_query_count(client, dat
 
     queries = []
     engine = database.kw["bind"]
-    listener = lambda conn, cursor, statement, parameters, context, executemany: queries.append(statement)
+    listener = lambda conn, cursor, statement, parameters, context, executemany: queries.append(
+        statement
+    )
     event.listen(engine, "before_cursor_execute", listener)
     try:
         response = client.get(
@@ -180,12 +182,16 @@ def test_tree_context_is_bounded_cycle_safe_and_constant_query_count(client, dat
     assert "birth_place" not in tree["persons"][0]
     # One constant-query enrichment fetch supplies authorized lineage metadata.
     assert len(queries) <= 31
-    assert client.get(
-        f"/api/v1/families/{family_id}/tree?person_id={persons[60].id}&depth=6"
-    ).status_code == 422
-    assert client.get(
-        f"/api/v1/families/{family_id}/tree?person_id={uuid4()}&depth=2"
-    ).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/families/{family_id}/tree?person_id={persons[60].id}&depth=6"
+        ).status_code
+        == 422
+    )
+    assert (
+        client.get(f"/api/v1/families/{family_id}/tree?person_id={uuid4()}&depth=2").status_code
+        == 404
+    )
 
 
 def test_tree_node_limit_caps_large_fanout(client, database):
@@ -227,17 +233,11 @@ def test_tree_node_limit_caps_large_fanout(client, database):
     assert tree["meta"]["truncated"] is True
 
 
-def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scoped(
-    client, database
-):
+def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scoped(client, database):
     register_verified(client, "tree-lineage@example.com")
     owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
-    family_a_id = UUID(
-        client.post("/api/v1/families", json={"name": "Удмын гэр бүл"}).json()["id"]
-    )
-    family_b_id = UUID(
-        client.post("/api/v1/families", json={"name": "Өөр гэр бүл"}).json()["id"]
-    )
+    family_a_id = UUID(client.post("/api/v1/families", json={"name": "Удмын гэр бүл"}).json()["id"])
+    family_b_id = UUID(client.post("/api/v1/families", json={"name": "Өөр гэр бүл"}).json()["id"])
 
     root = Person(
         id=uuid4(),
@@ -332,9 +332,7 @@ def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scope
         )
         db.commit()
 
-    family_a_tree = client.get(
-        f"/api/v1/families/{family_a_id}/tree?person_id={root.id}&depth=1"
-    )
+    family_a_tree = client.get(f"/api/v1/families/{family_a_id}/tree?person_id={root.id}&depth=1")
     assert family_a_tree.status_code == 200
     payload_a = family_a_tree.json()
     root_a = next(person for person in payload_a["persons"] if person["id"] == str(root.id))
@@ -348,19 +346,15 @@ def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scope
     assert child_a["lineage_id"] is None
     assert child_a["branch_name"] is None
     assert {
-        (edge["parent_id"], edge["child_id"])
-        for edge in payload_a["parent_child_relationships"]
+        (edge["parent_id"], edge["child_id"]) for edge in payload_a["parent_child_relationships"]
     } == {(str(root.id), str(child.id))}
     assert {
-        (marriage["person_1_id"], marriage["person_2_id"])
-        for marriage in payload_a["marriages"]
+        (marriage["person_1_id"], marriage["person_2_id"]) for marriage in payload_a["marriages"]
     } == {tuple(sorted((str(root.id), str(spouse.id))))}
     assert root_a["id"] == str(root.id)
     assert spouse_a["id"] == str(spouse.id)
 
-    family_b_tree = client.get(
-        f"/api/v1/families/{family_b_id}/tree?person_id={root.id}&depth=0"
-    )
+    family_b_tree = client.get(f"/api/v1/families/{family_b_id}/tree?person_id={root.id}&depth=0")
     assert family_b_tree.status_code == 200
     root_b = family_b_tree.json()["persons"][0]
     assert root_b["id"] == str(root.id)

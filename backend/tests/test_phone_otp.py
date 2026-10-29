@@ -281,9 +281,7 @@ def test_phone_registration_reuses_existing_user_and_cannot_reuse_code(client, d
         user_id = verification.json()["id"]
 
         with database() as db:
-            challenge = db.get(
-                PhoneOtpChallenge, UUID(created.json()["challenge_id"])
-            )
+            challenge = db.get(PhoneOtpChallenge, UUID(created.json()["challenge_id"]))
             challenge.created_at = datetime.now(UTC) - timedelta(seconds=61)
             db.commit()
 
@@ -319,10 +317,11 @@ def test_phone_registration_reuses_existing_user_and_cannot_reuse_code(client, d
         assert reused.status_code == 400
         with database() as db:
             assert len(db.scalars(select(User)).all()) == 1
-            assert len(
-                db.scalars(
-                    select(LoginIdentity).where(LoginIdentity.provider == "phone")
-                ).all()
-            ) == 1
+            assert (
+                len(
+                    db.scalars(select(LoginIdentity).where(LoginIdentity.provider == "phone")).all()
+                )
+                == 1
+            )
     finally:
         app.dependency_overrides.pop(get_sms_provider, None)

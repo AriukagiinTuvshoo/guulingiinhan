@@ -943,7 +943,6 @@ def create_branch(
     return branch
 
 
-
 @router.get(
     "/{family_id}/persons/{person_id}/lineage-assignment",
     response_model=PersonLineageAssignmentOut,
@@ -1004,9 +1003,7 @@ def upsert_person_lineage_assignment(
             raise HTTPException(status_code=404, detail="Салаа олдсонгүй.")
 
     assignment = db.scalar(
-        select(PersonLineageAssignment).where(
-            PersonLineageAssignment.person_id == person.id
-        )
+        select(PersonLineageAssignment).where(PersonLineageAssignment.person_id == person.id)
     )
     action = (
         "person.lineage_assignment.updated"
@@ -1198,13 +1195,12 @@ def list_people_directory(
     if branch_id is not None:
         directory_query = directory_query.where(Branch.id == branch_id)
 
-    total = db.scalar(
-        select(func.count()).select_from(directory_query.order_by(None).subquery())
-    ) or 0
+    total = (
+        db.scalar(select(func.count()).select_from(directory_query.order_by(None).subquery())) or 0
+    )
 
     rows = db.execute(
-        directory_query
-        .order_by(Person.last_name, Person.first_name, Person.middle_name, Person.id)
+        directory_query.order_by(Person.last_name, Person.first_name, Person.middle_name, Person.id)
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -1279,12 +1275,15 @@ def search_persons(
                 Person.birth_date < date(birth_year + 1, 1, 1),
             ]
         )
-    total = db.scalar(
-        select(func.count(Person.id))
-        .select_from(Person)
-        .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-        .where(*conditions)
-    ) or 0
+    total = (
+        db.scalar(
+            select(func.count(Person.id))
+            .select_from(Person)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(*conditions)
+        )
+        or 0
+    )
     persons = list(
         db.scalars(
             select(Person)
@@ -1320,7 +1319,9 @@ def search_persons(
     )
 
 
-def _person_profile_output(db: Session, family_id: UUID, person: Person, user: User) -> PersonProfileOut:
+def _person_profile_output(
+    db: Session, family_id: UUID, person: Person, user: User
+) -> PersonProfileOut:
     """Build one family-scoped profile payload without inferring genealogy data."""
     scopes = active_guardian_scopes(db, user.id, family_id, [person.id]).get(person.id, set())
     base = _person_output(db, family_id, person, user)
@@ -1849,7 +1850,8 @@ def list_marriages(
     }
     marriages = list(
         db.execute(
-            select(Marriage).where(
+            select(Marriage)
+            .where(
                 Marriage.person_1_id.in_(person_ids),
                 Marriage.person_2_id.in_(person_ids),
                 Marriage.deleted_at.is_(None),
@@ -1889,7 +1891,10 @@ def list_person_marriages(
     marriages = db.scalars(statements.order_by(*_marriage_order())).all()
     visible = []
     for marriage in marriages:
-        if marriage.person_1_id not in family_person_ids or marriage.person_2_id not in family_person_ids:
+        if (
+            marriage.person_1_id not in family_person_ids
+            or marriage.person_2_id not in family_person_ids
+        ):
             continue
         people = _marriage_person_access(db, family_id, marriage, user)
         other = people[1] if people[0].id == person_id else people[0]
@@ -2140,9 +2145,7 @@ def _story_people(
         _assert_person_visible(db, person, user)
         if person_is_minor(person) and "view_profile" not in scopes.get(person.id, set()):
             continue
-        result.setdefault(story_id, []).append(
-            StoryPersonOut.model_validate(person)
-        )
+        result.setdefault(story_id, []).append(StoryPersonOut.model_validate(person))
     return result
 
 
@@ -2436,7 +2439,9 @@ def list_person_archives(
         db.scalars(
             select(Archive)
             .where(*conditions)
-            .order_by(Archive.document_date.desc().nullslast(), Archive.created_at.desc(), Archive.id)
+            .order_by(
+                Archive.document_date.desc().nullslast(), Archive.created_at.desc(), Archive.id
+            )
             .offset((page - 1) * page_size)
             .limit(page_size)
         ).all()
@@ -2520,12 +2525,16 @@ def list_stories(
         ).all()
     )
     author_ids = [story.created_by for story in stories]
-    authors = {
-        user_id: name
-        for user_id, name in db.execute(
-            select(User.id, User.display_name).where(User.id.in_(author_ids))
-        ).all()
-    } if author_ids else {}
+    authors = (
+        {
+            user_id: name
+            for user_id, name in db.execute(
+                select(User.id, User.display_name).where(User.id.in_(author_ids))
+            ).all()
+        }
+        if author_ids
+        else {}
+    )
     people = _story_people(db, family_id, [story.id for story in stories], user)
     items = [
         StoryListItem(
@@ -2605,7 +2614,10 @@ def get_story(
     if story is None or not _story_visible(db, story, user):
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
     people = _story_people(db, family_id, [story.id], user).get(story.id, [])
-    author_name = db.scalar(select(User.display_name).where(User.id == story.created_by)) or "Нэргүй хэрэглэгч"
+    author_name = (
+        db.scalar(select(User.display_name).where(User.id == story.created_by))
+        or "Нэргүй хэрэглэгч"
+    )
     return StoryOut(
         id=story.id,
         title=story.title,
@@ -2653,7 +2665,10 @@ def update_story(
     _audit(db, user, family_id, "story.updated", "story", story.id)
     _commit(db, "Ижил түүхийн холбоос давхар үүссэн байна.")
     people = _story_people(db, family_id, [story.id], user).get(story.id, [])
-    author_name = db.scalar(select(User.display_name).where(User.id == story.created_by)) or "Нэргүй хэрэглэгч"
+    author_name = (
+        db.scalar(select(User.display_name).where(User.id == story.created_by))
+        or "Нэргүй хэрэглэгч"
+    )
     return StoryOut(
         id=story.id,
         title=story.title,
@@ -2821,14 +2836,10 @@ def list_person_memories(
             .order_by(Memory.memory_date.desc())
         ).all()
     )
-    visible_ids = _memory_visible_to_member(
-        db, family_id, user, [item.id for item in memories]
-    )
+    visible_ids = _memory_visible_to_member(db, family_id, user, [item.id for item in memories])
     visible_memories = [item for item in memories if item.id in visible_ids]
     memory_ids = [item.id for item in visible_memories]
-    own_link = db.scalar(
-        select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id)
-    )
+    own_link = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
     tagged = (
         db.execute(
             select(
@@ -2877,7 +2888,6 @@ def list_person_memories(
     ]
 
 
-
 @router.get("/{family_id}/memories/{memory_id}")
 def get_memory(
     family_id: UUID,
@@ -2903,11 +2913,14 @@ def get_memory(
     from app.memory_photos import _photo_payload, _tagged_photo_visibility
 
     photos = db.scalars(
-        select(Photo).where(
-            Photo.family_id == family_id, Photo.memory_id == memory_id,
+        select(Photo)
+        .where(
+            Photo.family_id == family_id,
+            Photo.memory_id == memory_id,
             Photo.storage_status == "ready",
         )
-        .order_by(Photo.created_at.desc()).limit(50)
+        .order_by(Photo.created_at.desc())
+        .limit(50)
     ).all()
     visible_photo_ids = _tagged_photo_visibility(db, family_id, user, photos)
     return {
@@ -2969,6 +2982,7 @@ def delete_memory(
     storage: ObjectStorage = Depends(get_storage),
 ):
     from app.memory_photos import delete_memory_photos
+
     member, _ = _member(db, family_id, user)
     memory = db.scalar(select(Memory).where(Memory.id == memory_id, Memory.family_id == family_id))
     if memory is None:
@@ -3072,8 +3086,7 @@ def create_invitation(
         )
     now = datetime.now(UTC)
     pending = db.scalar(
-        select(Invitation.id)
-        .where(
+        select(Invitation.id).where(
             Invitation.family_id == family_id,
             Invitation.invited_email == email,
             Invitation.accepted_at.is_(None),
@@ -3082,7 +3095,9 @@ def create_invitation(
         )
     )
     if pending is not None:
-        raise HTTPException(status_code=409, detail="Энэ хаяг руу идэвхтэй урилга аль хэдийн байна.")
+        raise HTTPException(
+            status_code=409, detail="Энэ хаяг руу идэвхтэй урилга аль хэдийн байна."
+        )
 
     existing_user = db.scalar(select(User).where(User.email == email))
     if existing_user and db.scalar(
@@ -3105,7 +3120,10 @@ def create_invitation(
         db.flush()
     except IntegrityError as error:
         constraint_name = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
-        if constraint_name != "uq_invitation_active_family_email" and "uq_invitation_active_family_email" not in str(error.orig):
+        if (
+            constraint_name != "uq_invitation_active_family_email"
+            and "uq_invitation_active_family_email" not in str(error.orig)
+        ):
             db.rollback()
             raise
         db.rollback()
@@ -3251,7 +3269,10 @@ def family_tree(
     parent_edges: dict[UUID, ParentChildRelationship] = {}
     marriages: dict[UUID, Marriage] = {}
     scopes = active_guardian_scopes(db, user.id, family_id, [root.id])
-    own_person_id = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
+    own_person_id = db.scalar(
+        select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id)
+    )
+
     def can_traverse(person: Person) -> bool:
         return not person_is_minor(person) or "view_profile" in scopes.get(person.id, set())
 
@@ -3292,32 +3313,34 @@ def family_tree(
         parent_rows = parent_rows[:edge_limit]
         marriage_rows = marriage_rows[:edge_limit]
         candidate_ids = {
-            endpoint
-            for edge in parent_rows
-            for endpoint in (edge.parent_id, edge.child_id)
+            endpoint for edge in parent_rows for endpoint in (edge.parent_id, edge.child_id)
         } | {
             endpoint
             for marriage in marriage_rows
             for endpoint in (marriage.person_1_id, marriage.person_2_id)
         }
         candidate_ids -= people.keys()
-        candidate_rows = list(
-            db.scalars(
-                select(Person)
-                .join(FamilyPerson, FamilyPerson.person_id == Person.id)
-                .where(
-                    FamilyPerson.family_id == family_id,
-                    Person.id.in_(candidate_ids),
-                    or_(
-                        Person.visibility != "private",
-                        Person.created_by == user.id,
-                        Person.id == own_person_id,
-                    ),
-                )
-                .order_by(Person.id)
-                .limit(node_limit + 1)
-            ).all()
-        ) if candidate_ids else []
+        candidate_rows = (
+            list(
+                db.scalars(
+                    select(Person)
+                    .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+                    .where(
+                        FamilyPerson.family_id == family_id,
+                        Person.id.in_(candidate_ids),
+                        or_(
+                            Person.visibility != "private",
+                            Person.created_by == user.id,
+                            Person.id == own_person_id,
+                        ),
+                    )
+                    .order_by(Person.id)
+                    .limit(node_limit + 1)
+                ).all()
+            )
+            if candidate_ids
+            else []
+        )
         if len(candidate_rows) > node_limit:
             truncated = True
             candidate_rows = candidate_rows[:node_limit]
@@ -3386,15 +3409,13 @@ def family_tree(
         .order_by(PersonLineageAssignment.person_id)
     ).all()
     assignment_by_person = {
-        assignment.person_id: (lineage, branch)
-        for assignment, lineage, branch in assignment_rows
+        assignment.person_id: (lineage, branch) for assignment, lineage, branch in assignment_rows
     }
 
     tree_persons: list[TreePersonOut] = []
     for person in people.values():
-        restricted = (
-            person_is_minor(person)
-            and "view_profile" not in final_scopes.get(person.id, set())
+        restricted = person_is_minor(person) and "view_profile" not in final_scopes.get(
+            person.id, set()
         )
         assignment = assignment_by_person.get(person.id)
         lineage = assignment[0] if assignment else None

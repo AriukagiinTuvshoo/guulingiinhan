@@ -7,7 +7,6 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Family, FamilyMember, Invitation, User
 
-
 INDEX_SQL = """
 CREATE UNIQUE INDEX uq_invitation_active_family_email
 ON invitations (family_id, invited_email)

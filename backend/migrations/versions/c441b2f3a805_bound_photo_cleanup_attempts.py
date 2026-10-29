@@ -27,10 +27,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    pending_attempts = bind.execute(sa.text(
-        "SELECT count(*) FROM photos "
-        "WHERE storage_status != 'ready' AND cleanup_attempts > 0"
-    )).scalar_one()
+    pending_attempts = bind.execute(
+        sa.text(
+            "SELECT count(*) FROM photos WHERE storage_status != 'ready' AND cleanup_attempts > 0"
+        )
+    ).scalar_one()
     if pending_attempts:
         raise RuntimeError("Refusing to remove retry counts while photo cleanup is pending.")
     op.drop_index("ix_audit_logs_request_id", table_name="audit_logs")

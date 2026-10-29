@@ -52,12 +52,8 @@ def upgrade() -> None:
             ondelete="CASCADE",
             name="fk_guardianship_family_member",
         ),
-        sa.ForeignKeyConstraint(
-            ["granted_by_user_id"], ["users.id"], ondelete="RESTRICT"
-        ),
-        sa.ForeignKeyConstraint(
-            ["revoked_by_user_id"], ["users.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["granted_by_user_id"], ["users.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["revoked_by_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
@@ -73,9 +69,7 @@ def upgrade() -> None:
         "person_guardianships",
         ["family_id", "person_id", "guardian_user_id", "status"],
     )
-    op.create_index(
-        "ix_guardianship_guardian_user", "person_guardianships", ["guardian_user_id"]
-    )
+    op.create_index("ix_guardianship_guardian_user", "person_guardianships", ["guardian_user_id"])
 
 
 def downgrade() -> None:

@@ -54,9 +54,7 @@ def test_people_directory_is_family_scoped_and_hides_private_people(client, emai
 
     register_verified(client, "directory-outsider@example.com")
     assert client.get(f"/api/v1/families/{family_id}/people").status_code == 403
-    assert client.get(
-        f"/api/v1/families/{family_id}/persons/{visible['id']}"
-    ).status_code == 403
+    assert client.get(f"/api/v1/families/{family_id}/persons/{visible['id']}").status_code == 403
 
 
 def test_people_directory_supports_empty_search_case_insensitive_and_no_result(client):
@@ -148,9 +146,7 @@ def test_person_detail_and_edit_are_family_scoped(client):
         json={"first_name": "Би", "last_name": "Б"},
     ).json()
 
-    assert client.get(
-        f"/api/v1/families/{family_a}/persons/{person_b['id']}"
-    ).status_code == 404
+    assert client.get(f"/api/v1/families/{family_a}/persons/{person_b['id']}").status_code == 404
 
     response = client.patch(
         f"/api/v1/families/{family_a}/persons/{person_b['id']}",
@@ -158,9 +154,10 @@ def test_person_detail_and_edit_are_family_scoped(client):
     )
     assert response.status_code == 404
 
-    assert client.get(
-        f"/api/v1/families/{family_b}/persons/{person_b['id']}"
-    ).json()["first_name"] == "Би"
+    assert (
+        client.get(f"/api/v1/families/{family_b}/persons/{person_b['id']}").json()["first_name"]
+        == "Би"
+    )
 
 
 def test_people_directory_redacts_minor_profile_fields_without_guardian_scope(client):
@@ -207,26 +204,40 @@ def test_person_profile_family_privacy_and_minor_fields_are_authoritative(client
 
     assert client.get(f"/api/v1/families/{family_a}/persons/{person_a['id']}").status_code == 200
     assert client.get(f"/api/v1/families/{family_a}/persons/{person_b['id']}").status_code == 404
-    assert client.patch(
-        f"/api/v1/families/{family_a}/persons/{person_b['id']}",
-        json={"first_name": "Хөндлөн"},
-    ).status_code == 404
-    assert client.put(
-        f"/api/v1/families/{family_a}/persons/{person_b['id']}/biography",
-        json={"content": "cross-family"},
-    ).status_code == 404
+    assert (
+        client.patch(
+            f"/api/v1/families/{family_a}/persons/{person_b['id']}",
+            json={"first_name": "Хөндлөн"},
+        ).status_code
+        == 404
+    )
+    assert (
+        client.put(
+            f"/api/v1/families/{family_a}/persons/{person_b['id']}/biography",
+            json={"content": "cross-family"},
+        ).status_code
+        == 404
+    )
 
     minor_date = datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 10).isoformat()
     minor = client.post(
         f"/api/v1/families/{family_a}/persons",
-        json={"first_name": "Хүүхэд", "birth_date": minor_date, "birth_place": "Нууц газар", "short_description": "Нууц тайлбар"},
+        json={
+            "first_name": "Хүүхэд",
+            "birth_date": minor_date,
+            "birth_place": "Нууц газар",
+            "short_description": "Нууц тайлбар",
+        },
     ).json()
     payload = client.get(f"/api/v1/families/{family_a}/persons/{minor['id']}").json()
     assert payload["birth_date"] is None
     assert payload["birth_place"] is None
     assert payload["short_description"] is None
     assert payload["profile_photo_url"] is None
-    assert client.patch(
-        f"/api/v1/families/{family_a}/persons/{minor['id']}",
-        json={"first_name": "Хамгаалагдсан"},
-    ).status_code == 403
+    assert (
+        client.patch(
+            f"/api/v1/families/{family_a}/persons/{minor['id']}",
+            json={"first_name": "Хамгаалагдсан"},
+        ).status_code
+        == 403
+    )

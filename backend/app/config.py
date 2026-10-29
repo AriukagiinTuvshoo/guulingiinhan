@@ -74,7 +74,10 @@ class Settings(BaseSettings):
             raise ValueError("EMAIL_PROVIDER must be fake or smtp.")
         if self.email_verification_ttl_seconds < 300 or self.email_verification_ttl_seconds > 86400:
             raise ValueError("EMAIL_VERIFICATION_TTL_SECONDS must be between 300 and 86400.")
-        if self.email_password_reset_ttl_seconds < 300 or self.email_password_reset_ttl_seconds > 86400:
+        if (
+            self.email_password_reset_ttl_seconds < 300
+            or self.email_password_reset_ttl_seconds > 86400
+        ):
             raise ValueError("EMAIL_PASSWORD_RESET_TTL_SECONDS must be between 300 and 86400.")
         if self.app_env.lower() == "production":
             if not self.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
@@ -94,11 +97,20 @@ class Settings(BaseSettings):
             ):
                 raise ValueError("Production requires a configured SMS provider.")
             if self.email_provider.lower() != "smtp":
-                raise ValueError("Production requires a real EMAIL_PROVIDER; fake is development/test only.")
+                raise ValueError(
+                    "Production requires a real EMAIL_PROVIDER; fake is development/test only."
+                )
             if not all(
-                (self.email_from, self.email_smtp_host, self.email_smtp_username, self.email_smtp_password)
+                (
+                    self.email_from,
+                    self.email_smtp_host,
+                    self.email_smtp_username,
+                    self.email_smtp_password,
+                )
             ):
-                raise ValueError("Production email requires sender and authenticated SMTP configuration.")
+                raise ValueError(
+                    "Production email requires sender and authenticated SMTP configuration."
+                )
             if not self.email_smtp_starttls:
                 raise ValueError("Production SMTP must use STARTTLS.")
             if not self.email_public_base_url.startswith("https://"):
@@ -134,10 +146,14 @@ class Settings(BaseSettings):
         if not 1 <= self.photo_upload_family_per_minute <= 1000:
             raise ValueError("PHOTO_UPLOAD_FAMILY_PER_MINUTE must be between 1 and 1000.")
         if self.app_env.lower() == "production":
-            if self.storage_provider.lower() != "s3" or not all((
-                self.storage_endpoint, self.storage_bucket, self.storage_access_key,
-                self.storage_secret_key,
-            )):
+            if self.storage_provider.lower() != "s3" or not all(
+                (
+                    self.storage_endpoint,
+                    self.storage_bucket,
+                    self.storage_access_key,
+                    self.storage_secret_key,
+                )
+            ):
                 raise ValueError("Production requires complete S3-compatible storage settings.")
             if not self.storage_endpoint.startswith("https://"):
                 raise ValueError("Production STORAGE_ENDPOINT must use HTTPS.")

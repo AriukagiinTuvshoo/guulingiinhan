@@ -130,7 +130,10 @@ def test_marriage_does_not_create_lineage(client, database):
 
     with database() as db:
         assert db.scalar(select(func.count(Lineage.id))) == 0
-        assert db.scalar(select(Marriage.id).where(Marriage.id == UUID(marriage.json()["id"]))) is not None
+        assert (
+            db.scalar(select(Marriage.id).where(Marriage.id == UUID(marriage.json()["id"])))
+            is not None
+        )
 
 
 def test_parent_child_does_not_create_lineage(client, database):
