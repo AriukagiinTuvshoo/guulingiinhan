@@ -39,10 +39,13 @@ def setup_family(client, database, *, birth_date="2015-06-12"):
         )
         db.commit()
     client.post("/api/v1/auth/logout")
-    assert client.post(
-        "/api/v1/auth/login",
-        json={"email": "owner@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "owner@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 200
+    )
     return owner, family, child, guardian
 
 
@@ -72,30 +75,41 @@ def test_parent_edge_alone_does_not_authorize_minor_sensitive_access(client, dat
     parent = client.post(
         f"/api/v1/families/{family['id']}/persons", json={"first_name": "Эцэг"}
     ).json()
-    assert client.post(
-        f"/api/v1/families/{family['id']}/relationships/parent-child",
-        json={"parent_id": parent["id"], "child_id": child["id"]},
-    ).status_code == 201
+    assert (
+        client.post(
+            f"/api/v1/families/{family['id']}/relationships/parent-child",
+            json={"parent_id": parent["id"], "child_id": child["id"]},
+        ).status_code
+        == 201
+    )
 
     profile = client.get(f"/api/v1/families/{family['id']}/persons/{child['id']}")
     assert profile.status_code == 200
     assert profile.json()["birth_date"] is None
     assert profile.json()["birth_place"] is None
     assert profile.json()["short_description"] is None
-    assert client.patch(
-        f"/api/v1/families/{family['id']}/persons/{child['id']}",
-        json={"first_name": "Өөрчилсөн"},
-    ).status_code == 403
-    assert client.get(
-        f"/api/v1/families/{family['id']}/persons/{child['id']}/biography"
-    ).status_code == 403
-    assert client.get(
-        f"/api/v1/families/{family['id']}/persons/{child['id']}/events"
-    ).status_code == 403
-    assert client.post(
-        f"/api/v1/families/{family['id']}/memories",
-        json={"title": "Дурсамж", "person_ids": [child["id"]]},
-    ).status_code == 403
+    assert (
+        client.patch(
+            f"/api/v1/families/{family['id']}/persons/{child['id']}",
+            json={"first_name": "Өөрчилсөн"},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.get(f"/api/v1/families/{family['id']}/persons/{child['id']}/biography").status_code
+        == 403
+    )
+    assert (
+        client.get(f"/api/v1/families/{family['id']}/persons/{child['id']}/events").status_code
+        == 403
+    )
+    assert (
+        client.post(
+            f"/api/v1/families/{family['id']}/memories",
+            json={"title": "Дурсамж", "person_ids": [child["id"]]},
+        ).status_code
+        == 403
+    )
     assert owner["id"] != child["id"]
 
 
@@ -105,15 +119,19 @@ def test_guardian_grants_are_scoped_independent_and_revocable(client, database):
     assert created.status_code == 201
     grant_id = created.json()[0]["id"]
     assert created.json()[0]["scope"] == "view_profile"
-    assert grant(
-        client, family["id"], child["id"], guardian["id"], ["view_profile"]
-    ).status_code == 409
+    assert (
+        grant(client, family["id"], child["id"], guardian["id"], ["view_profile"]).status_code
+        == 409
+    )
 
     assert client.post("/api/v1/auth/logout").status_code == 204
-    assert client.post(
-        "/api/v1/auth/login",
-        json={"email": "guardian@example.com", "password": "strong-passphrase-123"},
-    ).status_code == 200
+    assert (
+        client.post(
+            "/api/v1/auth/login",
+            json={"email": "guardian@example.com", "password": "strong-passphrase-123"},
+        ).status_code
+        == 200
+    )
     base = f"/api/v1/families/{family['id']}/persons/{child['id']}"
     profile = client.get(base)
     assert profile.status_code == 200
@@ -152,9 +170,7 @@ def test_guardian_grants_are_scoped_independent_and_revocable(client, database):
         json={"title": "Гэр бүлийн дурсамж", "person_ids": [child["id"]]},
     )
     assert memory.status_code == 201
-    scoped_memory = client.get(
-        f"/api/v1/families/{family['id']}/persons/{child['id']}/memories"
-    )
+    scoped_memory = client.get(f"/api/v1/families/{family['id']}/persons/{child['id']}/memories")
     assert scoped_memory.status_code == 200
     assert scoped_memory.json()[0]["id"] == memory.json()["id"]
     assert client.get(f"/api/v1/families/{family['id']}/memories").status_code == 200
@@ -164,12 +180,8 @@ def test_guardian_grants_are_scoped_independent_and_revocable(client, database):
         "/api/v1/auth/login",
         json={"email": "owner@example.com", "password": "strong-passphrase-123"},
     )
-    assert client.delete(
-        f"{base}/guardianships/{grant_id}"
-    ).status_code == 204
-    assert client.delete(
-        f"{base}/guardianships/{extra.json()[0]['id']}"
-    ).status_code == 204
+    assert client.delete(f"{base}/guardianships/{grant_id}").status_code == 204
+    assert client.delete(f"{base}/guardianships/{extra.json()[0]['id']}").status_code == 204
     client.post("/api/v1/auth/logout")
     client.post(
         "/api/v1/auth/login",
@@ -191,26 +203,49 @@ def test_only_family_owner_can_manage_grants_and_foreign_targets_are_hidden(clie
         "/api/v1/auth/login",
         json={"email": "guardian@example.com", "password": "strong-passphrase-123"},
     )
-    assert grant(client, family["id"], child["id"], guardian["id"], ["view_profile"]).status_code == 403
-    assert client.get(
-        f"/api/v1/families/{family['id']}/persons/{child['id']}/guardianships"
-    ).status_code == 403
+    assert (
+        grant(client, family["id"], child["id"], guardian["id"], ["view_profile"]).status_code
+        == 403
+    )
+    assert (
+        client.get(
+            f"/api/v1/families/{family['id']}/persons/{child['id']}/guardianships"
+        ).status_code
+        == 403
+    )
 
     client.post("/api/v1/auth/logout")
     client.post(
         "/api/v1/auth/login",
         json={"email": "owner@example.com", "password": "strong-passphrase-123"},
     )
-    assert grant(client, family["id"], child["id"], "00000000-0000-0000-0000-000000000001", ["view_profile"]).status_code == 404
-    assert grant(client, family["id"], child["id"], guardian["id"], ["admin", "view_profile"]).status_code == 422
-    assert grant(
-        client,
-        family["id"],
-        child["id"],
-        guardian["id"],
-        ["view_profile"],
-        (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
-    ).status_code == 422
+    assert (
+        grant(
+            client,
+            family["id"],
+            child["id"],
+            "00000000-0000-0000-0000-000000000001",
+            ["view_profile"],
+        ).status_code
+        == 404
+    )
+    assert (
+        grant(
+            client, family["id"], child["id"], guardian["id"], ["admin", "view_profile"]
+        ).status_code
+        == 422
+    )
+    assert (
+        grant(
+            client,
+            family["id"],
+            child["id"],
+            guardian["id"],
+            ["view_profile"],
+            (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+        ).status_code
+        == 422
+    )
 
 
 def test_expired_grants_are_inactive_and_can_be_reissued(client, database):
@@ -276,19 +311,29 @@ def test_minor_profile_projection_applies_to_search_and_tree(client, database):
 
 def test_owner_self_grant_requires_linked_parent_and_explicit_action(client, database):
     _, family, child, _ = setup_family(client, database)
-    blocked = grant(client, family["id"], child["id"], client.get("/api/v1/auth/me").json()["id"], ["view_profile"])
+    blocked = grant(
+        client,
+        family["id"],
+        child["id"],
+        client.get("/api/v1/auth/me").json()["id"],
+        ["view_profile"],
+    )
     assert blocked.status_code == 403
 
     parent = client.post(
         f"/api/v1/families/{family['id']}/persons", json={"first_name": "Эцэг"}
     ).json()
-    assert client.post(
-        f"/api/v1/families/{family['id']}/persons/{parent['id']}/link-me"
-    ).status_code == 204
-    assert client.post(
-        f"/api/v1/families/{family['id']}/relationships/parent-child",
-        json={"parent_id": parent["id"], "child_id": child["id"]},
-    ).status_code == 201
+    assert (
+        client.post(f"/api/v1/families/{family['id']}/persons/{parent['id']}/link-me").status_code
+        == 204
+    )
+    assert (
+        client.post(
+            f"/api/v1/families/{family['id']}/relationships/parent-child",
+            json={"parent_id": parent["id"], "child_id": child["id"]},
+        ).status_code
+        == 201
+    )
     allowed = grant(
         client,
         family["id"],

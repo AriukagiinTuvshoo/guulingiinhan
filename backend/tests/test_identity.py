@@ -33,7 +33,9 @@ def test_registration_email_identity_normalization_login_and_safe_output(client,
     assert "password_hash" not in response.json()
     assert login(client, " OWNER@example.com ").status_code == 403
     assert client.get("/api/v1/auth/me").status_code == 401
-    assert confirm_registration_email(client, email_provider, "Owner@Example.com").status_code == 200
+    assert (
+        confirm_registration_email(client, email_provider, "Owner@Example.com").status_code == 200
+    )
     assert login(client, " OWNER@example.com ").status_code == 200
     identities = client.get("/api/v1/auth/me/identities")
     assert identities.status_code == 200
@@ -132,31 +134,36 @@ def test_identity_link_requests_are_inert_account_scoped_and_cancellable(client)
 
     assert client.post("/api/v1/auth/logout").status_code == 204
     assert register(client, "other@example.com").status_code == 201
-    assert client.delete(
-        f"/api/v1/auth/me/identity-link-requests/{data['id']}"
-    ).status_code == 404
+    assert client.delete(f"/api/v1/auth/me/identity-link-requests/{data['id']}").status_code == 404
     assert client.post("/api/v1/auth/logout").status_code == 204
     assert login(client).status_code == 200
-    assert client.delete(
-        f"/api/v1/auth/me/identity-link-requests/{data['id']}"
-    ).status_code == 204
+    assert client.delete(f"/api/v1/auth/me/identity-link-requests/{data['id']}").status_code == 204
     assert client.get("/api/v1/auth/me/identity-link-requests").json()[0]["status"] == "cancelled"
 
 
 def test_identity_link_request_validation_does_not_normalize_phone_country(client):
     assert register(client).status_code == 201
-    assert client.post(
-        "/api/v1/auth/me/identity-link-requests",
-        json={"provider": "phone", "identifier": "09012345678"},
-    ).status_code == 422
-    assert client.post(
-        "/api/v1/auth/me/identity-link-requests",
-        json={"provider": "email", "identifier": "not-an-email"},
-    ).status_code == 422
-    assert client.post(
-        "/api/v1/auth/me/identity-link-requests",
-        json={"provider": "google", "issuer": "https://accounts.google.com", "subject": "s"},
-    ).status_code == 201
+    assert (
+        client.post(
+            "/api/v1/auth/me/identity-link-requests",
+            json={"provider": "phone", "identifier": "09012345678"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/me/identity-link-requests",
+            json={"provider": "email", "identifier": "not-an-email"},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/me/identity-link-requests",
+            json={"provider": "google", "issuer": "https://accounts.google.com", "subject": "s"},
+        ).status_code
+        == 201
+    )
 
 
 def test_email_lookup_fails_closed_for_ambiguous_legacy_case_collision(database):

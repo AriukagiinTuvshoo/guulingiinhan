@@ -14,9 +14,22 @@ class JsonLogFormatter(logging.Formatter):
     """Serialize an allowlist of safe fields; never serialize exception text."""
 
     SAFE_FIELDS = (
-        "event", "method", "route", "status_code", "duration_ms", "error_code",
-        "error_type", "operation", "photo_id", "memory_id", "family_id", "provider",
-        "attempt", "max_attempts", "rate_limit_namespace", "storage_duration_ms",
+        "event",
+        "method",
+        "route",
+        "status_code",
+        "duration_ms",
+        "error_code",
+        "error_type",
+        "operation",
+        "photo_id",
+        "memory_id",
+        "family_id",
+        "provider",
+        "attempt",
+        "max_attempts",
+        "rate_limit_namespace",
+        "storage_duration_ms",
     )
 
     def __init__(self, environment: str = "development") -> None:

@@ -38,7 +38,9 @@ def test_request_id_is_server_generated_and_completed_request_is_logged(caplog):
     response = TestClient(app).get("/health", headers={"X-Request-ID": "caller-value"})
     request_id = response.headers["x-request-id"]
     assert request_id != "caller-value"
-    record = next(record for record in caplog.records if getattr(record, "event", None) == "request_completed")
+    record = next(
+        record for record in caplog.records if getattr(record, "event", None) == "request_completed"
+    )
     payload = json.loads(JsonLogFormatter("test").format(record))
     assert payload["request_id"] == request_id
     assert payload["route"] == "/health"
@@ -80,7 +82,8 @@ def test_unexpected_database_error_returns_safe_classified_response():
         response = TestClient(app, raise_server_exceptions=False).get("/__test/database-error")
     finally:
         app.router.routes = [
-            route for route in app.router.routes
+            route
+            for route in app.router.routes
             if getattr(route, "path", None) != "/__test/database-error"
         ]
     assert response.status_code == 503

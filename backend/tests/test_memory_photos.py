@@ -90,7 +90,9 @@ def test_memory_photo_upload_list_content_and_delete(client):
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
     assert len(listing.json()["items"][0]["photos"]) == 1
-    content = client.get(f"/api/v1/families/{family_id}/photos/{photo['id']}/content?variant=thumbnail")
+    content = client.get(
+        f"/api/v1/families/{family_id}/photos/{photo['id']}/content?variant=thumbnail"
+    )
     assert content.status_code == 200
     assert content.headers["cache-control"] == "private, no-store"
     assert content.content.startswith(b"\xff\xd8")
@@ -114,25 +116,48 @@ def test_photo_upload_rejects_invalid_image_and_nonmember(client):
         json={"title": "Дурсамж", "visibility": "family", "person_ids": []},
     ).json()
     endpoint = f"/api/v1/families/{family_id}/memories/{memory['id']}/photos"
-    rejected = client.post(endpoint, content=b"not an image", headers={
-        "Content-Type": "image/png", "X-File-Name": "bad.png",
-    })
+    rejected = client.post(
+        endpoint,
+        content=b"not an image",
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "bad.png",
+        },
+    )
     assert rejected.status_code == 415
-    mismatch = client.post(endpoint, content=png_bytes(), headers={
-        "Content-Type": "image/jpeg", "X-File-Name": "family.png",
-    })
+    mismatch = client.post(
+        endpoint,
+        content=png_bytes(),
+        headers={
+            "Content-Type": "image/jpeg",
+            "X-File-Name": "family.png",
+        },
+    )
     assert mismatch.status_code == 415
-    disguised = client.post(endpoint, content=png_bytes(), headers={
-        "Content-Type": "image/png", "X-File-Name": "family.jpg",
-    })
+    disguised = client.post(
+        endpoint,
+        content=png_bytes(),
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "family.jpg",
+        },
+    )
     assert disguised.status_code == 415
     assert storage.objects == {}
 
     client.post("/api/v1/auth/logout")
     register_verified(client, "photo-outsider@example.com")
-    assert client.post(endpoint, content=png_bytes(), headers={
-        "Content-Type": "image/png", "X-File-Name": "family.png",
-    }).status_code == 403
+    assert (
+        client.post(
+            endpoint,
+            content=png_bytes(),
+            headers={
+                "Content-Type": "image/png",
+                "X-File-Name": "family.png",
+            },
+        ).status_code
+        == 403
+    )
 
 
 def test_failed_upload_is_hidden_and_cleanup_retries(client, database):
@@ -150,9 +175,14 @@ def test_failed_upload_is_hidden_and_cleanup_retries(client, database):
         json={"title": "Дурсамж", "visibility": "family", "person_ids": []},
     ).json()
     endpoint = f"/api/v1/families/{family_id}/memories/{memory['id']}/photos"
-    failed = client.post(endpoint, content=png_bytes(), headers={
-        "Content-Type": "image/png", "X-File-Name": "family.png",
-    })
+    failed = client.post(
+        endpoint,
+        content=png_bytes(),
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "family.png",
+        },
+    )
     assert failed.status_code == 503
     assert "private storage details" not in failed.text
     with database() as db:
@@ -186,7 +216,8 @@ def test_delete_storage_failure_leaves_hidden_retryable_photo(client, database):
     ).json()
     photo = client.post(
         f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
-        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+        content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
     ).json()
     storage.fail_delete = True
     response = client.delete(f"/api/v1/families/{family_id}/photos/{photo['id']}")
@@ -200,7 +231,9 @@ def test_delete_storage_failure_leaves_hidden_retryable_photo(client, database):
         assert row is not None and row.cleanup_attempts == 1
     assert client.get(f"/api/v1/families/{family_id}/memories/{memory['id']}/photos").json() == []
     storage.fail_delete = False
-    assert client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10").status_code == 200
+    assert (
+        client.get(f"/api/v1/families/{family_id}/memories?page=1&page_size=10").status_code == 200
+    )
     assert storage.objects == {}
     with database() as db:
         assert db.scalar(select(Photo.id).where(Photo.id == UUID(photo["id"]))) is None
@@ -220,7 +253,8 @@ def test_photo_cleanup_retries_stop_at_configured_attempt_limit(client, database
     ).json()
     photo = client.post(
         f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
-        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+        content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
     ).json()
     storage.fail_delete = True
     assert client.delete(f"/api/v1/families/{family_id}/photos/{photo['id']}").status_code == 503
@@ -251,7 +285,8 @@ def test_permanent_storage_denial_stops_photo_cleanup_retries(client, database):
     ).json()
     photo = client.post(
         f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
-        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+        content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
     ).json()
     storage.fail_delete = "permanent"
     assert client.delete(f"/api/v1/families/{family_id}/photos/{photo['id']}").status_code == 503
@@ -278,18 +313,30 @@ def test_upload_attempts_are_rate_limited_and_denials_are_audited(client, databa
     ).json()
     endpoint = f"/api/v1/families/{family_id}/memories/{memory['id']}/photos"
     for _ in range(20):
-        response = client.post(endpoint, content=b"bad", headers={
-            "Content-Type": "image/png", "X-File-Name": "bad.png",
-        })
+        response = client.post(
+            endpoint,
+            content=b"bad",
+            headers={
+                "Content-Type": "image/png",
+                "X-File-Name": "bad.png",
+            },
+        )
         assert response.status_code == 415
-    limited = client.post(endpoint, content=b"bad", headers={
-        "Content-Type": "image/png", "X-File-Name": "bad.png",
-    })
+    limited = client.post(
+        endpoint,
+        content=b"bad",
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "bad.png",
+        },
+    )
     assert limited.status_code == 429
 
     client.post("/api/v1/auth/logout")
     register_verified(client, "rate-outsider@example.com")
-    denied = client.get(f"/api/v1/families/{family_id}/photos/00000000-0000-0000-0000-000000000001/content")
+    denied = client.get(
+        f"/api/v1/families/{family_id}/photos/00000000-0000-0000-0000-000000000001/content"
+    )
     assert denied.status_code == 403
     with database() as db:
         assert "photo.access_denied" in set(db.scalars(select(AuditLog.action)).all())
@@ -302,8 +349,13 @@ def test_local_storage_rejects_posix_and_windows_traversal(tmp_path):
 
     storage = LocalObjectStorage(tmp_path / "private")
     for key in (
-        "../../secret.txt", "..\\..\\secret.txt", "/absolute/path",
-        "C:\\Windows\\win.ini", "a//b", "a/./b", "a/../b",
+        "../../secret.txt",
+        "..\\..\\secret.txt",
+        "/absolute/path",
+        "C:\\Windows\\win.ini",
+        "a//b",
+        "a/./b",
+        "a/../b",
     ):
         with pytest.raises(ValueError):
             storage.put(key, b"secret", "text/plain")
@@ -329,7 +381,9 @@ def test_s3_adapter_uses_private_put_without_acl_and_rejects_bad_keys(monkeypatc
 
     fake = FakeClient()
     monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: fake)
-    storage = S3ObjectStorage("https://objects.example.net", "private-bucket", "auto", "key", "secret")
+    storage = S3ObjectStorage(
+        "https://objects.example.net", "private-bucket", "auto", "key", "secret"
+    )
     storage.put("families/f1/photos/p1/original", b"private", "image/jpeg")
     assert "ACL" not in calls[0]
     assert storage.get("families/f1/photos/p1/original") == b"private"
@@ -351,7 +405,8 @@ def test_memory_photo_download_failure_is_generic(client):
     ).json()
     photo = client.post(
         f"/api/v1/families/{family['id']}/memories/{memory['id']}/photos",
-        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+        content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
     ).json()
     storage.fail_get = True
     response = client.get(f"/api/v1/families/{family['id']}/photos/{photo['id']}/content")
@@ -373,7 +428,8 @@ def test_private_memory_photo_is_not_visible_to_other_family_member(client, data
     ).json()
     photo = client.post(
         f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
-        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+        content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
     ).json()
     client.post("/api/v1/auth/logout")
     register_verified(client, "private-photo-member@example.com")
@@ -419,7 +475,8 @@ def test_photo_tags_are_family_scoped_and_parent_edge_is_not_guardian_authority(
     ).json()
     photo = client.post(
         f"/api/v1/families/{family_a['id']}/memories/{memory['id']}/photos",
-        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
+        content=png_bytes(),
+        headers={"Content-Type": "image/png", "X-File-Name": "family.png"},
     ).json()
     tags_url = f"/api/v1/families/{family_a['id']}/photos/{photo['id']}/tags"
     assert client.put(tags_url, json={"person_ids": [child["id"]]}).status_code == 403
@@ -446,68 +503,115 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
     assert profile_and_memory.status_code == 201
     scope_ids = {item["scope"]: item["id"] for item in profile_and_memory.json()}
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "guardian@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     memory = client.post(
         f"/api/v1/families/{family['id']}/memories",
         json={"title": "Хүүхдийн дурсамж", "person_ids": [child["id"]]},
     ).json()
     upload_url = f"/api/v1/families/{family['id']}/memories/{memory['id']}/photos"
-    denied = client.post(upload_url, content=png_bytes(), headers={
-        "Content-Type": "image/png", "X-File-Name": "family.png",
-    })
+    denied = client.post(
+        upload_url,
+        content=png_bytes(),
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "family.png",
+        },
+    )
     assert denied.status_code == 403
 
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     media_grant = grant(client, family["id"], child["id"], guardian["id"], ["manage_media"])
     assert media_grant.status_code == 201
     media_scope_id = media_grant.json()[0]["id"]
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
-    })
-    uploaded = client.post(upload_url, content=png_bytes(), headers={
-        "Content-Type": "image/png", "X-File-Name": "family.png",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "guardian@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
+    uploaded = client.post(
+        upload_url,
+        content=png_bytes(),
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "family.png",
+        },
+    )
     assert uploaded.status_code == 201
     photo_id = uploaded.json()["id"]
     content_url = f"/api/v1/families/{family['id']}/photos/{photo_id}/content"
     assert client.get(content_url).status_code == 200
 
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     assert client.delete(f"{base}/guardianships/{media_scope_id}").status_code == 204
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
-    })
-    blocked = client.post(upload_url, content=png_bytes(), headers={
-        "Content-Type": "image/png", "X-File-Name": "family.png",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "guardian@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
+    blocked = client.post(
+        upload_url,
+        content=png_bytes(),
+        headers={
+            "Content-Type": "image/png",
+            "X-File-Name": "family.png",
+        },
+    )
     assert blocked.status_code == 403
     assert client.get(content_url).status_code == 200
 
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     assert client.delete(f"{base}/guardianships/{scope_ids['view_profile']}").status_code == 204
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "guardian@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     assert client.get(content_url).status_code == 404
 
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "owner@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     renewed = grant(client, family["id"], child["id"], guardian["id"], ["view_profile"])
     assert renewed.status_code == 201
     from datetime import UTC, datetime, timedelta
@@ -515,12 +619,16 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
     from app.models import PersonGuardianship
 
     with database() as db:
-        db.get(PersonGuardianship, UUID(renewed.json()[0]["id"])).expires_at = (
-            datetime.now(UTC) - timedelta(seconds=1)
-        )
+        db.get(PersonGuardianship, UUID(renewed.json()[0]["id"])).expires_at = datetime.now(
+            UTC
+        ) - timedelta(seconds=1)
         db.commit()
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
-    })
+    client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "guardian@example.com",
+            "password": "strong-passphrase-123",
+        },
+    )
     assert client.get(content_url).status_code == 404

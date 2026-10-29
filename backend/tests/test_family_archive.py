@@ -16,14 +16,15 @@ def test_archive_crud_search_person_link_and_genealogy_regression(client):
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Бат", "last_name": "Хүү"},
     ).json()
-    assert client.post(
-        f"/api/v1/families/{family_id}/relationships/parent-child",
-        json={"parent_id": parent["id"], "child_id": child["id"]},
-    ).status_code == 201
+    assert (
+        client.post(
+            f"/api/v1/families/{family_id}/relationships/parent-child",
+            json={"parent_id": parent["id"], "child_id": child["id"]},
+        ).status_code
+        == 201
+    )
 
-    before = client.get(
-        f"/api/v1/families/{family_id}/tree?person_id={child['id']}&depth=2"
-    ).json()
+    before = client.get(f"/api/v1/families/{family_id}/tree?person_id={child['id']}&depth=2").json()
 
     created = client.post(
         f"/api/v1/families/{family_id}/archives",
@@ -45,9 +46,7 @@ def test_archive_crud_search_person_link_and_genealogy_regression(client):
         child["id"],
     }
 
-    listed = client.get(
-        f"/api/v1/families/{family_id}/archives?page=1&page_size=12&q=төрсний"
-    )
+    listed = client.get(f"/api/v1/families/{family_id}/archives?page=1&page_size=12&q=төрсний")
     assert listed.status_code == 200
     assert listed.json()["total"] == 1
     assert listed.json()["items"][0]["title"].startswith("Дорж")
@@ -74,30 +73,22 @@ def test_archive_crud_search_person_link_and_genealogy_regression(client):
     assert updated.json()["title"] == "1940 оны төрсний гэрчилгээ"
     assert [item["id"] for item in updated.json()["related_people"]] == [parent["id"]]
 
-    after = client.get(
-        f"/api/v1/families/{family_id}/tree?person_id={child['id']}&depth=2"
-    ).json()
+    after = client.get(f"/api/v1/families/{family_id}/tree?person_id={child['id']}&depth=2").json()
     assert after["parent_child_relationships"] == before["parent_child_relationships"]
     assert after["marriages"] == before["marriages"]
 
-    assert client.delete(
-        f"/api/v1/families/{family_id}/archives/{archive['id']}"
-    ).status_code == 204
-    assert client.get(
-        f"/api/v1/families/{family_id}/archives/{archive['id']}"
-    ).status_code == 404
+    assert (
+        client.delete(f"/api/v1/families/{family_id}/archives/{archive['id']}").status_code == 204
+    )
+    assert client.get(f"/api/v1/families/{family_id}/archives/{archive['id']}").status_code == 404
 
 
 def test_archive_rejects_cross_family_and_duplicate_people(client):
     register_verified(client, "archive-cross-family@example.com")
     family_a = client.post("/api/v1/families", json={"name": "А"}).json()["id"]
     family_b = client.post("/api/v1/families", json={"name": "Б"}).json()["id"]
-    person_a = client.post(
-        f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}
-    ).json()
-    person_b = client.post(
-        f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}
-    ).json()
+    person_a = client.post(f"/api/v1/families/{family_a}/persons", json={"first_name": "А"}).json()
+    person_b = client.post(f"/api/v1/families/{family_b}/persons", json={"first_name": "Б"}).json()
 
     cross = client.post(
         f"/api/v1/families/{family_a}/archives",
@@ -111,9 +102,12 @@ def test_archive_rejects_cross_family_and_duplicate_people(client):
     )
     assert duplicate.status_code == 422
 
-    assert client.get(
-        f"/api/v1/families/{family_b}/archives/00000000-0000-0000-0000-000000000001"
-    ).status_code == 404
+    assert (
+        client.get(
+            f"/api/v1/families/{family_b}/archives/00000000-0000-0000-0000-000000000001"
+        ).status_code
+        == 404
+    )
 
 
 def test_private_archive_is_visible_only_to_creator_and_members_cannot_mutate(client, database):
@@ -126,25 +120,25 @@ def test_private_archive_is_visible_only_to_creator_and_members_cannot_mutate(cl
 
     register_verified(client, "archive-private-member@example.com")
     with database() as db:
-        member = db.query(User).filter(
-            User.email == "archive-private-member@example.com"
-        ).one()
+        member = db.query(User).filter(User.email == "archive-private-member@example.com").one()
         db.add(FamilyMember(family_id=UUID(family_id), user_id=member.id, role="member"))
         db.commit()
 
-    assert client.get(
-        f"/api/v1/families/{family_id}/archives/{archive['id']}"
-    ).status_code == 404
-    assert client.get(
-        f"/api/v1/families/{family_id}/archives?page=1&page_size=12"
-    ).json()["total"] == 0
-    assert client.put(
-        f"/api/v1/families/{family_id}/archives/{archive['id']}",
-        json={"title": "өөр", "person_ids": []},
-    ).status_code == 403
-    assert client.delete(
-        f"/api/v1/families/{family_id}/archives/{archive['id']}"
-    ).status_code == 403
+    assert client.get(f"/api/v1/families/{family_id}/archives/{archive['id']}").status_code == 404
+    assert (
+        client.get(f"/api/v1/families/{family_id}/archives?page=1&page_size=12").json()["total"]
+        == 0
+    )
+    assert (
+        client.put(
+            f"/api/v1/families/{family_id}/archives/{archive['id']}",
+            json={"title": "өөр", "person_ids": []},
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(f"/api/v1/families/{family_id}/archives/{archive['id']}").status_code == 403
+    )
 
 
 def test_archive_validation_pagination_and_family_isolation(client):
@@ -159,35 +153,32 @@ def test_archive_validation_pagination_and_family_isolation(client):
     assert whitespace.status_code == 422
 
     for index in range(3):
-        assert client.post(
-            f"/api/v1/families/{family_a}/archives",
-            json={"title": f"Баримт {index}"},
-        ).status_code == 201
+        assert (
+            client.post(
+                f"/api/v1/families/{family_a}/archives",
+                json={"title": f"Баримт {index}"},
+            ).status_code
+            == 201
+        )
 
-    page = client.get(
-        f"/api/v1/families/{family_a}/archives?page=1&page_size=2"
-    )
+    page = client.get(f"/api/v1/families/{family_a}/archives?page=1&page_size=2")
     assert page.status_code == 200
     assert page.json()["page_size"] == 2
     assert page.json()["total"] == 3
     assert page.json()["has_next"] is True
 
-    assert client.get(
-        f"/api/v1/families/{family_b}/archives?page=1&page_size=50"
-    ).json()["total"] == 0
-
-    no_result = client.get(
-        f"/api/v1/families/{family_a}/archives?q=байхгүй&page=1&page_size=50"
+    assert (
+        client.get(f"/api/v1/families/{family_b}/archives?page=1&page_size=50").json()["total"] == 0
     )
+
+    no_result = client.get(f"/api/v1/families/{family_a}/archives?q=байхгүй&page=1&page_size=50")
     assert no_result.status_code == 200
     assert no_result.json()["total"] == 0
 
 
 def test_archive_authoring_validation_and_editor_update(client, database):
     register_verified(client, "archive-editor-owner@example.com")
-    family_id = client.post(
-        "/api/v1/families", json={"name": "Authoring validation"}
-    ).json()["id"]
+    family_id = client.post("/api/v1/families", json={"name": "Authoring validation"}).json()["id"]
     archive = client.post(
         f"/api/v1/families/{family_id}/archives",
         json={"title": "Эх баримт"},
@@ -238,9 +229,7 @@ def test_archive_authoring_validation_and_editor_update(client, database):
 
 def test_archive_delete_cleans_relations(client, database):
     register_verified(client, "archive-cleanup@example.com")
-    family_id = client.post(
-        "/api/v1/families", json={"name": "Cleanup"}
-    ).json()["id"]
+    family_id = client.post("/api/v1/families", json={"name": "Cleanup"}).json()["id"]
     person = client.post(
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Хүн"},
@@ -250,15 +239,13 @@ def test_archive_delete_cleans_relations(client, database):
         json={"title": "Cleanup archive", "person_ids": [person["id"]]},
     ).json()
 
-    assert client.delete(
-        f"/api/v1/families/{family_id}/archives/{archive['id']}"
-    ).status_code == 204
+    assert (
+        client.delete(f"/api/v1/families/{family_id}/archives/{archive['id']}").status_code == 204
+    )
 
     with database() as db:
         assert (
-            db.query(ArchivePerson)
-            .filter(ArchivePerson.archive_id == UUID(archive["id"]))
-            .count()
+            db.query(ArchivePerson).filter(ArchivePerson.archive_id == UUID(archive["id"])).count()
             == 0
         )
 
@@ -275,28 +262,25 @@ def test_archive_rejects_cross_family_mutations(client, database):
     client.post("/api/v1/auth/logout")
     register_verified(client, "archive-isolation-member@example.com")
     with database() as db:
-        member = db.query(User).filter(
-            User.email == "archive-isolation-member@example.com"
-        ).one()
+        member = db.query(User).filter(User.email == "archive-isolation-member@example.com").one()
         db.add(FamilyMember(family_id=UUID(family_a), user_id=member.id, role="member"))
         db.commit()
 
     assert client.get(f"/api/v1/families/{family_b}/archives").status_code == 403
-    assert client.get(
-        f"/api/v1/families/{family_b}/archives/{archive_b['id']}"
-    ).status_code == 403
+    assert client.get(f"/api/v1/families/{family_b}/archives/{archive_b['id']}").status_code == 403
 
     payload = {"title": "Хөндлөн засвар", "person_ids": []}
-    assert client.post(
-        f"/api/v1/families/{family_b}/archives", json=payload
-    ).status_code == 403
-    assert client.put(
-        f"/api/v1/families/{family_b}/archives/{archive_b['id']}", json=payload
-    ).status_code == 403
-    assert client.delete(
-        f"/api/v1/families/{family_b}/archives/{archive_b['id']}"
-    ).status_code == 403
+    assert client.post(f"/api/v1/families/{family_b}/archives", json=payload).status_code == 403
+    assert (
+        client.put(
+            f"/api/v1/families/{family_b}/archives/{archive_b['id']}", json=payload
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(f"/api/v1/families/{family_b}/archives/{archive_b['id']}").status_code == 403
+    )
 
-    assert client.get(
-        f"/api/v1/families/{family_a}/archives?page=1&page_size=50"
-    ).json()["total"] == 0
+    assert (
+        client.get(f"/api/v1/families/{family_a}/archives?page=1&page_size=50").json()["total"] == 0
+    )

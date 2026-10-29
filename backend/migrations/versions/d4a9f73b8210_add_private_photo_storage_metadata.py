@@ -22,12 +22,12 @@ def upgrade() -> None:
 
     with op.batch_alter_table("photos") as batch:
         batch.add_column(sa.Column("thumbnail_object_key", sa.String(500), nullable=True))
-        batch.add_column(sa.Column(
-            "original_filename", sa.String(255), nullable=False, server_default="photo"
-        ))
-        batch.add_column(sa.Column(
-            "mime_type", sa.String(80), nullable=False, server_default="image/jpeg"
-        ))
+        batch.add_column(
+            sa.Column("original_filename", sa.String(255), nullable=False, server_default="photo")
+        )
+        batch.add_column(
+            sa.Column("mime_type", sa.String(80), nullable=False, server_default="image/jpeg")
+        )
         batch.add_column(sa.Column("file_size", sa.Integer(), nullable=False, server_default="0"))
         batch.add_column(sa.Column("width", sa.Integer(), nullable=True))
         batch.add_column(sa.Column("height", sa.Integer(), nullable=True))
@@ -37,9 +37,11 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    uploaded = bind.execute(sa.text(
-        "SELECT count(*) FROM photos WHERE thumbnail_object_key IS NOT NULL OR file_size > 0"
-    )).scalar_one()
+    uploaded = bind.execute(
+        sa.text(
+            "SELECT count(*) FROM photos WHERE thumbnail_object_key IS NOT NULL OR file_size > 0"
+        )
+    ).scalar_one()
     if uploaded:
         raise RuntimeError(
             "Refusing to remove photo metadata while uploaded media exists; back up and migrate "
@@ -49,7 +51,11 @@ def downgrade() -> None:
     op.drop_index("ix_photo_memory_created", table_name="photos")
     with op.batch_alter_table("photos") as batch:
         for column in (
-            "height", "width", "file_size", "mime_type", "original_filename",
+            "height",
+            "width",
+            "file_size",
+            "mime_type",
+            "original_filename",
             "thumbnail_object_key",
         ):
             batch.drop_column(column)
