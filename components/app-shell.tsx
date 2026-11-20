@@ -374,6 +374,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   Миний профайл
                 </Link>
               ) : null}
+              {currentFamily && (
+                <Link role="menuitem" href={familyHref('/admin', currentFamily.id)} onClick={() => setAccountOpen(false)}>
+                  Удирдлага
+                </Link>
+              )}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>
                 Гэр бүлүүд
               </Link>

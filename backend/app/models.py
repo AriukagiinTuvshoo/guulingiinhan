@@ -147,6 +147,12 @@ class Invitation(Base):
         CheckConstraint("role IN ('editor', 'member')", name="ck_invitation_role"),
         Index("ix_invitation_family_email", "family_id", "invited_email"),
         Index("ix_invitation_expiry", "expires_at"),
+        Index(
+            "uq_invitation_active_family_email", "family_id", "invited_email",
+            unique=True,
+            sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -346,6 +352,113 @@ class FamilyMember(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(16), default="member")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class FamilyClanLink(Base):
+    """Reversible pointer from a household family onto an anchor person in a clan family.
+
+    This is a navigation link only. No person, relationship, marriage, guardianship
+    or visibility row is moved, so removing the link restores the exact prior state.
+    """
+
+    __tablename__ = "family_clan_links"
+    __table_args__ = (
+        UniqueConstraint("household_family_id", name="uq_family_clan_link_household"),
+        Index("ix_family_clan_links_clan_family", "clan_family_id"),
+        CheckConstraint(
+            "relation IN ('child_of', 'parent_of', 'spouse_of')",
+            name="ck_family_clan_link_relation",
+        ),
+        CheckConstraint(
+            "household_family_id <> clan_family_id", name="ck_family_clan_link_not_self"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    household_family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE")
+    )
+    clan_family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    household_person_id: Mapped[UUID] = mapped_column(
+        ForeignKey("persons.id", ondelete="RESTRICT")
+    )
+    clan_anchor_person_id: Mapped[UUID] = mapped_column(
+        ForeignKey("persons.id", ondelete="RESTRICT")
+    )
+    relation: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
+class FamilyAdminGrant(Base):
+    """An explicit family-scoped grant; never replaces membership or guardian checks."""
+
+    __tablename__ = "family_admin_grants"
+    __table_args__ = (
+        UniqueConstraint("member_id", "scope", name="uq_family_admin_grant"),
+        CheckConstraint("scope IN ('view_audit', 'manage_trash', 'manage_settings')", name="ck_family_admin_grant_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id", ondelete="CASCADE"))
+    scope: Mapped[str] = mapped_column(String(32))
+    granted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class FamilyAdminExtendedGrant(Base):
+    """Additional explicitly delegated capabilities, scoped to a membership."""
+
+    __tablename__ = "family_admin_extended_grants"
+    __table_args__ = (
+        UniqueConstraint("member_id", "scope", name="uq_family_admin_extended_grant"),
+        CheckConstraint("scope IN ('manage_members')", name="ck_family_admin_extended_grant_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id", ondelete="CASCADE"))
+    scope: Mapped[str] = mapped_column(String(32))
+    granted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class FamilyAdminWorkGrant(Base):
+    """People/content capability delegated to one family membership."""
+
+    __tablename__ = "family_admin_work_grants"
+    __table_args__ = (
+        UniqueConstraint("member_id", "scope", name="uq_family_admin_work_grant"),
+        CheckConstraint("scope IN ('manage_people', 'manage_content')", name="ck_family_admin_work_grant_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    member_id: Mapped[UUID] = mapped_column(ForeignKey("family_members.id", ondelete="CASCADE"))
+    scope: Mapped[str] = mapped_column(String(32))
+    granted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class FamilyTrashRecord(Base):
+    """Reversible family detachment; the underlying person is never deleted by cleanup."""
+
+    __tablename__ = "family_trash_records"
+    __table_args__ = (
+        UniqueConstraint("family_id", "person_id", name="uq_family_trash_person"),
+        Index("ix_family_trash_deleted_at", "deleted_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(ForeignKey("families.id", ondelete="CASCADE"))
+    person_id: Mapped[UUID] = mapped_column(ForeignKey("persons.id", ondelete="CASCADE"))
+    deleted_by: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    assignment_present: Mapped[bool] = mapped_column(default=False)
+    branch_present: Mapped[bool] = mapped_column(default=False)
+    lineage_id: Mapped[UUID | None] = mapped_column(ForeignKey("lineages.id", ondelete="SET NULL"))
+    branch_id: Mapped[UUID | None] = mapped_column(ForeignKey("branches.id", ondelete="SET NULL"))
 
 
 class Person(Base):

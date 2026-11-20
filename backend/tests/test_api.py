@@ -89,8 +89,8 @@ def test_unexpected_database_error_returns_safe_classified_response():
     assert "private database detail" not in response.text
 
 
-def test_validation_response_does_not_echo_submitted_credentials():
-    response = TestClient(app).post(
+def test_validation_response_does_not_echo_submitted_credentials(client):
+    response = client.post(
         "/api/v1/auth/register", json={"email": "not-an-email", "password": "private-secret"}
     )
     assert response.status_code == 422

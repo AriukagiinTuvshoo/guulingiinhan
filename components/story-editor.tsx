@@ -36,6 +36,7 @@ function friendlyError(cause: unknown, fallback: string) {
 
 function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
   const [family, setFamily] = useState<Family | null>(null);
+  const [contentAccessFamily, setContentAccessFamily] = useState('');
   const [familyId, setFamilyId] = useState(requestedFamilyId);
   const [story, setStory] = useState<Story | null>(null);
   const [title, setTitle] = useState('');
@@ -62,7 +63,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     [title, body, eventDate, place, visibility, selectedPeople],
   );
   const dirty = initialSnapshot !== '' && snapshot !== initialSnapshot;
-  const canMutate = family?.role === 'owner' || family?.role === 'editor';
+  const canMutate = family?.role === 'owner' || family?.role === 'editor' || (family != null && contentAccessFamily === family.id);
 
   useEffect(() => {
     if (!dirty) return;
@@ -99,8 +100,11 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
             setError('Энэ гэр бүлийн түүхийг засах эрхгүй байна.');
             return;
           }
+          const access = await api<{ scopes: string[] }>(`/families/${encodeURIComponent(selected.id)}/admin-access`, { signal: controller.signal });
+          if (cancelled || requestId !== loadRequestRef.current) return;
+          setContentAccessFamily(access.scopes.includes('manage_content') ? selected.id : '');
           setFamily(selected);
-          setFamilyId(selected?.id ?? '');
+          setFamilyId(selected.id);
           setInitialSnapshot(JSON.stringify({ title: '', body: '', eventDate: '', place: '', visibility: 'family', people: [] }));
           return;
         }
@@ -109,11 +113,13 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
           setError('Түүхийн хаяг буруу байна.');
           return;
         }
-        const [familyResult, storyResult] = await Promise.all([
+        const [familyResult, storyResult, access] = await Promise.all([
           api<Family>('/families/' + effectiveFamilyId, { signal: controller.signal }),
           api<Story>('/families/' + effectiveFamilyId + '/stories/' + effectiveStoryId, { signal: controller.signal }),
+          api<{ scopes: string[] }>(`/families/${encodeURIComponent(effectiveFamilyId)}/admin-access`, { signal: controller.signal }),
         ]);
         if (cancelled || requestId !== loadRequestRef.current) return;
+        setContentAccessFamily(access.scopes.includes('manage_content') ? effectiveFamilyId : '');
         setFamily(familyResult);
         setFamilyId(effectiveFamilyId);
         setStory(storyResult);
