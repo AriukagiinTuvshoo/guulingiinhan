@@ -14,20 +14,55 @@ export class ApiError extends Error {
   }
 }
 
+let csrfToken: string | null = null;
+let csrfTokenRequest: Promise<string> | null = null;
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (csrfTokenRequest) return csrfTokenRequest;
+  const pendingRequest = (async (): Promise<string> => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/auth/csrf`, { credentials: 'include' });
+    } catch {
+      throw new ApiError(0, 'Аюулгүй хүсэлтийн token авах үед холболт тасарлаа.', 'CSRF_TOKEN_UNAVAILABLE');
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, 'Аюулгүй хүсэлтийн token авах боломжгүй байна.', 'CSRF_TOKEN_UNAVAILABLE');
+    }
+    const token = response.headers.get('X-CSRF-Token');
+    if (!token) {
+      throw new ApiError(0, 'Аюулгүй хүсэлтийн token буруу байна.', 'CSRF_TOKEN_INVALID');
+    }
+    csrfToken = token;
+    return token;
+  })();
+  const request = pendingRequest.finally(() => {
+    csrfTokenRequest = null;
+  });
+  csrfTokenRequest = request;
+  return request;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!API_BASE) {
     throw new ApiError(0, 'API тохиргоо олдсонгүй. Дахин оролдоно уу.', 'API_CONFIGURATION_MISSING');
   }
-  let response: Response;
+  const method = (init.method ?? 'GET').toUpperCase();
+  const isUnsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
   const isRawBody = init.body instanceof FormData || init.body instanceof Blob;
+  const headers = new Headers(init.headers);
+  if (init.body && !isRawBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (isUnsafe) headers.set('X-CSRF-Token', await getCsrfToken());
+
+  let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
       credentials: 'include',
-      headers: {
-        ...(init.body && !isRawBody ? { 'Content-Type': 'application/json' } : {}),
-        ...init.headers,
-      },
+      headers,
     });
   } catch {
     throw new ApiError(0, 'Холболтод асуудал гарлаа. Дахин оролдоно уу.');
@@ -51,6 +86,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
+    if (code === 'CSRF_TOKEN_INVALID' || code === 'CSRF_TOKEN_REQUIRED') csrfToken = null;
     throw new ApiError(response.status, message, code, requestId);
   }
   if (response.status === 204) return undefined as T;
@@ -58,7 +94,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export type User = { id: string; email: string | null; display_name: string; person_id: string | null };
-export type Family = { id: string; name: string; description: string | null; role: string };
+export type Family = { id: string; name: string; description: string | null; role: string; created_at: string };
 export type Person = {
   id: string;
   first_name: string;
@@ -74,6 +110,8 @@ export type Person = {
   profile_photo_url?: string | null;
   short_description: string | null;
   visibility: string;
+  created_at: string;
+  updated_at: string;
 };
 export type TreeData = {
   persons: TreePerson[];

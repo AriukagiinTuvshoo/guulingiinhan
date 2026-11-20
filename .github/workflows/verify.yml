@@ -20,12 +20,50 @@ jobs:
           cache: npm
       - name: Install frontend dependencies
         run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Frontend unit tests
+        run: npm test
       - name: TypeScript typecheck
         run: npm run typecheck
       - name: Set non-production API base for CI build
         run: echo "NEXT_PUBLIC_API_BASE_URL=https://ci.invalid/api/v1" >> "$GITHUB_ENV"
       - name: Next.js production build
         run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:////tmp/guulingiinhan-e2e-ci.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: uv sync --locked --dev
+        working-directory: backend
+      - run: uv run --locked alembic upgrade head
+        working-directory: backend
+      - run: uv run --locked python scripts/seed_e2e_admin.py
+        working-directory: backend
+      - run: npx playwright install --with-deps chromium
+      - name: Build the frontend for the browser stage
+        env:
+          # `next start` inlines the API base at build time (see lib/api.ts), so the E2E
+          # build must embed the loopback backend URL instead of the CI placeholder.
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8100/api/v1
+        run: npm run build
+      - name: Run Playwright tests against the built app
+        env:
+          E2E_SERVER: production
+        run: npm run test:e2e
 
   backend:
     runs-on: ubuntu-latest
@@ -61,8 +99,27 @@ jobs:
       - name: Run pytest
         run: uv run pytest
         working-directory: backend
+      - name: Create disposable concurrency database
+        run: uv run python -c "import psycopg; c=psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True); c.execute('CREATE DATABASE guulingiinhan_concurrency_ci'); c.close()"
+        working-directory: backend
+      - name: Test PostgreSQL trash concurrency
+        run: uv run pytest tests/test_trash_concurrency.py
+        env:
+          TEST_CONCURRENCY_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_concurrency_ci
+        working-directory: backend
+      - name: Test PostgreSQL memory pagination privacy
+        run: |
+          uv run python -c "import psycopg; c=psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True); c.execute('CREATE DATABASE guulingiinhan_pagination_ci'); c.close()"
+          TEST_PAGINATION_DATABASE_URL=postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_pagination_ci uv run --locked pytest tests/test_postgres_pagination.py
+        working-directory: backend
       - name: Run Ruff
-        run: uv run ruff check app tests migrations
+        run: uv run ruff check app tests migrations scripts
+        working-directory: backend
+      - name: Run mypy
+        run: uv run mypy app --ignore-missing-imports
+        working-directory: backend
+      - name: Verify API contract
+        run: uv run python scripts/verify_api_contract.py
         working-directory: backend
       - name: Alembic upgrade
         run: uv run alembic upgrade head
@@ -76,3 +133,14 @@ jobs:
       - name: Alembic consistency check
         run: uv run alembic check
         working-directory: backend
+      - name: Create isolated restore source and migrate it
+        run: |
+          uv run python -c "import psycopg; c=psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True); c.execute('CREATE DATABASE guulingiinhan_restore_source_ci'); c.close()"
+          DATABASE_URL=postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_restore_source_ci uv run --locked alembic upgrade head
+        working-directory: backend
+      - name: Strict PostgreSQL 16 backup and isolated restore
+        run: |
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGUSER=test_user \
+            -e PGPASSWORD=test_password -e PGDATABASE=guulingiinhan_restore_source_ci \
+            -v "$PWD/scripts:/drill:ro" postgres:16-alpine sh /drill/pg-restore-drill.sh

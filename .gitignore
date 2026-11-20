@@ -1,8 +1,12 @@
 node_modules/
+playwright-report/
+test-results/
 dist/
 .next/
 next-env.d.ts
 .env
+.env.production
+backend/.env.production
 .venv/
 backend/.venv/
 backend/*.db

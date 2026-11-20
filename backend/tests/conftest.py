@@ -12,6 +12,23 @@ from app.email import FakeEmailProvider, get_email_provider
 from app.main import app
 
 
+class CsrfTestClient(TestClient):
+    """Test client that models the browser's Origin and signed CSRF header."""
+
+    def request(self, method, url, *args, csrf=True, **kwargs):
+        if csrf and method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+            headers = dict(kwargs.get("headers") or {})
+            lowered = {key.lower() for key in headers}
+            if "origin" not in lowered:
+                headers["Origin"] = "http://localhost:3000"
+            if "x-csrf-token" not in lowered:
+                token_response = super().get("/api/v1/auth/csrf")
+                assert token_response.status_code == 200, token_response.text
+                headers["X-CSRF-Token"] = token_response.json()["csrf_token"]
+            kwargs["headers"] = headers
+        return super().request(method, url, *args, **kwargs)
+
+
 def confirm_registration_email(client, email_provider, email):
     delivery = next(
         item
@@ -69,6 +86,6 @@ def client(database, email_provider):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_email_provider] = lambda: email_provider
-    with TestClient(app, raise_server_exceptions=False) as test_client:
+    with CsrfTestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()

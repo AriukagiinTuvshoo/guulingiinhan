@@ -614,7 +614,7 @@ function DashboardContent() {
 
   const previewTree = useMemo(
     () => buildPreviewTree(tree, user?.person_id && people.some((person) => person.id === user.person_id) ? user.person_id : null),
-    [people, tree, user?.person_id],
+    [people, tree, user],
   );
 
   const activity = useMemo<ActivityItem[]>(() => {

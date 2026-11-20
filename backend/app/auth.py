@@ -8,6 +8,7 @@ import json
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
@@ -21,13 +22,15 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from sqlalchemy import case, delete, select, update
+from sqlalchemy import Table, case, delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, issue_csrf_token, valid_csrf_token
 from app.db import get_db
 from app.email import EmailProvider, get_email_provider, send_email_safely
 from app.identity import email_is_registered, find_email_user, normalize_email, normalize_phone
@@ -58,6 +61,28 @@ _DUMMY_PASSWORD_HASH: str
 GOOGLE_STATE_SECONDS = 600
 GOOGLE_STATE_COOKIE = "guulingiinhan_google_state"
 logger = logging.getLogger("guulingiinhan.auth")
+
+
+@router.get("/csrf")
+def get_csrf_token(request: Request, response: Response) -> dict[str, str]:
+    """Issue a signed, non-HttpOnly token for the browser's double-submit header."""
+    settings = get_settings()
+    token = request.cookies.get(CSRF_COOKIE_NAME)
+    if token is None or not valid_csrf_token(token, settings):
+        token = issue_csrf_token(settings)
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        token,
+        max_age=SESSION_SECONDS,
+        httponly=False,
+        secure=settings.app_env.lower() == "production",
+        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers[CSRF_HEADER_NAME] = token
+    return {"csrf_token": token}
 
 
 class RegisterInput(BaseModel):
@@ -258,19 +283,19 @@ def _consume_otp_rate(db: Session, kind: str, value: str, limit: int) -> bool:
     now = datetime.now(UTC)
     db.execute(delete(LoginThrottle).where(LoginThrottle.window_started < now - timedelta(days=7)))
     key = _otp_rate_key(kind, value)
-    table = LoginThrottle.__table__
+    table = cast(Table, LoginThrottle.__table__)
     dialect = db.get_bind().dialect.name
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
     statement = insert(table).values(key_hash=key, window_started=now, attempts=1)
     fresh_window = table.c.window_started < now - timedelta(minutes=1)
-    statement = statement.on_conflict_do_update(
+    returning_statement = statement.on_conflict_do_update(
         index_elements=[table.c.key_hash],
         set_={
             "window_started": case((fresh_window, now), else_=table.c.window_started),
             "attempts": case((fresh_window, 1), else_=table.c.attempts + 1),
         },
     ).returning(table.c.attempts)
-    attempts = db.execute(statement).scalar_one()
+    attempts = db.execute(returning_statement).scalar_one()
     db.commit()
     return attempts <= limit
 
@@ -344,9 +369,9 @@ def _create_phone_challenge(
     try:
         sms.send_otp(phone, code, purpose)
     except Exception as error:
-        challenge = db.get(PhoneOtpChallenge, challenge_id)
-        if challenge:
-            challenge.status = "expired"
+        failed_challenge = db.get(PhoneOtpChallenge, challenge_id)
+        if failed_challenge:
+            failed_challenge.status = "expired"
             db.commit()
         raise HTTPException(
             status_code=503, detail="Код илгээж чадсангүй. Түр хүлээгээд дахин оролдоно уу."
@@ -468,19 +493,19 @@ def _record_login_attempt(db: Session, email: str, ip: str) -> int:
     now = datetime.now(UTC)
     key = hashlib.sha256(f"{email}\0{ip}".encode()).hexdigest()
     db.execute(delete(LoginThrottle).where(LoginThrottle.window_started < now - timedelta(days=7)))
-    table = LoginThrottle.__table__
+    table = cast(Table, LoginThrottle.__table__)
     dialect = db.get_bind().dialect.name
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
     statement = insert(table).values(key_hash=key, window_started=now, attempts=1)
     fresh_window = table.c.window_started < now - timedelta(minutes=1)
-    statement = statement.on_conflict_do_update(
+    returning_statement = statement.on_conflict_do_update(
         index_elements=[table.c.key_hash],
         set_={
             "window_started": case((fresh_window, now), else_=table.c.window_started),
             "attempts": case((fresh_window, 1), else_=table.c.attempts + 1),
         },
     ).returning(table.c.attempts)
-    attempts = db.execute(statement).scalar_one()
+    attempts = db.execute(returning_statement).scalar_one()
     db.commit()
     return attempts
 
@@ -577,7 +602,7 @@ def _verification_link_for_user(
     background_tasks: BackgroundTasks,
     request_id: str | None,
 ) -> None:
-    if user.email_verified_at is not None:
+    if user.email_verified_at is not None or not user.email:
         return
     identity = db.scalar(
         select(LoginIdentity).where(
@@ -689,7 +714,7 @@ def _consume_google_state(db: Session, state: str) -> bool:
         .values(attempts=1)
     )
     db.commit()
-    return result.rowcount == 1
+    return cast(CursorResult[Any], result).rowcount == 1
 
 
 def _start_google(
@@ -974,9 +999,9 @@ def confirm_email_verification(
         select(LoginIdentity).where(
             LoginIdentity.user_id == row.user_id,
             LoginIdentity.provider == "email",
-            LoginIdentity.normalized_identifier == normalize_email(user.email) if user else False,
+            LoginIdentity.normalized_identifier == normalize_email(user.email),
         )
-    )
+    ) if user is not None and user.email else None
     consumed_user_id = db.execute(
         update(EmailVerificationToken)
         .where(
@@ -1082,7 +1107,7 @@ def confirm_email_password_reset(
             .returning(PasswordResetToken.user_id)
         ).scalar_one_or_none()
     if consumed_user_id is None or user is None:
-        if user:
+        if user and row is not None:
             _audit_auth_event(db, user.id, "password_reset_failed", "password_reset_token", row.id)
             db.commit()
         logger.info(
@@ -1321,6 +1346,8 @@ def request_phone_link(
         sms=sms,
     )
     challenge = db.get(PhoneOtpChallenge, response.challenge_id)
+    if challenge is None:
+        raise RuntimeError("OTP challenge disappeared after creation")
     _audit(db, user.id, "phone.otp_requested", challenge)
     db.commit()
     return response
@@ -1503,6 +1530,8 @@ def request_phone_login(
     )
     if identity:
         item = db.get(PhoneOtpChallenge, challenge.challenge_id)
+        if item is None:
+            raise RuntimeError("OTP challenge disappeared after creation")
         _audit(db, identity.user_id, "phone.otp_requested", item)
         db.commit()
     return challenge
@@ -1557,6 +1586,8 @@ def request_phone_recovery(
     )
     if identity:
         item = db.get(PhoneOtpChallenge, challenge.challenge_id)
+        if item is None:
+            raise RuntimeError("OTP challenge disappeared after creation")
         _audit(db, identity.user_id, "phone.otp_requested", item)
         db.commit()
     return challenge

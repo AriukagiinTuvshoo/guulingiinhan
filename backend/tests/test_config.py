@@ -27,6 +27,7 @@ def test_production_accepts_postgresql_and_https_origin():
         database_url="postgresql+psycopg://user:pass@host/db",
         cors_origins="https://guulingiinhan.mn",
         otp_hash_secret="x" * 40,
+        csrf_secret="y" * 40,
         sms_provider="twilio",
         twilio_account_sid="AC" + "x" * 32,
         twilio_auth_token="x" * 32,
@@ -44,6 +45,19 @@ def test_production_accepts_postgresql_and_https_origin():
         storage_secret_key="secret-key",
     )
     assert settings.cors_origin_list == ["https://guulingiinhan.mn"]
+
+
+def test_production_requires_a_strong_csrf_secret():
+    values = {
+        "app_env": "production",
+        "database_url": "postgresql+psycopg://user:pass@host/db",
+        "cors_origins": "https://guulingiinhan.mn",
+        "otp_hash_secret": "x" * 40,
+    }
+    with pytest.raises(ValidationError, match="CSRF_SECRET"):
+        Settings(**values)
+    with pytest.raises(ValidationError, match="CSRF_SECRET"):
+        Settings(**values, csrf_secret="short")
 
 
 def test_production_rejects_missing_otp_secret_or_sms_provider():

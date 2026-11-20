@@ -1,5 +1,6 @@
 """Centralized minor detection and family-scoped guardian policy."""
 
+import calendar
 from datetime import UTC, date, datetime
 from uuid import UUID
 
@@ -36,6 +37,58 @@ def is_minor(birth_date: date | None, today: date | None = None) -> bool | None:
     except ValueError:  # February 29 in a non-leap threshold year.
         birthday_at_threshold = date(threshold_year, 2, 28)
     return current_date < birthday_at_threshold
+
+
+def adult_birth_cutoff(today: date) -> date:
+    """Latest birth date that ``is_minor`` treats as an adult on ``today``.
+
+    Keeps SQL predicates aligned with the Python policy, including the
+    February 29 birthday handled by ``is_minor``.
+    """
+    year = today.year - ADULT_AGE_YEARS
+    if today.month == 2 and today.day == 28 and calendar.isleap(year) and not calendar.isleap(today.year):
+        return today.replace(year=year, day=29)
+    if today.month == 2 and today.day == 29 and not calendar.isleap(year):
+        return today.replace(year=year, day=28)
+    return today.replace(year=year)
+
+
+def person_not_private(user_id: UUID):
+    """SQL predicate mirroring :func:`app.families._assert_person_visible`."""
+    from app.models import UserPersonLink
+
+    linked = select(UserPersonLink.person_id).where(UserPersonLink.user_id == user_id)
+    return or_(
+        Person.visibility != "private",
+        Person.created_by == user_id,
+        Person.id.in_(linked),
+    )
+
+
+def person_minor_guardian_allowed(
+    family_id: UUID, user_id: UUID, scope: str, *, now: datetime, cutoff: date
+):
+    """SQL predicate mirroring :func:`require_minor_scope` for a ``Person``.
+
+    Unknown birth dates are not minors, matching ``is_minor`` returning None.
+    """
+    guardian = select(PersonGuardianship.id).where(
+        PersonGuardianship.family_id == family_id,
+        PersonGuardianship.person_id == Person.id,
+        PersonGuardianship.guardian_user_id == user_id,
+        PersonGuardianship.scope == scope,
+        PersonGuardianship.status == "active",
+        PersonGuardianship.revoked_at.is_(None),
+        or_(
+            PersonGuardianship.expires_at.is_(None),
+            PersonGuardianship.expires_at > now,
+        ),
+    ).correlate(Person).exists()
+    return or_(
+        Person.birth_date.is_(None),
+        Person.birth_date <= cutoff,
+        guardian,
+    )
 
 
 def active_guardian_scopes(

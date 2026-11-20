@@ -7,18 +7,24 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
     "start": "next start --hostname 0.0.0.0"
   },
   "dependencies": {
     "lucide-react": "latest",
-    "next": "16.3.6",
+    "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "typescript": "^7.0.2"
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.4.6",
+    "typescript": "~6.0.2"
   }
 }
