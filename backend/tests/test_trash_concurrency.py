@@ -1,14 +1,13 @@
 """PostgreSQL row-lock tests; explicitly opt in with a disposable empty database."""
-import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread
 from uuid import uuid4
 
 import pytest
+from conftest import postgres_test_database
 from fastapi import HTTPException
 from sqlalchemy import create_engine, inspect, select
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
@@ -26,13 +25,11 @@ from app.models import (
 
 @pytest.fixture(scope="module")
 def pg_sessions():
-    url = os.getenv("TEST_CONCURRENCY_DATABASE_URL")
-    if not url:
-        pytest.skip("requires explicitly provisioned disposable PostgreSQL database")
-    parsed = make_url(url)
-    if (parsed.get_backend_name() != "postgresql" or parsed.host not in {"127.0.0.1", "localhost"}
-            or not parsed.database or not parsed.database.startswith("guulingiinhan_concurrency_")):
-        pytest.fail("refusing non-disposable concurrency database")
+    url = postgres_test_database(
+        "TEST_CONCURRENCY_DATABASE_URL",
+        prefix="guulingiinhan_concurrency_",
+        label="trash concurrency",
+    )
     engine = create_engine(url, pool_size=5)
     # Never drop data or reuse an existing schema.
     if inspect(engine).get_table_names():

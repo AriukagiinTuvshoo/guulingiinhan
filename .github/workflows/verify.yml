@@ -63,7 +63,16 @@ jobs:
       - name: Run Playwright tests against the built app
         env:
           E2E_SERVER: production
-        run: npm run test:e2e
+          # Retries are disabled in the config so one flake cannot turn a failure into a
+          # green gate; the JUnit report below additionally proves every test executed.
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: /tmp/e2e-junit.xml
+        # --retries=0 is repeated on the command line so no project-level setting can
+        # re-enable retry-masking for the release gate.
+        run: npm run test:e2e -- --reporter=list,junit --retries=0
+      - name: Assert the browser suite executed without skips
+        # Floor = the tests this branch executes; keep it in step with e2e/ the same way
+        # as the backend floor below, so a dropped spec fails instead of passing quietly.
+        run: python3 backend/scripts/check_pytest_junit.py /tmp/e2e-junit.xml --min-tests 15
 
   backend:
     runs-on: ubuntu-latest
@@ -96,21 +105,47 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --locked --dev
         working-directory: backend
-      - name: Run pytest
-        run: uv run pytest
+      # The two PostgreSQL-only suites are deselected here on purpose: they own
+      # dedicated steps below, where their configuration is mandatory and asserted.
+      - name: Run pytest on SQLite
+        run: uv run --locked pytest -q --ignore=tests/test_trash_concurrency.py --ignore=tests/test_postgres_pagination.py
         working-directory: backend
-      - name: Create disposable concurrency database
-        run: uv run python -c "import psycopg; c=psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True); c.execute('CREATE DATABASE guulingiinhan_concurrency_ci'); c.close()"
+      - name: Create disposable PostgreSQL test databases
+        run: |
+          uv run --locked python -c "
+          import psycopg
+          with psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True) as conn:
+              for name in ('guulingiinhan_test_ci', 'guulingiinhan_concurrency_ci', 'guulingiinhan_pagination_ci'):
+                  conn.execute(f'CREATE DATABASE {name}')
+          "
+        working-directory: backend
+      - name: Run pytest on PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_test_ci
+        run: uv run --locked pytest -q --junitxml=/tmp/backend-postgres.xml --ignore=tests/test_trash_concurrency.py --ignore=tests/test_postgres_pagination.py
+        working-directory: backend
+      # The floor equals the number of tests this branch actually executes on the
+      # PostgreSQL engine, so a deselected, renamed or accidentally deleted test fails
+      # the job instead of quietly shrinking the suite. Deliberate additions or removals
+      # update this single number in the same commit as the tests themselves.
+      - name: Assert the PostgreSQL backend suite executed
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/backend-postgres.xml --min-tests 204
         working-directory: backend
       - name: Test PostgreSQL trash concurrency
-        run: uv run pytest tests/test_trash_concurrency.py
         env:
           TEST_CONCURRENCY_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_concurrency_ci
+        run: uv run --locked pytest -q --junitxml=/tmp/trash-concurrency.xml tests/test_trash_concurrency.py
+        working-directory: backend
+      - name: Assert the trash concurrency suite executed
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/trash-concurrency.xml --min-tests 4
         working-directory: backend
       - name: Test PostgreSQL memory pagination privacy
-        run: |
-          uv run python -c "import psycopg; c=psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True); c.execute('CREATE DATABASE guulingiinhan_pagination_ci'); c.close()"
-          TEST_PAGINATION_DATABASE_URL=postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_pagination_ci uv run --locked pytest tests/test_postgres_pagination.py
+        env:
+          TEST_PAGINATION_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_pagination_ci
+        run: uv run --locked pytest -q --junitxml=/tmp/pg-pagination.xml tests/test_postgres_pagination.py
+        working-directory: backend
+      - name: Assert the pagination privacy suite executed
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/pg-pagination.xml --min-tests 1
         working-directory: backend
       - name: Run Ruff
         run: uv run ruff check app tests migrations scripts

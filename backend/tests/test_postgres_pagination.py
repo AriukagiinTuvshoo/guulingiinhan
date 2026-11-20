@@ -1,10 +1,7 @@
 """Run the privacy-sensitive pagination contract against an empty disposable PostgreSQL DB."""
-import os
-
 import pytest
-from conftest import CsrfTestClient
+from conftest import CsrfTestClient, postgres_test_database
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from test_memory_photos import (
     test_memory_pagination_counts_only_visible_records_and_updates_on_guardian_revocation as _check_memory_pagination,
@@ -16,13 +13,11 @@ from app.main import app
 
 
 def test_postgres_memory_pagination_privacy():
-    url = os.getenv("TEST_PAGINATION_DATABASE_URL")
-    if not url:
-        pytest.skip("requires explicitly provisioned disposable PostgreSQL database")
-    parsed = make_url(url)
-    if (parsed.get_backend_name() != "postgresql" or parsed.host not in {"127.0.0.1", "localhost"}
-            or not parsed.database or not parsed.database.startswith("guulingiinhan_pagination_")):
-        pytest.fail("refusing non-disposable pagination database")
+    url = postgres_test_database(
+        "TEST_PAGINATION_DATABASE_URL",
+        prefix="guulingiinhan_pagination_",
+        label="pagination privacy",
+    )
     engine = create_engine(url)
     if inspect(engine).get_table_names():
         pytest.fail("pagination database must be empty")

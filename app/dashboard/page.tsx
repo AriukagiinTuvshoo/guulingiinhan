@@ -21,6 +21,7 @@ import {
   Family,
   Marriage,
   MemoryListItem,
+  MemoryListPage,
   Person,
   PersonSearchPage,
   StoryListPage,
@@ -464,15 +465,15 @@ function DashboardContent() {
           api<Family>('/families/' + familyId),
           api<Person[]>('/families/' + familyId + '/persons'),
           api<TreeData>('/families/' + familyId + '/tree?depth=5'),
-          api<MemoryListItem[]>('/families/' + familyId + '/memories'),
+          api<MemoryListPage>('/families/' + familyId + '/memories?page=1&page_size=6'),
         ]);
 
         if (requestId !== dashboardRequestRef.current) return null;
         setFamily(familyData);
         setPeople(peopleData);
         setTree(treeData);
-        setMemoryCount(memoryData.length);
-        setMemories(memoryData.slice(0, 6));
+        setMemoryCount(memoryData.total);
+        setMemories(memoryData.items.slice(0, 6));
 
         const [storiesResult, archivesResult] = await Promise.all([
           api<StoryListPage>('/families/' + familyId + '/stories?page=1&page_size=4')

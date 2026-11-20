@@ -16,7 +16,9 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // Never retry in CI: a flake that passes on the second attempt would turn a real
+  // failure into a green release gate. Use `--retries=N` explicitly when triaging.
+  retries: 0,
   workers: 1,
   reporter: 'list',
   use: { baseURL: 'http://localhost:3100', ...devices['Desktop Chrome'] },

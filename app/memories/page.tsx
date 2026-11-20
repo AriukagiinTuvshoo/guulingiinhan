@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { API_BASE, ApiError, api, Family, MemoryListItem, PersonSearchPage } from '../../lib/api';
+import { API_BASE, ApiError, api, Family, MemoryListItem, MemoryListPage, PersonSearchPage } from '../../lib/api';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -23,13 +23,6 @@ function friendlyError(cause: unknown, fallback: string) {
 const PAGE_SIZE = 18;
 
 type MemoryPhoto = NonNullable<MemoryListItem['photos']>[number];
-type MemoryListPage = {
-  items: MemoryListItem[];
-  page: number;
-  page_size: number;
-  total: number;
-  has_next: boolean;
-};
 type SelectedPerson = { id: string; name: string };
 
 const monthNames = ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар'];

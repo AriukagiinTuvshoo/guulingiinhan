@@ -227,6 +227,14 @@ export type MemoryListItem = {
   }[];
 };
 
+export type MemoryListPage = {
+  items: MemoryListItem[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
 export type StoryPerson = {
   id: string;
   first_name: string;
