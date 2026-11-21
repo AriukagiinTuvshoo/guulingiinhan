@@ -1,0 +1,117 @@
+'use client';
+
+// Members and identity hub: the experimental line's "Гишүүд" panels
+// (self link-request flow, member accounts, parent linking guidance,
+// owner approval queue), embedded under the People directory.
+
+import Link from 'next/link';
+import { useEffect, useState, type FormEvent } from 'react';
+import { api, ApiError, type PersonSearchPage, type TreeData } from '../lib/api';
+import { useAppShellContext } from './app-shell';
+import styles from '../app/people/people.module.css';
+
+type Member = { user_id: string; display_name: string; role: string; person_id?: string | null };
+type LinkRequest = { id: string; user_name: string; person_name: string; status: string };
+const roles: Record<string, string> = { owner: 'Эзэмшигч', editor: 'Засварлагч', member: 'Гишүүн' };
+const message = (cause: unknown) => cause instanceof ApiError ? cause.validationMessage || cause.message : 'Мэдээллийг ачаалж чадсангүй. Дахин оролдоно уу.';
+
+export default function PeopleMembersHub() {
+  const { familyId, currentFamily: family, user } = useAppShellContext();
+  const [members, setMembers] = useState<Member[]>([]);
+  const [tree, setTree] = useState<TreeData | null>(null);
+  const [requests, setRequests] = useState<LinkRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [revision, setRevision] = useState(0);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<PersonSearchPage | null>(null);
+  const [selected, setSelected] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (!familyId || !family) return;
+    let active = true;
+    const controller = new AbortController();
+    setLoading(true); setError('');
+    setTree(null); setMembers([]); setRequests([]); setResults(null); setSelected(''); setQuery(''); setNotice(''); setPending(false);
+    Promise.all([
+      api<Member[]>(`/families/${familyId}/members`, { signal: controller.signal }),
+      api<TreeData>(`/families/${familyId}/tree?scope=family&depth=1&node_limit=100`, { signal: controller.signal }),
+      family.role === 'owner'
+        ? api<LinkRequest[]>(`/families/${familyId}/link-requests`, { signal: controller.signal })
+        : Promise.resolve([] as LinkRequest[]),
+      api<LinkRequest[]>(`/families/${familyId}/link-requests/me`, { signal: controller.signal }),
+    ]).then(([rows, data, queue, mine]) => {
+      if (!active) return;
+      setMembers(rows); setTree(data); setRequests(queue);
+      setPending(mine.some(request => request.status === 'pending'));
+    }).catch((cause: unknown) => {
+      if (active) setError(message(cause));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; controller.abort(); };
+  }, [familyId, family, revision]);
+
+  useEffect(() => {
+    setResults(null); setSelected('');
+    if (!familyId || !query.trim() || tree?.linked_person_id) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      api<PersonSearchPage>(`/families/${familyId}/persons/search?q=${encodeURIComponent(query.trim())}&page_size=12`, { signal: controller.signal })
+        .then(rows => { if (!controller.signal.aborted) setResults(rows); })
+        .catch((cause: unknown) => { if (!controller.signal.aborted) setError(message(cause)); })
+        .finally(() => { if (!controller.signal.aborted) setSearching(false); });
+    }, 280);
+    return () => { window.clearTimeout(timer); controller.abort(); setSearching(false); };
+  }, [familyId, query, tree?.linked_person_id]);
+
+  async function requestLink(event: FormEvent) {
+    event.preventDefault();
+    if (!selected || busy || pending) return;
+    const person = results?.items.find(item => item.id === selected);
+    if (!person || !window.confirm(`${person.name} таны өөрийн удмын бүртгэл мөн үү? Гэр бүлийн эзэмшигч шалгаж батална.`)) return;
+    setBusy(true); setError('');
+    try {
+      await api(`/families/${familyId}/persons/${selected}/link-request`, { method: 'POST' });
+      setPending(true);
+      setNotice('Өөрийн бүртгэлтэй холбох хүсэлтийг илгээлээ. Гэр бүлийн эзэмшигч баталгаажуулна.');
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approve(request: LinkRequest) {
+    if (busy || !window.confirm(`${request.user_name} → ${request.person_name} холбоосыг хэн болохыг нь шалгасны дараа батлах уу?`)) return;
+    setBusy(true); setError('');
+    try {
+      await api(`/families/${familyId}/link-requests/${request.id}/approve`, { method: 'POST' });
+      setRevision(value => value + 1);
+    } catch (cause) {
+      setError(message(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ownPerson = tree?.persons.find(person => person.id === tree.linked_person_id);
+
+  return (
+    <section className={styles.hub} aria-label="Гишүүд ба миний бүртгэл">
+      {error && <div className={styles.error} role="alert">{error}<button onClick={() => setRevision(value => value + 1)}>Дахин ачаалах</button></div>}
+      {notice && <p className={styles.notice} role="status">{notice}</p>}
+      {loading ? <p role="status">Гишүүдийг ачаалж байна…</p> : tree ? <>
+        <section className={styles.panel}><h2>Миний удмын бүртгэл</h2><p>Урилгаар нэгдэхэд гэр бүлийн гишүүнчлэл үүснэ. Харин удмын модонд харагдахын тулд өөрийн хүний бүртгэлээ үүсгэх эсвэл байгаа бүртгэлтэй холбож баталгаажуулна.</p>{tree?.linked_person_id ? <><p>Таны аккаунт {ownPerson ? `${ownPerson.last_name} ${ownPerson.first_name}`.trim() : 'өөрийн удмын бүртгэл'}тэй холбогдсон.</p><Link className={styles.action} href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(tree.linked_person_id)}`}>Миний профайлыг харах →</Link></> : <><p>Өмнө бүртгэгдсэн өөрийн хүнийг нэрээр нь олж, аккаунттайгаа холбох хүсэлт илгээнэ. Өөр хүний аккаунт болон холбоосыг энэ хэсгээс засахгүй.</p>{pending && <p className={styles.notice} role="status">Өөрийн бүртгэлтэй холбох хүсэлт зөвшөөрөл хүлээж байна.</p>}<form onSubmit={requestLink}><label>Миний бүртгэлийг нэрээр хайх<input type="search" maxLength={100} value={query} onChange={event => { setQuery(event.target.value); setError(''); }} placeholder={user?.display_name || 'Өөрийн нэр'} disabled={busy || pending} /></label>{searching && <p role="status">Хайж байна…</p>}{results && <label>Өөрийн бүртгэл<select value={selected} onChange={event => setSelected(event.target.value)} disabled={busy || pending}><option value="">Өөрийн хүнийг сонгох</option>{results.items.map(person => <option key={person.id} value={person.id}>{person.name}{person.birth_year ? ` · ${person.birth_year}` : ''}</option>)}</select></label>}{results && !results.items.length && <p>Тохирох бүртгэл алга. Нэрээ шалгах эсвэл өөрийн мэдээллийг бүртгээрэй.</p>}{results?.has_next && <p>Нэрээ тодруулж хайвал бусад тохирох бүртгэл харагдана.</p>}<button type="submit" disabled={!selected || busy || pending}>{pending ? 'Зөвшөөрөл хүлээж байна' : busy ? 'Илгээж байна…' : 'Өөрийн бүртгэлтэй холбох хүсэлт'}</button></form><Link className={styles.action} href={`/onboarding?family=${encodeURIComponent(familyId)}`}>Өөрийн мэдээллийг бүртгэх →</Link></>}</section>
+        <section className={styles.panel}><div className={styles.sectionHeading}><h2>Гэр бүлийн гишүүд</h2><span>{members.length} аккаунт</span></div><ul className={styles.members}>{members.map(member => <li key={member.user_id}><span className={styles.avatar} aria-hidden="true">{member.display_name.slice(0, 1)}</span><div><strong>{member.display_name}{member.user_id === user?.id ? ' · Та' : ''}</strong><small>{roles[member.role] || 'Гишүүн'} · {member.person_id ? 'Удмын бүртгэлтэй холбогдсон' : 'Нэгдсэн'}</small>{member.person_id && <Link href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(member.person_id)}`}>Удмын профайл →</Link>}</div></li>)}</ul>{!members.length && <p>Гишүүний бүртгэл алга.</p>}{family?.role === 'owner' && <div className={styles.actions}><Link className={styles.action} href={`/invite?family=${encodeURIComponent(familyId)}`}>Гишүүн урих →</Link><Link className={styles.action} href={`/families?family=${encodeURIComponent(familyId)}`}>Хүлээгдэж буй урилгууд →</Link></div>}</section>
+        <section className={styles.panel}><h2>Эцэг, эхтэйгээ холбох</h2>{family?.role === 'owner' || family?.role === 'editor' ? <><p>Өөрийн хүнийг модноос сонгоод “+ Эцэг/эх” дарна. Гэр бүлд бүртгэлтэй эцэг, эхээ нэрээр хайж сонгон, холбооны төрлөө баталгаажуулна.</p><Link className={styles.action} href={`/tree?view=family&family=${encodeURIComponent(familyId)}${tree?.linked_person_id ? `&person=${encodeURIComponent(tree.linked_person_id)}` : ''}`}>Модноос эцэг, эхээ холбох →</Link></> : <><p>Таны аккаунтын гишүүнчлэл эцэг, эхийн холбоог автоматаар үүсгэхгүй. Гэр бүлийн эзэмшигч {members.find(member => member.role === 'owner')?.display_name || 'эсвэл засварлагч'}-д өөрийн болон эцэг, эхийн зөв бүртгэлийг хэлж холбоосоо баталгаажуулаарай.</p><Link className={styles.action} href={`/tree?view=family&family=${encodeURIComponent(familyId)}`}>Өөрийн гэр бүлийн модыг харах →</Link></>}</section>
+        {family?.role === 'owner' && requests.length > 0 && <section className={styles.panel}><h2>Өөрийн бүртгэлтэй холбох хүсэлт</h2><p>Аккаунт ба хүний бүртгэл нэг хүн мөн эсэхийг баталгаажуулсны дараа зөвшөөрнө.</p>{requests.map(request => <div className={styles.request} key={request.id}><strong>{request.user_name} → {request.person_name}</strong><button disabled={busy} onClick={() => void approve(request)}>Шалгаж батлах</button></div>)}</section>}
+      </> : null}
+    </section>
+  );
+}

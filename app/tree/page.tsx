@@ -1400,7 +1400,7 @@ function TreePageContent() {
 function UnifiedTreeContent() {
   const searchParams = useSearchParams();
   const { familyId } = useAppShellContext();
-  const view = searchParams.get('view') === 'family' ? 'family' : 'shared';
+  const view = searchParams.get('view') === 'shared' ? 'shared' : 'family';
   const selectedFamily = searchParams.get('family') || familyId;
   const viewHref = (next: 'shared' | 'family') => {
     const params = new URLSearchParams();
