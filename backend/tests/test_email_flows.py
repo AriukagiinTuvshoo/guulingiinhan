@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
+from conftest import TEST_PASSWORD
 from sqlalchemy import func, select, update
 
 from app.email import EmailDeliveryError, FakeEmailProvider
@@ -13,8 +14,6 @@ from app.models import (
     User,
     UserSession,
 )
-
-PASSWORD = "strong-passphrase-123"
 
 
 def mailed_token(email_provider, recipient, subject):
@@ -31,7 +30,7 @@ def mailed_token(email_provider, recipient, subject):
 def register(client, email):
     return client.post(
         "/api/v1/auth/register",
-        json={"email": email, "password": PASSWORD},
+        json={"email": email, "password": TEST_PASSWORD},
     )
 
 
@@ -117,7 +116,7 @@ def test_email_password_reset_requires_verified_identity_and_is_enumeration_safe
     register(client, email)
     verify(client, email_provider, email)
     assert (
-        client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD}).status_code
+        client.post("/api/v1/auth/login", json={"email": email, "password": TEST_PASSWORD}).status_code
         == 200
     )
     reset = client.post("/api/v1/auth/password-reset/request", json={"email": email})
@@ -149,7 +148,7 @@ def test_email_password_reset_requires_verified_identity_and_is_enumeration_safe
         == 400
     )
     assert (
-        client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD}).status_code
+        client.post("/api/v1/auth/login", json={"email": email, "password": TEST_PASSWORD}).status_code
         == 401
     )
     assert (
@@ -214,3 +213,22 @@ def test_email_provider_failure_logs_no_message_or_token(client, monkeypatch, ca
         assert "#token=" not in caplog.text
     finally:
         app.dependency_overrides.pop(get_email_provider, None)
+
+
+def test_email_provider_failure_logs_safe_cause_type(caplog):
+    from app.email import send_email_safely
+    from app.observability import JsonLogFormatter
+
+    class FailingProvider:
+        def send_verification_email(self, recipient, link):
+            try:
+                raise TimeoutError("private SMTP diagnostic")
+            except TimeoutError as cause:
+                raise EmailDeliveryError("Email delivery failed") from cause
+
+    send_email_safely(FailingProvider(), "send_verification_email", ("a@example.com", "secret"), None)
+    assert "private SMTP diagnostic" not in caplog.text
+    assert caplog.records[-1].cause_type == "TimeoutError"
+    formatted = JsonLogFormatter("staging").format(caplog.records[-1])
+    assert '"cause_type":"TimeoutError"' in formatted
+    assert "private SMTP diagnostic" not in formatted

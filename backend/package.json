@@ -1,0 +1,16 @@
+{
+  "name": "guulingiinhan-backend-staging",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:staging": "wrangler dev --config wrangler.backend-staging.jsonc",
+    "deploy:staging": "wrangler deploy --config wrangler.backend-staging.jsonc",
+    "types:staging": "wrangler types --config wrangler.backend-staging.jsonc"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "wrangler": "4.143.0"
+  }
+}

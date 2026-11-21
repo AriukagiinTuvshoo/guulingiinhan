@@ -15,10 +15,20 @@ test('production requires API base', () => {
   assert.equal(verify({ VERCEL: '1' }).status, 1);
 });
 
-test('valid absolute and relative API bases pass', () => {
-  for (const base of ['https://api.example.test/api/v1', '/api/v1']) {
-    assert.equal(verify({ VERCEL: '1', NEXT_PUBLIC_API_BASE_URL: base }).status, 0);
-  }
+test('valid absolute API base passes', () => {
+  assert.equal(
+    verify({ VERCEL: '1', NEXT_PUBLIC_API_BASE_URL: 'https://api.example.test/api/v1' }).status,
+    0,
+  );
+});
+
+// Production builds must pin an absolute HTTPS API origin (see
+// docs/AIDOLAB-DEPLOYMENT-REQUIREMENTS.md): root-relative bases are rejected.
+test('relative API base is rejected in production builds', () => {
+  assert.equal(
+    verify({ VERCEL: '1', NEXT_PUBLIC_API_BASE_URL: '/api/v1' }).status,
+    1,
+  );
 });
 
 test('invalid API base is rejected', () => {

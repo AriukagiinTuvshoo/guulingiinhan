@@ -8,7 +8,7 @@ import json
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
@@ -25,7 +25,6 @@ from pydantic import (
 from sqlalchemy import Table, case, delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -48,6 +47,7 @@ from app.models import (
 )
 from app.observability import request_id_context
 from app.oidc import ISSUER, GoogleOIDCProvider, OIDCError
+from app.privacy import user_linked_person_is_minor
 from app.sms import SmsProvider, get_sms_provider
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -98,8 +98,20 @@ class RegisterInput(BaseModel):
 
 
 class LoginInput(BaseModel):
-    email: EmailStr
+    identifier: str | None = Field(default=None, min_length=1, max_length=320)
+    email: EmailStr | None = None
     password: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def normalize_identifier(self):
+        if bool(self.identifier) == bool(self.email):
+            raise ValueError("Имэйл эсвэл утасны дугаараа оруулна уу.")
+        value = self.identifier or str(self.email)
+        if "@" in value:
+            self.identifier = normalize_email(str(TypeAdapter(EmailStr).validate_python(value)))
+        else:
+            self.identifier = normalize_phone(value)
+        return self
 
 
 class EmailAddressInput(BaseModel):
@@ -123,6 +135,19 @@ class UserOutput(BaseModel):
     email: str | None
     display_name: str
     person_id: UUID | None = None
+    profile_photo_url: str | None = None
+
+
+class AccountProfileInput(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str) -> str:
+        name = " ".join(value.split())
+        if not name:
+            raise ValueError("Дэлгэцийн нэр хоосон байж болохгүй.")
+        return name
 
 
 class LoginIdentityOutput(BaseModel):
@@ -130,6 +155,7 @@ class LoginIdentityOutput(BaseModel):
     provider: str
     display_identifier: str | None
     verified: bool
+    verified_at: datetime | None = None
     created_at: datetime
 
 
@@ -257,7 +283,7 @@ def _otp_secret() -> bytes:
     configured = get_settings().otp_hash_secret
     if configured:
         return configured.encode()
-    if get_settings().app_env.lower() == "production":
+    if get_settings().app_env.lower() in {"production", "staging"}:
         raise RuntimeError("OTP_HASH_SECRET is required")
     return _OTP_DEV_SECRET
 
@@ -273,6 +299,10 @@ def _otp_rate_key(kind: str, value: str) -> str:
 
 def _normalized_ip(request: Request) -> str:
     candidate = request.client.host if request.client else "unknown"
+    # Enabled only by the private Cloudflare Container ingress. Generic/local
+    # FastAPI deployments do not trust a caller-supplied forwarded-IP header.
+    if get_settings().trust_cloudflare_proxy_ip:
+        candidate = request.headers.get("cf-connecting-ip") or candidate
     try:
         return str(ipaddress.ip_address(candidate))
     except ValueError:
@@ -288,14 +318,14 @@ def _consume_otp_rate(db: Session, kind: str, value: str, limit: int) -> bool:
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
     statement = insert(table).values(key_hash=key, window_started=now, attempts=1)
     fresh_window = table.c.window_started < now - timedelta(minutes=1)
-    returning_statement = statement.on_conflict_do_update(
+    upsert = statement.on_conflict_do_update(
         index_elements=[table.c.key_hash],
         set_={
             "window_started": case((fresh_window, now), else_=table.c.window_started),
             "attempts": case((fresh_window, 1), else_=table.c.attempts + 1),
         },
     ).returning(table.c.attempts)
-    attempts = db.execute(returning_statement).scalar_one()
+    attempts = db.execute(upsert).scalar_one()
     db.commit()
     return attempts <= limit
 
@@ -439,6 +469,7 @@ def _audit(db: Session, user_id: UUID, action: str, challenge: PhoneOtpChallenge
 
 def set_session_cookie(db: Session, response: Response, user_id: UUID) -> None:
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     token = secrets.token_urlsafe(32)
     now = datetime.now(UTC)
     db.execute(delete(UserSession).where(UserSession.expires_at < now))
@@ -455,20 +486,21 @@ def set_session_cookie(db: Session, response: Response, user_id: UUID) -> None:
         token,
         max_age=SESSION_SECONDS,
         httponly=True,
-        secure=settings.app_env.lower() == "production",
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        secure=hosted_env,
+        samesite="none" if hosted_env else "lax",
         path="/",
     )
 
 
 def clear_session_cookie(response: Response) -> None:
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     response.delete_cookie(
         settings.session_cookie_name,
         path="/",
-        secure=settings.app_env.lower() == "production",
+        secure=hosted_env,
         httponly=True,
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        samesite="none" if hosted_env else "lax",
     )
 
 
@@ -485,6 +517,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = db.get(User, session.user_id) if session else None
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Нэвтэрнэ үү.")
+    if user_linked_person_is_minor(db, user.id):
+        raise HTTPException(status_code=401, detail="Нэвтрэх мэдээлэл буруу байна.")
     return user
 
 
@@ -498,14 +532,14 @@ def _record_login_attempt(db: Session, email: str, ip: str) -> int:
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
     statement = insert(table).values(key_hash=key, window_started=now, attempts=1)
     fresh_window = table.c.window_started < now - timedelta(minutes=1)
-    returning_statement = statement.on_conflict_do_update(
+    upsert = statement.on_conflict_do_update(
         index_elements=[table.c.key_hash],
         set_={
             "window_started": case((fresh_window, now), else_=table.c.window_started),
             "attempts": case((fresh_window, 1), else_=table.c.attempts + 1),
         },
     ).returning(table.c.attempts)
-    attempts = db.execute(returning_statement).scalar_one()
+    attempts = db.execute(upsert).scalar_one()
     db.commit()
     return attempts
 
@@ -513,8 +547,14 @@ def _record_login_attempt(db: Session, email: str, ip: str) -> int:
 def _user_output(db: Session, user: User) -> UserOutput:
     person_id = db.scalar(select(UserPersonLink.person_id).where(UserPersonLink.user_id == user.id))
     return UserOutput(
-        id=user.id, email=user.email, display_name=user.display_name, person_id=person_id
+        id=user.id, email=user.email, display_name=user.display_name, person_id=person_id,
+        profile_photo_url="/auth/me/photo" if user.profile_photo_key else None,
     )
+
+
+def _ensure_user_login_allowed(db: Session, user: User) -> None:
+    if user_linked_person_is_minor(db, user.id):
+        raise HTTPException(status_code=401, detail="Нэвтрэх мэдээлэл буруу байна.")
 
 
 GENERIC_VERIFICATION_MESSAGE = "Хэрэв энэ имэйлд баталгаажуулах шаардлагатай account байвал холбоос илгээнэ."
@@ -602,7 +642,7 @@ def _verification_link_for_user(
     background_tasks: BackgroundTasks,
     request_id: str | None,
 ) -> None:
-    if user.email_verified_at is not None or not user.email:
+    if not user.email or user.email_verified_at is not None:
         return
     identity = db.scalar(
         select(LoginIdentity).where(
@@ -670,7 +710,7 @@ def _google_state_secret() -> bytes:
     if settings.google_oidc_state_secret:
         return settings.google_oidc_state_secret.encode()
     # Development-only process fallback; production settings reject a missing secret.
-    if settings.app_env.lower() == "production":
+    if settings.app_env.lower() in {"production", "staging"}:
         raise RuntimeError("GOOGLE_OIDC_STATE_SECRET is required")
     return _OTP_DEV_SECRET
 
@@ -711,10 +751,10 @@ def _consume_google_state(db: Session, state: str) -> bool:
             LoginThrottle.attempts == 0,
             LoginThrottle.window_started >= now - timedelta(seconds=GOOGLE_STATE_SECONDS),
         )
-        .values(attempts=1)
-    )
+        .values(attempts=1).returning(LoginThrottle.key_hash)
+    ).scalar_one_or_none()
     db.commit()
-    return cast(CursorResult[Any], result).rowcount == 1
+    return result is not None
 
 
 def _start_google(
@@ -738,7 +778,7 @@ def _start_google(
         cookie,
         max_age=GOOGLE_STATE_SECONDS,
         httponly=True,
-        secure=settings.app_env.lower() == "production",
+        secure=settings.app_env.lower() in {"production", "staging"},
         samesite="lax",
         path="/api/v1/auth/google/callback",
     )
@@ -842,7 +882,7 @@ def google_callback(
             or current_session.user_id != expected_user_id
             or not link_user
             or not link_user.is_active
-        ):
+        ) or user_linked_person_is_minor(db, expected_user_id):
             result = "failed"
         elif identity and identity.user_id != expected_user_id:
             db.add(AuditLog(actor_id=expected_user_id, action="google.identity_conflict", target_type="google_identity"))
@@ -865,10 +905,15 @@ def google_callback(
     else:
         user = db.get(User, identity.user_id) if identity else None
         if identity and user and user.is_active:
-            response = _google_frontend_redirect("success")
-            set_session_cookie(db, response, user.id)
-            response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
-            return response
+            try:
+                _ensure_user_login_allowed(db, user)
+            except HTTPException:
+                result = "failed"
+            else:
+                response = _google_frontend_redirect("success")
+                set_session_cookie(db, response, user.id)
+                response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
+                return response
         # Verified Google email is not proof of ownership of a pre-existing app account.
         if identity is None and email_is_registered(db, email):
             result = "failed"
@@ -906,6 +951,9 @@ def register(
     db: Session = Depends(get_db),
 ):
     email = normalize_email(str(body.email))
+    if not _email_request_allowed(db, request, "registration", email):
+        _password_matches("registration-enumeration-padding", _DUMMY_PASSWORD_HASH)
+        return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
     if email_is_registered(db, email):
         _password_matches("registration-enumeration-padding", _DUMMY_PASSWORD_HASH)
         return GenericEmailResponse(message=GENERIC_REGISTER_MESSAGE)
@@ -995,11 +1043,13 @@ def confirm_email_verification(
             detail="Баталгаажуулах холбоос хүчингүй эсвэл хугацаа дууссан байна.",
         )
     user = db.get(User, row.user_id)
+    if row.target_email:
+        return _confirm_email_change(db, row, user, now)
     identity = db.scalar(
         select(LoginIdentity).where(
             LoginIdentity.user_id == row.user_id,
             LoginIdentity.provider == "email",
-            LoginIdentity.normalized_identifier == normalize_email(user.email),
+            LoginIdentity.normalized_identifier == normalize_email(user.email or "") if user else LoginIdentity.id.is_(None),
         )
     ) if user is not None and user.email else None
     consumed_user_id = db.execute(
@@ -1037,6 +1087,53 @@ def confirm_email_verification(
     _audit_auth_event(db, user.id, "email_verified", "email_identity", identity.id)
     db.commit()
     return GenericEmailResponse(message="Имэйл хаяг баталгаажлаа. Одоо нэвтэрч болно.")
+
+
+def _confirm_email_change(db: Session, row: EmailVerificationToken, user: User | None,
+                          now: datetime) -> GenericEmailResponse:
+    # A reset/verification token bound to the old address cannot verify a new address.
+    consumed = db.execute(update(EmailVerificationToken).where(
+        EmailVerificationToken.id == row.id, EmailVerificationToken.consumed_at.is_(None),
+        EmailVerificationToken.expires_at > now,
+    ).values(consumed_at=now).execution_options(synchronize_session=False)
+        .returning(EmailVerificationToken.id)).scalar_one_or_none()
+    if not consumed or not user or not user.is_active:
+        db.rollback()
+        raise HTTPException(400, "Баталгаажуулах холбоос хүчингүй эсвэл хугацаа дууссан байна.")
+    db.scalar(select(User).where(User.id == user.id).with_for_update())
+    target = row.target_email
+    existing = db.scalar(select(LoginIdentity).where(
+        LoginIdentity.provider == "email", LoginIdentity.normalized_identifier == target,
+    ))
+    if existing and existing.user_id != user.id:
+        db.rollback()
+        raise HTTPException(409, "Энэ имэйлийг холбох боломжгүй байна.")
+    owned = db.scalars(select(LoginIdentity).where(
+        LoginIdentity.provider == "email", LoginIdentity.user_id == user.id,
+    )).all()
+    if not existing:
+        existing = LoginIdentity(user_id=user.id, provider="email",
+            normalized_identifier=target, display_identifier=target)
+        db.add(existing)
+    for item in owned:
+        if item is not existing:
+            item.disabled_at = now
+    existing.verified_at = now
+    existing.disabled_at = None
+    user.email = target
+    user.email_verified_at = now
+    db.execute(delete(UserSession).where(UserSession.user_id == user.id))
+    db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+    db.execute(update(EmailVerificationToken).where(
+        EmailVerificationToken.user_id == user.id, EmailVerificationToken.consumed_at.is_(None),
+    ).values(consumed_at=now))
+    _audit_auth_event(db, user.id, "email.changed", "user", user.id)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Энэ имэйлийг холбох боломжгүй байна.") from None
+    return GenericEmailResponse(message="Имэйл шинэчлэгдлээ. Шинэ хаягаар дахин нэвтэрнэ үү.")
 
 
 @router.post("/password-reset/request", response_model=GenericEmailResponse, status_code=202)
@@ -1107,7 +1204,7 @@ def confirm_email_password_reset(
             .returning(PasswordResetToken.user_id)
         ).scalar_one_or_none()
     if consumed_user_id is None or user is None:
-        if user and row is not None:
+        if user and row:
             _audit_auth_event(db, user.id, "password_reset_failed", "password_reset_token", row.id)
             db.commit()
         logger.info(
@@ -1132,7 +1229,12 @@ def confirm_email_password_reset(
 
 @router.post("/login", response_model=UserOutput)
 def login(body: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
-    email = normalize_email(str(body.email))
+    email = body.identifier
+    if email is None:
+        raise HTTPException(422, "Нэвтрэх мэдээллээ оруулна уу.")
+    if (not _consume_otp_rate(db, "password-login-ip", _normalized_ip(request), 60)
+        or not _consume_otp_rate(db, "password-login-identifier", email, 20)):
+        raise HTTPException(429, "Түр хүлээгээд дахин оролдоно уу.")
     attempts = _record_login_attempt(
         db, email, request.client.host if request.client else "unknown"
     )
@@ -1140,7 +1242,14 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         raise HTTPException(
             status_code=429, detail="Хэт олон оролдлого. Нэг минутын дараа дахин оролдоно уу."
         )
-    user = find_email_user(db, email)
+    is_email = "@" in email
+    phone_identity = None if is_email else db.scalar(select(LoginIdentity).where(
+        LoginIdentity.provider == "phone", LoginIdentity.normalized_identifier == email,
+        LoginIdentity.disabled_at.is_(None),
+    ))
+    user = find_email_user(db, email) if is_email else (
+        db.get(User, phone_identity.user_id) if phone_identity else None
+    )
     valid = (
         user is not None
         and user.password_hash is not None
@@ -1149,12 +1258,13 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
     if user is None or user.password_hash is None:
         _password_matches(body.password, _DUMMY_PASSWORD_HASH)
     if not valid or user is None or not user.is_active:
-        raise HTTPException(status_code=401, detail="Имэйл эсвэл нууц үг буруу байна.")
-    if _verified_email_identity(db, user) is None:
+        raise HTTPException(status_code=401, detail="Нэвтрэх мэдээлэл буруу байна.")
+    if is_email and _verified_email_identity(db, user) is None:
         raise HTTPException(
             status_code=403,
             detail="Нэвтрэхийн өмнө имэйл хаягаа баталгаажуулна уу.",
         )
+    _ensure_user_login_allowed(db, user)
     # A successful sign-in clears the shared failure bucket for this account/client pair.
     db.execute(
         delete(LoginThrottle).where(
@@ -1184,6 +1294,21 @@ def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return _user_output(db, user)
 
 
+@router.patch("/me", response_model=UserOutput)
+def update_account_profile(
+    body: AccountProfileInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.display_name != body.display_name:
+        user.display_name = body.display_name
+        db.add(AuditLog(actor_id=user.id, action="user.display_name_updated",
+                        target_type="user", target_id=user.id))
+        db.commit()
+        db.refresh(user)
+    return _user_output(db, user)
+
+
 @router.get("/me/identities", response_model=list[LoginIdentityOutput])
 def list_login_identities(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     identities = db.scalars(
@@ -1197,6 +1322,7 @@ def list_login_identities(user: User = Depends(get_current_user), db: Session = 
             provider=item.provider,
             display_identifier=item.display_identifier,
             verified=item.verified_at is not None,
+            verified_at=item.verified_at,
             created_at=item.created_at,
         )
         for item in identities
@@ -1302,6 +1428,17 @@ def cancel_identity_link_request(
     return Response(status_code=204)
 
 
+@router.get("/email/config")
+def email_auth_config():
+    """Expose email delivery availability without revealing provider credentials."""
+    settings = get_settings()
+    enabled = settings.email_provider.lower() == "smtp" and all(
+        (settings.email_from, settings.email_smtp_host,
+         settings.email_smtp_username, settings.email_smtp_password)
+    )
+    return {"enabled": bool(enabled)}
+
+
 @router.get("/phone/config")
 def phone_auth_config():
     """Expose only whether real SMS delivery is configured for auth UI."""
@@ -1309,7 +1446,9 @@ def phone_auth_config():
     enabled = settings.sms_provider.lower() == "twilio" and all(
         (settings.twilio_account_sid, settings.twilio_auth_token, settings.twilio_from_number)
     )
-    return {"enabled": enabled}
+    return {"enabled": enabled or bool(settings.verify_mn_api_key),
+            "password_login": True, "password_registration": True,
+            "verification_provider": "verify_mn" if settings.verify_mn_api_key else None}
 
 
 @router.post("/me/phone/request", response_model=PhoneOtpRequestOutput, status_code=202)
@@ -1347,7 +1486,7 @@ def request_phone_link(
     )
     challenge = db.get(PhoneOtpChallenge, response.challenge_id)
     if challenge is None:
-        raise RuntimeError("OTP challenge disappeared after creation")
+        raise HTTPException(503, "Баталгаажуулах хүсэлт олдсонгүй.")
     _audit(db, user.id, "phone.otp_requested", challenge)
     db.commit()
     return response
@@ -1358,6 +1497,7 @@ def verify_phone_link(
     body: PhoneOtpVerifyInput,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     challenge = _matching_otp(
         db,
@@ -1432,6 +1572,7 @@ def verify_phone_registration(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
         raise HTTPException(
@@ -1531,7 +1672,7 @@ def request_phone_login(
     if identity:
         item = db.get(PhoneOtpChallenge, challenge.challenge_id)
         if item is None:
-            raise RuntimeError("OTP challenge disappeared after creation")
+            raise HTTPException(503, "Баталгаажуулах хүсэлт олдсонгүй.")
         _audit(db, identity.user_id, "phone.otp_requested", item)
         db.commit()
     return challenge
@@ -1543,6 +1684,7 @@ def verify_phone_login(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     if not _consume_otp_rate(db, "login-ip", _normalized_ip(request), 10):
         raise HTTPException(
@@ -1560,6 +1702,7 @@ def verify_phone_login(
     user = db.get(User, identity.user_id) if identity else None
     if challenge is None or user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Утасны код буруу эсвэл хугацаа дууссан байна.")
+    _ensure_user_login_allowed(db, user)
     challenge.status = "consumed"
     challenge.consumed_at = datetime.now(UTC)
     _audit(db, user.id, "phone.login_verified", challenge)
@@ -1587,7 +1730,7 @@ def request_phone_recovery(
     if identity:
         item = db.get(PhoneOtpChallenge, challenge.challenge_id)
         if item is None:
-            raise RuntimeError("OTP challenge disappeared after creation")
+            raise HTTPException(503, "Баталгаажуулах хүсэлт олдсонгүй.")
         _audit(db, identity.user_id, "phone.otp_requested", item)
         db.commit()
     return challenge
@@ -1597,6 +1740,7 @@ def request_phone_recovery(
 def confirm_phone_recovery(
     body: PasswordRecoveryInput,
     db: Session = Depends(get_db),
+    _sms: SmsProvider = Depends(get_sms_provider),
 ):
     challenge = _matching_otp(
         db,

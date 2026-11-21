@@ -31,7 +31,10 @@ def upgrade() -> None:
         sa.text(
             "SELECT id, family_id, invited_email, created_at "
             "FROM invitations "
-            f"WHERE {_ACTIVE_PREDICATE} "
+            # Bandit B608: SQL must stay a plain literal, so the predicate is
+            # repeated here instead of interpolating _ACTIVE_PREDICATE.
+            # Keep this WHERE in sync with _ACTIVE_PREDICATE.
+            "WHERE accepted_at IS NULL AND revoked_at IS NULL "
             "ORDER BY family_id, invited_email, created_at ASC, id ASC"
         )
     ).mappings()

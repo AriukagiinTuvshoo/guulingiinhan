@@ -1,0 +1,169 @@
+{
+  "scope": "Manual Codex browser interactions using the owner's pre-existing Account A session. No cookie extraction, private-name export or artificial Family data.",
+  "baseline_sources": [
+    "4d1fc222c07f594953b253b041cd411fda4077e6",
+    "a6aa47e690b5938e5f4f7882863fc049ffcdb1d5"
+  ],
+  "final_source": "48bcd8868ddaf737c5da55ea8d7bc99e26528d9a",
+  "verified": [
+    {
+      "flow": "search all types",
+      "counts": {
+        "people": 7,
+        "stories": 1,
+        "memories": 3,
+        "archives": 0
+      }
+    },
+    {
+      "flow": "search prefix",
+      "people": 2
+    },
+    {
+      "flow": "search memory/year 2025",
+      "memories": 1
+    },
+    {
+      "flow": "search empty result",
+      "count": 0
+    },
+    {
+      "flow": "relationship same person",
+      "steps": 0,
+      "generation": 0
+    },
+    {
+      "flow": "relationship existing two-parent path",
+      "steps": 2,
+      "generation": -2,
+      "commonAncestor": true
+    },
+    {
+      "flow": "tree density/branch/restore/zoom/fit/focus",
+      "people": 7,
+      "branch_people": 2,
+      "restored_people": 7
+    },
+    {
+      "flow": "3D renderer",
+      "authorizedPeople": 7,
+      "accessibleList": true,
+      "note": "No GPU or physical touch certification"
+    },
+    {
+      "flow": "profile",
+      "opened": 2,
+      "portraitLoaded": true,
+      "timeline": "Two empty states; no dated records available"
+    },
+    {
+      "flow": "private story",
+      "detail": true,
+      "editorLabels": true,
+      "referenceSearchResult": true,
+      "cancelWithoutSaving": true
+    },
+    {
+      "flow": "memory gallery/detail",
+      "memories": 3,
+      "privateDetailPhotos": 2,
+      "completedBrokenImages": 0
+    },
+    {
+      "flow": "protected lightbox",
+      "originalLoaded": true,
+      "escapeCloses": true,
+      "focusReturns": true
+    },
+    {
+      "flow": "protected API direct URL",
+      "originalImageRendered": true,
+      "nativeWidth": 2316,
+      "nativeHeight": 3088
+    },
+    {
+      "flow": "archive",
+      "state": "authorized empty",
+      "records": 0
+    },
+    {
+      "flow": "admin ancestry",
+      "authenticated": true,
+      "crash": false,
+      "expectedBranchesRegistered": 0
+    },
+    {
+      "flow": "mobile drawer",
+      "viewportWidth": 390,
+      "escapeCloses": true,
+      "focusReturns": true
+    },
+    {
+      "flow": "320px width correction",
+      "before": {
+        "client": 305,
+        "scroll": 320
+      },
+      "after": {
+        "client": 305,
+        "scroll": 305,
+        "body": 305
+      }
+    },
+    {
+      "flow": "context loading correction",
+      "finalSource": true,
+      "prematureDenial": false
+    },
+    {
+      "flow": "photo loading correction",
+      "finalSource": true,
+      "placeholder": "Зураг ачаалж байна…",
+      "ariaBusy": true,
+      "thenImage": true
+    },
+    {
+      "flow": "explicit archived Family",
+      "finalSource": true,
+      "denied": true,
+      "privateResults": false,
+      "silentFallback": false
+    },
+    {
+      "flow": "invalid invitation preview",
+      "finalSource": true,
+      "denied": true,
+      "familyRoleRecipientMetadata": false
+    },
+    {
+      "flow": "search all types final release",
+      "finalSource": true,
+      "counts": {
+        "people": 7,
+        "stories": 1,
+        "memories": 3,
+        "archives": 0
+      }
+    },
+    {
+      "flow": "logout",
+      "finalSource": true,
+      "loginRedirect": true,
+      "privateMemoryReopenRedirect": true
+    }
+  ],
+  "unverified": [
+    "Separate active Account B/Family B staging matrix",
+    "Live old-token replay and direct media navigation after logout (browser client blocked); private application page redirect verified separately",
+    "Fresh valid email/phone credential login",
+    "Positive invitation delivery/acceptance/expiry/revoke",
+    "Disposable write/reference/upload lifecycle",
+    "Live guardian grants/expiry/revocation",
+    "Dated timeline chronology",
+    "Physical phone/GPU/large live Family",
+    "Authenticated network median/p95/payload measurements"
+  ],
+  "deferred": [
+    "Real email and SMS delivery — owner decision"
+  ]
+}

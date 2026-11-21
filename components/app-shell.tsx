@@ -3,25 +3,35 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
+  Bell,
   BookOpen,
+  CalendarDays,
   GitFork,
   Globe2,
+  Newspaper,
   Home,
   LogOut,
   Menu,
   Settings,
+  Search,
+  ShieldCheck,
   TreeDeciduous,
   UserRound,
   Users,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ApiError, api, Family, User } from '../lib/api';
+import ProfilePhoto from './profile-photo';
+import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
+import { FamilyContext } from './family-context';
+import { useDialogFocus } from './use-dialog-focus';
+import SharedDonationBanner from './shared-donation-banner';
 
 type NavItem = {
-  key: 'dashboard' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'settings';
+  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -30,27 +40,41 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/dashboard', needsFamily: false },
+  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
+  { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
+  { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
+  { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
   { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
+  { key: 'search', label: 'Хайлт', description: 'Гэр бүлийн сангаас хайх', icon: Search, path: '/search', needsFamily: true },
+  { key: 'relationships', label: 'Хамаарал', description: 'Хоёр хүний холбооны зам', icon: GitFork, path: '/relationships', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
   { key: 'memories', label: 'Дурсамж', description: 'Хадгалсан дурсамж', icon: Globe2, path: '/memories', needsFamily: true },
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
+  { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
   { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
 ];
 
 function isShellRoute(pathname: string) {
   return (
+    pathname === '/search' || pathname === '/relationships' ||
     pathname === '/people' ||
     pathname.startsWith('/people/') ||
     pathname === '/tree' ||
     pathname.startsWith('/tree/') ||
+    pathname === '/ancestry' ||
+    pathname.startsWith('/ancestry/') ||
+    pathname === '/community' ||
+    pathname.startsWith('/community/') ||
+    pathname === '/news' ||
     pathname === '/stories' ||
     pathname.startsWith('/stories/') ||
     pathname === '/memories' ||
     pathname.startsWith('/memories/') ||
     pathname === '/archives' ||
     pathname.startsWith('/archives/') ||
+    pathname === '/activities' ||
+    pathname.startsWith('/activities/') ||
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
     pathname === '/account/security' ||
@@ -60,16 +84,22 @@ function isShellRoute(pathname: string) {
 }
 
 function isDashboardRoute(pathname: string) {
-  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  return pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 }
 
 function activeKey(pathname: string): NavItem['key'] | null {
+  if (pathname === '/search') return 'search';
+  if (pathname === '/relationships') return 'relationships';
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
+  if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
+  if (pathname === '/community' || pathname.startsWith('/community/')) return 'community';
+  if (pathname === '/news') return 'news';
   if (pathname === '/people' || pathname.startsWith('/people/')) return 'people';
   if (pathname === '/stories' || pathname.startsWith('/stories/')) return 'stories';
   if (pathname === '/memories' || pathname.startsWith('/memories/')) return 'memories';
   if (pathname === '/archives' || pathname.startsWith('/archives/')) return 'archives';
+  if (pathname === '/activities' || pathname.startsWith('/activities/')) return 'activities';
   if (
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
@@ -85,6 +115,45 @@ function familyHref(path: string, familyId: string | null) {
   return path + '?family=' + encodeURIComponent(familyId);
 }
 
+export type AppShellContextValue = {
+  user: User | null;
+  families: Family[];
+  familyId: string;
+  currentFamily: Family | null;
+  contextLoading: boolean;
+  contextLoaded: boolean;
+  contextError: string;
+};
+
+const AppShellContext = createContext<AppShellContextValue | null>(null);
+
+type PublishedNotice = { id: string; title: string; body: string };
+
+function AnnouncementBanner({ userId, compact = false }: { userId: string; compact?: boolean }) {
+  const [notice, setNotice] = useState<PublishedNotice | null>(null);
+  const [dismissed, setDismissed] = useState('');
+  useEffect(() => {
+    let active = true;
+    void api<PublishedNotice[]>('/announcements?limit=1')
+      .then((rows) => { if (active) setNotice(rows[0] ?? null); })
+      .catch(() => { if (active) setNotice(null); });
+    return () => { active = false; };
+  }, [userId]);
+  if (!notice || dismissed === notice.id) return null;
+  const content = <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
+    <span aria-hidden="true">✦</span>
+    <div><strong>{notice.title}</strong><p>{notice.body}</p><Link href="/news">Бүх мэдээг харах →</Link></div>
+    <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
+  </aside>;
+  return compact ? <details className="tree-shell-notice"><summary><span aria-hidden="true">✦</span><span>{notice.title}</span><small>Мэдээ</small></summary>{content}</details> : content;
+}
+
+export function useAppShellContext() {
+  const context = useContext(AppShellContext);
+  if (!context) throw new Error('useAppShellContext must be used inside AppShell');
+  return context;
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -93,6 +162,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const requestedFamilyId = searchParams.get('family') ?? '';
 
   const [user, setUser] = useState<User | null>(null);
+  const [isGlobalAdmin, setIsGlobalAdmin] = useState(false);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [contextLoading, setContextLoading] = useState(false);
@@ -107,10 +177,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const firstNavRef = useRef<HTMLAnchorElement | null>(null);
   const accountRef = useRef<HTMLDivElement | null>(null);
   const contextRequestRef = useRef(0);
+  const scopedFamilyId = contextLoaded && !contextLoading
+    ? resolveFamilyScope(families, requestedFamilyId, needsExplicitFamily(pathname, searchParams.has('person'))).id
+    : '';
 
   const currentFamily = useMemo(
-    () => families.find((family) => family.id === familyId) ?? null,
-    [families, familyId],
+    () => families.find((family) => family.id === scopedFamilyId) ?? null,
+    [families, scopedFamilyId],
   );
 
   const retryContext = useCallback(async () => {
@@ -119,6 +192,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setContextLoaded(false);
     setContextError('');
     setUser(null);
+    setIsGlobalAdmin(false);
     setFamilies([]);
     setFamilyId('');
     try {
@@ -130,6 +204,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setUser(me);
       setFamilies(familyData);
       setContextLoaded(true);
+      void api('/admin/me')
+        .then(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(true);
+        })
+        .catch(() => {
+          if (requestId === contextRequestRef.current) setIsGlobalAdmin(false);
+        });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
         setContextLoaded(true);
@@ -140,11 +221,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextError(
         cause instanceof Error ? cause.message : 'Гэр бүлийн орчныг ачаалж чадсангүй.',
       );
+      setIsGlobalAdmin(false);
       setContextLoaded(true);
     } finally {
       if (requestId === contextRequestRef.current) setContextLoading(false);
     }
-  }, [router]);
+  }, [router, setContextLoading, setContextLoaded, setContextError, setUser, setIsGlobalAdmin, setFamilies, setFamilyId]);
 
   useEffect(() => {
     if (!shouldRenderShell) {
@@ -152,6 +234,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       setContextLoaded(false);
       setContextError('');
       setUser(null);
+      setIsGlobalAdmin(false);
       setFamilies([]);
       setFamilyId('');
       setMobileOpen(false);
@@ -164,23 +247,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [contextLoaded, contextLoading, retryContext, shouldRenderShell]);
 
   useEffect(() => {
-    if (!shouldRenderShell || contextLoading) return;
-    if (!families.length) {
+    // An unresolved session/family list cannot establish a denial. Keep the
+    // private scope empty until the authenticated context is available.
+    if (!shouldRenderShell || contextLoading || !contextLoaded || !user) return;
+    const scope = resolveFamilyScope(families, requestedFamilyId, needsExplicitFamily(pathname, searchParams.has('person')));
+    if (!scope.id) {
       setFamilyId('');
       setFamilySwitching(false);
+      setContextError(scope.error);
       return;
     }
-
-    const requested = families.find((family) => family.id === requestedFamilyId)?.id ?? null;
-
-    if (requestedFamilyId && !requested) {
-      setFamilyId('');
-      setFamilySwitching(false);
-      setContextError('Энэ гэр бүлийн орчинд хандах эрхгүй эсвэл гэр бүл олдсонгүй.');
-      return;
-    }
-
-    const nextFamily = requested ?? families[0].id;
+    const nextFamily = scope.id;
+    setContextError('');
     setFamilyId((current) => (current === nextFamily ? current : nextFamily));
     if (requestedFamilyId === nextFamily) setFamilySwitching(false);
 
@@ -198,34 +276,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
       params.set('family', nextFamily);
       router.replace(pathname + '?' + params.toString());
     }
-  }, [contextLoading, families, pathname, requestedFamilyId, router, searchParams, shouldRenderShell]);
+  }, [contextLoaded, contextLoading, families, pathname, requestedFamilyId, router, searchParams, shouldRenderShell, user]);
 
   useEffect(() => {
     setMobileOpen(false);
     setAccountOpen(false);
   }, [pathname]);
 
-  useEffect(() => {
-    if (!mobileOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setMobileOpen(false);
-        window.setTimeout(() => menuButtonRef.current?.focus(), 0);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
-
-    window.setTimeout(() => firstNavRef.current?.focus(), 0);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
-    };
-  }, [mobileOpen]);
+  useDialogFocus(mobileOpen, '#app-shell-navigation', () => setMobileOpen(false));
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -280,6 +338,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
     router.replace(pathname + '?' + params.toString());
   }
 
+  const shellContext = useMemo<AppShellContextValue>(
+    () => ({ user, families, familyId: scopedFamilyId, currentFamily, contextLoading, contextLoaded, contextError }),
+    [user, families, scopedFamilyId, currentFamily, contextLoading, contextLoaded, contextError],
+  );
+
   if (!shouldRenderShell) {
     return <>{children}</>;
   }
@@ -287,7 +350,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const active = activeKey(pathname);
 
   return (
-    <div className="app-shell">
+    <AppShellContext.Provider value={shellContext}>
+      <div className={'app-shell' + (pathname === '/tree' ? ' app-shell--tree' : '')}>
       <header className="app-shell__header">
         <button
           ref={menuButtonRef}
@@ -301,7 +365,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
 
-        <Link className="app-shell__brand" href={familyHref('/dashboard', currentFamily?.id ?? null)}>
+        <Link className="app-shell__brand" href={familyHref('/', currentFamily?.id ?? null)}>
           <span className="app-shell__brand-mark" aria-hidden="true">
             <TreeDeciduous size={21} />
           </span>
@@ -314,7 +378,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="app-shell__context" aria-label="Одоогийн гэр бүлийн орчин">
           {contextLoading ? (
             <span className="app-shell__context-skeleton" aria-hidden="true" />
-          ) : families.length > 1 ? (
+          ) : (families.length > 1 || (families.length > 0 && !currentFamily)) ? (
             <>
               <label htmlFor="app-shell-family">Гэр бүл</label>
               <select
@@ -325,6 +389,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 aria-busy={familySwitching}
                 disabled={contextLoading || familySwitching}
               >
+                <option value="">Гэр бүл сонгох</option>
                 {families.map((family) => (
                   <option key={family.id} value={family.id}>
                     {family.name}
@@ -353,9 +418,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             aria-expanded={accountOpen}
             onClick={() => setAccountOpen((value) => !value)}
           >
-            <span className="app-shell__avatar" aria-hidden="true">
-              {(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()}
-            </span>
+            <ProfilePhoto url={user?.profile_photo_url} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
             <span className="app-shell__account-name">{user?.display_name || 'Хэрэглэгч'}</span>
           </button>
 
@@ -372,6 +435,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   onClick={() => setAccountOpen(false)}
                 >
                   Миний профайл
+                </Link>
+              ) : null}
+              {isGlobalAdmin ? (
+                <Link role="menuitem" href="/admin" onClick={() => setAccountOpen(false)}>
+                  <ShieldCheck size={14} aria-hidden="true" />
+                  Админ удирдлага
                 </Link>
               ) : null}
               {currentFamily && (
@@ -413,6 +482,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
+      {user && <AnnouncementBanner userId={user.id} compact={pathname === '/tree'} />}
+      {user && <SharedDonationBanner userId={user.id} compact={pathname === '/tree'} />}
+
       <div className="app-shell__body">
         <button
           type="button"
@@ -426,8 +498,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           id="app-shell-navigation"
           className={'app-shell__sidebar ' + (mobileOpen ? 'is-open' : '')}
           aria-label="Authenticated application navigation"
+          role={mobileOpen ? 'dialog' : undefined}
+          aria-modal={mobileOpen ? true : undefined}
         >
           <div className="app-shell__sidebar-inner">
+            {mobileOpen && <button className="app-shell__drawer-close" type="button" onClick={() => setMobileOpen(false)} aria-label="Цэсийг хаах"><X size={20} aria-hidden="true" /></button>}
             <nav aria-label="Үндсэн навигаци">
               {NAV_ITEMS.map((item, index) => {
                 const Icon = item.icon;
@@ -493,11 +568,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
             </div>
           ) : null}
-          <div key={familyId || requestedFamilyId || 'no-family-context'}>
-            {children}
+          <div key={requestedFamilyId || familyId || 'no-family-context'}>
+            <FamilyContext.Provider value={{
+              family: currentFamily,
+              user,
+              loading: contextLoading || !contextLoaded || familySwitching,
+              error: contextError,
+              retry: retryContext,
+            }}>
+              {children}
+            </FamilyContext.Provider>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </AppShellContext.Provider>
   );
 }

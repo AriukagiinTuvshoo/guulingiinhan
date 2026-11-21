@@ -1,0 +1,244 @@
+{
+  "checked_at": "2026-10-07T06:08:30.879Z",
+  "scope": "Live staging public/anonymous HTTP only. No authenticated cookies, account creation, provider deliveries or private records.",
+  "latency_note": "Single observations include network latency; these are not authenticated product medians or p95.",
+  "results": [
+    {
+      "label": "liveness",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true,
+      "ms": 1493,
+      "bytes": 45,
+      "cache_control": null
+    },
+    {
+      "label": "database readiness",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true,
+      "ms": 1916,
+      "bytes": 61,
+      "cache_control": null
+    },
+    {
+      "label": "anonymous people",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1286,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous tree",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1466,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous profile",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 998,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous timeline",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1279,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous relationship",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1467,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous story",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 980,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous memory",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1453,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous archive",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1463,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous content links",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 985,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous media",
+      "status": 401,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1209,
+      "bytes": 126,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "anonymous admin",
+      "status": 404,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": false,
+      "ms": 1278,
+      "bytes": 22,
+      "cache_control": null,
+      "safe_error": true,
+      "cache_private": false
+    },
+    {
+      "label": "allowed CORS preflight",
+      "status": 200,
+      "expected": [
+        200,
+        204
+      ],
+      "pass": true,
+      "ms": 1349,
+      "bytes": 2,
+      "cache_control": null,
+      "exact_origin": true,
+      "credentials": true
+    },
+    {
+      "label": "foreign CORS preflight",
+      "status": 400,
+      "expected": [
+        400,
+        403
+      ],
+      "pass": true,
+      "ms": 929,
+      "bytes": 22,
+      "cache_control": null,
+      "no_foreign_allow": true
+    },
+    {
+      "label": "foreign mutation Origin",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true,
+      "ms": 921,
+      "bytes": 128,
+      "cache_control": null
+    },
+    {
+      "label": "invalid email/password input",
+      "status": 422,
+      "expected": [
+        422
+      ],
+      "pass": true,
+      "ms": 1260,
+      "bytes": 153,
+      "cache_control": null,
+      "input_not_echoed": true
+    },
+    {
+      "label": "invalid registration input",
+      "status": 422,
+      "expected": [
+        422
+      ],
+      "pass": true,
+      "ms": 1444,
+      "bytes": 153,
+      "cache_control": null
+    }
+  ]
+}

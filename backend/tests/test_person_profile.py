@@ -1,9 +1,25 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 
 from app.models import Person
+
+
+def test_living_person_cannot_keep_death_details(client):
+    register_verified(client, "living-person@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Амьдралын мэдээлэл"}).json()["id"]
+    endpoint = f"/api/v1/families/{family_id}/persons"
+    invalid = client.post(endpoint, json={"first_name": "Амьд", "death_place": "Алдаа"})
+    assert invalid.status_code == 422
+
+    person = client.post(endpoint, json={"first_name": "Өвөг", "is_alive": False, "death_place": "Нутаг"}).json()
+    patch = client.patch(
+        f"{endpoint}/{person['id']}",
+        json={"is_alive": True, "death_date": None, "death_place": None},
+    )
+    assert patch.status_code == 200
+    assert patch.json()["death_place"] is None
 
 
 def test_person_profile_returns_canonical_identity_lineage_and_relationship_summary(client):
@@ -136,7 +152,7 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
 def test_person_profile_private_person_is_not_exposed_across_creator_boundary(client, email_provider):
     owner_email = "profile-private-owner@example.com"
     private_creator_email = "profile-private-creator@example.com"
-    password = "strong-passphrase-123"
+    password = TEST_PASSWORD
     register_verified(client, owner_email, password)
     family_id = client.post(
         "/api/v1/families", json={"name": "Нууц профайл"}
