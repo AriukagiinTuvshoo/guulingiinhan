@@ -23,6 +23,7 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/families/{family_id}", tags=["family activities"])
+public_funds_router = APIRouter(prefix="/public/funds", tags=["public family funds"])
 
 
 def _member(db: Session, family_id: UUID, user: User, roles: set[str] | None = None) -> str:
@@ -69,6 +70,7 @@ class FundCreate(BaseModel):
     purpose: str = Field(min_length=1, max_length=4000)
     currency: str = "MNT"
     payment_instruction: str = Field(min_length=1, max_length=4000)
+    visibility: str = Field(default="family", pattern="^(family|public)$")
 
     @field_validator("currency")
     @classmethod
@@ -83,8 +85,13 @@ class FundOut(BaseModel):
     purpose: str
     currency: str
     payment_instruction: str
+    visibility: str = "family"
     is_active: bool
     created_at: datetime
+
+
+class PublicFundOut(FundOut):
+    family_name: str
 
 
 class DonationCreate(BaseModel):
@@ -178,7 +185,26 @@ def _fund_out(fund: FamilyFund) -> FundOut:
     return FundOut(id=fund.id, family_id=fund.family_id, title=fund.title,
                    purpose=fund.purpose, currency=fund.currency,
                    payment_instruction=fund.payment_instruction,
-                   is_active=fund.is_active, created_at=fund.created_at)
+                   visibility=fund.visibility, is_active=fund.is_active,
+                   created_at=fund.created_at)
+
+
+@public_funds_router.get("", response_model=list[PublicFundOut])
+def list_public_funds(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Expose only active funds explicitly published to the authenticated community."""
+    rows = db.execute(
+        select(FamilyFund, Family.name)
+        .join(Family, Family.id == FamilyFund.family_id)
+        .where(
+            FamilyFund.visibility == "public",
+            FamilyFund.is_active.is_(True),
+            Family.archived_at.is_(None),
+        )
+        .order_by(FamilyFund.created_at.desc(), FamilyFund.id)
+        .limit(100)
+    ).all()
+    return [PublicFundOut(**_fund_out(fund).model_dump(), family_name=family_name)
+            for fund, family_name in rows]
 
 
 def _event_out(event: FamilyEvent) -> EventOut:
@@ -205,6 +231,7 @@ def create_fund(family_id: UUID, body: FundCreate,
     _member(db, family_id, user, {"owner"})
     fund = FamilyFund(family_id=family_id, title=body.title.strip(), purpose=body.purpose.strip(),
                       currency=body.currency, payment_instruction=body.payment_instruction.strip(),
+                      visibility=body.visibility,
                       created_by=user.id)
     db.add(fund)
     db.flush()

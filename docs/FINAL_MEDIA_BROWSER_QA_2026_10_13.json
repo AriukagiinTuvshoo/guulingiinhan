@@ -1,0 +1,35 @@
+{
+  "checked_at": "2026-10-13T13:45:55.383Z",
+  "scope": "Targeted final media regression against disposable localhost browser → real FastAPI → SQLite. No live staging or production changes. Chromium headless Edge at 320px/390px; physical mobile devices and native install not tested in this run.",
+  "mock_api": false,
+  "fault_injection": "Account identity refresh network abort after real upload/delete; invalid image bytes for browser decode fallback; all mutations use real disposable API.",
+  "scenarios": [
+    {
+      "name": "confirmed account upload survives identity refresh network failure",
+      "pass": true,
+      "ms": 776
+    },
+    {
+      "name": "confirmed account deletion survives identity refresh network failure",
+      "pass": true,
+      "ms": 128
+    },
+    {
+      "name": "protected image decode failure falls back without broken image",
+      "pass": true,
+      "ms": 941
+    },
+    {
+      "name": "mobile photo editor and header controls 320px",
+      "pass": true,
+      "ms": 812
+    },
+    {
+      "name": "mobile photo editor and header controls 390px",
+      "pass": true,
+      "ms": 765
+    }
+  ],
+  "passed": 5,
+  "total": 5
+}

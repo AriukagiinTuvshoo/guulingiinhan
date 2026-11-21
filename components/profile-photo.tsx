@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { API_BASE } from '../lib/api';
+import { PHOTO_CHANGED_EVENT, type PhotoChange } from '../lib/image-upload';
 
 type ProfilePhotoProps = {
   url: string | null | undefined;
@@ -14,6 +15,16 @@ type ProfilePhotoProps = {
 export default function ProfilePhoto({ url, name, fallback, loadingFallback, className }: ProfilePhotoProps) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(url));
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent<PhotoChange>).detail;
+      if (url && detail?.endpoint && url.split('?')[0] === detail.endpoint) setRevision(value => value + 1);
+    };
+    window.addEventListener(PHOTO_CHANGED_EVENT, changed);
+    return () => window.removeEventListener(PHOTO_CHANGED_EVENT, changed);
+  }, [url]);
 
   useEffect(() => {
     let active = true;
@@ -48,7 +59,7 @@ export default function ProfilePhoto({ url, name, fallback, loadingFallback, cla
       controller.abort();
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [url]);
+  }, [url, revision]);
 
   if (objectUrl) return <img className={className} src={objectUrl} alt={`${name}-ийн зураг`} onError={() => setObjectUrl(null)} />;
   return <span className={`${className} profile-photo-fallback`} aria-label={`${name}-ийн зураг`}

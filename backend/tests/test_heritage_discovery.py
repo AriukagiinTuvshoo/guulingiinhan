@@ -8,6 +8,7 @@ import pytest
 
 from app.heritage_discovery import relationship_paths
 from app.models import (
+    AdminGrant,
     Archive,
     ArchivePerson,
     Family,
@@ -119,7 +120,9 @@ def test_minor_profile_scope_does_not_unlock_events_or_memories(client, heritage
     assert {item["kind"] for item in result.json()["items"]} == {"birth"}
 
 
-def test_search_existing_resource_queries_preserve_family_private_minor_scope(client, heritage):
+def test_search_existing_resource_queries_preserve_family_private_minor_scope(client, heritage, database):
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=heritage["owner"], role="ADMIN"))
     base = f"/api/v1/families/{heritage['family']}"
     people = client.get(base + "/people?q=Fixture").json()["items"]
     assert str(heritage["ids"][5]) not in {person["id"] for person in people}

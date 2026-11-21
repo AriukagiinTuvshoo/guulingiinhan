@@ -1,7 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import AdminShell from '../../../components/admin-shell';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import ProfilePhoto from '../../../components/profile-photo';
+import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../../lib/image-upload';
+import SharedAncestryReview from '../../../components/shared-ancestry-review';
 import { ApiError, api } from '../../../lib/api';
 import { sharedAncestryPaths } from '../../../lib/shared-ancestry';
 import { readWorkspacePeople, type FamilyWorkspacePeople, type WorkspacePerson } from '../../../lib/admin-workspace';
@@ -58,8 +62,19 @@ export default function SharedAncestryAdminPage() {
   const [editorDraft, setEditorDraft] = useState<{ first_name: string; last_name: string; gender: string; birth_date: string; birth_place: string; is_alive: boolean; death_date: string; short_description: string; visibility: string } | null>(null);
   const [editorBusy, setEditorBusy] = useState(false);
   const [editorError, setEditorError] = useState('');
+  const [editorPhotoUrl, setEditorPhotoUrl] = useState<string | null>(null);
+  const [portraitFile, setPortraitFile] = useState<File | null>(null);
+  const [portraitInputKey, setPortraitInputKey] = useState(0);
+  const [portraitPreviewUrl, setPortraitPreviewUrl] = useState<string | null>(null);
+  const [portraitBusy, setPortraitBusy] = useState(false);
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [loadReady, setLoadReady] = useState(false);
+  useEffect(() => {
+    if (!portraitFile) { setPortraitPreviewUrl(null); return; }
+    const previewUrl = URL.createObjectURL(portraitFile);
+    setPortraitPreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [portraitFile]);
   const load = useCallback(async () => {
     setBusy(true); setLoadReady(false); setError('');
     try { const [options, current, payment, rows, familyOptions] = await Promise.all([api<Candidate[]>('/admin/shared-lineage/candidates'), api<Tree>('/shared-lineage'), api<DonationInfo | null>('/admin/shared-lineage/donation-info'), api<RootConnection[]>(`/admin/shared-lineage/connections?status=${connectionStatus}`), listAdminFamilies()]); setCandidates(options); setTree(current); setSelected(current.root_person_id || ''); setRootDraftId((previous) => previous || current.root_person_id || ''); setRootPartnerDraftId((previous) => previous || current.root_partner_person_id || ''); setDonation(payment ? { ...payment } : emptyDonation); setConnections(rows); setFamilies(familyOptions); setLoadReady(true); setAncestorFamilyId((previous) => previous || options.find((person) => person.id === current.root_person_id)?.family_id || (familyOptions.length === 1 ? familyOptions[0].id : '')); }
@@ -256,6 +271,8 @@ export default function SharedAncestryAdminPage() {
     const familyId = editorFamilyFor(personId);
     if (!familyId || editorBusy) return;
     setEditorBusy(true); setEditorError(''); setEditorPersonId(personId); setEditorFamilyId(familyId); setEditorDraft(null);
+    setEditorPhotoUrl(`/admin/families/${encodeURIComponent(familyId)}/people/${encodeURIComponent(personId)}/profile-photo`);
+    setPortraitFile(null);
     window.setTimeout(() => document.getElementById('person-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
     try {
       const workspace = await api<FamilyWorkspacePeople>(`/admin/families/${encodeURIComponent(familyId)}/workspace`);
@@ -270,9 +287,46 @@ export default function SharedAncestryAdminPage() {
     } catch (cause) { setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хүний бүртгэлийг нээж чадсангүй.'); }
     finally { setEditorBusy(false); }
   }
+  async function uploadEditorPortrait() {
+    if (!portraitFile || !editorPersonId || !editorFamilyId || portraitBusy || editorBusy) return;
+    setPortraitBusy(true); setEditorError('');
+    try {
+      const endpoint = `/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}/profile-photo`;
+      const upload = await prepareImageUpload(portraitFile);
+      const result = await api<{ profile_photo_url: string }>(endpoint, {
+        method: 'POST', body: upload,
+        headers: { 'Content-Type': upload.type, 'X-File-Name': upload.name },
+      });
+      setEditorPhotoUrl(result.profile_photo_url);
+      const canonicalEndpoint = `/families/${encodeURIComponent(editorFamilyId)}/persons/${encodeURIComponent(editorPersonId)}/profile-photo`;
+      announcePhotoChange({ endpoint: canonicalEndpoint, hasPhoto: true, url: canonicalEndpoint });
+      announcePhotoChange({ endpoint, hasPhoto: true, url: result.profile_photo_url });
+      setPortraitFile(null);
+      setPortraitInputKey((key) => key + 1);
+      setNotice('Зургийг хувийн хадгалалтад байршууллаа. Нийтийн модонд зургийг автоматаар нийтлэхгүй.');
+    } catch (cause) {
+      setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : cause instanceof Error ? cause.message : 'Зургийг хадгалж чадсангүй.');
+    } finally { setPortraitBusy(false); }
+  }
+  async function deleteEditorPortrait() {
+    if (!editorPersonId || !editorFamilyId || portraitBusy || editorBusy) return;
+    if (!window.confirm('Энэ хүний хувийн хөргийг арилгах уу? Зөвхөн зургийн холбоос арилна.')) return;
+    setPortraitBusy(true); setEditorError('');
+    try {
+      await api(`/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}/profile-photo`, { method: 'DELETE' });
+      announcePhotoChange({ endpoint: `/families/${encodeURIComponent(editorFamilyId)}/persons/${encodeURIComponent(editorPersonId)}/profile-photo`, hasPhoto: false, url: null });
+      announcePhotoChange({ endpoint: `/admin/families/${encodeURIComponent(editorFamilyId)}/people/${encodeURIComponent(editorPersonId)}/profile-photo`, hasPhoto: false, url: null });
+      setEditorPhotoUrl(null);
+      setPortraitFile(null);
+      setPortraitInputKey((key) => key + 1);
+      setNotice('Хүний хөргийг арилгалаа. Бүртгэл, холбоо, түүх хэвээр үлдсэн.');
+    } catch (cause) {
+      setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Зургийг арилгаж чадсангүй.');
+    } finally { setPortraitBusy(false); }
+  }
   async function saveEditor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editorDraft || !editorPersonId || !editorFamilyId || editorBusy) return;
+    if (!editorDraft || !editorPersonId || !editorFamilyId || editorBusy || portraitBusy) return;
     if (!editorDraft.first_name.trim()) { setEditorError('Нэр шаардлагатай.'); return; }
     if (editorDraft.death_date && editorDraft.birth_date && editorDraft.death_date < editorDraft.birth_date) {
       setEditorError('Нас барсан огноо төрсөн огнооноос өмнө байж болохгүй.'); return;
@@ -299,6 +353,7 @@ export default function SharedAncestryAdminPage() {
         } catch { /* List refresh is best-effort; the save already succeeded. */ }
       }
       setEditorDraft(null); setEditorPersonId(''); setEditorFamilyId('');
+      setEditorPhotoUrl(null); setPortraitFile(null);
       setNotice('Хүний мэдээллийг шинэчиллээ. Холбоо, аккаунт, түүх өөрчлөгдөөгүй; засвар админы түүхэнд бүртгэгдсэн.');
     } catch (cause) { setEditorError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Хүний мэдээллийг хадгалж чадсангүй.'); }
     finally { setEditorBusy(false); }
@@ -335,14 +390,12 @@ export default function SharedAncestryAdminPage() {
     setConnectSecondParentId(firstName ? tree?.root_partner_person_id || '' : ''); setConnectStep(1);
     window.setTimeout(() => document.getElementById('relationship-workflow')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   }
-  return <main className={styles.page}><div className={styles.shell}>
-    <header className={styles.header}><div><Link className={styles.brand} href="/admin">ГУУЛИНГИЙНХАН</Link><span className={styles.eyebrow}>НИЙТЛЭГ УДМЫН МОД</span></div><div className={styles.headerActions}><Link className={styles.back} href="/admin">← Админ руу буцах</Link></div></header>
-    <section className={styles.content}><div className={styles.heading}><div><span className={styles.eyebrow}>УДМЫН БҮРТГЭЛ</span><h1>Үндсэн удмын эх</h1></div></div>
+  return <AdminShell active="root" title="Үндсэн удмын эх" superOnly>
       {error && <div id="ancestry-error" tabIndex={-1} role="alert" className={styles.error}>{error}</div>}{notice && <div role="status" className={styles.notice}>{notice}</div>}
       {!loadReady && <div className={styles.panel} aria-busy={busy}>{busy ? <p role="status">Удмын эх, гэр бүлийн бүртгэл болон сангийн мэдээллийг ачаалж байна…</p> : <><h3>Бүртгэлийн мэдээлэл ачаалагдсангүй</h3><p className={styles.muted}>Одоогийн эх, хүмүүс болон дансны мэдээллийг шалгасны дараа засварлах боломж нээгдэнэ. Ачаалалт амжилтгүй болсон нь бүртгэл байхгүй гэсэн үг биш.</p><div className={styles.panelActions}><button type="button" onClick={() => void load()}>Дахин ачаалах</button><Link href="/login">Нэвтрэлтээ шалгах →</Link></div></>}</div>}
       {loadReady && <>
       <p className={styles.ancestryLead}>Эхлээд гэр бүлээ сонгож, үндсэн эх болон ханийг баталгаажуулна. Дараа нь хүүхэд, үр удмын холбоог бодит бүртгэлээр нэмнэ.</p>
-      <div className={styles.panel}><span className={styles.eyebrow}>01 · ҮНДСЭН ЭХ</span><h3>Үндсэн эхийн хоёр хүнийг батлах</h3><p className={styles.muted}>Эх хүн, ханийг гараар бүртгээд хоёр хүний холбоог шалгаж батална. Бүртгэлтэй хүн байвал дахин үүсгэхгүйгээр сонгоно.</p><label>Бүртгэлийн гэр бүл<select value={ancestorFamilyId} onChange={(event) => { setAncestorFamilyId(event.target.value); setRootDraftId(''); setRootPartnerDraftId(''); }}><option value="">Гэр бүл сонгох</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select></label><div className={styles.formGrid}>
+      <div className={styles.panel}><span className={styles.eyebrow}>01 · ҮНДСЭН ЭХ</span><h3>Үндсэн эхийн хоёр хүнийг батлах</h3><p className={styles.muted}>Эх хүн, ханийг гараар бүртгээд хоёр хүний холбоог шалгаж батална. Бүртгэлтэй хүн байвал дахин үүсгэхгүйгээр сонгоно.</p><label>Бүртгэлийн гэр бүл{families.length === 1 ? <input aria-label="Бүртгэлийн гэр бүл" readOnly value={families[0].name} /> : <select value={ancestorFamilyId} onChange={(event) => { setAncestorFamilyId(event.target.value); setRootDraftId(''); setRootPartnerDraftId(''); }}><option value="">Гэр бүл сонгох</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select>}</label><div className={styles.formGrid}>
         <label>Эх хүн<select value={rootDraftId} onChange={(event) => setRootDraftId(event.target.value)}><option value="">Хүн сонгох</option>{rootCandidates.map((person) => <option key={person.id} value={person.id}>{person.last_name} {person.first_name}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label>
         <label>Хань<select value={rootPartnerDraftId} onChange={(event) => setRootPartnerDraftId(event.target.value)}><option value="">Хүн сонгох</option>{rootCandidates.filter((person) => person.id !== rootDraftId).map((person) => <option key={person.id} value={person.id}>{person.last_name} {person.first_name}{person.birth_date ? ` · ${person.birth_date.slice(0, 4)}` : ''}</option>)}</select></label>
         <label>Хосын төлөв<select value={rootCoupleStatus} onChange={(event) => setRootCoupleStatus(event.target.value as 'married' | 'widowed')}><option value="married">Гэрлэсэн</option><option value="widowed">Бэлэвсэн</option></select></label>
@@ -352,7 +405,7 @@ export default function SharedAncestryAdminPage() {
         <span className={styles.eyebrow}>02 · ХҮНИЙ БҮРТГЭЛ</span><h3>Өвөг дээдсээ гараар бүртгэх</h3>
         <p className={styles.muted}>Нас барсан хүнд аккаунт, имэйл, утасны дугаар хэрэггүй. Энд оруулсан хүн зөвхөн сонгосон гэр бүлд бүртгэгдэнэ. Үндсэн модонд холбохыг дараагийн алхамд тусад нь шийднэ.</p>
         <div className={styles.formGrid}>
-          <label className={styles.wide}>Бүртгэх гэр бүл<select required value={ancestorFamilyId} onChange={(event) => setAncestorFamilyId(event.target.value)}><option value="">Гэр бүл сонгох</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select></label>
+          <label className={styles.wide}>Бүртгэх гэр бүл{families.length === 1 ? <input aria-label="Бүртгэх гэр бүл" readOnly value={families[0].name} /> : <select required value={ancestorFamilyId} onChange={(event) => setAncestorFamilyId(event.target.value)}><option value="">Гэр бүл сонгох</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select>}</label>
           <label>Нэр *<input required maxLength={120} value={ancestor.first_name} onChange={(event) => setAncestor({ ...ancestor, first_name: event.target.value })} placeholder="Жишээ: Ядамсүрэн" /></label>
           <label>Овог, эцгийн нэр<input maxLength={120} value={ancestor.last_name} onChange={(event) => setAncestor({ ...ancestor, last_name: event.target.value })} placeholder="Мэдэхгүй бол хоосон үлдээнэ" /></label>
           <label>Хүйс<select value={ancestor.gender} onChange={(event) => setAncestor({ ...ancestor, gender: event.target.value })}><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label>
@@ -393,6 +446,7 @@ export default function SharedAncestryAdminPage() {
           {connectionStatus === 'approved' && <button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void disconnectConnection(row.family_id)}>Зөвхөн үндэс модноос салгах</button>}
         </div>)}</div> : <p className={styles.state}>Энэ төлөвийн хүсэлт алга.</p>}
       </div>
+      <div id="shared-requests" style={{ scrollMarginTop: 24 }}><SharedAncestryReview onApproved={() => void load()} /></div>
       <div className={styles.panel}><h3>Баталгаажсан модны хүмүүс</h3><p className={styles.muted}>Хүнээ нээгээд эцэг/эх, хань, хүүхдүүдийг шалгаж, дараагийн хүнийг тухайн салаанд нэмнэ.</p><div className={styles.branchSlots}>{tree?.persons.filter((person) => reachableIds.has(person.id)).map((person) => <div key={person.id}><button type="button" aria-expanded={inspectedPersonId === person.id} onClick={() => setInspectedPersonId(inspectedPersonId === person.id ? '' : person.id)}>{sharedName(person.id)}</button>{inspectedPersonId === person.id && <><small>Эцэг/эх: {tree.relationships.filter((edge) => edge.child_id === person.id).map((edge) => sharedName(edge.parent_id)).join(' · ') || 'Бүртгэлгүй'}</small><small>Хань: {tree.spouses.filter((pair) => pair.person_1_id === person.id || pair.person_2_id === person.id).map((pair) => sharedName(pair.person_1_id === person.id ? pair.person_2_id : pair.person_1_id)).join(' · ') || 'Бүртгэлгүй'}</small><small>Хүүхэд: {[...new Set(tree.relationships.filter((edge) => edge.parent_id === person.id).map((edge) => edge.child_id))].map(sharedName).join(' · ') || 'Бүртгэлгүй'}</small><button type="button" disabled={saving} onClick={() => startConnection(person.id, 'child')}>+ Хүүхэд нэмэх</button><button type="button" disabled={saving} onClick={() => startConnection(person.id, 'spouse')}>+ Хань нэмэх</button><button type="button" className={styles.secondaryButton} disabled={saving || editorBusy || !editorFamilyFor(person.id)} title={editorFamilyFor(person.id) ? 'Хүний бүртгэлийг засах' : 'Гэр бүл тодорхойгүй тул засах боломжгүй'} onClick={() => void openEditor(person.id)}>Мэдээлэл засах</button>{person.id !== tree.root_person_id && person.id !== tree.root_partner_person_id && <button type="button" className={styles.outlineDanger} disabled={saving} onClick={() => void detachPerson(person.id)}>Үндсэн модноос салгах</button>}</>}</div>)}</div><Link href="/ancestry">Бүх модыг харах →</Link></div>
       {editorPersonId && <form id="person-editor" className={styles.panel} aria-busy={editorBusy} onSubmit={(event) => void saveEditor(event)}>
         <span className={styles.eyebrow}>ХҮНИЙ МЭДЭЭЛЭЛ ЗАСАХ</span>
@@ -400,6 +454,24 @@ export default function SharedAncestryAdminPage() {
         <p className={styles.muted}>Зөвхөн мэдээллийн талбарууд өөрчлөгдөнө. Эцэг/эх, хань, хүүхдийн холбоо, аккаунтын холбоос, түүх болон архивт хүрэхгүй; огнооны зөрчил сервер талд шалгагдаж, засвар админы түүхэнд бүртгэгдэнэ. Устгах үйлдэл энд байхгүй.</p>
         {editorError && <div role="alert" className={styles.error}>{editorError}</div>}
         {!editorDraft ? <p role="status" className={styles.muted}>Хүний бүртгэлийг ачаалж байна…</p> : <>
+          <div className={styles.formGrid}>
+            <div className={styles.wide}>
+              <span className={styles.muted}>Хувийн хөрөг · Зөвхөн эрхтэй админ харах ба солих боломжтой</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+                <ProfilePhoto url={portraitPreviewUrl || editorPhotoUrl} name={sharedName(editorPersonId)} fallback={editorDraft.first_name.slice(0, 1) || '?'} className={styles.personAvatar} />
+                <div className={styles.portraitPicker}>
+                  <input id="admin-portrait-file" aria-label="Хөрөг сонгох" className="account-photo-editor__file" key={portraitInputKey} type="file" accept={IMAGE_ACCEPT} disabled={editorBusy || portraitBusy} onChange={(event) => { setPortraitFile(event.target.files?.[0] || null); setEditorError(''); }} />
+                  <label htmlFor="admin-portrait-file" aria-disabled={editorBusy || portraitBusy}>Хөрөг сонгох</label>
+                  {portraitFile && <p role="status">{portraitFile.name}</p>}
+                </div>
+                <div className={styles.panelActions}>
+                  <button type="button" disabled={!portraitFile || editorBusy || portraitBusy} onClick={() => void uploadEditorPortrait()}>{portraitBusy ? 'Зураг хадгалж байна…' : 'Зураг байршуулах'}</button>
+                  <button type="button" className={styles.outlineDanger} disabled={editorBusy || portraitBusy} onClick={() => void deleteEditorPortrait()}>Зураг арилгах</button>
+                </div>
+              </div>
+              <p className={styles.muted}>JPEG, PNG, WebP. Зураг нууц metadata-гүйгээр хадгалагдана. Нийтийн модонд хөрөг харагдахын тулд хүний харагдах хүрээ “Нийтэд”, үндэс модны холбоо нь баталгаатай байх шаардлагатай; зураг байршуулах нь дангаараа нийтлэхгүй. Насанд хүрээгүй хүний зурагт guardian-ийн edit_profile эрх шаардлагатай.</p>
+            </div>
+          </div>
           <div className={styles.formGrid}>
             <label>Нэр *<input required maxLength={120} value={editorDraft.first_name} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, first_name: event.target.value })} /></label>
             <label>Овог, эцгийн нэр<input maxLength={120} value={editorDraft.last_name} disabled={editorBusy} onChange={(event) => setEditorDraft({ ...editorDraft, last_name: event.target.value })} /></label>
@@ -413,8 +485,8 @@ export default function SharedAncestryAdminPage() {
           </div>
           <p className={styles.muted}>Хувийн болговол тухайн хүн нийтлэг модонд харагдахаа болино.</p>
           <div className={styles.panelActions}>
-            <button type="submit" disabled={editorBusy}>{editorBusy ? 'Хадгалж байна…' : 'Өөрчлөлт хадгалах'}</button>
-            <button type="button" className={styles.secondaryButton} disabled={editorBusy} onClick={() => { setEditorDraft(null); setEditorPersonId(''); setEditorFamilyId(''); setEditorError(''); }}>Болих</button>
+            <button type="submit" disabled={editorBusy || portraitBusy}>{editorBusy ? 'Хадгалж байна…' : 'Өөрчлөлт хадгалах'}</button>
+            <button type="button" className={styles.secondaryButton} disabled={editorBusy || portraitBusy} onClick={() => { setEditorDraft(null); setEditorPersonId(''); setEditorFamilyId(''); setEditorError(''); setEditorPhotoUrl(null); setPortraitFile(null); setPortraitInputKey((key) => key + 1); }}>Болих</button>
           </div>
         </>}
       </form>}
@@ -435,7 +507,5 @@ export default function SharedAncestryAdminPage() {
         <label className={styles.wide}>Зориулалт<textarea maxLength={4000} rows={3} value={donation.purpose} onChange={(event) => setDonation({ ...donation, purpose: event.target.value })} /></label>
       </div><div className={styles.panelActions}><button disabled={saving}>{saving ? 'Хадгалж байна…' : donation.is_published ? 'Хадгалаад нийтлэх' : 'Хадгалах'}</button></div></form>
       </>}
-    </section>
-  </div></main>;
+    </AdminShell>;
 }
-

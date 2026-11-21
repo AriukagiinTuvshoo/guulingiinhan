@@ -14,7 +14,7 @@
   "measurements": [
     {
       "width": 320,
-      "readyMs": 974,
+      "readyMs": 1684,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -26,19 +26,19 @@
     },
     {
       "width": 360,
-      "readyMs": 743,
+      "readyMs": 670,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
       "renderedNodes": 18,
       "connectors": 12,
       "headerControlsFit": true,
-      "minTouchHeight": 44,
+      "minTouchHeight": 43.99993896484375,
       "mode": "family-map family-map--overview family-map--portrait is-compact"
     },
     {
       "width": 375,
-      "readyMs": 703,
+      "readyMs": 744,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -50,7 +50,7 @@
     },
     {
       "width": 390,
-      "readyMs": 486,
+      "readyMs": 669,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -62,7 +62,7 @@
     },
     {
       "width": 414,
-      "readyMs": 771,
+      "readyMs": 675,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -74,7 +74,7 @@
     },
     {
       "width": 430,
-      "readyMs": 780,
+      "readyMs": 631,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -86,7 +86,7 @@
     },
     {
       "width": 768,
-      "readyMs": 1255,
+      "readyMs": 667,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -98,7 +98,7 @@
     },
     {
       "width": 1024,
-      "readyMs": 1042,
+      "readyMs": 1161,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,
@@ -110,7 +110,7 @@
     },
     {
       "width": 1440,
-      "readyMs": 968,
+      "readyMs": 1174,
       "pageOverflow": false,
       "mapOverflow": false,
       "intentionalCanvas": true,

@@ -40,11 +40,15 @@ async function apiCall(page: Page, path: string, init: { method?: string; body?:
 }
 
 function memoriesPanel(page: Page) {
-  return page.locator('.homev2-panel').filter({ has: page.getByRole('heading', { name: 'Сүүлийн дурсамж' }) });
+  return page.locator('.heritage-album-section').filter({ has: page.getByRole('heading', { name: 'Дахин дурсах мөчүүд' }) });
 }
 
 function snapshotCount(page: Page) {
-  return page.locator('.homev2-stats div').filter({ hasText: 'Дурсамж' }).locator('strong');
+  return page.locator('.heritage-stats a').filter({ hasText: 'Нандин дурсамж' }).locator('strong');
+}
+
+function memoryIndexRows(page: Page) {
+  return page.locator('.heritage-memory-index a span');
 }
 
 test('dashboard reads the paginated memories contract instead of crashing', async ({ page }) => {
@@ -97,13 +101,13 @@ test('dashboard reads the paginated memories contract instead of crashing', asyn
   expect(response.status()).toBe(200);
   expect(Object.fromEntries(new URL(response.url()).searchParams)).toEqual({ page: '1', page_size: '6' });
 
-  // 3. The rendered rows come from `items`, in the page's own order, capped at four.
+  // 3. The rendered rows come from `items`, in the page's own order, capped at three.
   const panel = memoriesPanel(page);
   await expect(panel).toBeVisible();
-  const renderedTitles = await panel.locator('.homev2-list-row strong').allTextContents();
-  expect(renderedTitles).toEqual(page1.items.slice(0, 4).map((item: { title: string }) => item.title));
+  const renderedTitles = await memoryIndexRows(page).allTextContents();
+  expect(renderedTitles).toEqual(page1.items.slice(0, 3).map((item: { title: string }) => item.title));
   expect(renderedTitles.length).toBeGreaterThan(0);
-  if (page1.items.length <= 4) {
+  if (page1.items.length <= 3) {
     for (const title of titles) {
       expect(renderedTitles, `the recent list must show ${title}`).toContain(title);
     }
@@ -113,8 +117,8 @@ test('dashboard reads the paginated memories contract instead of crashing', asyn
   await expect(snapshotCount(page)).toHaveText(String(page1.total));
 
   // 5. The dashboard loaded: no inline error alert, no client-side exception.
-  await expect(page.locator('main.homev2-main')).toBeVisible();
-  await expect(page.locator('.homev2-main [role="alert"]'), 'the dashboard must not render an error alert').toHaveCount(0);
+  await expect(page.locator('main.heritage-dashboard')).toBeVisible();
+  await expect(page.locator('.heritage-dashboard [role="alert"]'), 'the dashboard must not render an error alert').toHaveCount(0);
   expect(pageErrors, 'the dashboard must not throw while hydrating').toEqual([]);
 });
 
@@ -138,12 +142,12 @@ test('dashboard shows the empty-memories state for a family without memories', a
   expect(emptyPage.body.has_next).toBe(false);
 
   await page.goto(`/dashboard?family=${familyId}`);
-  await expect(page.locator('main.homev2-main')).toBeVisible();
-  await expect(page.locator('.homev2-main [role="alert"]'), 'an empty family must not error').toHaveCount(0);
+  await expect(page.locator('main.heritage-dashboard')).toBeVisible();
+  await expect(page.locator('.heritage-dashboard [role="alert"]'), 'an empty family must not error').toHaveCount(0);
 
   const panel = memoriesPanel(page);
-  await expect(panel.getByText('Одоогоор хадгалсан дурсамж алга.')).toBeVisible();
-  await expect(panel.locator('.homev2-list-row')).toHaveCount(0);
+  await expect(panel.getByText('Одоохондоо дурсамж нэмэгдээгүй байна.')).toBeVisible();
+  await expect(memoryIndexRows(page)).toHaveCount(0);
   await expect(snapshotCount(page)).toHaveText('0');
   expect(pageErrors, 'the empty state must not throw').toEqual([]);
 });

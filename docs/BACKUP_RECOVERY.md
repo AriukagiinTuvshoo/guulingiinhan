@@ -75,6 +75,11 @@ must not be the sole long-term copy of a recovery key.
 7. Confirm backup completion, counts and ciphertext integrity. Only a completed
    manifest is a successful media backup. Restore representative objects and test
    their application authorization before marking recovery PASS.
+   The staging helper validates authorization expiry and a unique run ID, rejects
+   reusing a completed run, and compares the source inventory/ETags again before
+   publishing its manifest. A changed inventory leaves only incomplete encrypted
+   artifacts, never a completed manifest. Stop writes for a consistent drill;
+   this check does not create an atomic database/R2 snapshot.
 
 ## Retention and operating schedule
 

@@ -1,0 +1,80 @@
+{
+  "scope": "Disposable local production build with synthetic ci.invalid responses only; no staging, production, or real family data changed.",
+  "route": "/tree?view=shared",
+  "widths": [
+    320,
+    390,
+    768,
+    1440
+  ],
+  "measurements": [
+    {
+      "width": 320,
+      "pageOverflow": false,
+      "shellOverflow": false,
+      "mapOverflow": false,
+      "viewportTouchAction": "none",
+      "visibleNodes": 9,
+      "connectors": 6
+    },
+    {
+      "width": 390,
+      "pageOverflow": false,
+      "shellOverflow": false,
+      "mapOverflow": false,
+      "viewportTouchAction": "none",
+      "visibleNodes": 10,
+      "connectors": 6
+    },
+    {
+      "width": 768,
+      "pageOverflow": false,
+      "shellOverflow": false,
+      "mapOverflow": false,
+      "viewportTouchAction": "none",
+      "visibleNodes": 10,
+      "connectors": 6
+    },
+    {
+      "width": 1440,
+      "pageOverflow": false,
+      "shellOverflow": false,
+      "mapOverflow": false,
+      "viewportTouchAction": "none",
+      "visibleNodes": 10,
+      "connectors": 6
+    }
+  ],
+  "graph": {
+    "expectedVisiblePeople": 10,
+    "includes": [
+      "root couple",
+      "four first-generation children",
+      "four spouses"
+    ],
+    "excludes": [
+      "unlinked private person",
+      "unlinked public person"
+    ]
+  },
+  "interactions": [
+    "compact donation number and details",
+    "notification bell and Escape close",
+    "per-person child request",
+    "per-person spouse request",
+    "pending requests leave shared tree unchanged before approval",
+    "cancel pending request",
+    "composer Escape close",
+    "composer cancel button"
+  ],
+  "api": {
+    "syntheticChildAndSpouseRequests": 2,
+    "sharedTreeReads": 6,
+    "pendingAfterCancellation": 1
+  },
+  "errors": [],
+  "screenshots": [
+    ".shared-tree-artifacts/shared-tree-390.png",
+    ".shared-tree-artifacts/shared-tree-1440.png"
+  ]
+}

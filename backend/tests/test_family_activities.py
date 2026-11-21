@@ -60,6 +60,42 @@ def test_fund_manual_donation_flow_is_family_scoped_and_private(client, database
     assert confirmed.json()["donor_name"] is None
 
 
+def test_public_funds_are_explicit_active_and_read_only_for_other_families(client, database):
+    _, _member, family = setup_owner_and_member(client, database)
+    fid = family["id"]
+    private_fund = client.post(f"/api/v1/families/{fid}/funds", json={
+        "title": "Гэр бүлийн сан", "purpose": "Зөвхөн гэр бүлдээ",
+        "currency": "MNT", "payment_instruction": "Дансны мэдээлэл",
+    })
+    public_fund = client.post(f"/api/v1/families/{fid}/funds", json={
+        "title": "Нийтийн сан", "purpose": "Нийтэд зориулсан",
+        "currency": "MNT", "payment_instruction": "Нийтийн шилжүүлгийн заавар",
+        "visibility": "public",
+    })
+    paused_public = client.post(f"/api/v1/families/{fid}/funds", json={
+        "title": "Түр зогссон сан", "purpose": "Харагдахгүй",
+        "currency": "MNT", "payment_instruction": "Заавар",
+        "visibility": "public",
+    })
+    assert private_fund.status_code == public_fund.status_code == paused_public.status_code == 201
+    assert private_fund.json()["visibility"] == "family"
+    assert public_fund.json()["visibility"] == "public"
+    client.patch(f"/api/v1/families/{fid}/funds/{paused_public.json()['id']}/status?is_active=false")
+
+    other_family = client.post("/api/v1/families", json={"name": "Өөр гэр бүл"}).json()
+    response = client.get("/api/v1/public/funds")
+    assert response.status_code == 200
+    rows = response.json()
+    assert [row["id"] for row in rows] == [public_fund.json()["id"]]
+    assert rows[0]["family_name"] == family["name"]
+    assert rows[0]["visibility"] == "public"
+    assert "donations" not in rows[0]
+    assert client.get(f"/api/v1/families/{other_family['id']}/funds").json() == []
+
+    client.post("/api/v1/auth/logout")
+    assert client.get("/api/v1/public/funds").status_code == 401
+
+
 def test_family_event_registration_payment_and_capacity(client, database):
     _, _member, family = setup_owner_and_member(client, database)
     fid = family["id"]

@@ -18,17 +18,21 @@ import {
   TreeDeciduous,
   UserRound,
   Users,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ApiError, api, Family, User } from '../lib/api';
+import { ApiError, api, Family, User, PersonProfile } from '../lib/api';
 import ProfilePhoto from './profile-photo';
+import { PHOTO_CHANGED_EVENT, type PhotoChange } from '../lib/image-upload';
 import { needsExplicitFamily, resolveFamilyScope } from '../lib/family-scope';
 import { FamilyContext } from './family-context';
 import { useDialogFocus } from './use-dialog-focus';
 import SharedDonationBanner from './shared-donation-banner';
+import { InstallAppButton } from './install-app';
 
 type NavItem = {
   key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
@@ -44,8 +48,8 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
   { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
-  { key: 'tree', label: 'Удмын мод', description: 'Удам, холбоосууд', icon: GitFork, path: '/tree', needsFamily: true },
-  { key: 'people', label: 'Хүмүүс', description: 'Гэр бүлийн хүмүүс', icon: Users, path: '/people', needsFamily: true },
+  { key: 'tree', label: 'Удмын мод', description: 'Үндсэн удам · Манай гэр бүл', icon: GitFork, path: '/tree', needsFamily: false },
+  { key: 'people', label: 'Гишүүд', description: 'Урилга ба миний бүртгэл', icon: Users, path: '/people', needsFamily: true },
   { key: 'search', label: 'Хайлт', description: 'Гэр бүлийн сангаас хайх', icon: Search, path: '/search', needsFamily: true },
   { key: 'relationships', label: 'Хамаарал', description: 'Хоёр хүний холбооны зам', icon: GitFork, path: '/relationships', needsFamily: true },
   { key: 'stories', label: 'Манай түүх', description: 'Түүх, үйл явдлууд', icon: BookOpen, path: '/stories', needsFamily: true },
@@ -53,6 +57,14 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
   { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
   { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
+];
+
+const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
+  { label: 'ТОЙМ', keys: ['dashboard'] },
+  { label: 'УДАМ', keys: ['tree', 'ancestry', 'people', 'relationships', 'search'] },
+  { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
+  { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities'] },
+  { label: 'АККАУНТ', keys: ['settings'] },
 ];
 
 function isShellRoute(pathname: string) {
@@ -129,23 +141,161 @@ const AppShellContext = createContext<AppShellContextValue | null>(null);
 
 type PublishedNotice = { id: string; title: string; body: string };
 
-function AnnouncementBanner({ userId, compact = false }: { userId: string; compact?: boolean }) {
-  const [notice, setNotice] = useState<PublishedNotice | null>(null);
-  const [dismissed, setDismissed] = useState('');
+function playNotificationChime(context: AudioContext) {
+  const start = context.currentTime;
+  [784, 988].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const noteStart = start + index * 0.12;
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.08, noteStart + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.28);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteStart + 0.3);
+  });
+}
+
+function NotificationBell({ userId, closeSignal, onOpen }: { userId: string; closeSignal: boolean; onOpen(): void }) {
+  const [notices, setNotices] = useState<PublishedNotice[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const latestId = useRef<string | null>(null);
+  const initialized = useRef(false);
+  const audioContext = useRef<AudioContext | null>(null);
+  const soundEnabledRef = useRef(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => () => {
+    const context = audioContext.current;
+    audioContext.current = null;
+    if (context && context.state !== 'closed') {
+      void context.close().catch(() => undefined);
+    }
+  }, [userId]);
+
   useEffect(() => {
     let active = true;
-    void api<PublishedNotice[]>('/announcements?limit=1')
-      .then((rows) => { if (active) setNotice(rows[0] ?? null); })
-      .catch(() => { if (active) setNotice(null); });
-    return () => { active = false; };
+    initialized.current = false;
+    latestId.current = null;
+    soundEnabledRef.current = false;
+    setOpen(false);
+    setNotices([]);
+    setLoadError(false);
+    try {
+      const storedRead = window.localStorage.getItem(`announcement-read:${userId}`);
+      const parsed = storedRead ? JSON.parse(storedRead) : [];
+      setReadIds(new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []));
+      setSoundEnabled(window.localStorage.getItem(`announcement-sound:${userId}`) === '1');
+      soundEnabledRef.current = window.localStorage.getItem(`announcement-sound:${userId}`) === '1';
+    } catch {
+      setReadIds(new Set());
+      setSoundEnabled(false);
+    }
+
+    const load = async () => {
+      try {
+        const rows = await api<PublishedNotice[]>('/announcements?limit=8');
+        if (!active) return;
+        const newLatestId = rows[0]?.id ?? null;
+        if (initialized.current && newLatestId && newLatestId !== latestId.current && soundEnabledRef.current && audioContext.current) {
+          const context = audioContext.current;
+          void context.resume().then(() => {
+            if (active && audioContext.current === context) playNotificationChime(context);
+          }).catch(() => undefined);
+        }
+        latestId.current = newLatestId;
+        initialized.current = true;
+        setNotices(rows);
+        setLoadError(false);
+      } catch {
+        if (active) setLoadError(true);
+      }
+    };
+
+    void load();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load();
+    }, 60_000);
+    return () => { active = false; window.clearInterval(interval); };
   }, [userId]);
-  if (!notice || dismissed === notice.id) return null;
-  const content = <aside className="app-shell__announcement" aria-label="Системийн мэдэгдэл">
-    <span aria-hidden="true">✦</span>
-    <div><strong>{notice.title}</strong><p>{notice.body}</p><Link href="/news">Бүх мэдээг харах →</Link></div>
-    <button type="button" aria-label="Мэдэгдэл хаах" onClick={() => setDismissed(notice.id)}>×</button>
-  </aside>;
-  return compact ? <details className="tree-shell-notice"><summary><span aria-hidden="true">✦</span><span>{notice.title}</span><small>Мэдээ</small></summary>{content}</details> : content;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => { if (closeSignal) setOpen(false); }, [closeSignal]);
+  const unreadCount = notices.filter((notice) => !readIds.has(notice.id)).length;
+
+  function markVisibleRead() {
+    const next = new Set([...readIds, ...notices.map((notice) => notice.id)]);
+    setReadIds(next);
+    try { window.localStorage.setItem(`announcement-read:${userId}`, JSON.stringify([...next].slice(-50))); } catch { /* storage is optional */ }
+  }
+
+  function toggleSound() {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    soundEnabledRef.current = next;
+    try { window.localStorage.setItem(`announcement-sound:${userId}`, next ? '1' : '0'); } catch { /* storage is optional */ }
+    if (!next) return;
+    try {
+      const context = audioContext.current ?? new AudioContext();
+      audioContext.current = context;
+      void context.resume().then(() => playNotificationChime(context)).catch(() => undefined);
+    } catch { /* Web Audio may be unavailable */ }
+  }
+
+  return <div className="app-shell__notifications" ref={panelRef}>
+    <button
+      type="button"
+      className="app-shell__notification-button"
+      aria-label={unreadCount ? `Мэдэгдэл, уншаагүй ${unreadCount}` : 'Мэдэгдэл'}
+      aria-expanded={open}
+      aria-controls="app-shell-notification-panel"
+      onClick={() => {
+        const next = !open;
+        setOpen(next);
+        if (next) { onOpen(); markVisibleRead(); }
+        if (soundEnabledRef.current) {
+          try {
+            const context = audioContext.current ?? new AudioContext();
+            audioContext.current = context;
+            void context.resume().catch(() => undefined);
+          } catch { /* Web Audio may be unavailable */ }
+        }
+      }}
+    >
+      <Bell size={18} aria-hidden="true" />
+      {unreadCount > 0 && <span className="app-shell__notification-count" aria-hidden="true">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+    </button>
+    {open && <section id="app-shell-notification-panel" className="app-shell__notification-panel" role="dialog" aria-label="Мэдэгдлийн төв">
+      <header><div><strong>Мэдэгдэл</strong><small>{unreadCount ? `${unreadCount} уншаагүй` : notices.length ? 'Бүх мэдээг уншсан' : 'Шинэ мэдээ алга'}</small></div><button type="button" aria-label={`Хонхны дууг ${soundEnabled ? 'унтраах' : 'асаах'}`} onClick={toggleSound}>{soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}</button><button type="button" aria-label="Мэдэгдлийг хаах" onClick={() => setOpen(false)}><X size={18} /></button></header>
+      {loadError && <p className="app-shell__notification-state" role="status">Мэдээг түр ачаалж чадсангүй. <button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></p>}
+      {!loadError && notices.length === 0 && <p className="app-shell__notification-state">Одоогоор шинэ мэдээ алга.</p>}
+      <ul>{notices.map((notice) => <li key={notice.id}>
+        <Link href="/news" onClick={() => { markVisibleRead(); setOpen(false); }}>
+          <strong>{notice.title}</strong><span>{notice.body}</span>
+        </Link>
+      </li>)}</ul>
+      <Link className="app-shell__notification-all" href="/news" onClick={() => setOpen(false)}>Бүх мэдээ харах →</Link>
+    </section>}
+  </div>;
 }
 
 export function useAppShellContext() {
@@ -185,6 +335,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
     () => families.find((family) => family.id === scopedFamilyId) ?? null,
     [families, scopedFamilyId],
   );
+
+  // The signed-in person's portrait is their visible identity throughout the app.
+  // A profile being viewed or edited by an admin must never become their avatar.
+  const portraitIdentity = user?.person_id && currentFamily
+    ? `/families/${currentFamily.id}/persons/${user.person_id}` : '';
+  const portraitScope = `${user?.id ?? ''}:${portraitIdentity}`;
+  const [ownPortrait, setOwnPortrait] = useState<{ identity: string; url: string | null } | null>(null);
+  useEffect(() => {
+    if (!shouldRenderShell || !portraitIdentity) return;
+    let active = true;
+    let controller: AbortController;
+    const refresh = () => {
+      controller?.abort();
+      controller = new AbortController();
+      const signal = controller.signal;
+      void api<PersonProfile>(portraitIdentity, { signal })
+        .then(person => {
+          if (active && !signal.aborted) setOwnPortrait({ identity: portraitScope, url: person.profile_photo_url ?? null });
+        })
+        .catch(() => {
+          if (active && !signal.aborted) setOwnPortrait({ identity: portraitScope, url: null });
+        });
+    };
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent<PhotoChange>).detail;
+      if (detail?.endpoint === `${portraitIdentity}/profile-photo`) refresh();
+    };
+    refresh();
+    window.addEventListener(PHOTO_CHANGED_EVENT, changed);
+    return () => { active = false; controller?.abort(); window.removeEventListener(PHOTO_CHANGED_EVENT, changed); };
+  }, [shouldRenderShell, portraitIdentity, portraitScope]);
+  const headerPhoto = ownPortrait?.identity === portraitScope && ownPortrait.url
+    ? ownPortrait.url : user?.profile_photo_url;
 
   const retryContext = useCallback(async () => {
     const requestId = ++contextRequestRef.current;
@@ -226,7 +409,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
     } finally {
       if (requestId === contextRequestRef.current) setContextLoading(false);
     }
-  }, [router, setContextLoading, setContextLoaded, setContextError, setUser, setIsGlobalAdmin, setFamilies, setFamilyId]);
+  }, [router]);
+
+  useEffect(() => {
+    if (!shouldRenderShell || !user?.id) return;
+    let active = true;
+    const refreshPhoto = (event: Event) => {
+      if ((event as CustomEvent<{ endpoint?: string }>).detail?.endpoint !== '/auth/me/photo') return;
+      void api<User>('/auth/me').then(current => { if (active) setUser(current); }).catch(() => undefined);
+    };
+    window.addEventListener('guulingiinhan:photo-changed', refreshPhoto);
+    return () => { active = false; window.removeEventListener('guulingiinhan:photo-changed', refreshPhoto); };
+  }, [shouldRenderShell, user?.id]);
 
   useEffect(() => {
     if (!shouldRenderShell) {
@@ -411,14 +605,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="app-shell__account" ref={accountRef}>
+          {user && <NotificationBell userId={user.id} closeSignal={accountOpen || mobileOpen} onOpen={() => { setAccountOpen(false); setMobileOpen(false); }} />}
           <button
             type="button"
             className="app-shell__account-button"
             aria-haspopup="menu"
+            aria-label="Миний бүртгэлийн цэс"
             aria-expanded={accountOpen}
-            onClick={() => setAccountOpen((value) => !value)}
+            onClick={() => { setMobileOpen(false); setAccountOpen((value) => !value); }}
           >
-            <ProfilePhoto url={user?.profile_photo_url} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
+            <ProfilePhoto url={headerPhoto} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
             <span className="app-shell__account-name">{user?.display_name || 'Хэрэглэгч'}</span>
           </button>
 
@@ -468,6 +664,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <LogOut size={14} aria-hidden="true" />
                 {logoutBusy ? 'Гарч байна…' : 'Гарах'}
               </button>
+              <InstallAppButton menuItem />
             </div>
           )}
         </div>
@@ -482,7 +679,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {user && <AnnouncementBanner userId={user.id} compact={pathname === '/tree'} />}
       {user && <SharedDonationBanner userId={user.id} compact={pathname === '/tree'} />}
 
       <div className="app-shell__body">
@@ -504,7 +700,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <div className="app-shell__sidebar-inner">
             {mobileOpen && <button className="app-shell__drawer-close" type="button" onClick={() => setMobileOpen(false)} aria-label="Цэсийг хаах"><X size={20} aria-hidden="true" /></button>}
             <nav aria-label="Үндсэн навигаци">
-              {NAV_ITEMS.map((item, index) => {
+              {NAV_GROUPS.map((group) => <div className="app-shell__nav-group" key={group.label}>
+                <span className="app-shell__nav-group-label">{group.label}</span>
+                {group.keys.map((key) => {
+                const item = NAV_ITEMS.find((candidate) => candidate.key === key)!;
+                const index = NAV_ITEMS.indexOf(item);
                 const Icon = item.icon;
                 const itemActive = active === item.key;
                 const disabled = item.needsFamily && !currentFamily;
@@ -549,6 +749,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   </Link>
                 );
               })}
+              </div>)}
             </nav>
 
             <div className="app-shell__sidebar-footer">

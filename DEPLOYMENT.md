@@ -1,14 +1,21 @@
-# Байршуулалтын суурь
+# Гуулингийнхан — байршуулалт ба домэйн бэлтгэл
 
-Cloudflare custom domain-ийн host mapping, frontend/API origin, CORS, email болон Google callback тохиргоог [`docs/CLOUDFLARE_CUSTOM_DOMAIN.md`](docs/CLOUDFLARE_CUSTOM_DOMAIN.md)-оос шалгана. Домэйн нэр баталгаажаагүй үед production DNS болон Worker domain бүү өөрчил.
+Сүүлд шалгасан: 2026-10-13, Asia/Tokyo. Өмнөх тайлангууд тухайн үеийн нотолгоо бөгөөд шинэ release-ийн шалгалтыг орлохгүй.
 
-Google login асаахдаа backend-д `GOOGLE_OIDC_ENABLED=true`, `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET`, `GOOGLE_OIDC_REDIRECT_URI`, `GOOGLE_OIDC_STATE_SECRET` тохируул. Google Cloud OAuth client-ийн authorized redirect URI нь яг `https://<api-host>/api/v1/auth/google/callback` байна. State secret-ийг `openssl rand -hex 32`-оор үүсгэж secret manager-д хадгал; frontend-д client secret/state secret дамжуулахгүй. Google credentials байхгүй CI болон development-д OIDC унтраалттай байж болно.
+## Бодит staging архитектур
 
-## Орон нутаг
+| Хэсэг | Хэрэгжүүлэлт |
+| --- | --- |
+| Frontend | Next.js/React → vinext → Cloudflare Worker guulingiinhan-staging |
+| API | FastAPI/SQLAlchemy → Linux Container → Worker guulingiinhan-backend-staging |
+| Database | Supabase managed PostgreSQL 17, API-ийн private connection |
+| Media | Private R2 guulingiinhan-staging-media; API session/family эрх шалгана |
+| Email | Authenticated SMTP + STARTTLS; secret frontend-д өгөхгүй |
+| Phone | Verify.MN; бодит утасны шалгалтыг эзэмшигч хийнэ |
 
 Root `.env` дахь `POSTGRES_PASSWORD`-ийг өөрчилсний дараа `docker compose up --build` ажиллуулна. Compose эхлээд нэг удаагийн `migrate` service-ээр schema-г шинэчилж, амжилттай дууссаны дараа API-г асаана. API: `http://localhost:8000`; OpenAPI: `/docs`; health: `/health`.
 
-## Production-д бэлэн болохын өмнө
+Frontend: https://guulingiinhan-staging.tuvshoo0331.workers.dev
 
 1. Managed PostgreSQL үүсгэж нууц үг, TLS connection string тохируулна.
 2. API болон frontend-ийн origin тус бүрийг CORS-д заана; `CSRF_SECRET`-ийг `openssl rand -hex 32`-оор тусад нь үүсгэж secret manager-д хадгална. Production эхлэхэд энэ утга заавал байна.
@@ -28,15 +35,20 @@ API container өөрөө Alembic migration ажиллуулахгүй. Release p
 
 ### Утасны OTP тохиргоо (P4.4)
 
-Backend орчинд `OTP_HASH_SECRET`-ийг `openssl rand -hex 32`-оор үүсгээд secret manager-д хадгал. Production-д `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` тохируулах шаардлагатай; нэг утгыг frontend env рүү бүү дамжуул. OTP secret болон Twilio credential дутуу үед production тохиргоо API-г эхлүүлэхгүй. Development-ийн `SMS_PROVIDER=fake` мессеж илгээхгүй.
+Local browser QA-д NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8840/api/v1 болгож npm run build ажиллуулна. Windows Application Control native SWC-г хаавал npm run build -- --webpack ашиглана; OS хамгаалалтыг сулруулахгүй. Core gates: npm run regression:routes, npm run test:root-linking, npm run test:heritage, npm run test:pwa.
 
-Email verification болон password recovery нь SMTP тохируулсан үед идэвхжинэ. Локал development-д `EMAIL_PROVIDER=fake` нь хүргэлтийг network-д гаргахгүй. Invitation raw token response-д гарахгүй тул бодит хүргэлтэд SMTP provider шаардлагатай.
+Cloudflare build-д NEXT_PUBLIC_API_BASE_URL=https://guulingiinhan-backend-staging.tuvshoo0331.workers.dev/api/v1 болгож npm run build:vinext ажиллуулна. GitHub CI locked dependency install, TypeScript, Next/Vinext build, core regressions болон recovery helper tests ажиллуулна.
 
-`docker-compose.yml` нь development-д зориулагдсан бөгөөд API/DB портууд зөвхөн localhost дээр нээгдэнэ; production нууц үг, network, backup бодлого орлоход зориулагдаагүй.
+Backend: uv run pytest; uv run ruff check app tests migrations ops; uv run mypy. Ердийн API fixture SQLite тул PASS-ийг PostgreSQL concurrency гэж тайлагнахгүй. CI-ийн DOMAIN_POSTGRES_TEST_URL тусдаа шинэ loopback-only guulingiinhan_domain_test_... database-д бодит concurrent transaction/lock тест ажиллуулна. Дараа нь Alembic upgrade → downgrade нэг revision → upgrade → check хийнэ. Downgrade зөвхөн disposable CI database-д; бодит орчинд forward-fix эсвэл approved restore хэрэглэнэ.
 
-Backend-ийн container root бус хэрэглэгчээр ажиллана. `/health` нь liveness, `/health/ready` нь PostgreSQL холболтын readiness шалгалт. Production deployment нь readiness probe-оо `/health/ready` рүү чиглүүлнэ.
+## Орчин ба secret нэрс
 
-### Ажиглалт ба холбоосын найдвартай байдал (P4.11)
+- Frontend build: NEXT_PUBLIC_API_BASE_URL — нууц биш; HTTPS, /api/v1 suffix.
+- Backend: DATABASE_URL, OTP_HASH_SECRET, CORS_ORIGINS.
+- Email: EMAIL_PROVIDER=smtp, EMAIL_FROM, EMAIL_PUBLIC_BASE_URL, EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, EMAIL_SMTP_USERNAME, EMAIL_SMTP_PASSWORD.
+- Storage: STORAGE_ENDPOINT, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY. Одоогийн staging wrapper bucket/region-ийг өөрөө тогтооно.
+- Phone: VERIFY_MN_API_KEY backend-only; production configuration хамгаалалтыг тойрч гарахгүй. Live phone test энэ аудитын эзэмшигчийн тусдаа gate.
+- Google default off. Асаавал client ID/secret, HTTPS redirect URI, GOOGLE_OIDC_STATE_SECRET болон Google console exact callback шаардлагатай.
 
 `/ready` нь `/health/ready`-ийн ижил database readiness probe. `/metrics` нь process-local Prometheus text counters бөгөөд default-аар хаалттай; `METRICS_TOKEN` (32+ тэмдэгт, secret manager) тохируулсан үед зөвхөн `Authorization: Bearer <token>`-той scraper уншина. Endpoint-ийг trusted network/proxy-оор хязгаарла; token-ийг URL, frontend эсвэл log-д бүү оруул. Метрик replica бүр дээр тусдаа бөгөөд restart-д reset болно. 60 секундэд 10 ширхэг 5xx гарвал `http_5xx_spike` structured warning (5 минутын cooldown) бичнэ. Сонголтоор `ALERT_WEBHOOK_URL` нь trusted HTTPS endpoint-д минимал JSON-г best-effort илгээнэ (3 секундын timeout, redirect үгүй); delivery баталгаатай биш, aggregation болон threshold тохиргоог оператор тусад нь хийх шаардлагатай.
 
@@ -44,17 +56,21 @@ Backend-ийн container root бус хэрэглэгчээр ажиллана. 
 
 API JSON log гаргаж, серверийн `X-Request-ID` хүсэлтийн response/log хооронд хадгална. Log aggregation-д зөвхөн stdout-г ав; request body болон URL query-г proxy/APM талд бүртгэхгүй. `LOG_LEVEL`, `SLOW_REQUEST_THRESHOLD_MS` тохируулж болно. HTTP 429, удаан хүсэлт, DB/storage алдааны event-үүдийг `event`/`error_code` талбараар alert-д холбо.
 
-Managed PostgreSQL-ийн connection limit-ийг мэдсэний дараа `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT_SECONDS`, `DB_POOL_RECYCLE_SECONDS`, `DB_CONNECT_TIMEOUT_SECONDS`-г тухайн үйлчилгээний replica тоотой хамт тохируул. Эхний утгууд тохируулгын эхлэл болохоос production орчинд туршсан тоо биш. SQL query-д автомат дахин оролдлого хийхгүй.
+## Домэйн худалдаж авсны дараа
 
-SMTP, SMS болон Google OIDC timeout 8 секунд; S3 connection/read timeout 3/10 секунд, SDK retry хязгаарлагдсан. Database connect timeout нь env-ээр тохирно. Query/statement timeout идэвхжүүлээгүй тул шаардлагатай бол managed DB болон driver дээр workload-д тааруулж тохируул.
+1. Яг нэр болон registrar эзэмшлийг батална; Cloudflare zone active болгоно.
+2. Эхлээд staging.<domain> болон api-staging.<domain> Custom Domain холбоно.
+3. Frontend API base, exact backend CORS origin, email public base-г хамтад нь шинэчилнэ. Google enabled бол exact callback-г мөн шинэчилнэ.
+4. Шинэ HTTPS hosts дээр login/reload/logout, email links, private upload/read, ordinary/admin/family isolation, mobile/PWA-г дахин шалгана.
+5. Production нээлтийн runtime, database/media destination, APP_ENV=production, backup/restore болон access policy-г тусад нь батална. Одоогийн wrapper APP_ENV=staging болон staging bucket-тай: Worker нэрийг солиод шууд production болгохгүй.
 
-Фото cleanup нь анхдагчаар 8 хүртэл оролдлого хийдэг (`PHOTO_CLEANUP_MAX_ATTEMPTS`, дээд 20). Limit хүрсэн tombstone автоматаар арилгахгүй, hidden үлдэнэ; лог дахь `photo_cleanup_exhausted`-ээр олж operator runbook-аар гараар оношлоно. Production alert, log aggregation болон гар ажиллагааны сэргээх алхмууд одоогоор тохируулаагүй.
+Exact mapping/checklist: [CLOUDFLARE_CUSTOM_DOMAIN.md](docs/CLOUDFLARE_CUSTOM_DOMAIN.md). Домэйн нэргүй үед DNS/custom domains/production тохиргоо өөрчлөхгүй.
 
-**Backup төлөв:** Managed PostgreSQL backup — NOT CONFIGURED; object storage backup/versioning — NOT CONFIGURED; restore test — NOT TESTED. Production нээлтээс өмнө тус бүрийг тохируулж, сэргээх туршилтын үр дүнг бүртгэ.
+## Backup, хяналт, rollback
 
-Restore runbook: (1) managed PostgreSQL snapshot-ийг тусгаарласан instance руу сэргээ; (2) `alembic current` болон `alembic upgrade head`-ээр schema-г шалга; (3) object storage-ийн versioned backup-ийг тусгаарласан bucket руу сэргээ; (4) DB-ийн `photos.object_key` болон `thumbnail_object_key`-г сэргэсэн объектуудтай тулган, алга болсон/илүү object-ийг тайлагна; (5) `/health/ready`, нэвтрэлт, family access, private photo upload/read smoke test ажиллуул; (6) үр дүн, хугацаа, зөрүүг бүртгэ. Энэ runbook нь одоогоор төлөвлөгөө бөгөөд бодит restore туршигдаагүй.
+2026-10-13-нд бодит staging application DB (47 хүснэгт/729 мөр) болон private R2-ийн 6 объектыг шифрлэн нөөцөлж, тусгаарласан орчинд сэргээсэн. Бүх мөр, FK, binary SHA-256 болон protected original/thumbnail API шалгалт давсан. Энэ нь provider-native backup/PITR, atomic DB/R2 snapshot эсвэл portable key custody-ийн баталгаа биш. Native/provider backup, зөөврийн key custody, retention/RPO/RTO, missed-backup alert-ийг production нээлтээс өмнө батална. Бодлого батлагдаагүй үед schedule эсвэл автомат устгал идэвхжүүлэхгүй.
 
-Auth cookie production-д `Secure; HttpOnly; SameSite=None` тул HTTPS frontend/backend болон зөв CORS origin шаардлагатай. Vercel-ийн бодит deployment энэ phase-д хийгдээгүй; provider project/environment variables шалгах эрх ба тохиргоо баталгаажаагүй.
+[BACKUP_RECOVERY.md](docs/BACKUP_RECOVERY.md), [2026-10-13 бодит restore](docs/DOMAIN_ACTUAL_RESTORE_2026_10_13.md)-ийг ашиглана. Logs body/query/token/credential агуулахгүй; request_id, 5xx, 429, photo_cleanup_exhausted зэрэг aggregate дохиог operator хянана.
 
 ## Production auth deployment gate
 

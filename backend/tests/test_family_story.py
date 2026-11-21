@@ -2,7 +2,7 @@ from uuid import UUID
 
 from conftest import register_verified
 
-from app.models import FamilyMember, User
+from app.models import AdminGrant, FamilyMember, User
 
 
 def test_story_crud_person_links_and_genealogy_are_separate(client, database):
@@ -36,10 +36,14 @@ def test_story_crud_person_links_and_genealogy_are_separate(client, database):
         f"/api/v1/lineages/{lineage['id']}/branches",
         json={"name": "Үндсэн салаа"},
     ).json()
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
     assert client.put(
         f"/api/v1/families/{family_id}/persons/{child['id']}/lineage-assignment",
         json={"lineage_id": lineage["id"], "branch_id": branch["id"]},
     ).status_code == 200
+    with database.begin() as db:
+        db.delete(db.get(AdminGrant, UUID(client.get("/api/v1/auth/me").json()["id"])))
 
     before = client.get(f"/api/v1/families/{family_id}/persons/{child['id']}")
     assert before.status_code == 200
