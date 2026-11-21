@@ -225,6 +225,13 @@ def test_tree_node_limit_caps_large_fanout(client, database):
     tree = response.json()
     assert tree["meta"]["node_count"] <= tree["meta"]["node_limit"]
     assert tree["meta"]["truncated"] is True
+    expanded = client.get(f"/api/v1/families/{family_id}/tree?scope=all&node_limit=1000")
+    assert expanded.status_code == 200
+    assert len(expanded.json()["persons"]) == 350
+    assert expanded.json()["meta"]["node_limit"] == 1000
+    assert client.get(f"/api/v1/families/{family_id}/tree?node_limit=1001").status_code == 422
+    client.post("/api/v1/auth/logout")
+    assert client.get(f"/api/v1/families/{family_id}/tree?scope=all&node_limit=1000").status_code == 401
 
 
 def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scoped(

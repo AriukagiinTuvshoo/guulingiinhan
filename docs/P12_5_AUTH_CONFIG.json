@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-10-07T23:39:32.486Z",
+  "scope": "Public availability and anonymous logout cookie-removal flags only; no existing cookie, account credentials, delivery or fresh login used.",
+  "availability": [
+    {
+      "kind": "email",
+      "status": 200,
+      "enabled": true
+    },
+    {
+      "kind": "phone",
+      "status": 200,
+      "enabled": true,
+      "password_login": true,
+      "password_registration": true,
+      "verification_provider": "verify_mn"
+    },
+    {
+      "kind": "google",
+      "status": 200,
+      "enabled": false
+    }
+  ],
+  "cookie_removal": {
+    "status": 204,
+    "secure": true,
+    "http_only": true,
+    "same_site_none": true,
+    "path_root": true,
+    "no_parent_domain": true,
+    "expired": true,
+    "cache_control": "private, no-store"
+  }
+}

@@ -15,7 +15,7 @@ class JsonLogFormatter(logging.Formatter):
 
     SAFE_FIELDS = (
         "event", "method", "route", "status_code", "duration_ms", "error_code",
-        "error_type", "operation", "photo_id", "memory_id", "family_id", "provider",
+        "error_type", "cause_type", "cause_errno", "operation", "photo_id", "memory_id", "family_id", "provider",
         "attempt", "max_attempts", "rate_limit_namespace", "storage_duration_ms",
     )
 

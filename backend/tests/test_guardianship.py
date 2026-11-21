@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from sqlalchemy import select
 
 from app.models import AuditLog, FamilyMember, PersonGuardianship
@@ -41,7 +41,7 @@ def setup_family(client, database, *, birth_date="2015-06-12"):
     client.post("/api/v1/auth/logout")
     assert client.post(
         "/api/v1/auth/login",
-        json={"email": "owner@example.com", "password": "strong-passphrase-123"},
+        json={"email": "owner@example.com", "password": TEST_PASSWORD},
     ).status_code == 200
     return owner, family, child, guardian
 
@@ -246,6 +246,10 @@ def test_expired_grants_are_inactive_and_can_be_reissued(client, database):
 
 def test_minor_profile_projection_applies_to_search_and_tree(client, database):
     _, family, child, _ = setup_family(client, database)
+    directory = client.get(f"/api/v1/families/{family['id']}/people")
+    assert directory.status_code == 200
+    child_row = next(item for item in directory.json()["items"] if item["id"] == child["id"])
+    assert child_row["profile_photo_url"] is None
     for path in (
         f"/api/v1/families/{family['id']}/persons",
         f"/api/v1/families/{family['id']}/persons/search?q=Болд",
@@ -265,6 +269,7 @@ def test_minor_profile_projection_applies_to_search_and_tree(client, database):
         assert result["birth_date"] is None
         if path.endswith("/tree"):
             assert "birth_place" not in result
+            assert result["profile_photo_url"] is None
         else:
             assert result["birth_place"] is None
     protected_year = client.get(

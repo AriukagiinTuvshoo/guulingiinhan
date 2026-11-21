@@ -158,6 +158,44 @@ def test_private_story_is_visible_only_to_creator(client, database):
     assert visible.status_code == 200
 
 
+def test_story_photo_edit_and_delete_preserve_shared_memory_and_photo(client, database):
+    from test_memory_photos import MemoryStorage, png_bytes
+
+    from app.main import app
+    from app.models import Memory, Photo
+    from app.storage import get_storage
+
+    storage = MemoryStorage()
+    app.dependency_overrides[get_storage] = lambda: storage
+    register_verified(client, "story-photo-lifecycle@example.com")
+    family_id = client.post("/api/v1/families", json={"name": "Story photo"}).json()["id"]
+    memory = client.post(f"/api/v1/families/{family_id}/memories", json={
+        "title": "Өвлийн дурсамж", "visibility": "family", "person_ids": [],
+    }).json()
+    photo = client.post(
+        f"/api/v1/families/{family_id}/memories/{memory['id']}/photos",
+        content=png_bytes(), headers={"Content-Type": "image/png", "X-File-Name": "winter.png"},
+    ).json()
+    original_body = f"Түүхийн эхлэл.\n\n[[photo:{photo['id']}|Цас орсон өдөр]]"
+    story = client.post(f"/api/v1/families/{family_id}/stories", json={
+        "title": "Өвлийн өдөр", "body": original_body, "visibility": "family",
+    })
+    assert story.status_code == 201, story.text
+    edited_body = f"Түүхийн эхлэл.\n\n[[photo:{photo['id']}|Гэр бүлийн өвлийн зураг]]"
+    edited = client.put(f"/api/v1/families/{family_id}/stories/{story.json()['id']}", json={
+        "body": edited_body,
+    })
+    assert edited.status_code == 200
+    assert edited.json()["body"] == edited_body
+    assert client.get(f"/api/v1/families/{family_id}/stories/{story.json()['id']}").json()["body"] == edited_body
+    assert client.delete(f"/api/v1/families/{family_id}/stories/{story.json()['id']}").status_code == 204
+
+    with database() as db:
+        assert db.get(Memory, UUID(memory["id"])) is not None
+        assert db.get(Photo, UUID(photo["id"])) is not None
+    assert len(storage.objects) == 2
+
+
 def test_story_validation_author_protection_and_duplicate_people(client):
     register_verified(client, "story-validation@example.com")
     family_id = client.post("/api/v1/families", json={"name": "Validation"}).json()["id"]

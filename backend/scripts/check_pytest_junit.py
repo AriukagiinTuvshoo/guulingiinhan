@@ -4,19 +4,31 @@ pytest exits 0 when every test in a selected file is skipped, so a missing
 environment variable could leave a green CI job that asserted nothing. CI writes
 ``--junitxml`` reports for the PostgreSQL-bound steps and calls this script, which
 reads the machine-readable result instead of parsing human-oriented console output.
+
+Parsing uses ``defusedxml`` so a tampered or hostile report (external entities,
+billion-laughs payloads) is rejected instead of resolved; malformed or empty
+reports fail with a clear message rather than a traceback.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 
 def inspect_report(report: Path) -> tuple[int, int, int]:
     """Return (executed, skipped, failed) test-case counts from a JUnit XML report."""
-    root = ET.parse(report).getroot()
+    try:
+        root = ET.parse(report).getroot()
+    except (DefusedXmlException, SyntaxError) as error:
+        # ParseError subclasses SyntaxError; DefusedXmlException covers
+        # entity/external-reference attacks. Never dump a traceback or the
+        # hostile payload into CI logs.
+        raise ValueError(f"unreadable or unsafe JUnit report: {error}") from None
     executed = 0
     skipped = 0
     failed = 0
@@ -49,7 +61,11 @@ def main() -> int:
     if not args.report.is_file():
         print(f"FAIL: no JUnit report at {args.report}; pytest never produced a result file", file=sys.stderr)
         return 2
-    executed, skipped, failed = inspect_report(args.report)
+    try:
+        executed, skipped, failed = inspect_report(args.report)
+    except ValueError as error:
+        print(f"FAIL: {error} (report: {args.report})", file=sys.stderr)
+        return 2
 
     problems: list[str] = []
     if failed:

@@ -2,17 +2,18 @@
 
 import Link from 'next/link';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import {
   ApiError,
   api,
   BranchSummary,
-  Family,
   LineageSummary,
   PersonDirectoryItem,
   PersonDirectoryPage,
   personName,
 } from '../../lib/api';
+import { useAppShellContext } from '../../components/app-shell';
+import ProfilePhoto from '../../components/profile-photo';
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -47,9 +48,7 @@ function activeFilterCount(query: string, lineageId: string, branchId: string) {
 
 function PeoplePageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [families, setFamilies] = useState<Family[]>([]);
-  const [familyId, setFamilyId] = useState('');
+  const { families, currentFamily: family, familyId, contextError } = useAppShellContext();
   const [lineages, setLineages] = useState<LineageSummary[]>([]);
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [lineageId, setLineageId] = useState('');
@@ -60,6 +59,7 @@ function PeoplePageContent() {
   const [busy, setBusy] = useState(false);
   const [metaError, setMetaError] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [metaBusy, setMetaBusy] = useState(false);
   const peopleRequestRef = useRef(0);
   const familyRequestRef = useRef(0);
@@ -112,68 +112,6 @@ function PeoplePageContent() {
     }
   }, [router]);
 
-  const loadFamilies = useCallback(async () => {
-    const requestId = ++familyRequestRef.current;
-    familyAbortRef.current?.abort();
-    peopleAbortRef.current?.abort();
-    metadataAbortRef.current?.abort();
-    peopleRequestRef.current += 1;
-    metadataRequestRef.current += 1;
-    const controller = new AbortController();
-    familyAbortRef.current = controller;
-    setPeople(null);
-    setLineages([]);
-    setBranches([]);
-    setLineageId('');
-    setBranchId('');
-    setLoading(true);
-    setError('');
-    try {
-      const list = await api<Family[]>('/families', { signal: controller.signal });
-      if (requestId !== familyRequestRef.current) return;
-      setFamilies(list);
-      peopleRequestRef.current += 1;
-      if (!list.length) {
-        setFamilyId('');
-        setPeople(null);
-        setLoading(false);
-        return;
-      }
-      const requestedFamily = searchParams.get('family') ?? '';
-      if (requestedFamily && !list.some((item) => item.id === requestedFamily)) {
-        peopleRequestRef.current += 1;
-        metadataRequestRef.current += 1;
-        setFamilyId('');
-        setPeople(null);
-        setLineages([]);
-        setBranches([]);
-        setLineageId('');
-        setBranchId('');
-        setLoading(false);
-        setError('Сонгосон гэр бүл олдсонгүй эсвэл танд хандах эрхгүй байна.');
-        return;
-      }
-      const selected = list.find((item) => item.id === requestedFamily) ?? list[0];
-      setFamilyId(selected.id);
-      setPeople(null);
-      if (selected.id !== requestedFamily) {
-        router.replace('/people?family=' + encodeURIComponent(selected.id));
-      }
-    } catch (cause) {
-      if (controller.signal.aborted || requestId !== familyRequestRef.current) return;
-      if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
-        return;
-      }
-      setLoading(false);
-      setError(cause instanceof Error ? cause.message : 'Гэр бүлүүдийг ачаалж чадсангүй.');
-    }
-  }, [router, searchParams]);
-
-  useEffect(() => {
-    void loadFamilies();
-  }, [loadFamilies]);
-
   const loadLineages = useCallback(async (fid: string) => {
     const requestId = ++metadataRequestRef.current;
     metadataAbortRef.current?.abort();
@@ -188,19 +126,13 @@ function PeoplePageContent() {
     } catch (cause) {
       if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
       setLineages([]);
-      setMetaError(
-        cause instanceof Error
-          ? cause.message
-          : 'Удам угсааны мэдээллийг ачаалж чадсангүй.',
-      );
+      setMetaError(cause instanceof Error ? cause.message : 'Удам угсааны мэдээллийг ачаалж чадсангүй.');
     } finally {
-      if (requestId === metadataRequestRef.current) {
-        setMetaBusy(false);
-      }
+      if (requestId === metadataRequestRef.current) setMetaBusy(false);
     }
   }, []);
 
-  const loadBranches = useCallback(async (fid: string, lid: string) => {
+  const loadBranches = useCallback(async (_fid: string, lid: string) => {
     const requestId = ++metadataRequestRef.current;
     metadataAbortRef.current?.abort();
     const controller = new AbortController();
@@ -214,17 +146,24 @@ function PeoplePageContent() {
     } catch (cause) {
       if (controller.signal.aborted || requestId !== metadataRequestRef.current) return;
       setBranches([]);
-      setMetaError(
-        cause instanceof Error
-          ? cause.message
-          : 'Салааны мэдээллийг ачаалж чадсангүй.',
-      );
+      setMetaError(cause instanceof Error ? cause.message : 'Салааны мэдээллийг ачаалж чадсангүй.');
     } finally {
-      if (requestId === metadataRequestRef.current) {
-        setMetaBusy(false);
-      }
+      if (requestId === metadataRequestRef.current) setMetaBusy(false);
     }
   }, []);
+
+  useEffect(() => {
+    peopleAbortRef.current?.abort();
+    metadataAbortRef.current?.abort();
+    peopleRequestRef.current += 1;
+    metadataRequestRef.current += 1;
+    setPeople(null);
+    setLineages([]);
+    setBranches([]);
+    setLineageId('');
+    setBranchId('');
+    setError('');
+  }, [familyId]);
 
   useEffect(() => {
     metadataRequestRef.current += 1;
@@ -261,16 +200,16 @@ function PeoplePageContent() {
   }, [branchId, familyId, lineageId, query, loadPeople]);
 
   function chooseFamily(nextFamilyId: string) {
+    if (!families.some((item) => item.id === nextFamilyId) || nextFamilyId === familyId) return;
     peopleRequestRef.current += 1;
     metadataRequestRef.current += 1;
     peopleAbortRef.current?.abort();
     metadataAbortRef.current?.abort();
-    setFamilyId(nextFamilyId);
+    setPeople(null);
     setLineages([]);
     setBranches([]);
     setLineageId('');
     setBranchId('');
-    setPeople(null);
     setMetaError('');
     setError('');
     router.replace('/people?family=' + encodeURIComponent(nextFamilyId));
@@ -288,7 +227,6 @@ function PeoplePageContent() {
     setBranchId('');
   }
 
-  const family = families.find((item) => item.id === familyId) ?? null;
   const hasFilters = activeFilterCount(query, lineageId, branchId) > 0;
 
   return (
@@ -324,6 +262,8 @@ function PeoplePageContent() {
           </div>
         </div>
 
+        {notice && <p role="status">{notice}</p>}
+        {contextError && <div className="error people-error" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="error people-error" role="alert">
             <span>{error}</span>
@@ -332,7 +272,7 @@ function PeoplePageContent() {
               onClick={() =>
                 void (familyId
                   ? loadPeople(familyId, query, lineageId, branchId, 1)
-                  : loadFamilies())
+                  : window.location.reload())
               }
             >
               Дахин оролдох
@@ -440,6 +380,7 @@ function PeoplePageContent() {
             </div>
             <div className="people-grid" aria-busy={busy}>
               {people?.items.map((person) => (
+                <article key={person.id}>
                 <Link
                   className="card people-card"
                   key={person.id}
@@ -447,9 +388,7 @@ function PeoplePageContent() {
                   aria-label={`${personName(person) || 'Нэргүй хүн'} профайлыг нээх`}
                 >
                   <div className="people-card-top">
-                    <span className="personavatar people-avatar" aria-hidden="true">
-                      {initials(person)}
-                    </span>
+                    <ProfilePhoto className="personavatar people-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />
                     <div className="people-card-identity">
                       <h2>{personName(person) || 'Нэргүй хүн'}</h2>
                       <span>{lifeSummary(person)}</span>
@@ -475,6 +414,13 @@ function PeoplePageContent() {
 
                   <span className="button people-profile-link" aria-hidden="true">Профайл нээх →</span>
                 </Link>
+                {(family?.role === 'owner' || family?.role === 'editor') && <button type="button" disabled={busy} onClick={async () => {
+                  setBusy(true); setError(''); setNotice('');
+                  try { await api(`/families/${familyId}/featured-person`, { method: 'PUT', body: JSON.stringify({ person_id: person.id }) }); setNotice('Нүүр хуудсанд онцлох хүнийг хадгаллаа.'); }
+                  catch { setError('Онцлох хүнийг хадгалж чадсангүй. Гэр бүлд харагдах насанд хүрсэн хүн сонгоно уу.'); }
+                  finally { setBusy(false); }
+                }}>⭐ Нүүр хуудсанд онцлох</button>}
+                </article>
               ))}
             </div>
 

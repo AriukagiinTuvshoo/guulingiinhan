@@ -1,0 +1,17 @@
+.page{max-width:1320px;margin:0 auto;padding:clamp(20px,4vw,56px);color:#18392f}
+.hero{background:#103c30;color:#f8f0d9;border:1px solid #b89749;border-radius:20px;padding:clamp(24px,4vw,54px)}
+.hero span,.kicker{font-size:.76rem;font-weight:700;letter-spacing:.18em;color:#bd913e}
+.hero h1,.panel h2{font-family:Georgia,serif;font-weight:500;line-height:1.12}
+.hero h1{font-size:clamp(2.4rem,5vw,4.5rem);margin:.25em 0}.hero p{max-width:62ch;line-height:1.7}
+.layout{display:grid;grid-template-columns:minmax(210px,280px) minmax(0,1fr);gap:24px;margin-top:26px}
+.aside,.panel{background:#fffaf0;border:1px solid #d8c9a7;border-radius:18px;padding:clamp(22px,3vw,36px)}
+.aside h2{font-family:Georgia,serif;margin-top:0}.aside li{padding:.6em 0}.aside a{display:block;color:#15513f;margin:18px 0}
+.panel{min-height:360px}.panel h2{font-size:clamp(1.8rem,3vw,2.8rem);margin:.3em 0}.panel p{line-height:1.6;max-width:65ch}
+.panel label{display:grid;gap:9px;font-weight:600;margin:20px 0}.panel select{width:100%;min-height:48px;border:1px solid #baac8c;border-radius:9px;background:#fff;padding:10px;font:inherit}
+.selection,.path span{display:block;border:1px solid #d8c9a7;background:#f5efdf;border-radius:10px;padding:16px;margin:10px 0}
+.path span+span:before{content:'↓';display:block;color:#a47b31;margin:-12px 0 8px}
+.check{grid-template-columns:auto 1fr;align-items:start;font-weight:400!important}.check input{margin-top:4px}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}.actions button,.actions a{border:1px solid #8a7040;border-radius:9px;background:transparent;color:#163e32;padding:12px 18px;font:inherit;cursor:pointer;text-decoration:none}
+.actions .primary,.primary{background:#174c3a!important;color:#fff!important;border-color:#174c3a!important}.actions :disabled{opacity:.5;cursor:not-allowed}
+.error{color:#9c3129;background:#fff0ed;border:1px solid #e7b8b1;padding:12px;border-radius:9px}.note{background:#eef4e9;padding:12px;border-radius:9px}
+@media(max-width:740px){.layout{grid-template-columns:1fr}.aside{display:flex;flex-wrap:wrap;gap:12px}.aside h2,.aside ol{width:100%;margin:0}.aside ol{display:flex;flex-wrap:wrap;padding-left:22px;gap:18px}.aside a{margin:0}.page{padding:14px}.hero,.panel,.aside{border-radius:12px}}

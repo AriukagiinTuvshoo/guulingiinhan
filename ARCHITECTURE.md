@@ -1,4 +1,4 @@
-# Архитектур — Гуулингийнхан MVP
+# Архитектур — Гуулингийнхан
 
 ## Google identity (P4.5)
 
@@ -6,11 +6,31 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 
 ## Одоогийн бүтэц
 
-- `app/`: Next.js App Router layout болон одоогийн модны UI. Энэ үе шатанд UI-г Next client component-д шилжүүлэв; өгөгдөл нь одоогоор demo/localStorage.
-- `backend/app`: FastAPI API, SQLAlchemy model, relationship domain logic.
-- `backend/migrations`: Alembic schema migrations.
-- PostgreSQL нь орчны `DATABASE_URL`-аар тохируулагдана; development-д SQLite ашиглаж болно.
-- Зураг PostgreSQL-д бус object storage-д хадгалагдана; `photos.object_key` нь storage key байна.
+Үндсэн өгөгдлийн урсгал:
+
+```text
+Next.js App Router (`app/`, `components/`, `lib/api.ts`)
+        ↓ JSON/HTTP
+FastAPI (`backend/app/`)
+        ↓ SQLAlchemy
+PostgreSQL (ажиллуулах орчноос `DATABASE_URL` авна; SQLite нь локал тестэд)
+
+Зургийн binary → эрх шалгадаг API → private object storage (local эсвэл S3-compatible adapter)
+```
+
+Frontend нь family, account, content болон ancestry өгөгдлийг API-аас авна. Браузерын `sessionStorage` зөвхөн хэрэглэгчийн хаасан хандивын баннерыг тухайн session-д нуух UI тохиргоонд ашиглагддаг; үндсэн өгөгдөл тэнд хадгалагддаггүй. Энэ баримт Cloudflare production тохиргоо эсвэл production storage-ийг шалгасан гэсэн үг биш.
+
+`backend/app/` нь auth ба session, family/person, зөвшөөрөл, удмын холбоо, Root Ancestry, Story, Memories, Archive, Events, media, Admin болон audit домэйнуудыг агуулна. API router-уудыг `backend/app/main.py`-д `/api/v1` дор бүртгэдэг; schema-ийн өөрчлөлтийг `backend/migrations/`-ийн Alembic удирдана.
+
+## Удмын өгөгдлийн давхарга
+
+- `User`, `LoginIdentity`, `UserSession` нь нэвтрэх account-ыг тодорхойлно. `UserPersonLink` account-ыг бодит `Person`-той холбодог; энэ нь эцэг-эх, гэрлэлт эсвэл үеийн байрлалыг тодорхойлохгүй.
+- `Family`, `FamilyMember`, `FamilyPerson` нь гэр бүл доторх хандалт болон тухайн гэр бүлд бүртгэлтэй хүмүүсийг төлөөлнө. `Person` нь account-аас тусдаа бөгөөд нас барсан эсвэл account-гүй хүнийг бүртгэж болно.
+- `ParentChildRelationship`, `Marriage` нь гэр бүлийн бодит, canonical холбоонууд. Салалт нь өмнөх гэрлэлтийн түүхийг хадгална.
+- Root Ancestry (`SharedAncestry`, ил тод нийтлэх/зөвшөөрөх бүртгэлүүд, `RootConnection`) нь гэр бүлийн модыг орлохгүй: гэр бүлийн хүмүүс болон canonical холбооноос зөвшөөрөгдсөн хэсгийг нийтлэг харагдацад гаргана. `SharedAncestryRelationship` нь хуучин projection холбоосыг унших, салгахад нийцтэй хэвээр; шинэ гэр бүлийн холбоо `ParentChildRelationship`-д хадгалагдана.
+- `Lineage`, `Branch`, `PersonLineageAssignment` нь гэр бүлийн доторх удмын нэр, салааны ангилал; тусдаа genealogy graph биш.
+
+Story, Memories, Archive, Events нь API-ийн family-scoped домэйнууд. Зурагт хамаарах metadata DB-д байж болох ч binary-г private object storage-д хадгалж, API хүсэлт бүрд хандалтыг шалгана. Archive binary upload/preview бүрэн хэрэгжсэн гэж эндээс дүгнэхгүй.
 
 ## Өгөгдлийн зарчим
 
@@ -29,7 +49,7 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - `PersonGuardianship` нь нэг мөрөнд нэг scope хадгална. `view_profile`, `edit_profile`, `manage_biography`, `manage_events`, `manage_memories`, `manage_media` scope тусдаа.
 - Guardian болон Person хоёулаа нэг Family-ийн гишүүн/context байхыг composite foreign key батална. Хандалт бүрд сервер active/revoked/expiry болон тухайн Family membership-ийг шалгана.
 - Нууц profile scope байхгүй бол төрсөн/нас барсан огноо, газар, товч тайлбар API response-оос хасагдана. Search, жагсаалт, tree мөн адил projection хэрэглэнэ.
-- `manage_media` нь хадгалалтын upload endpoint-үүдийг бий болгох хүртэл эрхийн schema foundation төдий.
+- `manage_media` scope нь profile болон Memory photo upload/update/tag/delete урсгалд хэрэглэгдэнэ. Зургийн хандалтыг family болон тухайн хүний guardian/privacy scope-оор шалгана.
 
 ## Нэвтрэх identity бүртгэл (P4.3)
 
@@ -40,7 +60,7 @@ Google OIDC нь authorization-code flow ашиглана. Provider-ийн `issu
 - Имэйлийг захын whitespace-гүй болгож бүх хаягт `casefold()` хэрэглэнэ. Gmail dot арилгах, `+tag` хасах зэрэг provider-specific хувиргалт хийхгүй. Нэвтрэхэд identity lookup indexed; хуучин бичлэгт fallback хийнэ.
 - Утасны identity нь E.164 `+` улсын кодтой canonical дугаар ашиглах загвартай. Google identity нь имэйл бус issuer + subject-аар ялгагдана.
 - Email/phone uniqueness нь provider + normalized identifier; Google uniqueness нь provider + issuer + subject. Нэг normalized утга өөр provider-д байж болно.
-`identity_link_requests` нь баталгаажаагүй, 24 цагийн хүсэлтийн тэмдэглэл л хадгална. Энэ хүсэлт identity эзэмшүүлэхгүй, login-д ашиглагдахгүй; одоогоор хүсэлтийг дуусгаж identity холбох endpoint байхгүй. OTP/OIDC баталгаажуулалт P4.4/P4.5-д хийгдсэний дараа л consume урсгал нэмнэ.
+`identity_link_requests` нь баталгаажаагүй, хугацаатай хүсэлтийн тэмдэглэл хадгална. Одоогийн API хүсэлт үүсгэх, өөрийн хүсэлтийг жагсаах, цуцлах үйлдэлтэй; хүсэлт нь өөрөө identity-г эзэмшүүлэхгүй, login-д ашиглагдахгүй. Баталгаажсан утасны OTP болон Google OIDC нь тус тусын account-scoped урсгалаар identity-г холбодог.
 - Backfill normalized имэйл нь ганцхан legacy account-д харгалзах үед identity үүсгэнэ. Case-fold хийсний дараа хэд хэдэн account давхцвал аль нэгийг сонгохгүй; хуучин account хэвээр үлдэх ба хоёрдмол login fail-closed, шинэ бүртгэл тухайн хаягийг нөөцлөгдсөн гэж үзнэ.
 - Одоогоор guardian grant-ийг Family owner удирдана. Parent relationship дангаараа grant үүсгэхгүй.
 
@@ -70,7 +90,7 @@ Authentication ба authorization бэлэн болтол user data-д CRUD API 
 - `GET /families/{family_id}/persons/search?q=...&page=1&page_size=25&birth_year=...` нь зөвхөн тухайн гэр бүлийн эрхтэй гишүүний нэрээр хайна. Хайлтын үг Unicode NFKC/casefold нормчилолтой, нэрийн эхлэлээр таарна; бүх талбар SQL параметрээр дамжина. Хариу нь `items`, `page`, `page_size`, `total`, `has_next` бүхий хөнгөн хуудас; `page_size` 100-аас их байж болохгүй.
 - `persons.search_first_name`, `search_last_name`, `search_middle_name` нь canonical нэрийг өөрчлөхгүй хайлтын түлхүүр. `b51c9e7a60f4` migration хуучин мөрүүдийг нормчилж backfill хийгээд PostgreSQL `text_pattern_ops`-той btree болон birth-date index нэмнэ. Шинэ/зассан хүний түлхүүрүүд API write үед шинэчлэгдэнэ.
 - Хайлтын хариу нэр, зөвшөөрөгдсөн төрсөн оноор хязгаарлагдана; хувийн мэдээлэл, зураг, намтар буцаахгүй. Private Person зөвхөн үүсгэсэн эсвэл холбосон хэрэглэгчид харагдана. Насанд хүрээгүй хүний төрсөн он хариунд нууцлагдаж, minor жилээр `birth_year` filter өгөхөд тоон мэдээлэл задруулахгүй.
-- `GET /families/{family_id}/tree?person_id=...&depth=2` нь сонгосон хүнээс эцэг-эх/хүүхэд болон гэрлэлтийн холбоогоор өргөжинө. Default depth 2, дээд тал нь 5; нэг хариу 300 хүн, 1,200 ирмэгээр хязгаарлагдана. `meta.truncated` нь хязгаарт хүрснийг илтгэнэ. Бүх гэр бүлийн хүмүүсийг нэг дор татахгүй, давтагдсан хүн/цикл traversal-ийг зогсооно.
+- `GET /families/{family_id}/tree?person_id=...&depth=2` нь сонгосон хүнээс эцэг-эх/хүүхэд болон гэрлэлтийн холбоогоор өргөжинө. Default depth 2, дээд тал нь 5; нэг хариунд анхдагч 300, тохируулж болох дээд 1,000 хүн, 1,200 ирмэгийн хязгаар үйлчилнэ. `meta.truncated` нь хязгаарт хүрснийг илтгэнэ. Бүх гэр бүлийн хүмүүсийг нэг дор татахгүй, давтагдсан хүн/цикл traversal-ийг зогсооно.
 - Tree холбоосууд family membership, private visibility, guardian-ийн `view_profile` эрхийг сервер талд шалгана. Хайлтын, tree-ийн хуудаслалт болон том графын хязгаарыг `backend/tests/test_search_tree_scale.py`-д 1,001 хүний нэрийн хайлт, олон салаа tree, cycle болон query-count шалгалтаар батална.
 
 ## Дурсамжийн зураг ба объект хадгалалт (P4.9)

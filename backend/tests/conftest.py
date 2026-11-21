@@ -14,6 +14,11 @@ from app.db import Base, get_db
 from app.email import FakeEmailProvider, get_email_provider
 from app.main import app
 
+# Central dummy credentials for the whole suite. These are not real
+# secrets: they only exist so tests can register and log in against the
+# isolated in-memory database. Real credentials are never stored in this
+# repository (see .env.example); CI may override the default via env.
+TEST_PASSWORD = os.environ.get("TEST_PASSWORD", "strong-passphrase-123")
 # The engine under test is chosen explicitly, never implicitly. Default is the
 # historical in-memory SQLite database; CI may export TEST_DATABASE_URL to run the
 # same suite on the production engine (FOR UPDATE, real constraints, real isolation).
@@ -160,7 +165,7 @@ def confirm_registration_email(client, email_provider, email):
     return client.post("/api/v1/auth/email/verification/confirm", json={"token": token})
 
 
-def register_verified(client, email, password="strong-passphrase-123", email_provider=None):
+def register_verified(client, email, password=TEST_PASSWORD, email_provider=None):
     response = client.post(
         "/api/v1/auth/register", json={"email": email, "password": password}
     )

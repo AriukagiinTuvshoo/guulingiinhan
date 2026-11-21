@@ -1,5 +1,7 @@
 # Байршуулалтын суурь
 
+Cloudflare custom domain-ийн host mapping, frontend/API origin, CORS, email болон Google callback тохиргоог [`docs/CLOUDFLARE_CUSTOM_DOMAIN.md`](docs/CLOUDFLARE_CUSTOM_DOMAIN.md)-оос шалгана. Домэйн нэр баталгаажаагүй үед production DNS болон Worker domain бүү өөрчил.
+
 Google login асаахдаа backend-д `GOOGLE_OIDC_ENABLED=true`, `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET`, `GOOGLE_OIDC_REDIRECT_URI`, `GOOGLE_OIDC_STATE_SECRET` тохируул. Google Cloud OAuth client-ийн authorized redirect URI нь яг `https://<api-host>/api/v1/auth/google/callback` байна. State secret-ийг `openssl rand -hex 32`-оор үүсгэж secret manager-д хадгал; frontend-д client secret/state secret дамжуулахгүй. Google credentials байхгүй CI болон development-д OIDC унтраалттай байж болно.
 
 ## Орон нутаг
