@@ -97,8 +97,10 @@ jobs:
               root = ET.parse(report).getroot()
               for case in root.iter("testcase"):
                   for fail in list(case.findall("failure")) + list(case.findall("error")):
-                      message = (fail.get("message") or (fail.text or "")).strip().replace("\n", " | ")
-                      print(f"::error title=e2e {case.get('name')}::{message[:1500]}")
+                      header = (fail.get("message") or "").strip()
+                      detail = (fail.text or "").strip()
+                      combined = (f"{header} ||| {detail}" if detail else header).replace("\n", " | ")
+                      print(f"::error title=e2e {case.get('name')}::{combined[:4000]}")
           PY
         working-directory: backend
       - name: Assert the browser suite executed without skips
