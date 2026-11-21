@@ -81,6 +81,26 @@ jobs:
         # --retries=0 is repeated on the command line so no project-level setting can
         # re-enable retry-masking for the release gate.
         run: npm run test:e2e -- --reporter=list,junit --retries=0
+      - name: Annotate Playwright failures
+        # Surfaces every failing test's message as a GitHub annotation so a red
+        # e2e run is diagnosable without downloading raw job logs.
+        if: failure()
+        run: |
+          uv run --locked python - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          report = pathlib.Path("/tmp/e2e-junit.xml")
+          if not report.exists():
+              print("::error::e2e junit report was not written")
+          else:
+              root = ET.parse(report).getroot()
+              for case in root.iter("testcase"):
+                  for fail in list(case.findall("failure")) + list(case.findall("error")):
+                      message = (fail.get("message") or (fail.text or "")).strip().replace("\n", " | ")
+                      print(f"::error title=e2e {case.get('name')}::{message[:1500]}")
+          PY
+        working-directory: backend
       - name: Assert the browser suite executed without skips
         # Floor = the tests this branch executes; keep it in step with e2e/ the same way
         # as the backend floor below, so a dropped spec fails instead of passing quietly.
