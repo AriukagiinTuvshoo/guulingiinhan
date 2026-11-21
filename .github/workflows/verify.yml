@@ -146,7 +146,29 @@ jobs:
       # The two PostgreSQL-only suites are deselected here on purpose: they own
       # dedicated steps below, where their configuration is mandatory and asserted.
       - name: Run pytest on SQLite
-        run: uv run --locked pytest -q --ignore=tests/test_trash_concurrency.py --ignore=tests/test_postgres_pagination.py
+        run: uv run --locked pytest -q --tb=short --junitxml=/tmp/backend-sqlite.xml --ignore=tests/test_trash_concurrency.py --ignore=tests/test_postgres_pagination.py
+        working-directory: backend
+      - name: Annotate backend test failures
+        # Surfaces every failing test as a GitHub annotation so a red run is
+        # diagnosable without downloading raw job logs.
+        if: failure()
+        run: |
+          uv run --locked python - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          report = pathlib.Path("/tmp/backend-sqlite.xml")
+          if not report.exists():
+              print("::error::backend junit report was not written")
+          else:
+              root = ET.parse(report).getroot()
+              for case in root.iter("testcase"):
+                  for fail in list(case.findall("failure")) + list(case.findall("error")):
+                      header = (fail.get("message") or "").strip()
+                      detail = (fail.text or "").strip()
+                      combined = (f"{header} ||| {detail}" if detail else header).replace("\n", " | ")
+                      print(f"::error title=backend {case.get('classname')}::{case.get('name')}::{combined[:4000]}")
+          PY
         working-directory: backend
       - name: Create disposable PostgreSQL test databases
         run: |
