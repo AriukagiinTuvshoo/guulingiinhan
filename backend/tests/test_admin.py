@@ -6,18 +6,16 @@ from sqlalchemy import select
 from app import admin
 from app.admin import bootstrap_admin_roles
 from app.models import AdminBootstrap, AdminGrant, Story, User, UserSession
-from tests.conftest import register_verified
-
-PASSWORD = "admin-test-passphrase-123"
+from tests.conftest import TEST_PASSWORD, register_verified
 
 
 def _register(client, email_provider, email):
-    assert register_verified(client, email, PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, email, TEST_PASSWORD, email_provider).status_code == 201
     return UUID(client.get("/api/v1/auth/me").json()["id"])
 
 
 def _login(client, email):
-    response = client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD})
+    response = client.post("/api/v1/auth/login", json={"email": email, "password": TEST_PASSWORD})
     assert response.status_code == 200
 
 
@@ -192,7 +190,7 @@ def test_account_inspection_block_and_story_privacy(client, database, email_prov
     }).status_code == 422
     assert client.put(f"/api/v1/admin/users/{root_id}/status", json={"is_active": False}).status_code == 403
     assert client.put(f"/api/v1/admin/users/{operator_id}/status", json={"is_active": False}).status_code == 200
-    blocked_login = client.post("/api/v1/auth/login", json={"email": operator_email, "password": PASSWORD})
+    blocked_login = client.post("/api/v1/auth/login", json={"email": operator_email, "password": TEST_PASSWORD})
     assert blocked_login.status_code == 401
     assert client.put(f"/api/v1/admin/users/{member_id}/status", json={"is_active": True}).status_code == 200
     _login(client, member_email)

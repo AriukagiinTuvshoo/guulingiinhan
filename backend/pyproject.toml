@@ -13,12 +13,13 @@ dependencies = [
   "email-validator>=2.2,<3.0",
   "google-auth[requests]>=2.35,<3.0",
   "httpx>=0.27,<1.0",
-  "Pillow>=10.4,<13.0",
+  "Pillow>=10.4,<14.0",
   "boto3>=1.35,<2.0",
 ]
 
 [dependency-groups]
 dev = [
+    "defusedxml>=0.7,<0.8",
     "mypy>=1.19,<2",
     "pytest>=8.3,<9.0",
     "ruff>=0.6,<1.0",

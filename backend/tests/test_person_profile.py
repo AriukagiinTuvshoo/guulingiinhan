@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 
 from app.models import Person
 
@@ -152,7 +152,7 @@ def test_person_profile_does_not_leak_minor_relationship_without_guardian_scope(
 def test_person_profile_private_person_is_not_exposed_across_creator_boundary(client, email_provider):
     owner_email = "profile-private-owner@example.com"
     private_creator_email = "profile-private-creator@example.com"
-    password = "strong-passphrase-123"
+    password = TEST_PASSWORD
     register_verified(client, owner_email, password)
     family_id = client.post(
         "/api/v1/families", json={"name": "Нууц профайл"}

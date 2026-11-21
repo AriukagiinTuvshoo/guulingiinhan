@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from sqlalchemy import select
 
 from app.models import AuditLog, FamilyMember, PersonGuardianship
@@ -41,7 +41,7 @@ def setup_family(client, database, *, birth_date="2015-06-12"):
     client.post("/api/v1/auth/logout")
     assert client.post(
         "/api/v1/auth/login",
-        json={"email": "owner@example.com", "password": "strong-passphrase-123"},
+        json={"email": "owner@example.com", "password": TEST_PASSWORD},
     ).status_code == 200
     return owner, family, child, guardian
 

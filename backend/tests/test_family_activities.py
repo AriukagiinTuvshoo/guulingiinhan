@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 
 from app.models import FamilyMember
 
@@ -9,7 +9,7 @@ from app.models import FamilyMember
 def login(client, email):
     client.post("/api/v1/auth/logout")
     response = client.post("/api/v1/auth/login", json={
-        "email": email, "password": "strong-passphrase-123",
+        "email": email, "password": TEST_PASSWORD,
     })
     assert response.status_code == 200
 

@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
 import pytest
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from sqlalchemy import select
 
 from app import auth
@@ -11,8 +11,6 @@ from app.config import get_settings
 from app.main import app
 from app.models import LoginIdentity, Person, UserPersonLink
 from app.sms import get_sms_provider
-
-PASSWORD = "strong-passphrase-123"
 
 
 class CapturingSms:
@@ -92,12 +90,12 @@ def google_callback(client, start_response):
 
 
 def test_minor_email_login_is_rejected_but_adult_login_still_succeeds(client, database):
-    register_verified(client, "adult-login@example.com", PASSWORD)
+    register_verified(client, "adult-login@example.com", TEST_PASSWORD)
     client.post("/api/v1/auth/logout")
     assert (
         client.post(
             "/api/v1/auth/login",
-            json={"email": "adult-login@example.com", "password": PASSWORD},
+            json={"email": "adult-login@example.com", "password": TEST_PASSWORD},
         ).status_code
         == 200
     )
@@ -110,7 +108,7 @@ def test_minor_email_login_is_rejected_but_adult_login_still_succeeds(client, da
 
     rejected = client.post(
         "/api/v1/auth/login",
-        json={"email": "adult-login@example.com", "password": PASSWORD},
+        json={"email": "adult-login@example.com", "password": TEST_PASSWORD},
     )
     assert rejected.status_code == 401
     assert client.get("/api/v1/auth/me").status_code == 401
@@ -123,7 +121,7 @@ def test_minor_email_login_is_rejected_but_adult_login_still_succeeds(client, da
 
 
 def test_linked_adult_login_succeeds(client, database):
-    register_verified(client, "linked-adult@example.com", PASSWORD)
+    register_verified(client, "linked-adult@example.com", TEST_PASSWORD)
     user_id = client.get("/api/v1/auth/me").json()["id"]
     _, person = create_minor(client, birth_date="2000-01-01")
     link_user_to_person(database, user_id, person["id"])
@@ -132,14 +130,14 @@ def test_linked_adult_login_succeeds(client, database):
     assert (
         client.post(
             "/api/v1/auth/login",
-            json={"email": "linked-adult@example.com", "password": PASSWORD},
+            json={"email": "linked-adult@example.com", "password": TEST_PASSWORD},
         ).status_code
         == 200
     )
 
 
 def test_linked_person_with_unknown_birth_date_is_not_assumed_minor(client, database):
-    register_verified(client, "unknown-birth@example.com", PASSWORD)
+    register_verified(client, "unknown-birth@example.com", TEST_PASSWORD)
     user_id = client.get("/api/v1/auth/me").json()["id"]
     _, person = create_minor(client, birth_date=None)
     link_user_to_person(database, user_id, person["id"])
@@ -148,14 +146,14 @@ def test_linked_person_with_unknown_birth_date_is_not_assumed_minor(client, data
     assert (
         client.post(
             "/api/v1/auth/login",
-            json={"email": "unknown-birth@example.com", "password": PASSWORD},
+            json={"email": "unknown-birth@example.com", "password": TEST_PASSWORD},
         ).status_code
         == 200
     )
 
 
 def test_minor_person_cannot_be_linked_to_an_account(client, database):
-    register_verified(client, "link-minor@example.com", PASSWORD)
+    register_verified(client, "link-minor@example.com", TEST_PASSWORD)
     user_id = client.get("/api/v1/auth/me").json()["id"]
     family, person = create_minor(client)
 
@@ -213,7 +211,7 @@ def test_minor_phone_otp_login_is_rejected(client, database):
 
 
 def test_minor_google_oidc_login_is_rejected(client, database, monkeypatch, google_enabled):
-    register_verified(client, "minor-google-login@example.com", PASSWORD)
+    register_verified(client, "minor-google-login@example.com", TEST_PASSWORD)
     user_id = client.get("/api/v1/auth/me").json()["id"]
     _, person = create_minor(client)
     link_user_to_person(database, user_id, person["id"])
@@ -241,7 +239,7 @@ def test_minor_google_oidc_login_is_rejected(client, database, monkeypatch, goog
 
 
 def test_minor_google_oidc_link_is_rejected(client, database, monkeypatch, google_enabled):
-    register_verified(client, "minor-google-link@example.com", PASSWORD)
+    register_verified(client, "minor-google-link@example.com", TEST_PASSWORD)
     user_id = client.get("/api/v1/auth/me").json()["id"]
     monkeypatch.setattr(auth, "_google_provider", lambda: FakeGoogle(subject="minor-google-link"))
     start = client.post("/api/v1/auth/me/google/start", follow_redirects=False)
@@ -263,7 +261,7 @@ def test_minor_google_oidc_link_is_rejected(client, database, monkeypatch, googl
 
 
 def test_minor_person_record_remains_without_an_account_link(client, database):
-    register_verified(client, "minor-record@example.com", PASSWORD)
+    register_verified(client, "minor-record@example.com", TEST_PASSWORD)
     family, person = create_minor(client)
     client.post("/api/v1/auth/logout")
 
@@ -277,6 +275,6 @@ def test_minor_person_record_remains_without_an_account_link(client, database):
 
     assert client.post(
         "/api/v1/auth/login",
-        json={"email": "minor-record@example.com", "password": PASSWORD},
+        json={"email": "minor-record@example.com", "password": TEST_PASSWORD},
     ).status_code == 200
     assert family["id"]

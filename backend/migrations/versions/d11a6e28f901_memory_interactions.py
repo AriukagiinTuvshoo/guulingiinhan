@@ -34,22 +34,41 @@ def upgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
         # Keep Supabase Data API roles without privileges or policies. The
         # private FastAPI login role uses the same boundary as root_connections.
-        for table in ("memory_likes", "memory_comments"):
-            op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
-            op.execute(f"""DO $p11$ DECLARE role_record record; BEGIN
+        # Plain literals only (bandit B608): table names are baked in rather
+        # than interpolated into SQL at runtime. The statements are otherwise
+        # byte-identical to the previous loop-generated versions.
+        op.execute("ALTER TABLE memory_likes ENABLE ROW LEVEL SECURITY")
+        op.execute("""DO $p11$ DECLARE role_record record; BEGIN
                 FOR role_record IN SELECT rolname FROM pg_roles
                     WHERE rolname IN ('anon', 'authenticated', 'service_role')
                 LOOP
-                    EXECUTE format('REVOKE ALL ON TABLE {table} FROM %I', role_record.rolname);
+                    EXECUTE format('REVOKE ALL ON TABLE memory_likes FROM %I', role_record.rolname);
                 END LOOP;
                 FOR role_record IN SELECT rolname FROM pg_roles
                     WHERE rolcanlogin AND rolname ~ '^guulingiinhan(_[a-z0-9]+)*_app$'
                       AND has_table_privilege(rolname, 'memories', 'SELECT')
                       AND has_table_privilege(rolname, 'memories', 'INSERT')
                 LOOP
-                    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE {table} TO %I', role_record.rolname);
-                    EXECUTE format('CREATE POLICY %I ON {table} FOR ALL TO %I USING (true) WITH CHECK (true)',
-                                   '{table}_' || role_record.rolname, role_record.rolname);
+                    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE memory_likes TO %I', role_record.rolname);
+                    EXECUTE format('CREATE POLICY %I ON memory_likes FOR ALL TO %I USING (true) WITH CHECK (true)',
+                                   'memory_likes_' || role_record.rolname, role_record.rolname);
+                END LOOP;
+            END $p11$;""")
+        op.execute("ALTER TABLE memory_comments ENABLE ROW LEVEL SECURITY")
+        op.execute("""DO $p11$ DECLARE role_record record; BEGIN
+                FOR role_record IN SELECT rolname FROM pg_roles
+                    WHERE rolname IN ('anon', 'authenticated', 'service_role')
+                LOOP
+                    EXECUTE format('REVOKE ALL ON TABLE memory_comments FROM %I', role_record.rolname);
+                END LOOP;
+                FOR role_record IN SELECT rolname FROM pg_roles
+                    WHERE rolcanlogin AND rolname ~ '^guulingiinhan(_[a-z0-9]+)*_app$'
+                      AND has_table_privilege(rolname, 'memories', 'SELECT')
+                      AND has_table_privilege(rolname, 'memories', 'INSERT')
+                LOOP
+                    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE memory_comments TO %I', role_record.rolname);
+                    EXECUTE format('CREATE POLICY %I ON memory_comments FOR ALL TO %I USING (true) WITH CHECK (true)',
+                                   'memory_comments_' || role_record.rolname, role_record.rolname);
                 END LOOP;
             END $p11$;""")
 

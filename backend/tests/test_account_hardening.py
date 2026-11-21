@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from PIL import Image
 from sqlalchemy import select
 from test_profile_photos import PrivateMemoryStorage, png_bytes
@@ -12,12 +12,10 @@ from app.main import app
 from app.models import AdminGrant, EmailVerificationToken, LoginIdentity, User
 from app.storage import get_storage
 
-PASSWORD = "strong-passphrase-123"
-
 
 def test_email_change_verifies_new_address_revokes_sessions_and_rejects_reuse(client, database, email_provider):
     register_verified(client, "old@example.com")
-    body = {"email": "new@example.com", "current_password": PASSWORD}
+    body = {"email": "new@example.com", "current_password": TEST_PASSWORD}
     assert client.post("/api/v1/auth/me/email/request", json=body | {"current_password": "wrong"}).status_code == 401
     assert client.post("/api/v1/auth/me/email/request", json=body).status_code == 202
     assert client.get("/api/v1/auth/me").json()["email"] == "old@example.com"
@@ -26,8 +24,8 @@ def test_email_change_verifies_new_address_revokes_sessions_and_rejects_reuse(cl
     assert client.post(route, json={"token": token}).status_code == 200
     assert client.get("/api/v1/auth/me").status_code == 401
     assert client.post(route, json={"token": token}).status_code == 400
-    assert client.post("/api/v1/auth/login", json={"email": "old@example.com", "password": PASSWORD}).status_code == 401
-    assert client.post("/api/v1/auth/login", json={"identifier": "new@example.com", "password": PASSWORD}).status_code == 200
+    assert client.post("/api/v1/auth/login", json={"email": "old@example.com", "password": TEST_PASSWORD}).status_code == 401
+    assert client.post("/api/v1/auth/login", json={"identifier": "new@example.com", "password": TEST_PASSWORD}).status_code == 200
     with database() as db:
         identities = db.scalars(select(LoginIdentity).where(LoginIdentity.provider == "email")).all()
         assert sum(item.disabled_at is None for item in identities) == 1
@@ -37,9 +35,9 @@ def test_email_change_expiry_and_other_account_collision_leave_old_email(client,
     register_verified(client, "taken@example.com")
     register_verified(client, "source@example.com")
     assert client.post("/api/v1/auth/me/email/request", json={
-        "email": "taken@example.com", "current_password": PASSWORD}).status_code == 409
+        "email": "taken@example.com", "current_password": TEST_PASSWORD}).status_code == 409
     assert client.post("/api/v1/auth/me/email/request", json={
-        "email": "expired@example.com", "current_password": PASSWORD}).status_code == 202
+        "email": "expired@example.com", "current_password": TEST_PASSWORD}).status_code == 202
     token = urlsplit(email_provider.deliveries[-1].text.rsplit(" ", 1)[-1]).fragment.removeprefix("token=")
     with database() as db:
         row = db.scalar(select(EmailVerificationToken).where(EmailVerificationToken.target_email == "expired@example.com"))
@@ -84,7 +82,7 @@ def test_account_photo_private_bounded_exif_free_replace_and_cleanup(client, dat
     assert client.get(endpoint).status_code == 404
     assert client.get(f"/api/v1/admin/users/{user_id}/photo").status_code == 403
     assert client.delete(f"/api/v1/admin/users/{user_id}/photo").status_code == 403
-    client.post("/api/v1/auth/login", json={"email": "photo-account@example.com", "password": PASSWORD})
+    client.post("/api/v1/auth/login", json={"email": "photo-account@example.com", "password": TEST_PASSWORD})
     assert client.delete(endpoint).status_code == 204
     assert not storage.objects
     assert client.get(endpoint).status_code == 404
@@ -100,7 +98,7 @@ def test_admin_recovery_and_phone_verification_do_not_expose_secrets(client, dat
         db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
         db.commit()
     assert client.post(f"/api/v1/admin/users/{target_id}/recovery").status_code == 403
-    client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": PASSWORD})
+    client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": TEST_PASSWORD})
     result = client.get(f"/api/v1/admin/users/{target_id}")
     assert result.status_code == 200
     assert "identities" in result.json()

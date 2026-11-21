@@ -1,7 +1,7 @@
 import io
 from uuid import UUID
 
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from PIL import Image
 from sqlalchemy import select
 
@@ -510,7 +510,7 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
     scope_ids = {item["scope"]: item["id"] for item in profile_and_memory.json()}
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
+        "email": "guardian@example.com", "password": TEST_PASSWORD,
     })
     memory = client.post(
         f"/api/v1/families/{family['id']}/memories",
@@ -524,14 +524,14 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
 
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
+        "email": "owner@example.com", "password": TEST_PASSWORD,
     })
     media_grant = grant(client, family["id"], child["id"], guardian["id"], ["manage_media"])
     assert media_grant.status_code == 201
     media_scope_id = media_grant.json()[0]["id"]
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
+        "email": "guardian@example.com", "password": TEST_PASSWORD,
     })
     uploaded = client.post(upload_url, content=png_bytes(), headers={
         "Content-Type": "image/png", "X-File-Name": "family.png",
@@ -543,12 +543,12 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
 
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
+        "email": "owner@example.com", "password": TEST_PASSWORD,
     })
     assert client.delete(f"{base}/guardianships/{media_scope_id}").status_code == 204
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
+        "email": "guardian@example.com", "password": TEST_PASSWORD,
     })
     blocked = client.post(upload_url, content=png_bytes(), headers={
         "Content-Type": "image/png", "X-File-Name": "family.png",
@@ -558,18 +558,18 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
 
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
+        "email": "owner@example.com", "password": TEST_PASSWORD,
     })
     assert client.delete(f"{base}/guardianships/{scope_ids['view_profile']}").status_code == 204
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
+        "email": "guardian@example.com", "password": TEST_PASSWORD,
     })
     assert client.get(content_url).status_code == 404
 
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "owner@example.com", "password": "strong-passphrase-123",
+        "email": "owner@example.com", "password": TEST_PASSWORD,
     })
     renewed = grant(client, family["id"], child["id"], guardian["id"], ["view_profile"])
     assert renewed.status_code == 201
@@ -584,6 +584,6 @@ def test_minor_photo_requires_manage_media_and_revoked_view_scope_denies_read(cl
         db.commit()
     client.post("/api/v1/auth/logout")
     client.post("/api/v1/auth/login", json={
-        "email": "guardian@example.com", "password": "strong-passphrase-123",
+        "email": "guardian@example.com", "password": TEST_PASSWORD,
     })
     assert client.get(content_url).status_code == 404

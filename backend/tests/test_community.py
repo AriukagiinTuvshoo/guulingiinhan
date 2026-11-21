@@ -3,22 +3,20 @@ from uuid import UUID
 from app.main import app
 from app.models import Family
 from app.storage import get_storage
-from tests.conftest import register_verified
+from tests.conftest import TEST_PASSWORD, register_verified
 from tests.test_memory_photos import MemoryStorage, png_bytes
-
-PASSWORD = "community-test-passphrase-123"
 
 
 def _login(client, email):
     assert client.post("/api/v1/auth/login", json={
-        "email": email, "password": PASSWORD,
+        "email": email, "password": TEST_PASSWORD,
     }).status_code == 200
 
 
 def test_public_feed_is_cross_account_and_respects_visibility(client, database, email_provider):
     assert client.get("/api/v1/community/feed").status_code == 401
     assert client.get("/api/v1/community/story/00000000-0000-0000-0000-000000000001").status_code == 401
-    assert register_verified(client, "community-a@example.com", PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, "community-a@example.com", TEST_PASSWORD, email_provider).status_code == 201
     family_a = client.post("/api/v1/families", json={"name": "First family"}).json()["id"]
     base_a = f"/api/v1/families/{family_a}"
     public_records = {}
@@ -41,7 +39,7 @@ def test_public_feed_is_cross_account_and_respects_visibility(client, database, 
         "title": "Private story", "body": "Secret", "visibility": "private",
     }).status_code == 201
 
-    assert register_verified(client, "community-b@example.com", PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, "community-b@example.com", TEST_PASSWORD, email_provider).status_code == 201
     family_b = client.post("/api/v1/families", json={"name": "Second family"}).json()["id"]
     assert client.post(f"/api/v1/families/{family_b}/stories", json={
         "title": "Second public", "body": "Another family", "visibility": "public",
@@ -85,7 +83,7 @@ def test_public_feed_is_cross_account_and_respects_visibility(client, database, 
 def test_public_memory_thumbnail_requires_public_adult_photo_tags(client, email_provider):
     storage = MemoryStorage()
     app.dependency_overrides[get_storage] = lambda: storage
-    assert register_verified(client, "public-photo-owner@example.com", PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, "public-photo-owner@example.com", TEST_PASSWORD, email_provider).status_code == 201
     family_id = client.post("/api/v1/families", json={"name": "Photo family"}).json()["id"]
     person = client.post(f"/api/v1/families/{family_id}/persons", json={
         "first_name": "Adult", "birth_date": "1980-01-01", "visibility": "public",
@@ -138,7 +136,7 @@ def test_public_memory_thumbnail_requires_public_adult_photo_tags(client, email_
         "visibility": "family",
     })
     assert cross_family_photo_story.status_code == 422
-    assert register_verified(client, "public-photo-viewer@example.com", PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, "public-photo-viewer@example.com", TEST_PASSWORD, email_provider).status_code == 201
     item = next(item for item in client.get("/api/v1/community/feed").json()["items"] if item["kind"] == "memory")
     assert item["thumbnail_url"] == f"/community/photos/{photo_id}/thumbnail"
     detail = client.get(f"/api/v1/community/memory/{memory['id']}").json()

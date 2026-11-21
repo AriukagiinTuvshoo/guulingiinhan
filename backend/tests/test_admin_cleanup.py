@@ -3,13 +3,11 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.models import AdminGrant, Family, FamilyMember, Person, User
-from tests.conftest import register_verified
-
-PASSWORD = "cleanup-verification-password"
+from tests.conftest import TEST_PASSWORD, register_verified
 
 
 def super_admin(client, database, email_provider):
-    register_verified(client, "cleanup-admin@example.com", PASSWORD, email_provider)
+    register_verified(client, "cleanup-admin@example.com", TEST_PASSWORD, email_provider)
     user_id = UUID(client.get("/api/v1/auth/me").json()["id"])
     with database.begin() as db:
         db.add(AdminGrant(user_id=user_id, role="SUPER_ADMIN"))
@@ -49,7 +47,7 @@ def test_legacy_label_cleanup_preserves_people_and_real_relationships(
     foreign = client.post("/api/v1/families", json={"name": "Other context"}).json()["id"]
     assert client.patch(f"/api/v1/admin/families/{foreign}/branches/{branch['id']}",
                         json={"name": "Denied"}).status_code == 404
-    register_verified(client, "cleanup-ordinary@example.com", PASSWORD, email_provider)
+    register_verified(client, "cleanup-ordinary@example.com", TEST_PASSWORD, email_provider)
     assert client.patch(base + f"/lineages/{lineage['id']}", json={"name": "Denied"}).status_code == 403
 
 
@@ -79,7 +77,7 @@ def test_family_archive_is_reversible_and_preserves_accounts_and_content(
     restored = client.get(base + "/workspace").json()
     assert restored["family"]["people_count"] == 1
     assert restored["family"]["story_count"] == 1
-    register_verified(client, "archive-outsider@example.com", PASSWORD, email_provider)
+    register_verified(client, "archive-outsider@example.com", TEST_PASSWORD, email_provider)
     assert client.get(base + "/archive-preview").status_code == 403
     assert client.post(base + "/archive", json={"confirm_name": "Sample workspace"}).status_code == 403
     assert client.post(base + "/restore", json={"confirm_name": "Sample workspace"}).status_code == 403

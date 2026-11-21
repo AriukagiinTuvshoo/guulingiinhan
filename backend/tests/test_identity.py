@@ -6,28 +6,26 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from conftest import confirm_registration_email, register_verified
+from conftest import TEST_PASSWORD, confirm_registration_email, register_verified
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import LoginIdentity, User
 
-PASSWORD = "strong-passphrase-123"
-
 
 def register(client, email="owner@example.com"):
-    return register_verified(client, email, PASSWORD)
+    return register_verified(client, email, TEST_PASSWORD)
 
 
-def login(client, email="owner@example.com", password=PASSWORD):
+def login(client, email="owner@example.com", password=TEST_PASSWORD):
     return client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
 def test_registration_email_identity_normalization_login_and_safe_output(client, email_provider):
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": "Owner@Example.com", "password": PASSWORD},
+        json={"email": "Owner@Example.com", "password": TEST_PASSWORD},
     )
     assert response.status_code == 201
     assert "password_hash" not in response.json()
@@ -50,7 +48,7 @@ def test_registration_email_identity_normalization_login_and_safe_output(client,
 def test_case_variant_registration_is_generic_without_creating_duplicate_user(client, database):
     first = client.post(
         "/api/v1/auth/register",
-        json={"email": "User@example.com", "password": PASSWORD},
+        json={"email": "User@example.com", "password": TEST_PASSWORD},
     )
     assert first.status_code == 201
     assert first.json() == {
@@ -60,7 +58,7 @@ def test_case_variant_registration_is_generic_without_creating_duplicate_user(cl
 
     duplicate = client.post(
         "/api/v1/auth/register",
-        json={"email": "user@example.com", "password": PASSWORD},
+        json={"email": "user@example.com", "password": TEST_PASSWORD},
     )
     assert duplicate.status_code == 201
     assert duplicate.json() == first.json()
@@ -186,7 +184,7 @@ def test_registration_does_not_claim_ambiguous_legacy_email(client, database):
         db.commit()
     response = client.post(
         "/api/v1/auth/register",
-        json={"email": "TAKEN@example.com", "password": PASSWORD},
+        json={"email": "TAKEN@example.com", "password": TEST_PASSWORD},
     )
     assert response.status_code == 201
     assert "email" not in response.json()

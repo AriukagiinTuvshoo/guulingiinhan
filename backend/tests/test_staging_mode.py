@@ -1,4 +1,4 @@
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from sqlalchemy import func, select
 from test_config import staging_settings
 
@@ -10,7 +10,7 @@ from app.models import PasswordResetToken, PhoneOtpChallenge, User
 
 def test_staging_verified_login_and_disabled_provider_routes(client, database, monkeypatch):
     email_address = "staging-verified@example.com"
-    password = "strong-passphrase-123"
+    password = TEST_PASSWORD
     assert register_verified(client, email_address, password).status_code == 201
     assert client.post("/api/v1/auth/logout").status_code == 204
 

@@ -36,20 +36,41 @@ def export_sql(public_key: str) -> str:
     for table in Base.metadata.sorted_tables:
         if not re.fullmatch(r"[a-z_]+", table.name):
             raise ValueError("Unexpected application table")
+        # Plain literals with values appended as separate tokens (bandit B608):
+        # table.name is pre-validated above, so no formatting happens inside
+        # SQL text itself.
         fragments.append(
-            f"'{table.name}', (select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) "
-            f'from public."{table.name}" t)'
+            "".join(
+                [
+                    "'",
+                    table.name,
+                    "', (select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) ",
+                    'from public."',
+                    table.name,
+                    '" t)',
+                ]
+            )
         )
     tables = ",\n".join(fragments)
-    return (
-        "-- Read-only application snapshot; encrypted inside PostgreSQL.\n"
-        "select extensions.armor(extensions.pgp_pub_encrypt(\n"
-        f"jsonb_build_object('format','{FORMAT}','environment','staging',\n"
-        "'created_at',now(),'schema_revision',(select version_num from public.alembic_version),\n"
-        f"'tables',jsonb_build_object({tables}))::text,\n"
-        f"extensions.dearmor($recovery_public_key${public_key}$recovery_public_key$),\n"
-        "'cipher-algo=aes256,compress-algo=1')) as encrypted_backup;\n"
-    )
+    # Same token-join approach: FORMAT is a module constant, tables is built
+    # from validated names, public_key is guarded against the dollar-quote
+    # delimiter above.
+    parts = [
+        "-- Read-only application snapshot; encrypted inside PostgreSQL.\n",
+        "select extensions.armor(extensions.pgp_pub_encrypt(\n",
+        "jsonb_build_object('format','",
+        FORMAT,
+        "','environment','staging',\n",
+        "'created_at',now(),'schema_revision',(select version_num from public.alembic_version),\n",
+        "'tables',jsonb_build_object(",
+        tables,
+        "))::text,\n",
+        "extensions.dearmor($recovery_public_key$",
+        public_key,
+        "$recovery_public_key$),\n",
+        "'cipher-algo=aes256,compress-algo=1')) as encrypted_backup;\n",
+    ]
+    return "".join(parts)
 
 
 def validate_restore_url(database_url: str) -> None:

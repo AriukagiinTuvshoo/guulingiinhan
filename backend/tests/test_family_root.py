@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.models import FamilyMember, PersonLinkRequest
-from tests.conftest import register_verified
+from tests.conftest import TEST_PASSWORD, register_verified
 
 
 def test_owner_selects_canonical_root_without_losing_people(client, email_provider):
@@ -28,7 +28,7 @@ def test_owner_selects_canonical_root_without_losing_people(client, email_provid
 
 
 def test_existing_person_link_requires_owner_approval(client, database, email_provider):
-    password = "strong-password-123"
+    password = TEST_PASSWORD
     owner_email, member_email = "claim-owner@example.com", "claim-member@example.com"
     assert register_verified(client, owner_email, password, email_provider).status_code == 201
     family_id = client.post("/api/v1/families", json={"name": "Established family"}).json()["id"]

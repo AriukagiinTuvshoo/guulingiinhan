@@ -3,19 +3,17 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.models import AdminGrant, AuditLog
-from tests.conftest import register_verified
-
-PASSWORD = "admin-workspace-passphrase-123"
+from tests.conftest import TEST_PASSWORD, register_verified
 
 
 def _account(client, provider, email):
-    assert register_verified(client, email, PASSWORD, provider).status_code == 201
+    assert register_verified(client, email, TEST_PASSWORD, provider).status_code == 201
     return UUID(client.get("/api/v1/auth/me").json()["id"])
 
 
 def _login(client, email):
     assert client.post(
-        "/api/v1/auth/login", json={"email": email, "password": PASSWORD}
+        "/api/v1/auth/login", json={"email": email, "password": TEST_PASSWORD}
     ).status_code == 200
 
 

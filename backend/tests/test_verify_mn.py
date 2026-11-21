@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from conftest import register_verified
+from conftest import TEST_PASSWORD, register_verified
 from sqlalchemy import select
 
 from app.main import app
@@ -14,8 +14,6 @@ from app.verify_mn import (
     VerifyMNProvider,
     get_verification_provider,
 )
-
-PASSWORD = "strong-passphrase-123"
 
 
 class FakeVerification:
@@ -60,18 +58,18 @@ def verified(provider, database, output):
 
 def start(client, phone="99112233"):
     result = client.post("/api/v1/auth/me/phone/verification/request",
-        json={"phone": phone, "current_password": PASSWORD})
+        json={"phone": phone, "current_password": TEST_PASSWORD})
     assert result.status_code == 202, result.text
     return result.json()
 
 
 def test_phone_password_registration_login_does_not_call_sms(client, database, provider):
     result = client.post("/api/v1/auth/register/phone", json={
-        "phone": "99112233", "password": PASSWORD, "display_name": "Local test account",
+        "phone": "99112233", "password": TEST_PASSWORD, "display_name": "Local test account",
     })
     assert result.status_code == 201
     assert client.get("/api/v1/auth/me").status_code == 401
-    login = client.post("/api/v1/auth/login", json={"identifier": "99112233", "password": PASSWORD})
+    login = client.post("/api/v1/auth/login", json={"identifier": "99112233", "password": TEST_PASSWORD})
     assert login.status_code == 200
     assert not provider.sessions
     with database() as db:
@@ -122,7 +120,7 @@ def test_pending_wrong_capability_verified_reuse_and_no_extra_sms(client, databa
     assert client.post(route, json=session_body(output)).json() == {"status": "verified"}
     assert client.post(route, json=session_body(output)).json() == {"status": "expired"}
     assert client.post("/api/v1/auth/me/phone/verification/request", json={
-        "phone": "99112233", "current_password": PASSWORD}).status_code == 409
+        "phone": "99112233", "current_password": TEST_PASSWORD}).status_code == 409
     assert len(provider.sessions) == 1
 
 
@@ -135,7 +133,7 @@ def test_expiry_and_cross_account_capability_denied(client, database, provider):
     route = "/api/v1/auth/me/phone/verification/confirm"
     assert client.post(route, json=session_body(output)).status_code == 400
     client.post("/api/v1/auth/logout")
-    client.post("/api/v1/auth/login", json={"email": "verify-a@example.com", "password": PASSWORD})
+    client.post("/api/v1/auth/login", json={"email": "verify-a@example.com", "password": TEST_PASSWORD})
     with database() as db:
         row = db.get(PhoneOtpChallenge, UUID(output["challenge_id"]))
         row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -151,12 +149,12 @@ def test_phone_change_old_identifier_stays_until_new_is_verified(client, databas
     route = "/api/v1/auth/me/phone/verification/confirm"
     assert client.post(route, json=session_body(first)).status_code == 200
     second = start(client, "88112233")
-    assert client.post("/api/v1/auth/login", json={"identifier": "99112233", "password": PASSWORD}).status_code == 200
-    assert client.post("/api/v1/auth/login", json={"identifier": "88112233", "password": PASSWORD}).status_code == 401
+    assert client.post("/api/v1/auth/login", json={"identifier": "99112233", "password": TEST_PASSWORD}).status_code == 200
+    assert client.post("/api/v1/auth/login", json={"identifier": "88112233", "password": TEST_PASSWORD}).status_code == 401
     verified(provider, database, second)
     assert client.post(route, json=session_body(second)).json() == {"status": "verified"}
-    assert client.post("/api/v1/auth/login", json={"identifier": "99112233", "password": PASSWORD}).status_code == 401
-    assert client.post("/api/v1/auth/login", json={"identifier": "88112233", "password": PASSWORD}).status_code == 200
+    assert client.post("/api/v1/auth/login", json={"identifier": "99112233", "password": TEST_PASSWORD}).status_code == 401
+    assert client.post("/api/v1/auth/login", json={"identifier": "88112233", "password": TEST_PASSWORD}).status_code == 200
 
 
 def test_phone_reset_revokes_sessions_is_single_use_and_unknown_is_generic(client, database, provider):
@@ -179,7 +177,7 @@ def test_phone_reset_revokes_sessions_is_single_use_and_unknown_is_generic(clien
     assert client.post("/api/v1/auth/login", json={"email": "recover@example.com", "password": body["new_password"]}).status_code == 200
     unknown_reset = unknown.json()
     verified(provider, database, unknown_reset)
-    assert client.post(route, json=session_body(unknown_reset) | {"new_password": PASSWORD}).status_code == 400
+    assert client.post(route, json=session_body(unknown_reset) | {"new_password": TEST_PASSWORD}).status_code == 400
 
 
 def test_reauthentication_limits_and_password_change(client, database, provider):
@@ -188,7 +186,7 @@ def test_reauthentication_limits_and_password_change(client, database, provider)
         "phone": "99112233", "current_password": "wrong"}).status_code == 401
     assert not provider.sessions
     assert client.post("/api/v1/auth/me/password", json={
-        "current_password": PASSWORD, "new_password": "new-password-123"}).status_code == 204
+        "current_password": TEST_PASSWORD, "new_password": "new-password-123"}).status_code == 204
     assert client.get("/api/v1/auth/me").status_code == 401
     with database() as db:
         assert not db.scalar(select(UserSession.id))
