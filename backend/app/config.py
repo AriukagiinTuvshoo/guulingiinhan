@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import EmailStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,10 +15,13 @@ class Settings(BaseSettings):
     db_connect_timeout_seconds: int = 10
     log_level: str = "INFO"
     slow_request_threshold_ms: int = 1000
+    metrics_token: str | None = None
+    alert_webhook_url: str | None = None
     photo_cleanup_max_attempts: int = 8
     cors_origins: str = "http://localhost:3000"
     trust_cloudflare_proxy_ip: bool = False
     session_cookie_name: str = "guulingiinhan_session"
+    csrf_secret: str | None = None
     storage_provider: str = "local"
     storage_local_path: str = "./uploads"
     storage_endpoint: str | None = None
@@ -73,6 +77,12 @@ class Settings(BaseSettings):
             raise ValueError("DB_CONNECT_TIMEOUT_SECONDS must be between 1 and 120.")
         if self.log_level.upper() not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
             raise ValueError("LOG_LEVEL must be DEBUG, INFO, WARNING, ERROR, or CRITICAL.")
+        if self.alert_webhook_url:
+            parsed = urlsplit(self.alert_webhook_url)
+            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+                raise ValueError("ALERT_WEBHOOK_URL must be an HTTPS URL without credentials or fragment.")
+        if self.metrics_token is not None and len(self.metrics_token) < 32:
+            raise ValueError("METRICS_TOKEN must contain at least 32 characters when set.")
         if not 1 <= self.slow_request_threshold_ms <= 120000:
             raise ValueError("SLOW_REQUEST_THRESHOLD_MS must be between 1 and 120000.")
         if not 1 <= self.photo_cleanup_max_attempts <= 20:
@@ -94,6 +104,8 @@ class Settings(BaseSettings):
             if not self.otp_hash_secret or len(self.otp_hash_secret) < 32:
                 raise ValueError("Production requires OTP_HASH_SECRET with at least 32 characters.")
         if app_env == "production":
+            if not self.csrf_secret or len(self.csrf_secret) < 32:
+                raise ValueError("Production requires CSRF_SECRET with at least 32 characters.")
             if (
                 not self.verify_mn_api_key and (self.sms_provider.lower() != "twilio"
                 or not self.twilio_account_sid

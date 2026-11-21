@@ -226,7 +226,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     } finally {
       if (requestId === contextRequestRef.current) setContextLoading(false);
     }
-  }, [router]);
+  }, [router, setContextLoading, setContextLoaded, setContextError, setUser, setIsGlobalAdmin, setFamilies, setFamilyId]);
 
   useEffect(() => {
     if (!shouldRenderShell) {
@@ -443,6 +443,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   Админ удирдлага
                 </Link>
               ) : null}
+              {currentFamily && (
+                <Link role="menuitem" href={familyHref('/admin', currentFamily.id)} onClick={() => setAccountOpen(false)}>
+                  Удирдлага
+                </Link>
+              )}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>
                 Гэр бүлүүд
               </Link>

@@ -14,6 +14,7 @@ type SelectedPerson = { id: string; name: string };
 function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
   const router = useRouter();
   const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
+  const [canEdit, setCanEdit] = useState(false);
   const [archiveId, setArchiveId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -41,7 +42,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
     archiveAbortRef.current?.abort();
     peopleAbortRef.current?.abort();
     archiveRequestRef.current += 1;
-    setLoading(true); setReady(false); setArchiveId(''); setResults(null); setError('');
+    setLoading(true); setReady(false); setCanEdit(false); setArchiveId(''); setResults(null); setError('');
 
     const requestedArchiveId = mode === 'edit' ? window.location.pathname.split('/').filter(Boolean).at(-2) ?? '' : '';
     async function load() {
@@ -56,11 +57,26 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
         setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
         return;
       }
-      if (family.role !== 'owner' && family.role !== 'editor') {
-        setLoading(false);
-        setError('Энэ архивын үйлдлийг хийх эрхгүй байна.');
-        return;
+      const editableByRole = family.role === 'owner' || family.role === 'editor';
+      let editable = editableByRole;
+      if (!editableByRole) {
+        // Family-scoped admin grants (manage_content) may also edit archives.
+        try {
+          const access = await api<{ owner: boolean; scopes: string[] }>(
+            `/families/${encodeURIComponent(familyId)}/admin-access`,
+          );
+          editable = access.owner || access.scopes.includes('manage_content');
+        } catch {
+          editable = false;
+        }
+        if (requestId !== familyRequestRef.current) return;
+        if (!editable) {
+          setLoading(false);
+          setError('Энэ архивын үйлдлийг хийх эрхгүй байна.');
+          return;
+        }
       }
+      setCanEdit(editable);
       try {
         if (mode === 'edit') {
           if (!requestedArchiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
@@ -215,7 +231,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
     );
   }
 
-  if (family.role !== 'owner' && family.role !== 'editor') {
+  if (!canEdit) {
     return (
       <main className="stories-page">
         <section className="stories-shell stories-state card">

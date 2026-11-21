@@ -1,0 +1,15 @@
+.admin-console { min-height: 100vh; background: #f5f6f2; color: #1e3028; }
+.admin-console__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.5rem clamp(1rem, 4vw, 3rem); background: #173c2d; color: #fff; }
+.admin-console__header p { font-size: .75rem; letter-spacing: .1em; margin: 0 0 .4rem; }
+.admin-console__header h1 { font-size: 1.6rem; margin: 0; }
+.admin-console__header a { color: #fff; }
+.admin-console__content { max-width: 64rem; margin: 0 auto; padding: 2rem 1rem; }
+.admin-console__content select { margin-left: .6rem; padding: .5rem; max-width: 70%; }
+.admin-console__audit { list-style: none; padding: 0; margin-top: 1.5rem; }
+.admin-console__audit li { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; justify-content: space-between; padding: 1rem; border-bottom: 1px solid #d5ddd6; background: #fff; overflow-wrap: anywhere; }
+.admin-console__audit time { color: #52665b; }
+@media (max-width: 500px) { .admin-console__header { align-items: flex-start; flex-direction: column; } }
+.admin-console__nav { display: flex; gap: 1rem; margin: 1.5rem 0; flex-wrap: wrap; }
+.admin-console__member { display: flex; flex-direction: column; align-items: flex-start; gap: .8rem; margin: 1rem 0; padding: 1rem; border: 1px solid #cad6cd; background: white; }
+.admin-console button { padding: .5rem .9rem; cursor: pointer; }
+.admin-console button:disabled { cursor: not-allowed; }

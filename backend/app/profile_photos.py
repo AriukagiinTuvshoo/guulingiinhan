@@ -90,7 +90,7 @@ async def upload_profile_photo(
         raise HTTPException(status_code=422, detail="Зургийн файл хоосон байна.")
 
     filename = request.headers.get("x-file-name", "profile-photo")
-    _, _, _, sanitized_jpeg = _image_payload(filename, request.headers.get("content-type", ""), bytes(data))
+    _, _, _, _, sanitized_jpeg = _image_payload(filename, request.headers.get("content-type", ""), bytes(data))
     version = str(uuid4())
     key = _object_key(person.id, version)
     old_key = person.profile_photo_key

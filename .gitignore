@@ -1,6 +1,8 @@
 node_modules/
 .npm-cache/
 backend/.pytest-tmp/
+playwright-report/
+test-results/
 dist/
 .next/
 .open-next/
@@ -8,6 +10,8 @@ dist/
 worker-configuration.d.ts
 next-env.d.ts
 .env
+.env.production
+backend/.env.production
 .venv/
 backend/.venv/
 backend/*.db

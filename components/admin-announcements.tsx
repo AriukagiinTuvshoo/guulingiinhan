@@ -12,6 +12,8 @@ export default function AdminAnnouncements({ canEdit }: { canEdit: boolean }) {
   const [items, setItems] = useState<Announcement[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [filter, setFilter] = useState<Filter>('published');
+  // Capture the clock once per mount so expiry filtering stays render-pure.
+  const [now] = useState(() => Date.now());
   const [selectedId, setSelectedId] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -43,7 +45,7 @@ export default function AdminAnnouncements({ canEdit }: { canEdit: boolean }) {
   }
 
   const visibleItems = items.filter((item) => {
-    const expired = Boolean(item.expires_at && new Date(item.expires_at).getTime() <= Date.now());
+    const expired = Boolean(item.expires_at && new Date(item.expires_at).getTime() <= now);
     return filter === 'published' ? item.is_published && !expired : filter === 'archived' ? item.is_published && expired : !item.is_published;
   });
   return <div className={styles.studio}>

@@ -41,4 +41,17 @@ uv run ruff check app tests migrations
 uv run alembic check
 ```
 
+Playwright baseline uses a disposable SQLite database and starts the frontend and API on ports 3100 and 8100. From the repository root (requires Node, uv and Python):
+
+```bash
+npm ci
+(cd backend && uv sync --locked --dev)
+npx playwright install --with-deps chromium
+export DATABASE_URL="sqlite:////tmp/guulingiinhan-e2e-$(date +%s).sqlite" APP_ENV=test
+(cd backend && uv run --locked alembic upgrade head && uv run --locked python scripts/seed_e2e_admin.py)
+npm run test:e2e
+```
+
+Never point E2E tests or migration commands at a production database. The seed script refuses non-test environments and non-disposable SQLite paths and requires a fresh database. The suite checks invalid login, cross-origin CSRF, anonymous admin access, and one owner-to-delegate trash restore flow; it is not complete end-to-end auth or production HTTPS/third-party-cookie coverage.
+
 Жинхэнэ MVP туршилтын урсгал: `/register` → `/onboarding` → `/families` → `/tree` → `/profile`. Email verification, нууц үг сэргээх, invitation хүргэлтэд local `EMAIL_PROVIDER=fake`, production-д TLS-тэй SMTP тохируулна. Email хүргэлт болон object storage production-д хараахан тохируулагдаагүй.

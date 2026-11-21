@@ -61,7 +61,7 @@ async def _upload(request: Request, actor: User, target: User, db: Session, stor
         if len(data) + len(chunk) > maximum:
             raise HTTPException(413, "Зургийн файл хэт том байна.")
         data.extend(chunk)
-    _, _, _, clean = _image_payload(request.headers.get("x-file-name", "portrait.jpg"),
+    _, _, _, _, clean = _image_payload(request.headers.get("x-file-name", "portrait.jpg"),
         request.headers.get("content-type", ""), bytes(data))
     with Image.open(io.BytesIO(clean)) as image:
         image.thumbnail((640, 640))

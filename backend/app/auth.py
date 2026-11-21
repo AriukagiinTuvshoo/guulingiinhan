@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, issue_csrf_token, valid_csrf_token
 from app.db import get_db
 from app.email import EmailProvider, get_email_provider, send_email_safely
 from app.identity import email_is_registered, find_email_user, normalize_email, normalize_phone
@@ -60,6 +61,28 @@ _DUMMY_PASSWORD_HASH: str
 GOOGLE_STATE_SECONDS = 600
 GOOGLE_STATE_COOKIE = "guulingiinhan_google_state"
 logger = logging.getLogger("guulingiinhan.auth")
+
+
+@router.get("/csrf")
+def get_csrf_token(request: Request, response: Response) -> dict[str, str]:
+    """Issue a signed, non-HttpOnly token for the browser's double-submit header."""
+    settings = get_settings()
+    token = request.cookies.get(CSRF_COOKIE_NAME)
+    if token is None or not valid_csrf_token(token, settings):
+        token = issue_csrf_token(settings)
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        token,
+        max_age=SESSION_SECONDS,
+        httponly=False,
+        secure=settings.app_env.lower() == "production",
+        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers[CSRF_HEADER_NAME] = token
+    return {"csrf_token": token}
 
 
 class RegisterInput(BaseModel):
@@ -1028,7 +1051,7 @@ def confirm_email_verification(
             LoginIdentity.provider == "email",
             LoginIdentity.normalized_identifier == normalize_email(user.email or "") if user else LoginIdentity.id.is_(None),
         )
-    )
+    ) if user is not None and user.email else None
     consumed_user_id = db.execute(
         update(EmailVerificationToken)
         .where(

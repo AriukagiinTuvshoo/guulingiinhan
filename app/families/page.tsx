@@ -280,6 +280,7 @@ function FamiliesContent() {
                 <div className="row">
                   <Link className="button" href={`/tree?family=${encodeURIComponent(selectedFamily.id)}`}>Ургийн мод →</Link>
                   <Link className="button" href={`/people?family=${encodeURIComponent(selectedFamily.id)}`}>Хүмүүс →</Link>
+                  <Link className="button" href={`/families/clan?family=${encodeURIComponent(selectedFamily.id)}`}>Их үе →</Link>
                 </div>
               </div>
 

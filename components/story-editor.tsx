@@ -41,6 +41,7 @@ function friendlyError(cause: unknown, fallback: string) {
 
 function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: requestedStoryId = '' }: Props) {
   const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
+  const [contentAccessFamily, setContentAccessFamily] = useState('');
   const [story, setStory] = useState<Story | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -75,8 +76,28 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     [title, body, eventDate, place, visibility, selectedPeople],
   );
   const dirty = initialSnapshot !== '' && snapshot !== initialSnapshot;
-  const canMutate = family?.role === 'owner' || family?.role === 'editor';
+  const canMutate = family?.role === 'owner' || family?.role === 'editor' || (family != null && contentAccessFamily === family.id);
   const embeddedPhotos = Array.from(body.matchAll(STORY_PHOTO_TOKEN));
+
+  useEffect(() => {
+    if (!familyId) {
+      setContentAccessFamily('');
+      return;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    api<{ scopes: string[] }>(`/families/${encodeURIComponent(familyId)}/admin-access`, { signal: controller.signal })
+      .then((access) => {
+        if (!cancelled) setContentAccessFamily(access.scopes.includes('manage_content') ? familyId : '');
+      })
+      .catch(() => {
+        if (!cancelled) setContentAccessFamily('');
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [familyId]);
 
   useEffect(() => {
     if (!dirty) return;

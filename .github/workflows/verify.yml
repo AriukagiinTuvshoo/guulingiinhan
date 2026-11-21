@@ -20,6 +20,10 @@ jobs:
           cache: npm
       - name: Install frontend dependencies
         run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Frontend unit tests
+        run: npm test
       - name: TypeScript typecheck
         run: npm run typecheck
       - name: Set non-production API base for CI build
@@ -38,6 +42,52 @@ jobs:
         run: node --test ops/private-media-backup.test.mjs
       - name: Cloudflare Worker build
         run: npm run build:vinext
+
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: test
+      DATABASE_URL: sqlite:////tmp/guulingiinhan-e2e-ci.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+      - run: uv sync --locked --dev
+        working-directory: backend
+      - run: uv run --locked alembic upgrade head
+        working-directory: backend
+      - run: uv run --locked python scripts/seed_e2e_admin.py
+        working-directory: backend
+      - run: npx playwright install --with-deps chromium
+      - name: Build the frontend for the browser stage
+        env:
+          # `next start` inlines the API base at build time (see lib/api.ts), so the E2E
+          # build must embed the loopback backend URL instead of the CI placeholder.
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8100/api/v1
+        run: npm run build
+      - name: Run Playwright tests against the built app
+        env:
+          E2E_SERVER: production
+          # Retries are disabled in the config so one flake cannot turn a failure into a
+          # green gate; the JUnit report below additionally proves every test executed.
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: /tmp/e2e-junit.xml
+        # --retries=0 is repeated on the command line so no project-level setting can
+        # re-enable retry-masking for the release gate.
+        run: npm run test:e2e -- --reporter=list,junit --retries=0
+      - name: Assert the browser suite executed without skips
+        # Floor = the tests this branch executes; keep it in step with e2e/ the same way
+        # as the backend floor below, so a dropped spec fails instead of passing quietly.
+        # Runs through uv (not bare python3) so `defusedxml` — the parser this gate now
+        # requires — is importable in the e2e job environment.
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/e2e-junit.xml --min-tests 15
+        working-directory: backend
 
   backend:
     runs-on: ubuntu-latest
@@ -70,20 +120,64 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --locked --dev
         working-directory: backend
-      - name: Run pytest
-        run: uv run pytest
+      # The two PostgreSQL-only suites are deselected here on purpose: they own
+      # dedicated steps below, where their configuration is mandatory and asserted.
+      - name: Run pytest on SQLite
+        run: uv run --locked pytest -q --ignore=tests/test_trash_concurrency.py --ignore=tests/test_postgres_pagination.py
+        working-directory: backend
+      - name: Create disposable PostgreSQL test databases
+        run: |
+          uv run --locked python -c "
+          import psycopg
+          with psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True) as conn:
+              for name in ('guulingiinhan_test_ci', 'guulingiinhan_concurrency_ci', 'guulingiinhan_pagination_ci'):
+                  conn.execute(f'CREATE DATABASE {name}')
+          "
+        working-directory: backend
+      - name: Run pytest on PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_test_ci
+        run: uv run --locked pytest -q --junitxml=/tmp/backend-postgres.xml --ignore=tests/test_trash_concurrency.py --ignore=tests/test_postgres_pagination.py
+        working-directory: backend
+      # The floor equals the number of tests this branch actually executes on the
+      # PostgreSQL engine, so a deselected, renamed or accidentally deleted test fails
+      # the job instead of quietly shrinking the suite. Deliberate additions or removals
+      # update this single number in the same commit as the tests themselves.
+      - name: Assert the PostgreSQL backend suite executed
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/backend-postgres.xml --min-tests 204
+        working-directory: backend
+      - name: Test PostgreSQL trash concurrency
+        env:
+          TEST_CONCURRENCY_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_concurrency_ci
+        run: uv run --locked pytest -q --junitxml=/tmp/trash-concurrency.xml tests/test_trash_concurrency.py
+        working-directory: backend
+      - name: Assert the trash concurrency suite executed
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/trash-concurrency.xml --min-tests 4
+        working-directory: backend
+      - name: Test PostgreSQL memory pagination privacy
+        env:
+          TEST_PAGINATION_DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_pagination_ci
+        run: uv run --locked pytest -q --junitxml=/tmp/pg-pagination.xml tests/test_postgres_pagination.py
+        working-directory: backend
+      - name: Assert the pagination privacy suite executed
+        run: uv run --locked python scripts/check_pytest_junit.py /tmp/pg-pagination.xml --min-tests 1
         working-directory: backend
       - name: Run Ruff
-        run: uv run ruff check app tests migrations ops
+        run: uv run ruff check app tests migrations ops scripts
         working-directory: backend
       - name: Backend typecheck
         run: uv run mypy
         working-directory: backend
+      - name: Verify API contract
+        run: uv run python scripts/verify_api_contract.py
+        working-directory: backend
       - name: Alembic upgrade
         run: uv run alembic upgrade head
         working-directory: backend
-      - name: Alembic downgrade one revision
-        run: uv run alembic downgrade -1
+      # The remediation merge revision has two parents, so `downgrade -1`
+      # fails with "Ambiguous walk"; a full base roundtrip covers both chains.
+      - name: Alembic downgrade to base
+        run: uv run alembic downgrade base
         working-directory: backend
       - name: Alembic upgrade again
         run: uv run alembic upgrade head
@@ -91,3 +185,14 @@ jobs:
       - name: Alembic consistency check
         run: uv run alembic check
         working-directory: backend
+      - name: Create isolated restore source and migrate it
+        run: |
+          uv run python -c "import psycopg; c=psycopg.connect('host=localhost port=5432 user=test_user password=test_password dbname=guulingiinhan_test', autocommit=True); c.execute('CREATE DATABASE guulingiinhan_restore_source_ci'); c.close()"
+          DATABASE_URL=postgresql+psycopg://test_user:test_password@localhost:5432/guulingiinhan_restore_source_ci uv run --locked alembic upgrade head
+        working-directory: backend
+      - name: Strict PostgreSQL 16 backup and isolated restore
+        run: |
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGUSER=test_user \
+            -e PGPASSWORD=test_password -e PGDATABASE=guulingiinhan_restore_source_ci \
+            -v "$PWD/scripts:/drill:ro" postgres:16-alpine sh /drill/pg-restore-drill.sh

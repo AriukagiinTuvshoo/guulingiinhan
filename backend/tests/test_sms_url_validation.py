@@ -14,6 +14,7 @@ def production_twilio_settings():
         database_url="postgresql+psycopg://user:pass@db.example/guulingiinhan",
         cors_origins="https://guulingiinhan.mn",
         otp_hash_secret="x" * 40,
+        csrf_secret="x" * 40,
         sms_provider="twilio",
         twilio_account_sid="AC" + "x" * 32,
         twilio_auth_token="x" * 32,

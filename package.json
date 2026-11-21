@@ -7,6 +7,9 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
     "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
     "test:family-map": "node scripts/verify-family-map.mjs",
     "test:family-map-browser": "node scripts/verify-family-map-browser.mjs",
@@ -22,7 +25,7 @@
   },
   "dependencies": {
     "lucide-react": "latest",
-    "next": "16.3.6",
+    "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-server-dom-webpack": "^19.3.0",
@@ -30,6 +33,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^2.0.0-beta.sha-ad79608dd",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -37,8 +41,10 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.35",
     "cf": "^1.0.0-beta.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.4.6",
     "@vinext/cloudflare": "^1.0.0",
-    "typescript": "^7.0.2",
+    "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vinext": "^1.0.0"
   },

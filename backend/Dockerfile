@@ -6,6 +6,7 @@ COPY pyproject.toml uv.lock ./
 COPY app ./app
 RUN uv sync --frozen --no-dev
 COPY migrations ./migrations
+COPY scripts ./scripts
 COPY alembic.ini ./
 EXPOSE 8000
 RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app

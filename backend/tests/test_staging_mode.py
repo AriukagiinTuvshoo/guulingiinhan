@@ -29,9 +29,13 @@ def test_staging_verified_login_and_disabled_provider_routes(client, database, m
     assert client.get("/api/v1/auth/email/config").json() == {"enabled": False}
     assert client.get("/api/v1/auth/phone/config").json()["enabled"] is False
 
+    # CSRF origin checks run against the monkeypatched staging CORS allowlist,
+    # so mutating requests must present an origin staging actually allows.
+    staging_origin = {"Origin": "https://staging.example"}
     login = client.post(
         "/api/v1/auth/login",
         json={"email": email_address, "password": password},
+        headers=staging_origin,
     )
     assert login.status_code == 200
     cookie = login.headers["set-cookie"].lower()
@@ -50,7 +54,7 @@ def test_staging_verified_login_and_disabled_provider_routes(client, database, m
             "code": "123456",
         }),
     ):
-        response = client.post(route, json=body)
+        response = client.post(route, json=body, headers=staging_origin)
         assert response.status_code == 503
         assert response.json()["error_code"] == "SERVICE_UNAVAILABLE"
         assert "боломжгүй" in response.json()["detail"]
@@ -60,5 +64,5 @@ def test_staging_verified_login_and_disabled_provider_routes(client, database, m
         assert db.scalar(select(func.count()).select_from(PasswordResetToken)) == 0
         assert db.scalar(select(func.count()).select_from(User).where(User.email == "new@example.com")) == 0
 
-    assert client.post("/api/v1/auth/logout").status_code == 204
+    assert client.post("/api/v1/auth/logout", headers=staging_origin).status_code == 204
     assert client.get("/api/v1/auth/me").status_code == 401
