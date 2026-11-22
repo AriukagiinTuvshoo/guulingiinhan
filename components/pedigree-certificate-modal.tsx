@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Download, Printer, X, Shield, Award, Check } from 'lucide-react';
+import { PRINT_EXPORT_COLORS as P } from '../lib/theme-tokens';
 import { Family, FamilyStats, Person } from '../lib/api';
 import { useFocusTrap } from '../lib/use-focus-trap';
 
@@ -154,8 +155,8 @@ export function PedigreeCertificateModal({
                 alignItems: 'center',
                 gap: '6px',
                 padding: '8px 16px',
-                background: '#17372b',
-                color: '#ffffff',
+                background: 'var(--ui-primary)',
+                color: 'var(--ui-primary-contrast)',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '13px',
@@ -261,8 +262,8 @@ export function PedigreeCertificateModal({
               width: '100%',
               maxWidth: '780px',
               minHeight: '1020px',
-              background: '#fffef9',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+              background: '${P.gold}',
+              boxShadow: '0 10px 30px ${P.goldSoft}',
               padding: '48px 56px',
               boxSizing: 'border-box',
               position: 'relative',
@@ -270,8 +271,8 @@ export function PedigreeCertificateModal({
               flexDirection: 'column',
               justifyContent: 'space-between',
               fontFamily: '"Times New Roman", "Baskerville", serif',
-              color: '#1a2e22',
-              border: '12px double #b45309',
+              color: '${P.gold}',
+              border: '12px double ${P.goldDark}',
             }}
           >
             {/* Ornate Inner Border */}
@@ -279,7 +280,7 @@ export function PedigreeCertificateModal({
               style={{
                 position: 'absolute',
                 inset: '8px',
-                border: '1px solid rgba(180, 83, 9, 0.4)',
+                border: '1px solid ${P.goldSoft}',
                 pointerEvents: 'none',
               }}
             />
@@ -291,7 +292,7 @@ export function PedigreeCertificateModal({
                   fontFamily: '"Mongolian Bitihe", "Noto Sans Mongolian", serif',
                   fontSize: '22px',
                   lineHeight: '1.2',
-                  color: '#b45309',
+                  color: 'var(--ui-primary)',
                   letterSpacing: '2px',
                   marginBottom: '10px',
                 }}
@@ -304,7 +305,7 @@ export function PedigreeCertificateModal({
                   letterSpacing: '4px',
                   fontWeight: 700,
                   textTransform: 'uppercase',
-                  color: '#65776d',
+                  color: '${P.gold}',
                   marginBottom: '6px',
                 }}
               >
@@ -314,7 +315,7 @@ export function PedigreeCertificateModal({
                 style={{
                   fontSize: '34px',
                   fontWeight: 700,
-                  color: '#17372b',
+                  color: 'var(--ui-primary)',
                   margin: '0 0 10px',
                   letterSpacing: '1px',
                   textTransform: 'uppercase',
@@ -326,7 +327,7 @@ export function PedigreeCertificateModal({
                 style={{
                   width: '140px',
                   height: '2px',
-                  background: 'linear-gradient(90deg, transparent, #b45309, transparent)',
+                  background: 'linear-gradient(90deg, transparent, ${P.goldDark}, transparent)',
                   margin: '0 auto 20px',
                 }}
               />
@@ -334,14 +335,14 @@ export function PedigreeCertificateModal({
 
             {/* Certificate Body */}
             <div style={{ textAlign: 'center', margin: '20px 0', lineHeight: 1.8 }}>
-              <p style={{ fontSize: '15px', color: '#4b5563', margin: '0 0 8px' }}>
+              <p style={{ fontSize: '15px', color: '${P.gold}', margin: '0 0 8px' }}>
                 Энэхүү батламжийг хүлээн авагч:
               </p>
               <div
                 style={{
                   fontSize: '24px',
                   fontWeight: 700,
-                  color: '#0f291e',
+                  color: '${P.gold}',
                   fontStyle: 'italic',
                   marginBottom: '20px',
                 }}
@@ -352,7 +353,7 @@ export function PedigreeCertificateModal({
               <div
                 style={{
                   fontSize: '16.5px',
-                  color: '#1f2937',
+                  color: '${P.gold}',
                   maxWidth: '620px',
                   margin: '0 auto',
                   textAlign: 'justify',
@@ -368,8 +369,8 @@ export function PedigreeCertificateModal({
                 style={{
                   margin: '36px auto',
                   padding: '20px 24px',
-                  background: 'rgba(23, 55, 43, 0.03)',
-                  border: '1px solid rgba(180, 83, 9, 0.25)',
+                  background: 'var(--gold-soft)',
+                  border: '1px solid ${P.goldSoft}',
                   borderRadius: '10px',
                   maxWidth: '580px',
                   display: 'grid',
@@ -379,35 +380,35 @@ export function PedigreeCertificateModal({
                 }}
               >
                 <div>
-                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#65776d', letterSpacing: '1px' }}>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '${P.gold}', letterSpacing: '1px' }}>
                     Нийт бүртгэгдсэн
                   </div>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#17372b', marginTop: '4px' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--ui-primary)', marginTop: '4px' }}>
                     {totalCount} гишүүн
                   </div>
                 </div>
 
                 <div>
-                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#65776d', letterSpacing: '1px' }}>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '${P.gold}', letterSpacing: '1px' }}>
                     Үе дамжсан гүн
                   </div>
-                  <div style={{ fontSize: '24px', fontWeight: 700, color: '#17372b', marginTop: '4px' }}>
+                  <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--ui-primary)', marginTop: '4px' }}>
                     {generationDepth}
                   </div>
                 </div>
 
                 <div>
-                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '#65776d', letterSpacing: '1px' }}>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: '${P.gold}', letterSpacing: '1px' }}>
                     Бүртгэлийн огноо
                   </div>
-                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#17372b', marginTop: '8px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ui-primary)', marginTop: '8px' }}>
                     {issueDateStr.slice(0, 11)}
                   </div>
                 </div>
               </div>
 
               {roots.length > 0 && (
-                <div style={{ fontSize: '14px', color: '#4b5563', margin: '14px auto', maxWidth: '580px' }}>
+                <div style={{ fontSize: '14px', color: '${P.gold}', margin: '14px auto', maxWidth: '580px' }}>
                   <strong>Язгуур өвөг дээдэс:</strong> {roots.join(', ')}
                 </div>
               )}
@@ -416,7 +417,7 @@ export function PedigreeCertificateModal({
                 style={{
                   fontSize: '15px',
                   fontStyle: 'italic',
-                  color: '#78350f',
+                  color: '${P.gold}',
                   margin: '28px auto 0',
                   maxWidth: '560px',
                 }}
@@ -437,11 +438,11 @@ export function PedigreeCertificateModal({
             >
               {/* Left Signee */}
               <div style={{ textAlign: 'center', width: '200px' }}>
-                <div style={{ borderBottom: '1px solid #17372b', height: '36px', marginBottom: '6px' }} />
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#17372b' }}>
+                <div style={{ borderBottom: '1px solid ${P.forestInk}', height: '36px', marginBottom: '6px' }} />
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ui-primary)' }}>
                   Ургийн сангийн тэргүүн
                 </div>
-                <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                <div style={{ fontSize: '11px', color: '${P.mutedInk}' }}>
                   (Гарын үсэг, нэр)
                 </div>
               </div>
@@ -454,16 +455,16 @@ export function PedigreeCertificateModal({
                     width: '120px',
                     height: '120px',
                     borderRadius: '50%',
-                    border: '3px solid #dc2626',
+                    border: '3px solid ${P.sealRed}',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    color: '#dc2626',
+                    color: 'var(--ui-danger)',
                     transform: 'rotate(-6deg)',
                     margin: '0 20px',
-                    boxShadow: 'inset 0 0 0 2px #dc2626',
-                    background: 'rgba(220, 38, 38, 0.02)',
+                    boxShadow: 'inset 0 0 0 2px ${P.sealRed}',
+                    background: 'var(--gold-soft)',
                   }}
                 >
                   <div
@@ -491,7 +492,7 @@ export function PedigreeCertificateModal({
                       fontSize: '8px',
                       fontWeight: 800,
                       letterSpacing: '1px',
-                      borderTop: '1px solid #dc2626',
+                      borderTop: '1px solid ${P.sealRed}',
                       paddingTop: '2px',
                     }}
                   >
@@ -502,13 +503,13 @@ export function PedigreeCertificateModal({
 
               {/* Right Issue Date */}
               <div style={{ textAlign: 'center', width: '200px' }}>
-                <div style={{ borderBottom: '1px solid #17372b', height: '36px', marginBottom: '6px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', fontSize: '13px', fontWeight: 600 }}>
+                <div style={{ borderBottom: '1px solid ${P.forestInk}', height: '36px', marginBottom: '6px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', fontSize: '13px', fontWeight: 600 }}>
                   {issueDateStr}
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#17372b' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ui-primary)' }}>
                   Олгосон огноо
                 </div>
-                <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                <div style={{ fontSize: '11px', color: '${P.mutedInk}' }}>
                   Улаанбаатар хот
                 </div>
               </div>

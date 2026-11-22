@@ -26,8 +26,8 @@ export default function RootLoading() {
             height: 36,
             margin: '0 auto 14px',
             borderRadius: '50%',
-            border: '3px solid rgba(196, 152, 74, 0.25)',
-            borderTopColor: '#d97706',
+            border: '3px solid var(--gold-border)',
+            borderTopColor: 'var(--ui-primary)',
             animation: 'people-spin 0.85s linear infinite',
           }}
         />

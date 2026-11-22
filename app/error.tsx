@@ -36,7 +36,7 @@ export default function RouteError({
         <h1 style={{ margin: '0 0 10px', fontFamily: 'Georgia, serif', fontSize: 24 }}>
           Уучлаарай, хуудсыг ачаалахад саатал гарлаа
         </h1>
-        <p style={{ margin: '0 0 22px', color: '#64748b', fontSize: 14.5, lineHeight: 1.6 }}>
+        <p style={{ margin: '0 0 22px', color: 'var(--ui-text-muted)', fontSize: 14.5, lineHeight: 1.6 }}>
           Түр зуурын техникийн саатал үүссэн байж болзошгүй. Дахин оролдох эсвэл нүүр хуудас руу буцна уу.
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>

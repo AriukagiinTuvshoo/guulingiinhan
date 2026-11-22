@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { Marriage, personName, TreeData, TreePerson } from '../lib/api';
 import { API_BASE } from '../lib/api';
+import { TREE_3D_COLORS } from '../lib/theme-tokens';
 import { layoutTree3D, Point3 } from '../lib/tree-3d-layout';
 
 type Props = {
@@ -37,24 +38,24 @@ function makeLabel(person: TreePerson, color: string, generation?: number | null
   canvas.height = 144;
   const context = canvas.getContext('2d');
   if (context) {
-    context.fillStyle = 'rgba(15, 38, 31, 0.88)';
+    context.fillStyle = TREE_3D_COLORS.labelBg;
     context.beginPath();
     context.roundRect(4, 4, 504, 136, 22);
     context.fill();
     context.strokeStyle = color;
     context.lineWidth = 3;
     context.stroke();
-    context.fillStyle = '#f5efdc';
+    context.fillStyle = TREE_3D_COLORS.labelText;
     context.font = '600 31px Georgia, serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     const name = personName(person) || 'Нэргүй хүн';
     context.fillText(name.length > 27 ? name.slice(0, 26) + '…' : name, 256, 42, 475);
-    context.fillStyle = '#e3d7b3';
+    context.fillStyle = TREE_3D_COLORS.labelText;
     context.font = '500 23px Arial, sans-serif';
     context.fillText(lifeSummary(person), 256, 83, 475);
     if (generation !== null && generation !== undefined) {
-      context.fillStyle = '#dfc578';
+      context.fillStyle = TREE_3D_COLORS.labelText;
       context.font = '600 19px Arial, sans-serif';
       context.fillText(generationLabel(generation), 256, 119, 475);
     }

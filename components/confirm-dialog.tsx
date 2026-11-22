@@ -179,8 +179,8 @@ export function ConfirmDialog({
               border: 'none',
               fontWeight: 600,
               cursor: busy ? 'not-allowed' : 'pointer',
-              background: isDanger ? '#dc2626' : '#0f766e',
-              color: '#ffffff',
+              background: isDanger ? 'var(--ui-danger)' : 'var(--ui-primary)',
+              color: isDanger ? 'var(--ui-danger-contrast)' : 'var(--ui-primary-contrast)',
             }}
           >
             {busy ? 'Гүйцэтгэж байна…' : confirmLabel}

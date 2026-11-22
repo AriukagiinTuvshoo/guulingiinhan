@@ -103,9 +103,9 @@ export default function HomePage() {
             >
               <defs>
                 <linearGradient id="medallion-gold" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#f5db96" />
-                  <stop offset="48%" stopColor="#c99b3d" />
-                  <stop offset="100%" stopColor="#7a5718" />
+                  <stop offset="0%" stopColor="var(--gold-300)" />
+                  <stop offset="48%" stopColor="var(--gold-500)" />
+                  <stop offset="100%" stopColor="var(--gold-700)" />
                 </linearGradient>
               </defs>
               <circle
@@ -121,7 +121,7 @@ export default function HomePage() {
                 cy="180"
                 r="130"
                 fill="none"
-                stroke="rgba(232, 198, 114, 0.28)"
+                stroke="var(--gold-border)"
                 strokeWidth="1"
               />
               {/* Stylized Golden Tree of Life inside Medallion */}
@@ -136,13 +136,13 @@ export default function HomePage() {
                 strokeWidth="3.5"
                 strokeLinecap="round"
               />
-              <circle cx="180" cy="76" r="6" fill="#f7df9d" />
-              <circle cx="122" cy="112" r="5" fill="#e5bd62" />
-              <circle cx="238" cy="112" r="5" fill="#e5bd62" />
-              <circle cx="96" cy="158" r="4.5" fill="#d9ad4e" />
-              <circle cx="264" cy="158" r="4.5" fill="#d9ad4e" />
-              <circle cx="146" cy="140" r="4" fill="#f5db96" />
-              <circle cx="214" cy="140" r="4" fill="#f5db96" />
+              <circle cx="180" cy="76" r="6" fill="var(--gold-200)" />
+              <circle cx="122" cy="112" r="5" fill="var(--gold-300)" />
+              <circle cx="238" cy="112" r="5" fill="var(--gold-300)" />
+              <circle cx="96" cy="158" r="4.5" fill="var(--gold-400)" />
+              <circle cx="264" cy="158" r="4.5" fill="var(--gold-400)" />
+              <circle cx="146" cy="140" r="4" fill="var(--gold-200)" />
+              <circle cx="214" cy="140" r="4" fill="var(--gold-200)" />
             </svg>
 
             <div className="luxury-landing__floating-badge">
@@ -185,7 +185,7 @@ export default function HomePage() {
 
       <footer className="luxury-landing__footer">
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <ShieldCheck size={16} color="#b48a3e" />
+          <ShieldCheck size={16} color="var(--gold-500)" />
           <span>ГУУЛИНГИЙНХАН — Гэр бүлийн хувийн өв, удмын сан</span>
         </div>
         <div className="luxury-landing__footer-links">

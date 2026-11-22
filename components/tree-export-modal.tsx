@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Printer, Copy, Check, X, Sparkles, Sliders, Shield, FileSpreadsheet } from 'lucide-react';
+import { PRINT_EXPORT_COLORS as P } from '../lib/theme-tokens';
 import { Family, TreeData, TreePerson, personName } from '../lib/api';
 import { AdvancedTreeLayout } from '../lib/tree-layout';
 import { exportToGedcom } from '../lib/gedcom';
@@ -77,13 +78,13 @@ export function TreeExportModal({
     const isDark = exportTheme === 'dark';
     const isRoyal = exportTheme === 'royal-blue';
 
-    const bgColor = isDark ? '#0b0f19' : isRoyal ? '#0f1f38' : '#fbf9f4';
-    const textColor = isDark || isRoyal ? '#f8fafc' : '#1e293b';
-    const mutedColor = isDark || isRoyal ? '#94a3b8' : '#64748b';
-    const goldColor = '#d4af37';
-    const frameBorderColor = isDark || isRoyal ? '#e2b342' : '#8c6a23';
-    const cardBg = isDark ? '#1e293b' : isRoyal ? '#1a2e4c' : '#ffffff';
-    const cardBorder = isDark ? '#334155' : isRoyal ? '#2b4772' : '#e2d9c8';
+    const bgColor = isDark ? P.darkBg : isRoyal ? P.royalBg : P.parchmentBg;
+    const textColor = isDark || isRoyal ? P.darkText : P.forestInk;
+    const mutedColor = isDark || isRoyal ? P.darkMuted : P.mutedInk;
+    const goldColor = P.gold;
+    const frameBorderColor = isDark || isRoyal ? P.goldBright : P.goldDark;
+    const cardBg = isDark ? P.darkSurface : isRoyal ? P.royalSurface : P.parchmentCard;
+    const cardBorder = isDark ? P.darkBorder : isRoyal ? P.royalBorder : P.parchmentBorder;
 
     const formattedDate = new Date().toLocaleDateString('mn-MN', {
       year: 'numeric',
@@ -103,12 +104,12 @@ export function TreeExportModal({
       .t-meta { font-family: sans-serif; font-size: 9.5px; fill: ${mutedColor}; }
       .t-gen-lbl { font-family: Georgia, serif; font-size: 11px; font-weight: 700; fill: ${frameBorderColor}; }
       .c-parent { stroke: ${goldColor}; stroke-width: 2.2; fill: none; stroke-linecap: round; }
-      .c-spouse { stroke: #d97706; stroke-width: 2.2; fill: none; stroke-linecap: round; }
-      .c-history { stroke: #a8a29e; stroke-width: 2; stroke-dasharray: 6 5; fill: none; }
-      .m-dot { fill: #f59e0b; stroke: ${cardBg}; stroke-width: 2.5; }
+      .c-spouse { stroke: ${P.gold}; stroke-width: 2.2; fill: none; stroke-linecap: round; }
+      .c-history { stroke: ${P.historyStroke}; stroke-width: 2; stroke-dasharray: 6 5; fill: none; }
+      .m-dot { fill: ${P.goldBright}; stroke: ${cardBg}; stroke-width: 2.5; }
     </style>
     <filter id="card-shadow" x="-5%" y="-5%" width="110%" height="115%">
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="${isDark ? '0.35' : '0.08'}"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="${P.black}" flood-opacity="${isDark ? '0.35' : '0.08'}"/>
     </filter>
   </defs>
 
@@ -167,11 +168,11 @@ export function TreeExportModal({
       s += `
   <!-- Red Seal Stamp (Тамга) -->
   <g transform="translate(${sealX}, ${sealY})">
-    <rect x="0" y="0" width="86" height="86" fill="rgba(220, 38, 38, 0.08)" stroke="#dc2626" stroke-width="2.5" rx="4" />
-    <rect x="4" y="4" width="78" height="78" fill="none" stroke="#dc2626" stroke-width="1.2" rx="2" />
-    <text x="43" y="28" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="12" fill="#dc2626" letter-spacing="1">ГУУЛИН</text>
-    <text x="43" y="48" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="12" fill="#dc2626" letter-spacing="1">ГИЙНХАН</text>
-    <text x="43" y="68" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="11" fill="#dc2626" letter-spacing="1">БАТЛАВ</text>
+    <rect x="0" y="0" width="86" height="86" fill="${P.sealRedTint}" stroke="${P.sealRed}" stroke-width="2.5" rx="4" />
+    <rect x="4" y="4" width="78" height="78" fill="none" stroke="${P.sealRed}" stroke-width="1.2" rx="2" />
+    <text x="43" y="28" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="12" fill="${P.sealRed}" letter-spacing="1">ГУУЛИН</text>
+    <text x="43" y="48" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="12" fill="${P.sealRed}" letter-spacing="1">ГИЙНХАН</text>
+    <text x="43" y="68" text-anchor="middle" font-family="Georgia, serif" font-weight="700" font-size="11" fill="${P.sealRed}" letter-spacing="1">БАТЛАВ</text>
   </g>
 `;
     }
@@ -234,8 +235,8 @@ export function TreeExportModal({
       const person = node.person;
       const isMale = person.gender === 'male';
       const isFemale = person.gender === 'female';
-      const genderTopColor = isMale ? '#2563eb' : isFemale ? '#e11d48' : '#d4af37';
-      const avatarGrad = isMale ? '#0284c7' : isFemale ? '#e11d48' : '#b45309';
+      const genderTopColor = isMale ? P.maleAccent : isFemale ? P.femaleAccent : P.gold;
+      const avatarGrad = isMale ? P.forestInk : isFemale ? P.goldDark : P.gold;
 
       s += `
     <!-- Person Node: ${escapeXml(personName(person))} -->
@@ -245,15 +246,15 @@ export function TreeExportModal({
 
       <!-- Avatar Circle -->
       <circle cx="98" cy="40" r="23" fill="${avatarGrad}" stroke="${goldColor}" stroke-width="1.8" />
-      <text x="98" y="46" text-anchor="middle" fill="#ffffff" font-family="Georgia, serif" font-weight="700" font-size="14">${escapeXml(initials(person))}</text>
+      <text x="98" y="46" text-anchor="middle" fill="${P.white}" font-family="Georgia, serif" font-weight="700" font-size="14">${escapeXml(initials(person))}</text>
 
       <!-- Person Name & Dates -->
       <text x="98" y="82" text-anchor="middle" class="t-name">${escapeXml(personName(person) || 'Нэргүй')}</text>
       <text x="98" y="100" text-anchor="middle" class="t-dates">${escapeXml(lifeSummary(person))}</text>
 
       <!-- Generation Badge -->
-      <rect x="48" y="112" width="100" height="18" rx="9" fill="${isDark || isRoyal ? '#283548' : '#fef3c7'}" stroke="${goldColor}" stroke-width="0.8" />
-      <text x="98" y="124" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="${isDark || isRoyal ? '#fde68a' : '#92400e'}">${node.generation === 0 ? 'Төв үе' : node.generation < 0 ? Math.abs(node.generation) + ' үе өмнө' : node.generation + ' үе үргэлжлэл'}</text>
+      <rect x="48" y="112" width="100" height="18" rx="9" fill="${isDark || isRoyal ? P.badgeDark : P.goldSoft}" stroke="${goldColor}" stroke-width="0.8" />
+      <text x="98" y="124" text-anchor="middle" font-family="sans-serif" font-size="9" font-weight="600" fill="${isDark || isRoyal ? P.goldLight : P.goldDark}">${layout.hasConfirmedRoot ? `${node.generation}-р үе` : '?'}</text>
 
       ${person.lineage_name ? `
       <!-- Lineage Tag -->
@@ -340,7 +341,7 @@ export function TreeExportModal({
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #ffffff;
+        background: ${P.white};
       }
       svg {
         width: 100vw;
@@ -542,7 +543,7 @@ export function TreeExportModal({
                 className="tree-button tree-button--secondary"
                 onClick={handleCopySvg}
               >
-                {copied ? <Check size={16} color="#16a34a" /> : <Copy size={16} />}
+                {copied ? <Check size={16} color="var(--ui-success-text)" /> : <Copy size={16} />}
                 {copied ? 'Хуулагдлаа!' : 'SVG код хуулах'}
               </button>
             </div>

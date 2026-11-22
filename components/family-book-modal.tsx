@@ -1,3 +1,4 @@
+import { PRINT_EXPORT_COLORS as P } from '../lib/theme-tokens';
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -28,31 +29,31 @@ const THEME_PALETTE: Record<
   { bg: string; coverBg: string; coverInk: string; accent: string; border: string; ink: string; muted: string }
 > = {
   parchment: {
-    bg: '#fcf8ee',
-    coverBg: '#103428',
-    coverInk: '#fbf4e2',
-    accent: '#c49635',
-    border: '#d6c5a0',
-    ink: '#1a3328',
-    muted: '#5d6e65',
+    bg: '${P.gold}',
+    coverBg: '${P.gold}',
+    coverInk: '${P.gold}',
+    accent: 'var(--gold-500)',
+    border: '${P.gold}',
+    ink: '${P.gold}',
+    muted: '${P.gold}',
   },
   emerald: {
-    bg: '#f5fbf8',
-    coverBg: '#0b2a20',
-    coverInk: '#eefaf3',
-    accent: '#2a9d6f',
-    border: '#b8d9ca',
-    ink: '#103326',
-    muted: '#4d6b5e',
+    bg: '${P.gold}',
+    coverBg: '${P.gold}',
+    coverInk: '${P.gold}',
+    accent: '${P.gold}',
+    border: '${P.gold}',
+    ink: '${P.gold}',
+    muted: '${P.gold}',
   },
   gold: {
-    bg: '#fffdf7',
-    coverBg: '#3a260a',
-    coverInk: '#fff5d9',
-    accent: '#d49a24',
-    border: '#e5cd92',
-    ink: '#2d1f0a',
-    muted: '#735b33',
+    bg: '${P.gold}',
+    coverBg: '${P.gold}',
+    coverInk: '${P.gold}',
+    accent: '${P.gold}',
+    border: '${P.gold}',
+    ink: '${P.gold}',
+    muted: '${P.gold}',
   },
 };
 
@@ -320,8 +321,8 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
       display: inline-block;
       margin: 0 auto;
       padding: 10px 18px;
-      border: 2px solid #c53030;
-      color: #f8b4b4;
+      border: 2px solid ${P.gold};
+      color: ${P.gold};
       font-weight: 700;
       letter-spacing: 2px;
       font-size: 12px;
@@ -350,7 +351,7 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
       border: 1px solid ${palette.border};
       border-radius: 8px;
       padding: 10px 12px;
-      background: #ffffff;
+      background: ${P.white};
       break-inside: avoid;
       margin-bottom: 8px;
     }
@@ -422,7 +423,7 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
             justifyContent: 'space-between',
             gap: '12px',
             marginBottom: '16px',
-            borderBottom: '1px solid var(--border-subtle, #e2d8c5)',
+            borderBottom: '1px solid var(--border-subtle, ${P.gold})',
             paddingBottom: '14px',
           }}
         >
@@ -433,7 +434,7 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
                 fontSize: '11px',
                 fontWeight: 700,
                 letterSpacing: '0.14em',
-                color: '#b47c18',
+                color: '${P.gold}',
                 textTransform: 'uppercase',
               }}
             >
@@ -450,7 +451,7 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
             aria-label="Цонх хаах"
             style={{
               background: 'transparent',
-              border: '1px solid var(--border-subtle, #d5c8b2)',
+              border: '1px solid var(--border-subtle, ${P.gold})',
               borderRadius: '50%',
               width: 34,
               height: 34,
@@ -475,7 +476,7 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
               style={{
                 padding: '10px 12px',
                 borderRadius: '10px',
-                border: '1px solid var(--border-subtle, #d5c8b2)',
+                border: '1px solid var(--border-subtle, ${P.gold})',
                 fontSize: '14px',
               }}
             />
@@ -491,7 +492,7 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
               style={{
                 padding: '10px 12px',
                 borderRadius: '10px',
-                border: '1px solid var(--border-subtle, #d5c8b2)',
+                border: '1px solid var(--border-subtle, ${P.gold})',
                 fontSize: '13.5px',
                 fontFamily: 'inherit',
               }}
@@ -520,8 +521,8 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
                     fontSize: '12.5px',
                     fontWeight: 600,
                     cursor: 'pointer',
-                    border: theme === key ? '2px solid #c49635' : '1px solid var(--border-subtle, #d5c8b2)',
-                    background: theme === key ? 'rgba(196, 150, 53, 0.14)' : 'transparent',
+                    border: theme === key ? '2px solid ${P.gold}' : '1px solid var(--border-subtle, ${P.gold})',
+                    background: theme === key ? 'var(--gold-soft)' : 'transparent',
                   }}
                 >
                   {theme === key && <Check size={12} style={{ display: 'inline', marginRight: 4 }} />}
@@ -535,8 +536,8 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
             style={{
               padding: '12px 14px',
               borderRadius: '12px',
-              border: '1px solid var(--border-subtle, #e2d8c5)',
-              background: 'rgba(196, 150, 53, 0.06)',
+              border: '1px solid var(--border-subtle, ${P.gold})',
+              background: 'var(--gold-soft)',
               display: 'grid',
               gap: '8px',
             }}
@@ -579,9 +580,9 @@ export function FamilyBookModal({ isOpen, onClose, family, tree }: FamilyBookMod
               className="tree-button tree-button--primary"
               onClick={handlePrintBook}
               style={{
-                background: 'linear-gradient(135deg, #104535, #0a2d22)',
-                color: '#fbf4e2',
-                border: '1px solid #c49635',
+                background: 'linear-gradient(135deg, ${P.gold}, ${P.gold})',
+                color: '${P.gold}',
+                border: '1px solid ${P.gold}',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '7px',

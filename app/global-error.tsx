@@ -22,8 +22,8 @@ export default function GlobalError({
           display: 'grid',
           placeItems: 'center',
           padding: 24,
-          background: '#fbf9f4',
-          color: '#1e293b',
+          background: 'var(--ui-bg)',
+          color: 'var(--ui-text)',
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         }}
       >
@@ -34,16 +34,16 @@ export default function GlobalError({
             width: '100%',
             padding: '32px 28px',
             borderRadius: 16,
-            background: '#ffffff',
-            border: '1px solid #e2d9c8',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.06)',
+            background: 'var(--ui-surface)',
+            border: '1px solid var(--ui-border)',
+            boxShadow: 'var(--ui-shadow-md)',
             textAlign: 'center',
           }}
         >
           <h1 style={{ margin: '0 0 10px', fontFamily: 'Georgia, serif', fontSize: 22 }}>
             Системийн төлөв шинэчлэх шаардлагатай
           </h1>
-          <p style={{ margin: '0 0 20px', color: '#64748b', fontSize: 14, lineHeight: 1.6 }}>
+          <p style={{ margin: '0 0 20px', color: 'var(--ui-text-muted)', fontSize: 14, lineHeight: 1.6 }}>
             Аппликейшнийг дахин ачаалж үзнэ үү. Таны гэр бүлийн өгөгдөл аюулгүй хадгалагдсан.
           </p>
           <button
@@ -54,8 +54,8 @@ export default function GlobalError({
               padding: '0 24px',
               borderRadius: 10,
               border: 'none',
-              background: '#b45309',
-              color: '#ffffff',
+              background: 'var(--ui-primary)',
+              color: 'var(--ui-primary-contrast)',
               fontWeight: 700,
               fontSize: 14,
               cursor: 'pointer',

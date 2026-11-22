@@ -374,8 +374,8 @@ function ChatContent() {
                 width: '40px',
                 height: '40px',
                 borderRadius: '12px',
-                background: 'linear-gradient(135deg, #17372b, #2d5a47)',
-                color: '#ffffff',
+                background: 'var(--ui-primary)',
+                color: 'var(--ui-primary-contrast)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -389,7 +389,7 @@ function ChatContent() {
                 Бүх гэр бүлийн танхим
               </div>
               <div style={{ fontSize: '12px', color: 'var(--ui-text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--gold-400)', display: 'inline-block' }} />
                 Нийтийн нээлттэй суваг
               </div>
             </div>
@@ -601,9 +601,9 @@ function ChatContent() {
                       maxWidth: '70%',
                       padding: '11px 16px',
                       borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                      background: isMine ? '#17372b' : 'var(--ui-surface)',
-                      color: isMine ? '#ffffff' : 'var(--ui-text)',
-                      border: isMine ? '1px solid rgba(255, 255, 255, 0.14)' : '1px solid var(--ui-border)',
+                      background: isMine ? 'var(--ui-primary)' : 'var(--ui-surface)',
+                      color: isMine ? 'var(--ui-primary-contrast)' : 'var(--ui-text)',
+                      border: isMine ? '1px solid var(--brand-primary-border)' : '1px solid var(--ui-border)',
                       boxShadow: 'var(--ui-shadow-sm)',
                       fontSize: '14px',
                       lineHeight: 1.5,
@@ -673,8 +673,8 @@ function ChatContent() {
             style={{
               padding: '10px 20px',
               borderRadius: '24px',
-              background: !inputText.trim() || sending ? 'var(--ui-border-strong)' : '#17372b',
-              color: '#ffffff',
+              background: !inputText.trim() || sending ? 'var(--ui-border-strong)' : 'var(--ui-primary)',
+              color: 'var(--ui-primary-contrast)',
               border: 'none',
               display: 'inline-flex',
               alignItems: 'center',

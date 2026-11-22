@@ -201,10 +201,10 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
             gap: '10px',
             padding: '12px 20px',
             borderRadius: '30px',
-            background: '#17372b',
-            color: '#ffffff',
-            border: '1.5px solid rgba(255, 255, 255, 0.25)',
-            boxShadow: '0 8px 24px rgba(23, 55, 43, 0.35)',
+            background: 'var(--ui-primary)',
+            color: 'var(--ui-primary-contrast)',
+            border: '1.5px solid var(--gold-border)',
+            boxShadow: 'var(--ui-shadow-md)',
             cursor: 'pointer',
             fontSize: '13.5px',
             fontWeight: 600,
@@ -212,11 +212,11 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
-            e.currentTarget.style.boxShadow = '0 12px 30px rgba(23, 55, 43, 0.45)';
+            e.currentTarget.style.boxShadow = 'var(--ui-shadow-modal)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'translateY(0) scale(1)';
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(23, 55, 43, 0.35)';
+            e.currentTarget.style.boxShadow = 'var(--ui-shadow-md)';
           }}
         >
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -227,8 +227,8 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                   position: 'absolute',
                   top: '-8px',
                   right: '-10px',
-                  background: '#ef4444',
-                  color: '#ffffff',
+                  background: 'var(--ui-danger)',
+                  color: 'var(--ui-primary-contrast)',
                   fontSize: '10.5px',
                   fontWeight: 700,
                   width: '18px',
@@ -237,7 +237,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '2px solid #17372b',
+                  border: '2px solid var(--ui-primary)',
                 }}
               >
                 {unreadCount > 9 ? '9+' : unreadCount}
@@ -275,12 +275,12 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
           <div
             style={{
               padding: '14px 18px',
-              background: '#17372b',
-              color: '#ffffff',
+              background: 'var(--ui-primary)',
+              color: 'var(--ui-primary-contrast)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              borderBottom: '1px solid var(--brand-primary-border)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -291,7 +291,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#ffffff',
+                    color: 'var(--ui-primary-contrast)',
                     cursor: 'pointer',
                     padding: '2px',
                     display: 'flex',
@@ -307,13 +307,13 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                     width: '32px',
                     height: '32px',
                     borderRadius: '10px',
-                    background: 'rgba(255, 255, 255, 0.15)',
+                    background: 'var(--brand-primary-soft)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <MessageCircle size={18} color="#ffffff" />
+                  <MessageCircle size={18} color="var(--ui-primary-contrast)" />
                 </div>
               )}
               <div>
@@ -323,7 +323,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                     : 'Гэр бүлийн танхим'}
                 </h4>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', opacity: 0.85 }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--gold-400)', display: 'inline-block' }} />
                   <span>
                     {activeTab === 'direct' && selectedRecipient
                       ? roleLabel(selectedRecipient.role)
@@ -337,9 +337,9 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
               type="button"
               onClick={() => setIsOpen(false)}
               style={{
-                background: 'rgba(255, 255, 255, 0.12)',
+                background: 'var(--brand-primary-soft)',
                 border: 'none',
-                color: '#ffffff',
+                color: 'var(--ui-primary-contrast)',
                 borderRadius: '8px',
                 width: '28px',
                 height: '28px',
@@ -554,9 +554,9 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                           maxWidth: '82%',
                           padding: '10px 14px',
                           borderRadius: isMine ? '16px 16px 3px 16px' : '16px 16px 16px 3px',
-                          background: isMine ? '#17372b' : 'var(--ui-surface)',
-                          color: isMine ? '#ffffff' : 'var(--ui-text)',
-                          border: isMine ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid var(--ui-border)',
+                          background: isMine ? 'var(--ui-primary)' : 'var(--ui-surface)',
+                          color: isMine ? 'var(--ui-primary-contrast)' : 'var(--ui-text)',
+                          border: isMine ? '1px solid var(--brand-primary-border)' : '1px solid var(--ui-border)',
                           boxShadow: 'var(--ui-shadow-sm)',
                           fontSize: '13px',
                           lineHeight: 1.45,
@@ -592,9 +592,9 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
               style={{
                 padding: '8px 12px',
                 fontSize: '12px',
-                background: '#fde8e8',
-                color: '#9b1c1c',
-                borderTop: '1px solid #f8b4b4',
+                background: 'var(--ui-danger-bg)',
+                color: 'var(--ui-danger-text)',
+                borderTop: '1px solid var(--ui-danger-border)',
               }}
             >
               {sendError}
@@ -643,8 +643,8 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                   width: '36px',
                   height: '36px',
                   borderRadius: '50%',
-                  background: !inputText.trim() || sending ? 'var(--ui-border-strong)' : '#17372b',
-                  color: '#ffffff',
+                  background: !inputText.trim() || sending ? 'var(--ui-border-strong)' : 'var(--ui-primary)',
+                  color: 'var(--ui-primary-contrast)',
                   border: 'none',
                   display: 'flex',
                   alignItems: 'center',

@@ -143,8 +143,8 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
             <Link key={metric.href} href={familyLink(metric.href, family.id)} className="luxury-kpi-card">
               <span className="luxury-kpi-ring" aria-hidden="true">
                 <svg viewBox="0 0 44 44" width="44" height="44">
-                  <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(196,150,53,0.18)" strokeWidth="3" />
-                  <circle cx="22" cy="22" r="18" fill="none" stroke="#c49635" strokeWidth="3" strokeDasharray="82 114" strokeLinecap="round" transform="rotate(-90 22 22)" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="var(--gold-border)" strokeWidth="3" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="var(--gold-500)" strokeWidth="3" strokeDasharray="82 114" strokeLinecap="round" transform="rotate(-90 22 22)" />
                 </svg>
               </span>
               <span className="luxury-kpi-text">

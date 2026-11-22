@@ -132,8 +132,8 @@ export function KinshipCalculatorModal({
           style={{
             padding: '18px 24px',
             borderBottom: '1px solid var(--ui-border)',
-            background: '#17372b',
-            color: '#ffffff',
+            background: 'var(--ui-primary)',
+            color: 'var(--ui-primary-contrast)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -145,13 +145,13 @@ export function KinshipCalculatorModal({
                 width: '36px',
                 height: '36px',
                 borderRadius: '10px',
-                background: 'rgba(255, 255, 255, 0.12)',
+                background: 'var(--brand-primary-soft)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <GitCompare size={20} color="#ffffff" />
+              <GitCompare size={20} color="var(--ui-primary-contrast)" />
             </div>
             <div>
               <h3 id="kinship-modal-title" style={{ margin: 0, fontSize: '17px', fontWeight: 700, letterSpacing: '-0.2px' }}>
@@ -169,11 +169,11 @@ export function KinshipCalculatorModal({
                 type="button"
                 onClick={handleSwap}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.14)',
-                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  background: 'var(--brand-primary-soft)',
+                  border: '1px solid var(--gold-border)',
                   borderRadius: '8px',
                   padding: '5px 10px',
-                  color: '#ffffff',
+                  color: 'var(--ui-primary-contrast)',
                   cursor: 'pointer',
                   fontSize: '12px',
                   fontWeight: 600,
@@ -188,11 +188,11 @@ export function KinshipCalculatorModal({
               onClick={onClose}
               aria-label="Хаах"
               style={{
-                background: 'rgba(255, 255, 255, 0.12)',
+                background: 'var(--brand-primary-soft)',
                 border: 'none',
                 borderRadius: '8px',
                 padding: '6px',
-                color: '#ffffff',
+                color: 'var(--ui-primary-contrast)',
                 cursor: 'pointer',
                 display: 'flex',
               }}
@@ -373,8 +373,8 @@ export function KinshipCalculatorModal({
             style={{
               padding: '8px 20px',
               borderRadius: '8px',
-              background: '#17372b',
-              color: '#ffffff',
+              background: 'var(--ui-primary)',
+              color: 'var(--ui-primary-contrast)',
               border: 'none',
               fontWeight: 600,
               fontSize: '13px',
