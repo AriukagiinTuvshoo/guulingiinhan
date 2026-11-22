@@ -135,10 +135,12 @@ from app.models import (  # noqa: E402
     Marriage,
     ParentChildRelationship,
     Person,
+    PersonGuardianship,
     PersonLineageAssignment,
     User,
 )
 from app.person_search import normalize_search_name  # noqa: E402
+from app.privacy import person_is_minor  # noqa: E402
 from app.relationships import canonical_pair  # noqa: E402
 
 # Synthetic Mongolian given names and family surnames (no real individuals).
@@ -323,6 +325,18 @@ class _SyntheticTreeBuilder:
                 added_by=self.owner_id,
             )
         )
+        if person_is_minor(person):
+            self.db.flush()
+            self.db.add(
+                PersonGuardianship(
+                    family_id=self.family_id,
+                    person_id=person.id,
+                    guardian_user_id=self.owner_id,
+                    scope="view_profile",
+                    status="active",
+                    granted_by_user_id=self.owner_id,
+                )
+            )
         if self.lineage_id is not None:
             self.db.add(
                 PersonLineageAssignment(

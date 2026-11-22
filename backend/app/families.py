@@ -328,6 +328,7 @@ class TreePersonOut(BaseModel):
     birth_date: date | None
     is_alive: bool
     death_date: date | None
+    gender: str = "unknown"
     profile_photo_url: str | None = None
     lineage_id: UUID | None = None
     lineage_name: str | None = None
@@ -4212,6 +4213,7 @@ def family_tree(
                 birth_date=None if restricted else person.birth_date,
                 is_alive=person.is_alive,
                 death_date=None if restricted else person.death_date,
+                gender="unknown" if restricted else person.gender,
                 profile_photo_url=(
                     None if restricted else _person_profile_photo_url(family_id, person)
                 ),
