@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import {
   FormEvent,
   Suspense,
@@ -37,18 +36,9 @@ import { PedigreeCertificateModal } from '../../components/pedigree-certificate-
 import { FamilyBookModal } from '../../components/family-book-modal';
 import { PedigreeWizardModal, RelativeRole } from '../../components/pedigree-wizard-modal';
 import { KinshipCalculatorModal } from '../../components/kinship-calculator-modal';
+import GoldenHeritageTree from '../../components/golden-heritage-tree';
 import { useFocusTrap } from '../../lib/use-focus-trap';
 import { GitCompare } from 'lucide-react';
-
-const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
-  ssr: false,
-  loading: () => (
-    <div className="tree-loading-scene" role="status" aria-live="polite">
-      <strong>3D удмын модыг бэлтгэж байна…</strong>
-      <small>Гурван хэмжээст орон зайг ачаалж байна.</small>
-    </div>
-  ),
-});
 
 export type BloodlineMode = 'none' | 'all' | 'paternal' | 'maternal' | 'descendants';
 
@@ -149,8 +139,7 @@ function TreePageContent() {
   });
 
   // Bloodline Highlight & Interaction States
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
-  const [focus3DRequest, setFocus3DRequest] = useState(0);
+  const [viewMode, setViewMode] = useState<'gold' | '2d'>('gold');
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
 
@@ -457,8 +446,9 @@ function TreePageContent() {
   };
 
   const centerOnPerson = (personId: string) => {
-    if (viewMode === '3d') {
-      setFocus3DRequest((prev) => prev + 1);
+    if (viewMode === 'gold') {
+      const el = document.getElementById('tree-person-' + personId);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       return;
     }
     const node = layout.nodeById.get(personId);
@@ -660,10 +650,6 @@ function TreePageContent() {
 
   function focusSelected() {
     if (!selectedId) return;
-    if (viewMode === '3d') {
-      setFocus3DRequest((prev) => prev + 1);
-      return;
-    }
     const element = document.getElementById('tree-person-' + selectedId);
     element?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
   }
@@ -1003,17 +989,17 @@ function TreePageContent() {
               <div className="tree-segmented" role="group" aria-label="Мод харах горим">
                 <button
                   type="button"
-                  aria-pressed={viewMode === '2d'}
-                  onClick={() => setViewMode('2d')}
+                  aria-pressed={viewMode === 'gold'}
+                  onClick={() => setViewMode('gold')}
                 >
-                  2D Мод
+                  ✨ Алтан Мод
                 </button>
                 <button
                   type="button"
-                  aria-pressed={viewMode === '3d'}
-                  onClick={() => setViewMode('3d')}
+                  aria-pressed={viewMode === '2d'}
+                  onClick={() => setViewMode('2d')}
                 >
-                  3D Мод
+                  Сонгодог 2D
                 </button>
               </div>
 
@@ -1234,18 +1220,27 @@ function TreePageContent() {
               </Link>
             </section>
           ) : (
-            <div className={`tree-map-layout ${viewMode === '3d' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
-              {viewMode === '3d' && tree ? (
-                <Tree3DScene
-                  data={tree}
-                  selectedPersonId={selectedId}
-                  canonicalRootId={tree.lineage_root_person_id ?? tree.root_person_id ?? null}
-                  focusRequest={focus3DRequest}
+            <div className={`tree-map-layout ${viewMode === 'gold' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
+              {viewMode === 'gold' && tree ? (
+                <GoldenHeritageTree
+                  layout={layout}
+                  selectedId={selectedId}
                   onSelect={(pid) => selectPerson(pid)}
-                  onFallback={() => {
-                    setViewMode('2d');
-                    setNotice('Энэ төхөөрөмж 3D WebGL дэмжихгүй тул 2D горим руу шилжлээ.');
+                  bloodlineMode={bloodlineMode}
+                  activeBloodlineIds={bloodline.activeIds}
+                  timeTravelOpen={timeTravelOpen}
+                  timeYear={timeYear}
+                  currentYear={currentYear}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
+                  onSwitchToClassic={() => setViewMode('2d')}
+                  onOpenKinship={() => {
+                    setKinshipInitialPersonId(selectedId || '');
+                    setKinshipModalOpen(true);
                   }}
+                  onOpenCertificate={() => setCertificateModalOpen(true)}
+                  onOpenBook={() => setBookModalOpen(true)}
+                  onOpenExport={() => setExportModalOpen(true)}
                 />
               ) : (
               <div

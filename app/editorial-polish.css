@@ -471,3 +471,535 @@
   opacity: 0.78;
   font-size: 12px;
 }
+
+/* ============================================================================
+   9. Luxury Editorial Landing Page (/), Arched Portrait Gallery & Gold KPI Rings
+   ============================================================================ */
+
+/* Dashboard Circular Gold KPI Rings (Mockups 4 & 8) */
+.luxury-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+  gap: 14px !important;
+}
+
+.luxury-kpi-card {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 14px !important;
+  padding: 16px 18px !important;
+  border-radius: 18px !important;
+  background: var(--surface-elevated, #ffffff) !important;
+  border: 1px solid rgba(196, 150, 53, 0.24) !important;
+  box-shadow: 0 8px 24px rgba(20, 32, 26, 0.05) !important;
+  text-decoration: none;
+}
+
+.luxury-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(196, 150, 53, 0.58) !important;
+  box-shadow: 0 14px 32px rgba(20, 32, 26, 0.1) !important;
+}
+
+.luxury-kpi-ring {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+.luxury-kpi-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.luxury-kpi-text strong {
+  font-family: Georgia, serif;
+  font-size: 26px !important;
+  line-height: 1.1;
+  color: var(--text-primary, #171512);
+}
+
+.luxury-kpi-text span {
+  font-size: 12.5px;
+  color: var(--text-muted, #6a6357);
+}
+
+/* Dashboard Arched Portrait Gallery (Mockups 4 & 8) */
+.heritage-gallery-section {
+  background: var(--surface-elevated, #ffffff);
+  border: 1px solid rgba(196, 150, 53, 0.24);
+  border-radius: 22px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(20, 32, 26, 0.05);
+}
+
+.luxury-arched-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.luxury-arched-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 14px;
+  border-radius: 18px;
+  background: var(--surface-card, #faf6ec);
+  border: 1px solid rgba(196, 150, 53, 0.22);
+  text-decoration: none;
+  color: var(--text-primary, #171512);
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms ease,
+    border-color 200ms ease;
+}
+
+.luxury-arched-card:hover {
+  transform: translateY(-4px);
+  border-color: #c49635;
+  box-shadow: 0 14px 28px rgba(24, 20, 14, 0.12);
+}
+
+.luxury-arched-frame {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 999px 999px 14px 14px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #1b1814 0%, #2d261c 100%);
+  border: 1.5px solid rgba(212, 175, 55, 0.42);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
+.luxury-arched-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: sepia(0.12) contrast(1.03);
+}
+
+.luxury-arched-monogram {
+  font-family: Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #f0cf7b;
+  letter-spacing: 0.04em;
+}
+
+.luxury-arched-meta {
+  text-align: center;
+  width: 100%;
+}
+
+.luxury-arched-meta strong {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: 13.5px;
+  line-height: 1.25;
+  color: var(--text-primary, #171512);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.luxury-arched-meta span {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted, #6f6657);
+}
+
+/* Luxury Editorial Landing Page (Mockups 5 & 6) */
+.luxury-landing {
+  min-height: 100svh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  background: #f7f3ea;
+  color: #161512;
+  display: flex;
+  flex-direction: column;
+}
+
+.luxury-landing__header {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 22px clamp(16px, 4vw, 40px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+.luxury-landing__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: #161512;
+}
+
+.luxury-landing__wordmark {
+  font-family: Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.luxury-landing__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c89b3c;
+  display: inline-block;
+  margin-top: 8px;
+}
+
+.luxury-landing__pill-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(22, 21, 18, 0.08);
+  box-shadow: 0 8px 24px rgba(22, 21, 18, 0.06);
+}
+
+.luxury-landing__pill-nav a {
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: #4b463d;
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.luxury-landing__pill-nav a.is-active,
+.luxury-landing__pill-nav a:hover {
+  background: #141311;
+  color: #faf6ed;
+}
+
+.luxury-landing__signin-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: #141311;
+  color: #faf6ed;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.luxury-landing__signin-pill:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 10px 24px rgba(20, 19, 17, 0.22);
+}
+
+.luxury-landing__hero {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 56px) clamp(16px, 4vw, 40px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.luxury-landing__eyebrow {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: #7c6844;
+}
+
+.luxury-landing__title {
+  margin: 0 0 18px;
+  font-family: Georgia, serif;
+  font-size: clamp(40px, 5.5vw, 68px);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  color: #141311;
+}
+
+.luxury-landing__title em {
+  font-style: italic;
+  color: #8f6b24;
+}
+
+.luxury-landing__lede {
+  margin: 0 0 28px;
+  max-width: 46ch;
+  font-size: 16px;
+  line-height: 1.65;
+  color: #4f4a41;
+}
+
+.luxury-landing__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 34px;
+}
+
+.luxury-landing__primary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 8px 8px 24px;
+  border-radius: 999px;
+  background: #141311;
+  color: #faf6ed;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 12px 28px rgba(20, 19, 17, 0.2);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease;
+}
+
+.luxury-landing__primary-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 34px rgba(20, 19, 17, 0.28);
+}
+
+.luxury-landing__cta-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #dfbe72, #b48a3e);
+  color: #141311;
+  display: grid;
+  place-items: center;
+}
+
+.luxury-landing__secondary-cta {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2b2823;
+  text-decoration: none;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(20, 19, 17, 0.18);
+}
+
+.luxury-landing__secondary-cta:hover {
+  background: rgba(20, 19, 17, 0.05);
+}
+
+.luxury-landing__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(20, 19, 17, 0.12);
+}
+
+.luxury-landing__metrics strong {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: 24px;
+  color: #141311;
+}
+
+.luxury-landing__metrics span {
+  font-size: 12.5px;
+  color: #6b6356;
+}
+
+.luxury-landing__arch-frame {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  aspect-ratio: 4 / 4.4;
+  border-radius: 999px 999px 24px 24px;
+  background: radial-gradient(circle at 50% 42%, #262118 0%, #14120e 65%, #0c0b09 100%);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  box-shadow: 0 28px 64px rgba(18, 16, 12, 0.24);
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  box-sizing: border-box;
+}
+
+.luxury-landing__coords {
+  position: absolute;
+  top: 22px;
+  right: -10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(247, 243, 234, 0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(20, 19, 17, 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2c2822;
+}
+
+.luxury-landing__tree-medallion {
+  width: 82%;
+  height: auto;
+  filter: drop-shadow(0 12px 28px rgba(212, 175, 55, 0.24));
+}
+
+.luxury-landing__floating-badge {
+  position: absolute;
+  bottom: 24px;
+  left: -14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(247, 243, 234, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #161512;
+}
+
+.luxury-landing__badge-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #c89b3c;
+}
+
+.luxury-landing__ticker {
+  width: 100%;
+  border-top: 1px solid rgba(20, 19, 17, 0.12);
+  border-bottom: 1px solid rgba(20, 19, 17, 0.12);
+  padding: 14px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #5b5245;
+  box-sizing: border-box;
+}
+
+.luxury-landing__pillars {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: clamp(32px, 5vw, 56px) clamp(16px, 4vw, 40px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  box-sizing: border-box;
+}
+
+.luxury-landing__pillar-card {
+  padding: 24px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid rgba(196, 150, 53, 0.24);
+  box-shadow: 0 10px 28px rgba(20, 19, 17, 0.04);
+}
+
+.luxury-landing__pillar-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #141311;
+  color: #e6c473;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+}
+
+.luxury-landing__pillar-eyebrow {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #9b772b;
+}
+
+.luxury-landing__pillar-card h2 {
+  margin: 0 0 8px;
+  font-family: Georgia, serif;
+  font-size: 19px;
+  line-height: 1.3;
+  color: #141311;
+}
+
+.luxury-landing__pillar-card p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #575046;
+}
+
+.luxury-landing__footer {
+  margin-top: auto;
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 24px clamp(16px, 4vw, 40px);
+  border-top: 1px solid rgba(20, 19, 17, 0.1);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #5d5549;
+  box-sizing: border-box;
+}
+
+.luxury-landing__footer-links {
+  display: inline-flex;
+  gap: 16px;
+}
+
+.luxury-landing__footer-links a {
+  color: #161512;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (max-width: 860px) {
+  .luxury-landing__pill-nav {
+    display: none;
+  }
+
+  .luxury-landing__hero {
+    grid-template-columns: 1fr;
+  }
+
+  .luxury-landing__pillars {
+    grid-template-columns: 1fr;
+  }
+
+  .luxury-landing__coords {
+    right: 10px;
+  }
+
+  .luxury-landing__floating-badge {
+    left: 10px;
+  }
+}

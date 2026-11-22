@@ -1,0 +1,290 @@
+/* ============================================================================
+   GUULIN — "Алтан Мод" (Luxury Obsidian & Burnished-Gold Illuminated Tree)
+   Inspired by the user's luxury obsidian-gold heritage mockups.
+   ============================================================================ */
+
+.golden-tree-viewport {
+  position: relative;
+  width: 100%;
+  min-height: 620px;
+  height: clamp(560px, 72vh, 760px);
+  border-radius: 20px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 68% 54% at 50% 42%, rgba(216, 178, 92, 0.14) 0%, rgba(28, 24, 17, 0.85) 55%, #0b0a08 100%),
+    linear-gradient(180deg, #0d0c09 0%, #14120d 50%, #0a0907 100%);
+  border: 1px solid rgba(216, 178, 92, 0.28);
+  box-shadow:
+    0 1px 0 rgba(255, 236, 185, 0.1) inset,
+    0 24px 64px rgba(0, 0, 0, 0.5);
+  user-select: none;
+  touch-action: none;
+}
+
+.golden-tree-viewport.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  height: 100svh;
+  border-radius: 0;
+}
+
+.golden-tree-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  position: relative;
+  cursor: grab;
+}
+
+.golden-tree-scroll.is-dragging {
+  cursor: grabbing;
+}
+
+.golden-tree-stage {
+  position: relative;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* Calligraphic Gold Bezier Connectors */
+.golden-tree-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.golden-bezier-path {
+  fill: none;
+  stroke: url(#guulin-gold-stroke);
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  opacity: 0.72;
+  transition: opacity 280ms ease, stroke-width 280ms ease;
+}
+
+.golden-bezier-path.is-active {
+  stroke-width: 2.9;
+  opacity: 1;
+  filter: drop-shadow(0 0 7px rgba(235, 198, 108, 0.72));
+}
+
+.golden-bezier-path.is-dimmed {
+  opacity: 0.14;
+}
+
+.golden-marriage-line {
+  fill: none;
+  stroke: #e5c372;
+  stroke-width: 1.6;
+  stroke-dasharray: 4 3;
+  opacity: 0.78;
+}
+
+/* Luxury Obsidian Portrait Cards */
+.golden-node-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 10px 10px;
+  border-radius: 16px;
+  background: linear-gradient(
+    165deg,
+    rgba(36, 32, 26, 0.94) 0%,
+    rgba(21, 19, 15, 0.96) 100%
+  );
+  border: 1px solid rgba(216, 178, 92, 0.34);
+  box-shadow:
+    0 1px 0 rgba(255, 238, 196, 0.1) inset,
+    0 10px 26px rgba(0, 0, 0, 0.55);
+  color: #f6efe0;
+  text-align: center;
+  box-sizing: border-box;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 260ms ease,
+    border-color 220ms ease,
+    opacity 260ms ease;
+}
+
+.golden-node-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(236, 199, 112, 0.75);
+  box-shadow:
+    0 1px 0 rgba(255, 240, 200, 0.22) inset,
+    0 14px 32px rgba(0, 0, 0, 0.65),
+    0 0 18px rgba(224, 184, 92, 0.28);
+}
+
+.golden-node-card.is-selected {
+  border-color: #f0cf7b;
+  background: linear-gradient(
+    165deg,
+    rgba(52, 43, 28, 0.98) 0%,
+    rgba(28, 24, 17, 0.98) 100%
+  );
+  box-shadow:
+    0 0 0 2px rgba(240, 207, 123, 0.85),
+    0 0 32px rgba(235, 194, 98, 0.55),
+    0 14px 34px rgba(0, 0, 0, 0.68);
+  z-index: 5;
+}
+
+.golden-node-card.is-dimmed,
+.golden-node-card.is-time-unborn {
+  opacity: 0.2;
+  filter: grayscale(0.8);
+}
+
+.golden-node-card.is-time-passed {
+  opacity: 0.55;
+  filter: sepia(0.45);
+}
+
+.golden-node-card.is-time-alive {
+  border-color: #f0cf7b;
+  box-shadow:
+    0 0 0 2px rgba(240, 207, 123, 0.75),
+    0 0 22px rgba(235, 194, 98, 0.42);
+}
+
+.golden-node-btn {
+  all: unset;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.golden-node-btn:focus-visible {
+  outline: 2px solid #f0cf7b;
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+.golden-node-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, #3d3324 0%, #1d1811 100%);
+  border: 1.5px solid rgba(224, 186, 98, 0.6);
+  color: #f4d88e;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.golden-node-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: sepia(0.18) contrast(1.04);
+}
+
+.golden-node-name {
+  font-family: Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fbf5e6;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.golden-node-years {
+  font-size: 11px;
+  color: rgba(228, 207, 162, 0.78);
+  letter-spacing: 0.02em;
+}
+
+/* Floating Bottom-Center Glassmorphic Dock Pill (Mockup Match!) */
+.golden-tree-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  max-width: calc(100% - 24px);
+  border-radius: 999px;
+  background: rgba(22, 20, 17, 0.84);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(224, 186, 98, 0.34);
+  box-shadow:
+    0 1px 0 rgba(255, 240, 200, 0.1) inset,
+    0 14px 36px rgba(0, 0, 0, 0.55);
+}
+
+.golden-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #efe5cf;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.golden-dock-btn:hover {
+  background: rgba(224, 186, 98, 0.16);
+  color: #fff6de;
+}
+
+.golden-dock-btn.is-active {
+  background: linear-gradient(135deg, #dfbe72, #b88c38);
+  color: #16130d;
+  font-weight: 700;
+}
+
+.golden-dock-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(224, 186, 98, 0.24);
+  margin: 0 2px;
+}
+
+@media (max-width: 768px) {
+  .golden-tree-viewport {
+    min-height: 480px;
+    height: 64vh;
+    border-radius: 16px;
+  }
+
+  .golden-tree-dock {
+    border-radius: 18px;
+    bottom: 10px;
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .golden-dock-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}

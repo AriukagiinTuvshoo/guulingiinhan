@@ -1,11 +1,13 @@
 "use client";
 import { Suspense } from "react";
 import Link from "next/link";
-import type {
-  Family,
-  Person,
-  StoryListPage,
-  ArchiveListPage,
+import {
+  API_BASE,
+  personName,
+  type Family,
+  type Person,
+  type StoryListPage,
+  type ArchiveListPage,
 } from "../../lib/api";
 import { useFamilyContext } from "../../components/family-context";
 import { useDashboardSection } from "../../components/dashboard/use-dashboard-section";
@@ -21,11 +23,91 @@ import {
   SectionHeading,
   SectionState,
   StoryTimeline,
-  TreeOverview,
   familyLink,
   type MemoryPage,
-  type SharedLineagePreview,
 } from "../../components/dashboard/heritage-sections";
+
+function memberInitials(person: Person) {
+  return (
+    [person.last_name, person.first_name]
+      .filter(Boolean)
+      .map((part) => part.slice(0, 1))
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "?"
+  );
+}
+
+function memberYears(person: Person) {
+  const birth = person.birth_date?.slice(0, 4);
+  const death = !person.is_alive ? person.death_date?.slice(0, 4) : null;
+  if (birth && death) return `${birth} – ${death}`;
+  if (birth) return person.is_alive ? `${birth} – одоо` : `${birth} – ?`;
+  return person.is_alive ? "Энх тунх" : "Дурсгалд";
+}
+
+function FamilyMembersGallery({
+  people,
+  familyId,
+}: {
+  people: Person[];
+  familyId: string;
+}) {
+  return (
+    <section
+      className="heritage-gallery-section"
+      aria-label="Гэр бүлийн бүх гишүүд"
+    >
+      <SectionHeading
+        eyebrow="МАНАЙ УДАМ · БҮХ ГИШҮҮД"
+        title={`Ургийн хөрөг цомог (${people.length})`}
+        href={familyLink("/tree", familyId)}
+        linkText="✨ Алтан Мод нээх"
+      />
+      {people.length === 0 ? (
+        <EmptyState
+          title="Одоохондоо гэр бүлийн хүн бүртгэгдээгүй байна."
+          href={familyLink("/tree", familyId)}
+          action="Ургийн модонд хүн нэмэх"
+        >
+          Гэр бүлийн гишүүдээ нэмснээр бүх хөрөг болон удмын хэлхээ энд харагдана.
+        </EmptyState>
+      ) : (
+        <div className="luxury-arched-grid">
+          {people.map((person) => (
+            <Link
+              key={person.id}
+              href={`/profile?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(person.id)}`}
+              className="luxury-arched-card"
+            >
+              <div className="luxury-arched-frame">
+                {person.profile_photo_url ? (
+                  <img
+                    src={
+                      person.profile_photo_url.startsWith("/")
+                        ? `${API_BASE}${person.profile_photo_url}`
+                        : person.profile_photo_url
+                    }
+                    alt={personName(person)}
+                    loading="lazy"
+                  />
+                ) : (
+                  <span className="luxury-arched-monogram" aria-hidden="true">
+                    {memberInitials(person)}
+                  </span>
+                )}
+              </div>
+              <div className="luxury-arched-meta">
+                <strong>{personName(person) || "Нэргүй хүн"}</strong>
+                <span>{memberYears(person)}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
   const base = `/families/${encodeURIComponent(family.id)}`;
@@ -33,7 +115,6 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
     `${base}/persons`,
   );
   const featured = useDashboardSection<Person | null>(`${base}/featured-person`);
-  const tree = useDashboardSection<SharedLineagePreview>("/shared-lineage");
   const stories = useDashboardSection<StoryListPage>(
     `${base}/stories?page=1&page_size=4`,
   );
@@ -53,20 +134,30 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
     <main className="heritage-dashboard" id="family-dashboard">
       <DashboardHero family={family} name={name} />
       <section
-        className="heritage-stats"
+        className="heritage-stats luxury-kpi-grid"
         aria-label="Танд харагдах гэр бүлийн мэдээллийн тоо"
       >
         {metrics
           .filter((metric) => metric.value !== undefined)
           .map((metric) => (
-            <Link key={metric.href} href={familyLink(metric.href, family.id)}>
-              <strong>{metric.value!.toLocaleString("mn-MN")}</strong>
-              <span>{metric.label}</span>
+            <Link key={metric.href} href={familyLink(metric.href, family.id)} className="luxury-kpi-card">
+              <span className="luxury-kpi-ring" aria-hidden="true">
+                <svg viewBox="0 0 44 44" width="44" height="44">
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="rgba(196,150,53,0.18)" strokeWidth="3" />
+                  <circle cx="22" cy="22" r="18" fill="none" stroke="#c49635" strokeWidth="3" strokeDasharray="82 114" strokeLinecap="round" transform="rotate(-90 22 22)" />
+                </svg>
+              </span>
+              <span className="luxury-kpi-text">
+                <strong>{metric.value!.toLocaleString("mn-MN")}</strong>
+                <span>{metric.label}</span>
+              </span>
             </Link>
           ))}
       </section>
       <div className="heritage-editorial-grid">
-        <TreeOverview state={tree} familyId={family.id} />
+        <SectionState state={people}>
+          {(rows) => <FamilyMembersGallery people={rows} familyId={family.id} />}
+        </SectionState>
         <section className="heritage-story-section" aria-busy={stories.loading}>
           <SectionHeading
             eyebrow="МАНАЙ ТҮҮХ"
