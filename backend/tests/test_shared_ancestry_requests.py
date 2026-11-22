@@ -22,19 +22,18 @@ from app.models import (
     UserPersonLink,
 )
 from app.relationships import canonical_pair
-from tests.conftest import register_verified
+from tests.conftest import TEST_PASSWORD, register_verified
 
-PASSWORD = "review-shared-ancestry-passphrase-123"
 ADMIN_EMAIL = "requests-admin@example.com"
 OWNER_EMAIL = "requests-owner@example.com"
 
 
 @pytest.fixture
 def ancestry(client, database, email_provider):
-    assert register_verified(client, ADMIN_EMAIL, PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, ADMIN_EMAIL, TEST_PASSWORD, email_provider).status_code == 201
     admin_id = UUID(client.get("/api/v1/auth/me").json()["id"])
     family_id = UUID(client.post("/api/v1/families", json={"name": "Recorded clan"}).json()["id"])
-    assert register_verified(client, OWNER_EMAIL, PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, OWNER_EMAIL, TEST_PASSWORD, email_provider).status_code == 201
     owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
     with database.begin() as db:
         db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
@@ -65,7 +64,7 @@ def ancestry(client, database, email_provider):
 
 
 def _login(client, email):
-    assert client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD}).status_code == 200
+    assert client.post("/api/v1/auth/login", json={"email": email, "password": TEST_PASSWORD}).status_code == 200
 
 
 def _request(client, ancestry, person="child", kind="child", target="target", **changes):
@@ -165,7 +164,7 @@ def test_family_requests_are_visible_only_to_their_requester(client, database, e
     requested = _request(client, ancestry)
     assert requested.status_code == 201
     assert len(client.get(f"/api/v1/families/{ancestry['family']}/shared-ancestry-requests").json()) == 1
-    assert register_verified(client, "requests-member@example.com", PASSWORD, email_provider).status_code == 201
+    assert register_verified(client, "requests-member@example.com", TEST_PASSWORD, email_provider).status_code == 201
     member_id = UUID(client.get("/api/v1/auth/me").json()["id"])
     assert client.get(f"/api/v1/families/{ancestry['family']}/shared-ancestry-requests").status_code == 404
     assert _request(client, ancestry).status_code == 404
