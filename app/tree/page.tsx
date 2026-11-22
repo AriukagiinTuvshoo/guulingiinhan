@@ -39,7 +39,7 @@ import { PedigreeWizardModal, RelativeRole } from '../../components/pedigree-wiz
 import { KinshipCalculatorModal } from '../../components/kinship-calculator-modal';
 import GoldenHeritageTree from '../../components/golden-heritage-tree';
 import { useFocusTrap } from '../../lib/use-focus-trap';
-import { GitCompare } from 'lucide-react';
+import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, Link2, Plus, Printer, Users, Wrench } from 'lucide-react';
 
 export type BloodlineMode = 'none' | 'all' | 'paternal' | 'maternal' | 'descendants';
 
@@ -157,6 +157,26 @@ function TreePageContent() {
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
   const [bookModalOpen, setBookModalOpen] = useState(false);
   const [kinshipModalOpen, setKinshipModalOpen] = useState(false);
+  const [openHeaderMenu, setOpenHeaderMenu] = useState<'print' | 'tools' | null>(null);
+  const headerMenusRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!openHeaderMenu) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!headerMenusRef.current?.contains(event.target as Node)) {
+        setOpenHeaderMenu(null);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenHeaderMenu(null);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openHeaderMenu]);
 
   // Interactive Time-Travel Slider State
   const currentYear = new Date().getFullYear();
@@ -974,7 +994,7 @@ function TreePageContent() {
               ← Гэр бүлийн тойм
             </Link>
             <p className="tree-eyebrow">
-              <span className="tree-mongolian-script" style={{ fontFamily: 'Georgia, serif', color: '#d4af37', marginRight: '8px', fontSize: '13px', letterSpacing: '1px' }}>
+              <span className="tree-mongolian-script" style={{ fontFamily: 'Georgia, serif', color: 'var(--gold-500)', marginRight: '8px', fontSize: '13px', letterSpacing: '1px' }}>
                 ᠮᠣᠩᠭᠣᠯ ᠤᠷᠤᠭ ᠤᠨ ᠪᠢᠴᠢᠭ
               </span>
               ГУУЛИНГИЙНХАН · УДМЫН МОД
@@ -985,136 +1005,156 @@ function TreePageContent() {
             </p>
           </div>
 
-          <div className="tree-header-actions">
-            {Boolean(family && (family.role === 'owner' || family.role === 'editor')) && (
-              <>
-                <button
-                  type="button"
-                  className="tree-button tree-button--primary"
-                  onClick={() => {
-                    setWizardAnchorId(selectedPerson?.id || null);
-                    setWizardRole(selectedPerson ? 'son' : 'standalone');
-                    setWizardMode('create');
-                    setWizardOpen(true);
-                  }}
-                  style={{
-                    background: 'linear-gradient(135deg, #059669, #047857)',
-                    color: '#ffffff',
-                    border: 'none',
-                    fontWeight: 700,
-                    boxShadow: '0 2px 8px rgba(5, 150, 105, 0.28)',
-                  }}
-                >
-                  🌿 + Хүн / Ураг нэмэх
-                </button>
-                {(tree?.persons.length ?? 0) >= 2 && (
+          <div className="tree-header-actions" ref={headerMenusRef}>
+            {canEditFamily && (
+              <button
+                type="button"
+                className="ui-btn ui-btn--primary"
+                onClick={() => {
+                  setOpenHeaderMenu(null);
+                  setWizardAnchorId(selectedPerson?.id || null);
+                  setWizardRole(selectedPerson ? 'son' : 'standalone');
+                  setWizardMode('create');
+                  setWizardOpen(true);
+                }}
+              >
+                <Plus size={15} aria-hidden="true" /> + Хүн нэмэх
+              </button>
+            )}
+
+            <div className="tree-header-menu">
+              <button
+                type="button"
+                className={`ui-btn${openHeaderMenu === 'print' ? ' ui-btn--selected' : ''}`}
+                aria-haspopup="menu"
+                aria-expanded={openHeaderMenu === 'print'}
+                onClick={() => setOpenHeaderMenu((prev) => (prev === 'print' ? null : 'print'))}
+              >
+                <Printer size={15} aria-hidden="true" /> Хэвлэх <ChevronDown size={14} aria-hidden="true" />
+              </button>
+              {openHeaderMenu === 'print' && (
+                <div className="tree-header-menu-panel" role="menu" aria-label="Хэвлэх цэс">
                   <button
                     type="button"
-                    className="tree-button tree-button--secondary"
+                    role="menuitem"
+                    className="tree-header-menu-item"
                     onClick={() => {
-                      setWizardAnchorId(selectedPerson?.id || tree?.persons[0]?.id || null);
-                      setWizardRole('son');
-                      setWizardMode('existing');
-                      setWizardOpen(true);
-                    }}
-                    style={{
-                      fontWeight: 700,
-                      borderColor: '#d97706',
-                      color: '#b45309',
+                      setOpenHeaderMenu(null);
+                      setExportModalOpen(true);
                     }}
                   >
-                    🔗 2 хүн холбох
+                    <Printer size={15} aria-hidden="true" /> Хананд хэвлэх (PDF / SVG)
                   </button>
-                )}
-              </>
-            )}
-            <button
-              type="button"
-              className="tree-button tree-button--primary tree-export-trigger-btn"
-              onClick={() => setExportModalOpen(true)}
-              style={{
-                background: 'linear-gradient(135deg, #d97706, #b45309)',
-                color: '#ffffff',
-                border: 'none',
-                fontWeight: 700,
-                boxShadow: '0 2px 8px rgba(217, 119, 6, 0.28)',
-              }}
-            >
-              🖨️ Хананд хэвлэх (Вектор / PDF)
-            </button>
-            <button
-              type="button"
-              className="tree-button tree-button--secondary"
-              onClick={() => setCertificateModalOpen(true)}
-              style={{
-                fontWeight: 600,
-              }}
-            >
-              📜 Ургийн бичиг (PDF)
-            </button>
-            <button
-              type="button"
-              className="tree-button tree-button--secondary"
-              onClick={() => setBookModalOpen(true)}
-              style={{
-                fontWeight: 600,
-                borderColor: 'rgba(196, 150, 53, 0.55)',
-              }}
-            >
-              📕 Ургийн ном (PDF)
-            </button>
-            <button
-              type="button"
-              className="tree-button tree-button--secondary"
-              onClick={() => {
-                setTimeTravelOpen((prev) => {
-                  const next = !prev;
-                  if (next) {
-                    setTimeYear(timeBounds.min);
-                    setTimePlaying(false);
-                  } else {
-                    setTimePlaying(false);
-                  }
-                  return next;
-                });
-              }}
-              aria-pressed={timeTravelOpen}
-              style={{
-                fontWeight: 600,
-                background: timeTravelOpen ? 'rgba(217, 164, 56, 0.16)' : undefined,
-                borderColor: timeTravelOpen ? '#c49635' : undefined,
-              }}
-            >
-              🕰️ Цаг хугацаа
-            </button>
-            <button
-              type="button"
-              className="tree-button tree-button--secondary"
-              onClick={() => setKinshipModalOpen(true)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 600,
-              }}
-            >
-              <GitCompare size={15} /> Хамаарал тооцоолох
-            </button>
-            <Link
-              className="tree-button tree-button--secondary"
-              href={familyId ? '/ancestry?family=' + encodeURIComponent(familyId) : '/ancestry'}
-            >
-              🌲 Эх мод
-            </Link>
-            <Link
-              className="tree-button tree-button--secondary"
-              href={'/people?family=' + encodeURIComponent(familyId)}
-            >
-              Хүмүүс
-            </Link>
-            <button type="button" className="tree-button tree-button--secondary" onClick={focusSelected} disabled={!selectedId}>
-              Сонгосон хүнийг төвд
-            </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      setCertificateModalOpen(true);
+                    }}
+                  >
+                    <FileBadge size={15} aria-hidden="true" /> Ургийн бичиг (PDF)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      setBookModalOpen(true);
+                    }}
+                  >
+                    <BookOpen size={15} aria-hidden="true" /> Ургийн ном (PDF)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="tree-header-menu">
+              <button
+                type="button"
+                className={`ui-btn${openHeaderMenu === 'tools' || timeTravelOpen ? ' ui-btn--selected' : ''}`}
+                aria-haspopup="menu"
+                aria-expanded={openHeaderMenu === 'tools'}
+                onClick={() => setOpenHeaderMenu((prev) => (prev === 'tools' ? null : 'tools'))}
+              >
+                <Wrench size={15} aria-hidden="true" /> Хэрэгсэл <ChevronDown size={14} aria-hidden="true" />
+              </button>
+              {openHeaderMenu === 'tools' && (
+                <div className="tree-header-menu-panel" role="menu" aria-label="Хэрэгсэл цэс">
+                  {canEditFamily && (tree?.persons.length ?? 0) >= 2 && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-header-menu-item"
+                      onClick={() => {
+                        setOpenHeaderMenu(null);
+                        setWizardAnchorId(selectedPerson?.id || tree?.persons[0]?.id || null);
+                        setWizardRole('son');
+                        setWizardMode('existing');
+                        setWizardOpen(true);
+                      }}
+                    >
+                      <Link2 size={15} aria-hidden="true" /> 2 хүн холбох
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      setKinshipInitialPersonId(selectedId || '');
+                      setKinshipModalOpen(true);
+                    }}
+                  >
+                    <GitCompare size={15} aria-hidden="true" /> Хамаарал тооцоолох
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    aria-pressed={timeTravelOpen}
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      setTimeTravelOpen((prev) => {
+                        const next = !prev;
+                        if (next) {
+                          setTimeYear(timeBounds.min);
+                          setTimePlaying(false);
+                        } else {
+                          setTimePlaying(false);
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <Clock size={15} aria-hidden="true" /> Цаг хугацааны аялал
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    disabled={!selectedId}
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      focusSelected();
+                    }}
+                  >
+                    <Compass size={15} aria-hidden="true" /> Сонгосон хүнийг төвд
+                  </button>
+                  <Link
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    href={'/people?family=' + encodeURIComponent(familyId)}
+                    onClick={() => setOpenHeaderMenu(null)}
+                  >
+                    <Users size={15} aria-hidden="true" /> Хүмүүсийн жагсаалт
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -1150,7 +1190,7 @@ function TreePageContent() {
                   aria-pressed={viewMode === 'gold'}
                   onClick={() => setViewMode('gold')}
                 >
-                  ✨ Алтан Мод
+                  Алтан Мод
                 </button>
                 <button
                   type="button"
@@ -1230,36 +1270,22 @@ function TreePageContent() {
                 )}
                 <button
                   type="button"
+                  className={isFullscreen ? 'ui-btn--selected' : undefined}
                   onClick={() => setIsFullscreen((prev) => !prev)}
                   title={isFullscreen ? 'Цонхыг хэвийн болгох' : 'Дэлгэц дүүргэх'}
-                  style={{
-                    padding: '0 10px',
-                    borderLeft: '1px solid #e0d7c6',
-                    background: isFullscreen ? '#fef3c7' : 'transparent',
-                    color: isFullscreen ? '#92400e' : '#53655b',
-                    fontWeight: 600,
-                  }}
                 >
-                  {isFullscreen ? '🗗 Буцах' : '⛶ Бүтэн дэлгэц'}
+                  {isFullscreen ? 'Буцах' : 'Бүтэн дэлгэц'}
                 </button>
                 <button
                   type="button"
-                  style={{
-                    marginLeft: '8px',
-                    padding: '0 14px',
-                    borderRadius: '8px',
-                    background: 'linear-gradient(135deg, #d97706, #b45309)',
-                    color: '#ffffff',
-                    fontWeight: 600,
-                    border: 'none',
-                    boxShadow: '0 2px 6px rgba(217, 119, 6, 0.25)',
-                  }}
+                  className="ui-btn ui-btn--primary"
+                  style={{ minHeight: '32px', padding: '0 12px', marginLeft: '6px' }}
                   onClick={() => {
                     setKinshipInitialPersonId(selectedId || '');
                     setKinshipModalOpen(true);
                   }}
                 >
-                  🧬 Ураг холбоо шалгах
+                  Ураг холбоо шалгах
                 </button>
               </div>
             </div>
@@ -1508,7 +1534,7 @@ function TreePageContent() {
                       viewBox={'0 0 ' + layout.width + ' ' + layout.height}
                       aria-hidden="true"
                     >
-                      {/* Mongolian Generation Labels & Division Lines */}
+                      {/* Theme-aware Generation Labels & Division Lines */}
                       {layout.generationHeaders.map((hdr) => (
                         <g key={'gen-' + hdr.generation} className="tree-gen-divider">
                           <line
@@ -1516,24 +1542,24 @@ function TreePageContent() {
                             y1={hdr.y + 14}
                             x2={layout.width - 20}
                             y2={hdr.y + 14}
-                            stroke="rgba(217, 184, 93, 0.40)"
+                            stroke="var(--gold-border)"
                             strokeDasharray="4 6"
                             strokeWidth="1.5"
                           />
                           <rect
                             x={24}
                             y={hdr.y}
-                            width={230}
+                            width={110}
                             height={26}
                             rx={13}
-                            fill="#ffffff"
-                            stroke="#d4b26f"
+                            fill="var(--tree-gen-bg)"
+                            stroke="var(--tree-dock-border)"
                             strokeWidth="1.5"
                           />
                           <text
                             x={38}
                             y={hdr.y + 17}
-                            fill="#78591f"
+                            fill="var(--tree-gen-text)"
                             fontSize="11"
                             fontWeight="700"
                           >
@@ -1952,7 +1978,7 @@ function TreePageContent() {
                   disabled={divorceBusy}
                 />
               </label>
-              <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#6b7280' }}>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--ui-text-muted)' }}>
                 Огноог мэдэхгүй бол хоосон үлдээгээд хадгалж болно.
               </p>
               <div className="tree-modal-actions" style={{ marginTop: '14px' }}>

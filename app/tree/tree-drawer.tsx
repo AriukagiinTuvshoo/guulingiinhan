@@ -369,12 +369,12 @@ export function TreeDrawer({
           )}
           <div style={{ marginTop: '6px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) ? (
-              <span style={{ fontSize: '10px', background: 'rgba(217, 119, 6, 0.14)', color: '#b45309', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                ✨ Засах эрхтэй
+              <span style={{ fontSize: '10px', background: 'var(--gold-soft)', color: 'var(--ui-accent-text)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                Засах эрхтэй
               </span>
             ) : (
-              <span style={{ fontSize: '10px', background: 'rgba(100, 116, 139, 0.12)', color: '#64748b', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                🔒 Зөвхөн харах эрхтэй
+              <span style={{ fontSize: '10px', background: 'var(--ui-surface-subtle)', color: 'var(--ui-text-muted)', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                Зөвхөн харах эрхтэй
               </span>
             )}
           </div>
@@ -389,7 +389,7 @@ export function TreeDrawer({
           onClick={() => onOpenKinship(person.id)}
           title="Энэ хүнийг бусад гишүүнтэй ураг холбоо шалгах"
         >
-          🧬 Ураг шалгах
+          Ураг шалгах
         </button>
         <button
           type="button"
@@ -397,7 +397,7 @@ export function TreeDrawer({
           onClick={() => onCenterPerson(person.id)}
           title="Модон дээр голлуулан харуулах"
         >
-          🎯 Төвлөрөх
+          Төвлөрөх
         </button>
         {canEdit && (
           <>
@@ -532,8 +532,8 @@ export function TreeDrawer({
                               title={`${personName(p)} эцэг/эхийн холбоосыг салгах`}
                               style={{
                                 border: 'none',
-                                background: 'rgba(220, 38, 38, 0.1)',
-                                color: '#b91c1c',
+                                background: 'var(--ui-danger-bg)',
+                                color: 'var(--ui-danger-text)',
                                 borderRadius: '50%',
                                 width: 20,
                                 height: 20,
@@ -609,8 +609,8 @@ export function TreeDrawer({
                               title={`${personName(c)} хүүхдийн холбоосыг салгах`}
                               style={{
                                 border: 'none',
-                                background: 'rgba(220, 38, 38, 0.1)',
-                                color: '#b91c1c',
+                                background: 'var(--ui-danger-bg)',
+                                color: 'var(--ui-danger-text)',
                                 borderRadius: '50%',
                                 width: 20,
                                 height: 20,
@@ -738,7 +738,7 @@ export function TreeDrawer({
                   {showAddEvent ? '✕ Хаах' : '+ Үйл явдал нэмэх'}
                 </button>
               ) : (
-                <span style={{ fontSize: '11px', color: '#64748b' }}>🔒 Харах горим</span>
+                <span style={{ fontSize: '11px', color: 'var(--ui-text-muted)' }}>Харах горим</span>
               )}
             </div>
 
@@ -902,8 +902,8 @@ export function TreeDrawer({
             </div>
 
             {!Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) ? (
-              <div style={{ padding: '18px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '12px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
-                🔒 Та энэ гишүүний мэдээлэлд дурсамж оруулах эрхгүй байна (Зөвхөн админ эсвэл үүсгэсэн хэрэглэгч боломжтой).
+              <div className="ui-callout" style={{ padding: '18px', textAlign: 'center', fontSize: '13px' }}>
+                Та энэ гишүүний мэдээлэлд дурсамж оруулах эрхгүй байна (Зөвхөн админ эсвэл үүсгэсэн хэрэглэгч боломжтой).
               </div>
             ) : (
               <form onSubmit={handleExtractOralHistory} className="tree-oral-form">

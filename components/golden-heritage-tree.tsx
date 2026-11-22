@@ -190,9 +190,9 @@ export default function GoldenHeritageTree({
             >
               <defs>
                 <linearGradient id="guulin-gold-stroke" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--gold-300, #f3d68b)" />
-                  <stop offset="55%" stopColor="var(--gold-500, #c89a3e)" />
-                  <stop offset="100%" stopColor="var(--gold-700, #8f6b24)" />
+                  <stop offset="0%" stopColor="var(--gold-300)" />
+                  <stop offset="55%" stopColor="var(--gold-500)" />
+                  <stop offset="100%" stopColor="var(--gold-700)" />
                 </linearGradient>
               </defs>
 
@@ -297,7 +297,7 @@ export default function GoldenHeritageTree({
                   }}
                 >
                   {timeTravelOpen && ageAtYear !== null && (
-                    <span className="tree-time-age-pill">✨ {ageAtYear} нас</span>
+                    <span className="tree-time-age-pill">{ageAtYear} нас</span>
                   )}
                   <button
                     type="button"
@@ -372,10 +372,10 @@ export default function GoldenHeritageTree({
         </div>
       </div>
 
-      {/* Floating Bottom-Center Luxury Glassmorphic Dock */}
+      {/* Floating Bottom-Center Glassmorphic Dock */}
       <div className="golden-tree-dock" role="toolbar" aria-label="Удмын модны удирдлага">
         <button type="button" className="golden-dock-btn is-active" aria-pressed={true}>
-          ✨ Алтан Мод
+          Алтан Мод
         </button>
         <button type="button" className="golden-dock-btn" onClick={onSwitchToClassic}>
           Сонгодог 2D
