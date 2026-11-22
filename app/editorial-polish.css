@@ -526,6 +526,12 @@
   color: var(--text-muted, #6a6357);
 }
 
+@media (min-width: 900px) {
+  .heritage-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
 /* Dashboard Arched Portrait Gallery (Mockups 4 & 8) */
 .heritage-gallery-section {
   background: var(--surface-elevated, #ffffff);
