@@ -1,7 +1,18 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { BookOpen, Compass, FileBadge, Maximize2, Minimize2, Minus, Plus, Printer, RotateCcw } from 'lucide-react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+  BookOpen,
+  Compass,
+  FileBadge,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Plus,
+  Printer,
+  RotateCcw,
+  Scan,
+} from 'lucide-react';
 import { API_BASE, personName, TreePerson } from '../lib/api';
 import { AdvancedTreeLayout } from '../lib/tree-layout';
 import '../app/golden-tree.css';
@@ -10,6 +21,8 @@ interface GoldenHeritageTreeProps {
   layout: AdvancedTreeLayout;
   selectedId: string;
   onSelect: (personId: string) => void;
+  onToggleCollapse?: (unitId: string, focalPersonId: string, isFrontier: boolean) => void;
+  loadingUnitId?: string | null;
   bloodlineMode: string;
   activeBloodlineIds: Set<string>;
   timeTravelOpen: boolean;
@@ -47,6 +60,8 @@ export default function GoldenHeritageTree({
   layout,
   selectedId,
   onSelect,
+  onToggleCollapse,
+  loadingUnitId,
   bloodlineMode,
   activeBloodlineIds,
   timeTravelOpen,
@@ -60,11 +75,45 @@ export default function GoldenHeritageTree({
   onOpenBook,
   onOpenExport,
 }: GoldenHeritageTreeProps) {
-  const [zoom, setZoom] = useState(0.92);
+  const [zoom, setZoom] = useState(0.88);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef({ x: 0, y: 0 });
   const panStart = useRef({ x: 0, y: 0 });
+  const anchorRef = useRef<{ personId: string; prevX: number; prevY: number } | null>(null);
+
+  // Preserve the clicked node's exact screen position after collapse/expand relayout.
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const nextNode = layout.nodeById.get(anchor.personId);
+    anchorRef.current = null;
+    if (!nextNode) return;
+    const dx = (nextNode.x - anchor.prevX) * zoom;
+    const dy = (nextNode.y - anchor.prevY) * zoom;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      const scroller = scrollRef.current;
+      if (scroller) {
+        scroller.scrollLeft = Math.max(0, scroller.scrollLeft + dx);
+        scroller.scrollTop = Math.max(0, scroller.scrollTop + dy);
+      } else {
+        setPan((prev) => ({ x: Math.round(prev.x - dx), y: Math.round(prev.y - dy) }));
+      }
+    }
+  }, [layout, zoom]);
+
+  const handleFitToScreen = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || layout.width <= 0 || layout.height <= 0) return;
+    const vw = Math.max(320, scroller.clientWidth - 48);
+    const vh = Math.max(320, scroller.clientHeight - 104);
+    const fitZoom = Math.max(0.22, Math.min(1.1, Math.min(vw / layout.width, vh / layout.height)));
+    const roundedZoom = Number(fitZoom.toFixed(2));
+    setZoom(roundedZoom);
+    setPan({ x: 0, y: 0 });
+    scroller.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+  }, [layout.height, layout.width]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, a')) return;
@@ -95,6 +144,7 @@ export default function GoldenHeritageTree({
   return (
     <div className={`golden-tree-viewport${isFullscreen ? ' is-fullscreen' : ''}`}>
       <div
+        ref={scrollRef}
         className={`golden-tree-scroll${dragging ? ' is-dragging' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -114,9 +164,22 @@ export default function GoldenHeritageTree({
               width: layout.width,
               height: layout.height,
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transition: dragging ? 'none' : 'transform 360ms cubic-bezier(0.22, 1, 0.36, 1)',
+              transition: dragging ? 'none' : 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1)',
             }}
           >
+            {/* Root-anchored Generation Labels (1-р үе … 9-р үе, or ? when root not loaded) */}
+            {layout.generationHeaders.map((header) => (
+              <div
+                key={`gen-${header.generation}`}
+                className="golden-gen-badge"
+                style={{ top: header.y + 6 }}
+                aria-label={`${header.label} (${header.count} хүн)`}
+              >
+                <span>{header.label}</span>
+                <small>({header.count})</small>
+              </div>
+            ))}
+
             {/* Calligraphic Burnished-Gold Curved Bezier Connectors */}
             <svg
               className="golden-tree-svg"
@@ -127,13 +190,13 @@ export default function GoldenHeritageTree({
             >
               <defs>
                 <linearGradient id="guulin-gold-stroke" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f3d68b" />
-                  <stop offset="55%" stopColor="#c89a3e" />
-                  <stop offset="100%" stopColor="#8f6b24" />
+                  <stop offset="0%" stopColor="var(--gold-300, #f3d68b)" />
+                  <stop offset="55%" stopColor="var(--gold-500, #c89a3e)" />
+                  <stop offset="100%" stopColor="var(--gold-700, #8f6b24)" />
                 </linearGradient>
               </defs>
 
-              {/* Marriage bridges */}
+              {/* Marriage bridges inside couple units */}
               {layout.unions.map((u) => {
                 const n1 = layout.nodeById.get(u.person1Id);
                 const n2 = layout.nodeById.get(u.person2Id);
@@ -149,15 +212,13 @@ export default function GoldenHeritageTree({
                       y1={u.y}
                       x2={x2}
                       y2={u.y}
-                      className="golden-marriage-line"
+                      className={`golden-marriage-line${u.status === 'divorced' ? ' is-divorced' : ''}`}
                     />
                     <circle
                       cx={u.x}
                       cy={u.y}
-                      r={4}
-                      fill="#f0cf7b"
-                      stroke="#1a1610"
-                      strokeWidth="1.5"
+                      r={3.5}
+                      className="golden-union-knot"
                     />
                   </g>
                 );
@@ -182,9 +243,22 @@ export default function GoldenHeritageTree({
                   );
                 });
               })}
+
+              {/* Non-tree secondary lineage parent dashed edges */}
+              {layout.secondaryEdges.map((edge) => {
+                const midY = Math.round((edge.y1 + edge.y2) / 2);
+                const d = `M ${edge.x1} ${edge.y1} C ${edge.x1} ${midY}, ${edge.x2} ${midY}, ${edge.x2} ${edge.y2}`;
+                return (
+                  <path
+                    key={edge.id}
+                    d={d}
+                    className="golden-bezier-path is-secondary"
+                  />
+                );
+              })}
             </svg>
 
-            {/* Luxury Obsidian Portrait Cards */}
+            {/* Compact Obsidian Portrait Cards (Photo, Name, Years only) */}
             {layout.nodes.map((node) => {
               const person = node.person;
               const selected = person.id === selectedId;
@@ -253,6 +327,47 @@ export default function GoldenHeritageTree({
                 </article>
               );
             })}
+
+            {/* Per-unit Collapse / Expand Pills with Descendant Count */}
+            {onToggleCollapse &&
+              layout.unitControls.map((ctrl) => {
+                const isLoading = loadingUnitId === ctrl.unitId;
+                const labelText = isLoading
+                  ? '…'
+                  : ctrl.isCollapsed
+                    ? ctrl.hiddenDescendantCount > 0
+                      ? `+${ctrl.hiddenDescendantCount}`
+                      : '+…'
+                    : '−';
+                return (
+                  <button
+                    key={`ctrl-${ctrl.unitId}`}
+                    type="button"
+                    className={`golden-dock-btn golden-unit-toggle${ctrl.isCollapsed ? ' is-active' : ''}`}
+                    style={{ left: ctrl.x, top: ctrl.y }}
+                    disabled={isLoading}
+                    aria-expanded={!ctrl.isCollapsed}
+                    aria-label={
+                      ctrl.isCollapsed
+                        ? `Салбар нээх (${ctrl.hiddenDescendantCount} үр хойч)`
+                        : 'Салбар хураах'
+                    }
+                    onClick={() => {
+                      const focalNode = layout.nodeById.get(ctrl.focalPersonId);
+                      if (focalNode) {
+                        anchorRef.current = {
+                          personId: ctrl.focalPersonId,
+                          prevX: focalNode.x,
+                          prevY: focalNode.y,
+                        };
+                      }
+                      onToggleCollapse(ctrl.unitId, ctrl.focalPersonId, ctrl.isFrontier);
+                    }}
+                  >
+                    {labelText}
+                  </button>
+                );
+              })}
           </div>
         </div>
       </div>
@@ -269,14 +384,12 @@ export default function GoldenHeritageTree({
         <button
           type="button"
           className="golden-dock-btn"
-          onClick={() => setZoom((z) => Math.max(0.45, Number((z - 0.1).toFixed(2))))}
+          onClick={() => setZoom((z) => Math.max(0.22, Number((z - 0.1).toFixed(2))))}
           aria-label="Жижигрүүлэх"
         >
           <Minus size={14} />
         </button>
-        <span style={{ fontSize: 11.5, color: '#e6cfa0', fontWeight: 700, minWidth: 36, textAlign: 'center' }}>
-          {Math.round(zoom * 100)}%
-        </span>
+        <span className="golden-dock-zoom-readout">{Math.round(zoom * 100)}%</span>
         <button
           type="button"
           className="golden-dock-btn"
@@ -288,9 +401,19 @@ export default function GoldenHeritageTree({
         <button
           type="button"
           className="golden-dock-btn"
+          onClick={handleFitToScreen}
+          aria-label="Дэлгэцэд багтаах"
+          title="Дэлгэцэд багтаах"
+        >
+          <Scan size={13} /> Багтаах
+        </button>
+        <button
+          type="button"
+          className="golden-dock-btn"
           onClick={() => {
-            setZoom(0.92);
+            setZoom(0.88);
             setPan({ x: 0, y: 0 });
+            scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
           }}
           aria-label="Тэгшлэх"
         >

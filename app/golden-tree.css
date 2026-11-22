@@ -170,8 +170,8 @@
 }
 
 .golden-node-avatar {
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   overflow: hidden;
   display: grid;
@@ -181,7 +181,7 @@
   color: #f4d88e;
   font-family: Georgia, serif;
   font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   flex-shrink: 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
 }
@@ -294,4 +294,67 @@
     padding: 5px 8px;
     font-size: 11px;
   }
+}
+
+/* Tidy-Tree Extensions (zero new hex/rgb colors; reuses existing variables & classes) */
+.golden-bezier-path.is-secondary {
+  stroke-dasharray: 6 5;
+  opacity: 0.58;
+}
+
+.golden-marriage-line.is-divorced {
+  stroke-dasharray: 2 5;
+  opacity: 0.48;
+}
+
+.golden-union-knot {
+  fill: var(--gold-300, currentColor);
+  stroke: var(--surface-card, currentColor);
+  stroke-width: 1.5;
+}
+
+.golden-gen-badge {
+  position: absolute;
+  left: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, currentColor);
+  background: var(--surface-elevated, transparent);
+  color: var(--gold-300, inherit);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  opacity: 0.86;
+}
+
+.golden-gen-badge small {
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+.golden-unit-toggle {
+  position: absolute;
+  transform: translate(-50%, 0);
+  z-index: 6;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 8px;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  border-color: var(--border-subtle, currentColor);
+  background: var(--surface-card, inherit);
+}
+
+.golden-dock-zoom-readout {
+  font-size: 11.5px;
+  font-weight: 700;
+  min-width: 36px;
+  text-align: center;
+  color: var(--gold-300, inherit);
 }
