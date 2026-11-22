@@ -10,7 +10,7 @@ It refuses to run unless:
      not yet contain the synthetic demo fixtures.
 
 What gets seeded (deterministic, ~150 clearly synthetic people, zero real PII):
-  - 1 synthetic owner account (``demo-tree-owner@example.invalid``) + verified email identity
+  - 1 synthetic owner account (``demo-tree-owner@example.com``) + verified email identity
   - 1 synthetic family (``ТУРШИЛТ — Алтан Овог (Synthetic Demo)``)
   - 1 lineage (``Туршилтын Алтан Удам``) with 4 branches (founded by the 4 Gen-2 children)
   - Founding couple (Generation 1) -> 4 children as 4 branches (Generation 2) -> 9 generations
@@ -53,7 +53,7 @@ from pathlib import Path
 from urllib.parse import unquote
 from uuid import UUID
 
-DEMO_OWNER_EMAIL = "demo-tree-owner@example.invalid"
+DEMO_OWNER_EMAIL = "demo-tree-owner@example.com"
 DEMO_OWNER_PASSWORD = "demo-tree-password-123"
 DEMO_FAMILY_NAME = "ТУРШИЛТ — Алтан Овог (Synthetic Demo)"
 DEMO_LINEAGE_NAME = "Туршилтын Алтан Удам"
