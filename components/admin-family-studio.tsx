@@ -196,6 +196,10 @@ export default function AdminFamilyStudio({ familyId, onBack }: { familyId: stri
           {!personForm.is_alive && <label>Нас барсан огноо<input type="date" value={personForm.death_date} onChange={(event) => setPersonForm({ ...personForm, death_date: event.target.value })} /></label>}
           <label className={styles.wide}>Товч тайлбар<textarea rows={4} maxLength={1000} value={personForm.short_description} onChange={(event) => setPersonForm({ ...personForm, short_description: event.target.value })} /></label>
         </div>
+        {selectedPerson && <div className={styles.panelActions}><button type="button" className={styles.secondaryButton} disabled={saving} onClick={() => void run(async () => {
+          try { await api(`/families/${familyId}/featured-person`, { method: 'PUT', body: JSON.stringify({ person_id: selectedId }) }); }
+          catch (cause) { if (cause instanceof ApiError && cause.status === 403) throw new ApiError(403, 'Энэ гэр бүлийн нүүр хуудсанд хүн онцлох гишүүнчлэлийн эрх шаардлагатай.'); throw cause; }
+        }, 'Гэр бүлийн нүүр хуудсанд энэ хүнийг онцоллоо.')}>🌿 Нүүр хуудсанд онцлох</button></div>}
         {selectedPerson && <div className={styles.muted} role="status">
           {dependencyError ? `Холбоотой мэдээллийг шалгаж чадсангүй: ${dependencyError}` : !dependencies ? 'Холбоотой мэдээллийг шалгаж байна…' : <>
             <p>Эцэг эх/хүүхдийн холбоос {dependencies.parent_child_count}, гэрлэлт {dependencies.marriage_count}, түүх {dependencies.story_count}, дурсамж {dependencies.memory_count}, архив {dependencies.archive_count}.</p>

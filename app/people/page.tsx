@@ -14,6 +14,7 @@ import {
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
+import PeopleMembersHub from '../../components/people-members-hub';
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -279,6 +280,7 @@ function PeoplePageContent() {
             </button>
           </div>
         )}
+        {family && <PeopleMembersHub />}
         {family && (
         <section
           className="people-toolbar card"

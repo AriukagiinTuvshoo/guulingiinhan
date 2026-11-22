@@ -1,11 +1,22 @@
+from uuid import UUID
+
 from conftest import register_verified
 
+from app.models import AdminGrant
 
-def test_people_directory_is_family_scoped_and_hides_private_people(client, email_provider):
+
+def _grant_directory_admin(client, database, role="ADMIN"):
+    with database() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role=role))
+        db.commit()
+
+
+def test_people_directory_is_family_scoped_and_hides_private_people(client, email_provider, database):
     owner_email = "directory-owner@example.com"
     private_creator_email = "directory-private-creator@example.com"
     owner_password = "strong-passphrase-123"
     register_verified(client, owner_email, owner_password)
+    _grant_directory_admin(client, database)
     family_id = client.post("/api/v1/families", json={"name": "Нээлттэй гэр бүл"}).json()["id"]
     visible = client.post(
         f"/api/v1/families/{family_id}/persons",
@@ -59,8 +70,9 @@ def test_people_directory_is_family_scoped_and_hides_private_people(client, emai
     ).status_code == 403
 
 
-def test_people_directory_supports_empty_search_case_insensitive_and_no_result(client):
+def test_people_directory_supports_empty_search_case_insensitive_and_no_result(client, database):
     register_verified(client, "directory-search@example.com")
+    _grant_directory_admin(client, database)
     family_id = client.post("/api/v1/families", json={"name": "Хайлтын гэр бүл"}).json()["id"]
     first = client.post(
         f"/api/v1/families/{family_id}/persons",
@@ -92,8 +104,9 @@ def test_people_directory_supports_empty_search_case_insensitive_and_no_result(c
     assert paged.json()["items"][0]["id"] in {first["id"], second["id"]}
 
 
-def test_people_directory_lineage_branch_filters_and_unassigned_state(client):
+def test_people_directory_lineage_branch_filters_and_unassigned_state(client, database):
     register_verified(client, "directory-filters@example.com")
+    _grant_directory_admin(client, database, "SUPER_ADMIN")
     family_id = client.post("/api/v1/families", json={"name": "Шүүлтүүрийн гэр бүл"}).json()["id"]
 
     unassigned = client.post(
@@ -163,10 +176,11 @@ def test_person_detail_and_edit_are_family_scoped(client):
     ).json()["first_name"] == "Би"
 
 
-def test_people_directory_redacts_minor_profile_fields_without_guardian_scope(client):
+def test_people_directory_redacts_minor_profile_fields_without_guardian_scope(client, database):
     from datetime import UTC, datetime
 
     register_verified(client, "directory-minor@example.com")
+    _grant_directory_admin(client, database)
     family_id = client.post("/api/v1/families", json={"name": "Minor directory"}).json()["id"]
     minor_date = datetime.now(UTC).date().replace(year=datetime.now(UTC).year - 10).isoformat()
     minor = client.post(

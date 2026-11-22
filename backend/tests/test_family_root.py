@@ -3,11 +3,11 @@ from uuid import UUID
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import FamilyMember, PersonLinkRequest
+from app.models import AdminGrant, FamilyMember, PersonLinkRequest
 from tests.conftest import TEST_PASSWORD, register_verified
 
 
-def test_owner_selects_canonical_root_without_losing_people(client, email_provider):
+def test_owner_selects_canonical_root_without_losing_people(client, email_provider, database):
     assert register_verified(client, "root-owner@example.com", "strong-password-123", email_provider).status_code == 201
     family = client.post("/api/v1/families", json={"name": "Recorded lineage"}).json()
     family_id = family["id"]
@@ -24,7 +24,14 @@ def test_owner_selects_canonical_root_without_losing_people(client, email_provid
     assert tree["root_person_id"] == person_id
     assert any(item["id"] == person_id for item in tree["persons"])
     assert client.delete(f"/api/v1/families/{family_id}/persons/{person_id}").status_code == 409
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
+    assert client.delete(f"/api/v1/families/{family_id}/persons/{person_id}").status_code == 409
     assert client.put(f"/api/v1/families/{family_id}/root", json={"person_id": person_id}).status_code == 200
+    personal = client.get(f"/api/v1/families/{family_id}/tree?scope=family")
+    assert personal.status_code == 200
+    assert personal.json()["persons"] == []
+    assert personal.json()["root_person_id"] is None
 
 
 def test_existing_person_link_requires_owner_approval(client, database, email_provider):
@@ -83,7 +90,7 @@ def test_pending_person_link_request_is_unique_per_user_and_family(client, datab
         db.flush()
 
 
-def test_detach_preserves_historical_relationships(client, email_provider):
+def test_detach_preserves_historical_relationships(client, email_provider, database):
     assert register_verified(client, "history-owner@example.com", "strong-password-123", email_provider).status_code == 201
     family_id = client.post("/api/v1/families", json={"name": "Historical family"}).json()["id"]
     people = [client.post(f"/api/v1/families/{family_id}/persons", json={
@@ -95,6 +102,8 @@ def test_detach_preserves_historical_relationships(client, email_provider):
     assert client.post(f"/api/v1/families/{family_id}/marriages", json={
         "person_1_id": people[0], "person_2_id": people[2],
     }).status_code == 201
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
     for person_id in people:
         assert client.delete(f"/api/v1/families/{family_id}/persons/{person_id}").status_code == 409
     tree = client.get(f"/api/v1/families/{family_id}/tree?person_id={people[0]}&depth=2").json()
@@ -119,3 +128,47 @@ def test_full_family_tree_includes_unconnected_authorized_people(client, email_p
     assert {person["id"] for person in context.json()["persons"]} == set(people[:2])
     assert {person["id"] for person in full.json()["persons"]} == set(people)
     assert len(full.json()["parent_child_relationships"]) == 1
+
+
+def test_personal_family_tree_shows_only_the_linked_persons_branch(client, email_provider):
+    assert register_verified(
+        client, "personal-tree-owner@example.com", "strong-password-123", email_provider
+    ).status_code == 201
+    family_id = client.post("/api/v1/families", json={"name": "Personal branch"}).json()["id"]
+    people = {
+        name: client.post(f"/api/v1/families/{family_id}/persons", json={
+            "first_name": name, "last_name": "", "gender": "unknown",
+        }).json()["id"]
+        for name in ("Grandparent", "Parent", "Account holder", "Sibling", "Child", "Spouse", "Unrelated")
+    }
+
+    for parent, child in (
+        ("Grandparent", "Parent"),
+        ("Parent", "Account holder"),
+        ("Parent", "Sibling"),
+        ("Account holder", "Child"),
+    ):
+        response = client.post(f"/api/v1/families/{family_id}/relationships/parent-child", json={
+            "parent_id": people[parent], "child_id": people[child],
+        })
+        assert response.status_code == 201, response.text
+    marriage = client.post(f"/api/v1/families/{family_id}/marriages", json={
+        "person_1_id": people["Account holder"], "person_2_id": people["Spouse"],
+    })
+    assert marriage.status_code == 201, marriage.text
+    assert client.post(
+        f"/api/v1/families/{family_id}/persons/{people['Account holder']}/link-me"
+    ).status_code == 204
+
+    response = client.get(f"/api/v1/families/{family_id}/tree?scope=family&depth=5&node_limit=1000")
+    assert response.status_code == 200, response.text
+    tree = response.json()
+    assert tree["root_person_id"] == people["Account holder"]
+    assert tree["lineage_root_person_id"] == people["Account holder"]
+    visible = {person["id"] for person in tree["persons"]}
+    assert visible == {
+        people["Grandparent"], people["Parent"], people["Account holder"],
+        people["Child"], people["Spouse"],
+    }
+    assert people["Sibling"] not in visible
+    assert people["Unrelated"] not in visible

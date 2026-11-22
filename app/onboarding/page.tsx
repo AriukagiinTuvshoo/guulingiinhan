@@ -2,226 +2,99 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { ApiError, api, Family, User } from '../../lib/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ApiError, api, type Family, type User } from '../../lib/api';
 
 function splitName(value: string) {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   return { first_name: parts.at(-1) ?? '', last_name: parts.slice(0, -1).join(' ') };
 }
-
-function onboardingError(cause: unknown) {
-  if (cause instanceof ApiError) {
-    if (cause.status === 401) return 'Нэвтрэх шаардлагатай. Нэвтэрсний дараа onboarding-оо үргэлжлүүлнэ үү.';
-    if (cause.status === 403) return 'Гэр бүл үүсгэх эрхгүй байна.';
-    if (cause.status === 404) return 'Шаардлагатай мэдээлэл олдсонгүй. Дахин шалгана уу.';
-    if (cause.status === 409) return 'Гэр бүл үүсгэх үед зөрчил гарлаа. Гэр бүлүүдийн жагсаалтаа шалгана уу.';
-    if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
-    if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
-    if (cause.status >= 500) return 'Серверийн алдаа гарлаа. Түр хүлээгээд дахин оролдоно уу.';
-  }
-  return 'Холболтын алдаа гарлаа. Хэрэв гэр бүл үүссэн байж болзошгүй бол дахин үүсгэхийн өмнө гэр бүлүүдийн жагсаалтаа шалгана уу.';
-}
-
-function validationError(values: FormData) {
-  const familyName = String(values.get('family') ?? '').trim();
-  const personName = String(values.get('name') ?? '').trim();
-  if (!familyName) return 'Гэр бүлийн нэрийг оруулна уу.';
-  if (!personName) return 'Өөрийн нэрийг оруулна уу.';
-  if (familyName.length > 180) return 'Гэр бүлийн нэр 180 тэмдэгтээс урт байж болохгүй.';
-  if (personName.length > 360) return 'Таны нэр 360 тэмдэгтээс урт байж болохгүй.';
-  for (const key of ['father', 'mother']) {
-    const value = String(values.get(key) ?? '').trim();
-    if (value.length > 360) return 'Эцэг, эхийн нэр 360 тэмдэгтээс урт байж болохгүй.';
-  }
-  return '';
-}
+const failure = (cause: unknown) => cause instanceof ApiError
+  ? cause.validationMessage || cause.message : 'Холболт тасарлаа. Дахин оролдохдоо энэ бүртгэлээ үргэлжлүүлнэ.';
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const params = useSearchParams();
+  const familyId = params.get('family') || '';
+  const [user, setUser] = useState<User | null>(null);
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [name, setName] = useState('');
   const [error, setError] = useState('');
-  const [createdFamilyId, setCreatedFamilyId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [accountName, setAccountName] = useState('');
-  const requestSequence = useRef(0);
-  const mounted = useRef(true);
+  const [newFamily, setNewFamily] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const attempt = useRef<string | null>(null);
+  const mounted = useRef(false);
+  const family = families.find(item => item.id === familyId);
 
   useEffect(() => {
     mounted.current = true;
-    const sequence = ++requestSequence.current;
-    api<User>('/auth/me')
-      .then((me) => {
-        if (mounted.current && sequence === requestSequence.current) setAccountName(me.display_name);
+    const controller = new AbortController();
+    setLoading(true); setError(''); setUser(null); setFamilies([]); setConsent(false); attempt.current = null;
+    Promise.all([api<User>('/auth/me', { signal: controller.signal }), api<Family[]>('/families', { signal: controller.signal })])
+      .then(([me, rows]) => {
+        if (controller.signal.aborted) return;
+        setUser(me); setName(me.display_name); setFamilies(rows);
+        setNewFamily(rows.length === 0);
+        if (familyId && !rows.some(item => item.id === familyId)) setError('Энэ гэр бүлд нэгдсэн бүртгэл олдсонгүй. Урилгаа хүлээн авах эсвэл өөрийн гэр бүлээ сонгоно уу.');
       })
-      .catch((cause) => {
-        if (!mounted.current || sequence !== requestSequence.current) return;
-        if (cause instanceof ApiError && cause.status === 401) {
-          router.replace('/login');
-          return;
-        }
-        setError(onboardingError(cause));
+      .catch(cause => {
+        if (controller.signal.aborted) return;
+        if (cause instanceof ApiError && cause.status === 401) { router.replace('/login'); return; }
+        setError(failure(cause));
       })
-      .finally(() => {
-        if (mounted.current && sequence === requestSequence.current) setLoading(false);
-      });
-    return () => {
-      mounted.current = false;
-      requestSequence.current += 1;
-    };
-  }, [router]);
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => { mounted.current = false; controller.abort(); };
+  }, [familyId, revision, router]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
-
+    if (busy || !user || (familyId && !family)) return;
     const values = new FormData(event.currentTarget);
-    const validation = validationError(values);
-    if (validation) {
-      setError(validation);
-      return;
-    }
-
-    const sequence = ++requestSequence.current;
-    setBusy(true);
-    setError('');
-    setCreatedFamilyId(null);
-
-    let family: Family | null = null;
+    const familyName = String(values.get('family') || '').trim();
+    if (!familyId && !familyName) { setError('Гэр бүлийн нэрээ оруулна уу.'); return; }
+    if (!user.person_id && !name.trim()) { setError('Өөрийн нэрээ оруулна уу.'); return; }
+    const personName = splitName(name);
+    if (!user.person_id && (personName.first_name.length > 120 || personName.last_name.length > 120)) { setError('Нэр болон овог тус бүр 120 тэмдэгтээс урт байж болохгүй.'); return; }
+    if (familyId && user.person_id && !consent) { setError('Өөрийн бүртгэлээ энэ гэр бүлийн модонд ашиглах зөвшөөрлөө батална уу.'); return; }
+    setBusy(true); setError('');
     try {
-      family = await api<Family>('/families', {
-        method: 'POST',
-        body: JSON.stringify({ name: String(values.get('family')).trim() }),
-      });
-
-      if (!mounted.current || sequence !== requestSequence.current) return;
-      setCreatedFamilyId(family.id);
-
-      const me = await api<{ id: string }>(`/families/${family.id}/persons`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ...splitName(String(values.get('name'))),
-          gender: values.get('gender'),
-          visibility: 'family',
+      const storageKey = `guulingiinhan:onboarding:${user.id}:${familyId || 'new'}`;
+      if (!attempt.current) {
+        try { attempt.current = sessionStorage.getItem(storageKey); } catch { /* Browser may disable storage. */ }
+        attempt.current ||= crypto.randomUUID();
+        try { sessionStorage.setItem(storageKey, attempt.current); } catch { /* In-memory retries retain the same key. */ }
+      }
+      const result = await api<{ family_id: string; person_id: string }>('/families/onboarding', {
+        method: 'POST', body: JSON.stringify({
+          request_key: attempt.current,
+          ...(familyId ? { family_id: familyId } : { family_name: familyName }),
+          ...(!user.person_id ? { ...personName, gender: values.get('gender') || 'unknown' } : {}),
+          reuse_existing_person: Boolean(user.person_id && consent),
         }),
       });
-
-      if (!mounted.current || sequence !== requestSequence.current) return;
-      await api(`/families/${family.id}/persons/${me.id}/link-me`, { method: 'POST' });
-
-      for (const [key, type] of [['father', 'biological'], ['mother', 'biological']] as const) {
-        const name = String(values.get(key) ?? '').trim();
-        if (!name) continue;
-
-        const parent = await api<{ id: string }>(`/families/${family.id}/persons`, {
-          method: 'POST',
-          body: JSON.stringify({
-            ...splitName(name),
-            gender: key === 'father' ? 'male' : 'female',
-            visibility: 'family',
-          }),
-        });
-
-        if (!mounted.current || sequence !== requestSequence.current) return;
-        await api(`/families/${family.id}/relationships/parent-child`, {
-          method: 'POST',
-          body: JSON.stringify({
-            parent_id: parent.id,
-            child_id: me.id,
-            relationship_type: type,
-          }),
-        });
-      }
-
-      if (mounted.current && sequence === requestSequence.current) {
-        router.push(`/tree?family=${encodeURIComponent(family.id)}`);
-      }
-    } catch (cause) {
-      if (!mounted.current || sequence !== requestSequence.current) return;
-      setError(onboardingError(cause));
-      if (family) setCreatedFamilyId(family.id);
-    } finally {
-      if (mounted.current && sequence === requestSequence.current) setBusy(false);
-    }
+      if (!mounted.current) return;
+      try { sessionStorage.removeItem(storageKey); } catch { /* No persisted state to clear. */ }
+      router.push(`/tree?view=family&family=${encodeURIComponent(result.family_id)}&person=${encodeURIComponent(result.person_id)}`);
+    } catch (cause) { if (mounted.current) setError(failure(cause)); }
+    finally { if (mounted.current) setBusy(false); }
   }
 
-  if (loading) {
-    return (
-      <main className="mvp" aria-busy="true">
-        <section className="mvpbox">
-          <p role="status" aria-live="polite">Ачаалж байна…</p>
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <main className="mvp" aria-busy={busy}>
-      <section className="mvpbox" style={{ maxWidth: 580 }}>
-        <Link href="/families">← Гэр бүлүүд</Link>
-        <h1 style={{ marginTop: 22 }}>Ургийн модоо эхлүүлэх</h1>
-        <p>Гэр бүлээ үүсгээд өөрийгөө бүртгэж, хүсвэл эцэг эхээ нэмнэ.</p>
-
-        {error && (
-          <div className="error" role="alert" aria-live="assertive">
-            <p>{error}</p>
-            {createdFamilyId && (
-              <p>
-                Гэр бүл үүссэн байж болох тул дахин үүсгэхээс өмнө{' '}
-                <Link href={`/families?family=${encodeURIComponent(createdFamilyId)}`}>
-                  үүссэн гэр бүлээ шалгана уу
-                </Link>
-                .
-              </p>
-            )}
-          </div>
-        )}
-
-        <form onSubmit={submit} noValidate>
-          <label>
-            Гэр бүлийн нэр
-            <input name="family" placeholder="ГУУЛИНГИЙНХАН" maxLength={180} required disabled={busy} />
-          </label>
-
-          <label>
-            Таны нэр
-            <input
-              name="name"
-              autoComplete="name"
-              required
-              maxLength={360}
-              value={accountName}
-              onChange={(event) => setAccountName(event.target.value)}
-              disabled={busy}
-            />
-          </label>
-
-          <label>
-            Хүйс
-            <select name="gender" defaultValue="unknown" disabled={busy}>
-              <option value="unknown">Тодорхойгүй</option>
-              <option value="male">Эрэгтэй</option>
-              <option value="female">Эмэгтэй</option>
-              <option value="other">Бусад</option>
-            </select>
-          </label>
-
-          <div className="row">
-            <label style={{ flex: 1 }}>
-              Эцгийн нэр
-              <input name="father" maxLength={360} disabled={busy} />
-            </label>
-            <label style={{ flex: 1 }}>
-              Эхийн нэр
-              <input name="mother" maxLength={360} disabled={busy} />
-            </label>
-          </div>
-
-          <button className="primary" type="submit" disabled={busy} aria-busy={busy}>
-            {busy ? 'Үүсгэж байна…' : 'Гэр бүлээ үүсгэх'}
-          </button>
-        </form>
-      </section>
-    </main>
-  );
+  return <main className="mvp" aria-busy={loading || busy}><section className="mvpbox" style={{ maxWidth: 640 }}>
+    <Link href="/families">← Миний гэр бүлүүд</Link>
+    <h1 style={{ marginTop: 22 }}>🌳 {familyId ? 'Модонд өөрийгөө бүртгэх' : 'Гэр бүлийн модоо эхлүүлэх'}</h1>
+    <p>{familyId ? `${family?.name || 'Гэр бүл'} — байгаа модоо хамтдаа үргэлжлүүлнэ.` : 'Урилгаар нэгдсэн бол байгаа гэр бүлээ сонгоорой. Шинэ мод үүсгэх шаардлагагүй.'}</p>
+    {error && <div className="error" role="alert">{error}</div>}
+    {loading ? <p role="status">Таны гэр бүл, бүртгэлийг шалгаж байна…</p> : !user ? <button onClick={() => setRevision(value => value + 1)}>Дахин ачаалах</button> : familyId && !family ? <Link className="button" href="/invite">Урилгаа шалгах →</Link> : <>
+      {!familyId && families.length > 0 && <section className="card"><h2>Миний гэр бүлүүд</h2><p>Эндээс модоо үргэлжлүүлэх гэр бүлээ сонгоно.</p><div className="cards">{families.map(item => <Link className="button" key={item.id} href={`/people?family=${encodeURIComponent(item.id)}`}>{item.name} →</Link>)}</div>{!user.person_id && <button style={{ marginTop: 16 }} onClick={() => setNewFamily(value => !value)}>{newFamily ? 'Шинэ мод үүсгэхийг болих' : 'Тусдаа шинэ гэр бүл үүсгэх'}</button>}</section>}
+      {(familyId || newFamily) && <form onSubmit={submit} style={{ marginTop: 24 }}>
+        {!familyId && <label>Гэр бүлийн нэр<input name="family" maxLength={180} required disabled={busy} placeholder="Гэр бүлийн нэр" /></label>}
+        {user.person_id ? <><p>Таны аккаунт өмнөх удмын бүртгэлтэй холбогдсон. Нэг хүнийг дахин үүсгэхгүй.</p>{familyId && <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} disabled={busy} style={{ width: 22, minWidth: 22 }} />Өөрийн удмын бүртгэлийг энэ гэр бүлийн модонд ашиглахыг зөвшөөрч байна. Миний бусад гэр бүлийн түүх, архив энэ гэр бүлд шилжихгүй.</label>}</> : <><label>Таны нэр<input name="name" value={name} onChange={event => setName(event.target.value)} autoComplete="name" maxLength={360} required disabled={busy} /></label><label>Хүйс<select name="gender" defaultValue="unknown" disabled={busy}><option value="unknown">Тодорхойгүй</option><option value="male">Эрэгтэй</option><option value="female">Эмэгтэй</option><option value="other">Бусад</option></select></label><p>Өмнө бүртгэгдсэн бол <Link href={familyId ? `/people?family=${encodeURIComponent(familyId)}` : '/families'}>байгаа бүртгэлтэйгээ холбогдоорой</Link>. Эцэг, эх, ханиа дараагийн алхамд модноос сонгож нэмнэ.</p></>}
+        <button className="primary" type="submit" disabled={busy || Boolean(familyId && user.person_id && !consent)}>{busy ? 'Хадгалж байна…' : familyId ? 'Модондоо нэгдэх' : 'Гэр бүлийн модоо эхлүүлэх'}</button>
+      </form>}
+      {!familyId && <p style={{ marginTop: 24 }}><Link href="/invite">Урилгаар гэр бүлд нэгдэх →</Link></p>}
+    </>}
+  </section></main>;
 }

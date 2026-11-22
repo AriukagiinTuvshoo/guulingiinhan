@@ -19,6 +19,7 @@ import {
   api,
   Marriage,
   Person,
+  PersonProfile,
   PersonSearchPage,
   personName,
   TreeData,
@@ -28,6 +29,7 @@ import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
 import TreePrint from '../../components/tree-print';
 import FamilyMap, { FamilyMapMode, FamilyMapCamera } from '../../components/family-map';
+import SharedAncestryView from '../ancestry/shared-tree-view';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -138,6 +140,7 @@ function TreePageContent() {
   const [relationPersonId, setRelationPersonId] = useState('');
   const [relationPersonBusy, setRelationPersonBusy] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [selectedPersonProfile, setSelectedPersonProfile] = useState<PersonProfile | null>(null);
   const [editingPersonIsAlive, setEditingPersonIsAlive] = useState(true);
   const [editPersonError, setEditPersonError] = useState('');
   const [editPersonBusy, setEditPersonBusy] = useState(false);
@@ -236,12 +239,15 @@ function TreePageContent() {
           Boolean(treeData.root_person_id) &&
           treeData.persons.some((person) => person.id === treeData.root_person_id);
 
-        // Never substitute an unrelated Person when a requested Person is unavailable.
-        // Only the backend-provided root is eligible as the initial selection.
+        // The family scope's backend root is the signed-in person's branch anchor.
+        // If an old URL points at a person outside that branch, fall back to this
+        // authorized anchor rather than loading an unrelated person.
         const nextSelectedId = preferredPersonId
           ? preferredIsAvailable
             ? preferredPersonId
-            : ''
+            : viewModeRef.current === 'full' && backendRootIsAvailable
+              ? treeData.root_person_id ?? ''
+              : ''
           : backendRootIsAvailable
             ? treeData.root_person_id ?? ''
             : '';
@@ -406,6 +412,15 @@ function TreePageContent() {
     Boolean(tree?.root_person_id) &&
     Boolean(tree?.persons.some((person) => person.id === tree.root_person_id));
   const canManageTree = family?.role === 'owner' || family?.role === 'editor';
+  useEffect(() => {
+    setSelectedPersonProfile(null);
+    if (!familyId || !selectedId) return;
+    const controller = new AbortController();
+    api<PersonProfile>(`/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(selectedId)}`, { signal: controller.signal })
+      .then(profile => { if (!controller.signal.aborted) setSelectedPersonProfile(profile); })
+      .catch(() => { /* The edit action stays unavailable until permission is verified. */ });
+    return () => controller.abort();
+  }, [familyId, selectedId]);
 
   const selectedMarriages = useMemo(
     () =>
@@ -635,7 +650,7 @@ function TreePageContent() {
 
   function beginRelation(kind: RelationKind) {
     setRelationError('');
-    setRelationMode('existing');
+    setRelationMode('new');
     setRelationPersonId('');
     setRelationPersonQuery('');
     setRelationPersonResults([]);
@@ -646,9 +661,10 @@ function TreePageContent() {
     setEditPersonError('');
     setEditPersonBusy(true);
     try {
-      const profile = await api<Person>(
+      const profile = await api<PersonProfile>(
         '/families/' + encodeURIComponent(familyId) + '/persons/' + encodeURIComponent(personId),
       );
+      if (!profile.can_edit_profile) throw new ApiError(403, 'Энэ хүний мэдээллийг өөрийн аккаунт эсвэл эрхтэй админ засна.');
       setEditingPerson(profile);
       setEditingPersonIsAlive(profile.is_alive);
     } catch (cause) {
@@ -867,7 +883,7 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions">
-            <Link className="tree-studio-action" aria-label="Гэр бүлийн хүмүүс" href={'/people?family=' + encodeURIComponent(familyId)}><Users size={19} /></Link>
+            <Link className="tree-studio-action" aria-label="Гэр бүлийн гишүүд, миний бүртгэл" href={'/people?family=' + encodeURIComponent(familyId)}><Users size={19} /></Link>
             <details className="tree-studio-menu"><summary aria-label="Удмын модны цэс"><Menu size={19} /></summary><div>
             <Link className="tree-button tree-button--secondary" href={`/relationships?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(selectedId)}`}>Хамаарлыг харах</Link>
             <button type="button" className="tree-button tree-button--secondary" disabled={!selectedId} onClick={() => setBranchRoot(branchRoot ? '' : selectedId)}>{branchRoot ? 'Бүх салааг харах' : 'Сонгосон хүний үр удам'}</button>
@@ -908,7 +924,14 @@ function TreePageContent() {
           </div>
         )}
 
-        {Boolean(tree?.persons.length && (!tree.lineage_root_person_id || !tree.linked_person_id)) && <details className="tree-studio-context"><summary>Удмын эх, миний бүртгэл</summary>{!tree?.lineage_root_person_id && <p>Удмын эх хараахан сонгогдоогүй. Гэр бүлийн эзэн хүн сонгоод цэснээс удмын эхийг батална.</p>}{!tree?.linked_person_id && <p>“Хүмүүс” хэсгээс өөрийн бүртгэлийг олж, гэр бүлийн эзнээр холбоосоо баталгаажуулаарай.</p>}</details>}
+        {tree && viewMode === 'full' && !tree.linked_person_id && (
+          <div className="tree-alert tree-alert--info" role="status">
+            <span>Өөрийн гэр бүлийн модыг харахын тулд өөрийн удмын бүртгэлээ холбоорой. Байгаа бүртгэлд хүсэлт илгээх эсвэл өөрийн мэдээллийг шинээр бүртгэнэ.</span>
+            <Link href={'/people?family=' + encodeURIComponent(familyId)}>Миний бүртгэлийг холбох →</Link>
+          </div>
+        )}
+
+        {Boolean(tree?.persons.length && (!tree.lineage_root_person_id || !tree.linked_person_id)) && <details className="tree-studio-context"><summary>Удмын эх, миний бүртгэл</summary>{!tree?.lineage_root_person_id && <p>Удмын эх хараахан сонгогдоогүй. Гэр бүлийн эзэн хүн сонгоод цэснээс удмын эхийг батална.</p>}{!tree?.linked_person_id && <p>“Гишүүд ба миний бүртгэл” хэсгээс өөрийн удмын хүнийг сонгоод гэр бүлийн эзнээр холбоосоо баталгаажуулаарай.</p>}</details>}
         {family?.role === 'owner' && linkRequests.length > 0 && <section className="tree-link-requests" aria-label="Холбох хүсэлтүүд"><h2>Хүнтэй холбох хүсэлт</h2><p>Батлахаас өмнө хүсэлт гаргагчийн хэн болохыг шалгана уу.</p>{linkRequests.map((request) => <div key={request.id}><span><strong>{request.user_name}</strong> → {request.person_name}</span><button type="button" disabled={linkBusy} onClick={() => setLinkToApprove(request)}>Шалгаж батлах</button></div>)}</section>}
 
         <section className="tree-workspace" aria-label="Удмын модны ажлын хэсэг">
@@ -1005,9 +1028,9 @@ function TreePageContent() {
             <section className="tree-state tree-state--empty tree-state--in-shell" role="status">
               <div className="tree-state-mark" aria-hidden="true">!</div>
               <h2>Удмын мод бүрэн бэлэн болоогүй байна.</h2>
-              <p>Энэ гэр бүлийн модонд backend-ээс баталгаатай төв хүн ирээгүй тул буруу холбоос таамаглан харуулахгүй.</p>
+              <p>Энэ гэр бүлд өөрийн удмын бүртгэлээ холбож, холбоосоо баталгаажуулна уу.</p>
               <Link className="tree-button tree-button--primary" href={'/people?family=' + encodeURIComponent(familyId)}>
-                Хүмүүс рүү очих
+                Гишүүд ба миний бүртгэл
               </Link>
             </section>
           ) : !tree?.persons.length ? (
@@ -1016,7 +1039,7 @@ function TreePageContent() {
               <h2>Удмын мод одоогоор хоосон байна.</h2>
               <p>Энэ гэр бүлийн зөвшөөрөгдсөн орчинд одоогоор хүн эсвэл холбоос алга байна.</p>
               <Link className="tree-button tree-button--primary" href={'/people?family=' + encodeURIComponent(familyId)}>
-                Хүмүүс рүү очих
+                Гишүүд ба миний бүртгэл
               </Link>
             </section>
           ) : (
@@ -1032,6 +1055,7 @@ function TreePageContent() {
               <FamilyMap
                 key={familyId}
                 data={displayedTree}
+                canManageTree={canManageTree}
                 familyId={familyId}
                 selectedId={selectedId}
                 mode={mapMode}
@@ -1101,11 +1125,11 @@ function TreePageContent() {
                       <Link className="tree-button tree-button--primary" href={profileHref(selectedPerson.id)}>
                         Профайл үзэх
                       </Link>
+                      {selectedPersonProfile?.id === selectedPerson.id && selectedPersonProfile.can_edit_profile && <button type="button" className="tree-button tree-button--secondary" onClick={() => void openPersonEditor(selectedPerson.id)} disabled={editPersonBusy}>
+                        {editPersonBusy ? 'Нээж байна…' : 'Мэдээлэл засах'}
+                      </button>}
                       {canManageTree && (
                         <>
-                          <button type="button" className="tree-button tree-button--secondary" onClick={() => void openPersonEditor(selectedPerson.id)} disabled={editPersonBusy}>
-                            {editPersonBusy ? 'Нээж байна…' : 'Мэдээлэл засах'}
-                          </button>
                           <div className="tree-add-relation-grid">
                             <button type="button" className="tree-button tree-button--secondary" onClick={() => beginRelation('parent')}>+ Эцэг/эх</button>
                             <button type="button" className="tree-button tree-button--secondary" onClick={() => beginRelation('child')}>+ Хүүхэд</button>
@@ -1373,6 +1397,33 @@ function TreePageContent() {
 }
 
 
+function UnifiedTreeContent() {
+  const searchParams = useSearchParams();
+  const { familyId } = useAppShellContext();
+  const view = searchParams.get('view') === 'shared' ? 'shared' : 'family';
+  const selectedFamily = searchParams.get('family') || familyId;
+  const viewHref = (next: 'shared' | 'family') => {
+    const params = new URLSearchParams();
+    if (selectedFamily) params.set('family', selectedFamily);
+    params.set('view', next);
+    return `/tree?${params.toString()}`;
+  };
+
+  return (
+    <div className="tree-unified">
+      <nav className="tree-unified__tabs" aria-label="Удмын модны харагдац">
+        <Link href={viewHref('shared')} aria-current={view === 'shared' ? 'page' : undefined} className={view === 'shared' ? 'is-active' : ''}>
+          Үндсэн удам
+        </Link>
+        <Link href={viewHref('family')} aria-current={view === 'family' ? 'page' : undefined} className={view === 'family' ? 'is-active' : ''}>
+          Манай гэр бүл
+        </Link>
+      </nav>
+      {view === 'shared' ? <SharedAncestryView /> : <TreePageContent />}
+    </div>
+  );
+}
+
 export default function TreePage() {
   return (
     <Suspense
@@ -1387,7 +1438,7 @@ export default function TreePage() {
         </main>
       }
     >
-      <TreePageContent />
+      <UnifiedTreeContent />
     </Suspense>
   );
 }

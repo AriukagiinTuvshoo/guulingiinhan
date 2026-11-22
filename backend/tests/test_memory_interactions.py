@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from app.auth import get_current_user
 from app.main import app
-from app.models import Family, FamilyMember, Memory, MemoryComment, MemoryLike, User
+from app.models import AdminGrant, Family, FamilyMember, Memory, MemoryComment, MemoryLike, User
 
 
 @pytest.fixture
@@ -97,6 +97,7 @@ def test_featured_person_is_persisted_and_family_scoped(client, database, intera
     assert client.get(endpoint).json() is None
     with database() as db:
         adult = Person(first_name="Adult", birth_date=date(1950, 1, 1), created_by=c["owner"].id)
+        db.add(AdminGrant(user_id=c["owner"].id, role="SUPER_ADMIN"))
         minor = Person(first_name="Child", birth_date=datetime.now(UTC).date(), created_by=c["owner"].id)
         db.add_all([adult, minor]); db.flush()
         db.add_all([FamilyPerson(family_id=c["family"], person_id=p.id, added_by=c["owner"].id) for p in (adult, minor)])

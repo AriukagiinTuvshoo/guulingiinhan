@@ -1,0 +1,105 @@
+{
+  "checked_at": "2026-10-13T05:49:21.051Z",
+  "scope": "Synthetic disposable localhost browser → real API → SQLite. No live staging or production mutations. Native OS install prompt not claimed; Chromium installability manifest/worker and offline privacy verified. Explicit local request faults validate auth retry, pending counts and stale search rows.",
+  "mock_api": false,
+  "fault_injection": "Three single admin identity network aborts, one pending-summary abort and one delayed directory query; all successful/retry responses use the real API.",
+  "scenarios": [
+    {
+      "name": "mobile shell controls, popovers and navigation 320px",
+      "pass": true,
+      "ms": 2383
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 375px",
+      "pass": true,
+      "ms": 1492
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 390px",
+      "pass": true,
+      "ms": 1392
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 768px",
+      "pass": true,
+      "ms": 1442
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 1024px",
+      "pass": true,
+      "ms": 1272
+    },
+    {
+      "name": "mobile shell controls, popovers and navigation 1440px",
+      "pass": true,
+      "ms": 1204
+    },
+    {
+      "name": "tree family/shared mobile headers preserve profile and notification controls",
+      "pass": true,
+      "ms": 5499
+    },
+    {
+      "name": "admin overview and full navigation 320px",
+      "pass": true,
+      "ms": 1922
+    },
+    {
+      "name": "admin overview and full navigation 390px",
+      "pass": true,
+      "ms": 1215
+    },
+    {
+      "name": "admin overview and full navigation 768px",
+      "pass": true,
+      "ms": 1277
+    },
+    {
+      "name": "admin overview and full navigation 1440px",
+      "pass": true,
+      "ms": 1311
+    },
+    {
+      "name": "people administration is gated; self profile remains editable",
+      "pass": true,
+      "ms": 1653
+    },
+    {
+      "name": "mobile MIME normalization uploads own portrait and refreshes featured image",
+      "pass": true,
+      "ms": 4632
+    },
+    {
+      "name": "admin people and ancestry retain persistent navigation",
+      "pass": true,
+      "ms": 1659
+    },
+    {
+      "name": "temporary admin identity load failures recover through real API retry",
+      "pass": true,
+      "ms": 1953
+    },
+    {
+      "name": "authorized readonly admin directory hides stale rows while a new query loads",
+      "pass": true,
+      "ms": 2151
+    },
+    {
+      "name": "admin request count remains unknown while loading or unavailable",
+      "pass": true,
+      "ms": 816
+    },
+    {
+      "name": "PWA manifest actual PNG sizes and network-only worker privacy",
+      "pass": true,
+      "ms": 4747
+    },
+    {
+      "name": "no browser JavaScript exceptions or unexpected real API failures",
+      "pass": true,
+      "ms": 0
+    }
+  ],
+  "passed": 19,
+  "total": 19
+}

@@ -28,6 +28,7 @@ from app.csrf import (
 from app.db import engine
 from app.families import invitations_router, lineages_router
 from app.families import router as families_router
+from app.family_activities import public_funds_router
 from app.family_activities import router as family_activities_router
 from app.family_admin import router as family_admin_router
 from app.heritage_discovery import router as heritage_discovery_router
@@ -37,11 +38,14 @@ from app.memory_interactions import router as memory_interactions_router
 from app.memory_photos import router as memory_photos_router
 from app.metrics import metrics_registry
 from app.observability import configure_logging, error_classification, request_id_context
+from app.onboarding import router as onboarding_router
 from app.phone_verification import router as phone_verification_router
 from app.profile_photos import router as profile_photos_router
 from app.shared_ancestry import admin_router as admin_shared_ancestry_router
 from app.shared_ancestry import family_router as family_root_connection_router
 from app.shared_ancestry import router as shared_ancestry_router
+from app.shared_ancestry_requests import admin_router as admin_ancestry_requests_router
+from app.shared_ancestry_requests import family_router as family_ancestry_requests_router
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.app_env)
@@ -222,6 +226,10 @@ app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(memory_interactions_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
+app.include_router(public_funds_router, prefix="/api/v1")
+app.include_router(admin_ancestry_requests_router, prefix="/api/v1")
+app.include_router(family_ancestry_requests_router, prefix="/api/v1")
+app.include_router(onboarding_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(family_admin_router, prefix="/api/v1")
 app.include_router(heritage_discovery_router, prefix="/api/v1")

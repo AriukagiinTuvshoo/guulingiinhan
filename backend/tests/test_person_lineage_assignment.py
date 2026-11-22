@@ -5,13 +5,18 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.models import (
+    AdminGrant,
     Lineage,
     Person,
     PersonLineageAssignment,
 )
 
 
-def _setup_family(client, name="Assignment"):
+def _setup_family(client, database, name="Assignment"):
+    # Arbitrary lineage assignment is now an explicit global admin action.
+    with database() as db:
+        db.add(AdminGrant(user_id=UUID(client.get("/api/v1/auth/me").json()["id"]), role="SUPER_ADMIN"))
+        db.commit()
     family = client.post("/api/v1/families", json={"name": name})
     assert family.status_code == 201
     family_id = family.json()["id"]
@@ -38,9 +43,9 @@ def _setup_family(client, name="Assignment"):
     return family_id, person.json(), lineage.json(), branch_a1.json(), branch_a2.json()
 
 
-def test_create_lineage_only_assignment(client):
+def test_create_lineage_only_assignment(client, database):
     register_verified(client, "assignment-create@example.com")
-    family_id, person, lineage, _, _ = _setup_family(client)
+    family_id, person, lineage, _, _ = _setup_family(client, database)
 
     response = client.put(
         f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment",
@@ -60,9 +65,9 @@ def test_create_lineage_only_assignment(client):
     assert fetched.json()["branch_id"] is None
 
 
-def test_create_lineage_and_branch_assignment(client):
+def test_create_lineage_and_branch_assignment(client, database):
     register_verified(client, "assignment-branch@example.com")
-    family_id, person, lineage, branch_a1, _ = _setup_family(client)
+    family_id, person, lineage, branch_a1, _ = _setup_family(client, database)
 
     response = client.put(
         f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment",
@@ -74,7 +79,7 @@ def test_create_lineage_and_branch_assignment(client):
 
 def test_update_assignment_keeps_one_current_row(client, database):
     register_verified(client, "assignment-update@example.com")
-    family_id, person, lineage, branch_a1, branch_a2 = _setup_family(client)
+    family_id, person, lineage, branch_a1, branch_a2 = _setup_family(client, database)
     url = f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
 
     first = client.put(url, json={"lineage_id": lineage["id"], "branch_id": branch_a1["id"]})
@@ -95,7 +100,7 @@ def test_update_assignment_keeps_one_current_row(client, database):
 
 def test_delete_assignment_keeps_person_and_relationships(client, database):
     register_verified(client, "assignment-delete@example.com")
-    family_id, person, lineage, branch_a1, _ = _setup_family(client)
+    family_id, person, lineage, branch_a1, _ = _setup_family(client, database)
     other = client.post(
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Сар"},
@@ -125,9 +130,9 @@ def test_delete_assignment_keeps_person_and_relationships(client, database):
     assert len(tree["marriages"]) == 1
 
 
-def test_cross_family_lineage_assignment_is_rejected(client):
+def test_cross_family_lineage_assignment_is_rejected(client, database):
     register_verified(client, "assignment-cross-family@example.com")
-    family_a, person, _, _, _ = _setup_family(client, "A")
+    family_a, person, _, _, _ = _setup_family(client, database, "A")
     family_b = client.post("/api/v1/families", json={"name": "B"}).json()
     lineage_b = client.post(
         f"/api/v1/families/{family_b['id']}/lineages",
@@ -141,9 +146,9 @@ def test_cross_family_lineage_assignment_is_rejected(client):
     assert response.status_code == 404
 
 
-def test_cross_lineage_branch_assignment_is_rejected(client):
+def test_cross_lineage_branch_assignment_is_rejected(client, database):
     register_verified(client, "assignment-cross-branch@example.com")
-    family_id, person, lineage, _, _ = _setup_family(client)
+    family_id, person, lineage, _, _ = _setup_family(client, database)
     other_lineage = client.post(
         f"/api/v1/families/{family_id}/lineages",
         json={"name": "Удам B"},
@@ -160,9 +165,9 @@ def test_cross_lineage_branch_assignment_is_rejected(client):
     assert response.status_code == 404
 
 
-def test_person_not_in_supplied_family_is_rejected(client):
+def test_person_not_in_supplied_family_is_rejected(client, database):
     register_verified(client, "assignment-person-scope@example.com")
-    _, person, _, _, _ = _setup_family(client, "A")
+    _, person, _, _, _ = _setup_family(client, database, "A")
     family_b = client.post("/api/v1/families", json={"name": "B"}).json()
     lineage_b = client.post(
         f"/api/v1/families/{family_b['id']}/lineages",
@@ -178,7 +183,7 @@ def test_person_not_in_supplied_family_is_rejected(client):
 
 def test_member_can_read_but_cannot_mutate_assignment(client, database):
     register_verified(client, "assignment-member-owner@example.com")
-    family_id, person, lineage, _, _ = _setup_family(client, "Roles")
+    family_id, person, lineage, _, _ = _setup_family(client, database, "Roles")
     assignment_url = (
         f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
     )
@@ -231,9 +236,9 @@ def test_existing_person_can_remain_without_assignment(client, database):
         ) is None
 
 
-def test_assignment_does_not_mutate_genealogy_counts(client):
+def test_assignment_does_not_mutate_genealogy_counts(client, database):
     register_verified(client, "assignment-no-side-effect@example.com")
-    family_id, person, lineage, branch_a1, _ = _setup_family(client)
+    family_id, person, lineage, branch_a1, _ = _setup_family(client, database)
     other = client.post(
         f"/api/v1/families/{family_id}/persons",
         json={"first_name": "Ээж"},
@@ -271,7 +276,7 @@ def test_assignment_does_not_mutate_genealogy_counts(client):
 
 def test_assignment_is_removed_when_person_is_detached_from_family(client, database):
     register_verified(client, "assignment-detach@example.com")
-    family_id, person, lineage, branch_a1, _ = _setup_family(client, "Detach")
+    family_id, person, lineage, branch_a1, _ = _setup_family(client, database, "Detach")
     url = f"/api/v1/families/{family_id}/persons/{person['id']}/lineage-assignment"
     assert (
         client.put(url, json={"lineage_id": lineage["id"], "branch_id": branch_a1["id"]}).status_code
@@ -292,7 +297,7 @@ def test_assignment_is_removed_when_person_is_detached_from_family(client, datab
 
 def test_duplicate_current_assignment_is_db_protected(client, database):
     register_verified(client, "assignment-duplicate@example.com")
-    _, person, lineage, branch_a1, _ = _setup_family(client, "Duplicate")
+    _, person, lineage, branch_a1, _ = _setup_family(client, database, "Duplicate")
 
     with database() as db:
         db.add(
@@ -318,9 +323,9 @@ def test_duplicate_current_assignment_is_db_protected(client, database):
         assert failed
 
 
-def test_assignment_target_ids_do_not_allow_unauthorized_combinations(client):
+def test_assignment_target_ids_do_not_allow_unauthorized_combinations(client, database):
     register_verified(client, "assignment-mass@example.com")
-    family_a, person, lineage, branch_a1, _ = _setup_family(client, "Mass")
+    family_a, person, lineage, branch_a1, _ = _setup_family(client, database, "Mass")
     family_b = client.post("/api/v1/families", json={"name": "Other"}).json()["id"]
     lineage_b = client.post(
         f"/api/v1/families/{family_b}/lineages",
