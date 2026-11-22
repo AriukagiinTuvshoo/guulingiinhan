@@ -1,72 +1,55 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Palette, Check } from 'lucide-react';
+import { Check, Moon, Sun } from 'lucide-react';
 
-export type AppTheme = 'parchment' | 'mauve' | 'deep-purple' | 'emerald' | 'obsidian';
+export type AppTheme = 'light' | 'dark';
 
 export interface ThemeOption {
   id: AppTheme;
   name: string;
   subtitle: string;
-  color: string;
-  accent: string;
+  swatchClass: string;
 }
 
 export const THEME_OPTIONS: ThemeOption[] = [
   {
-    id: 'parchment',
-    name: 'Нарлаг шаазан',
-    subtitle: 'Дулаан гэр бүлийн өнгө',
-    color: '#FBF9F4',
-    accent: '#D97706',
+    id: 'light',
+    name: 'Цайвар',
+    subtitle: 'Илгэн цагаан ба ойн ногоон',
+    swatchClass: 'theme-swatch--light',
   },
   {
-    id: 'mauve',
-    name: 'Бараавтар ягаан',
-    subtitle: 'Бараавтар талдаа / Mauve',
-    color: '#8E6F8E',
-    accent: '#B088B0',
-  },
-  {
-    id: 'deep-purple',
-    name: 'Гүн ягаан',
-    subtitle: 'Гүн ягаан / Deep Purple',
-    color: '#533457',
-    accent: '#C084FC',
-  },
-  {
-    id: 'emerald',
-    name: 'Номин ногоон',
-    subtitle: 'Уламжлалт ой мод',
-    color: '#0A3229',
-    accent: '#D4AF37',
-  },
-  {
-    id: 'obsidian',
-    name: 'Шөнийн хар',
-    subtitle: 'Өндөр тодролтой бараан',
-    color: '#0F172A',
-    accent: '#F59E0B',
+    id: 'dark',
+    name: 'Бараан',
+    subtitle: 'Шөнийн ой ба эртний алт',
+    swatchClass: 'theme-swatch--dark',
   },
 ];
 
+export function normalizeStoredTheme(raw: string | null): AppTheme {
+  if (raw === 'dark' || raw === 'obsidian' || raw === 'deep-purple' || raw === 'emerald') {
+    return 'dark';
+  }
+  return 'light';
+}
+
 export function ThemePicker() {
-  const [currentTheme, setCurrentTheme] = useState<AppTheme>('parchment');
+  const [currentTheme, setCurrentTheme] = useState<AppTheme>('light');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('guulin-theme') as AppTheme | null;
-      if (saved && THEME_OPTIONS.some((opt) => opt.id === saved)) {
-        setCurrentTheme(saved);
-        document.documentElement.setAttribute('data-theme', saved);
-      } else {
-        document.documentElement.setAttribute('data-theme', 'parchment');
+      const raw = localStorage.getItem('guulin-theme');
+      const resolved = normalizeStoredTheme(raw);
+      setCurrentTheme(resolved);
+      document.documentElement.setAttribute('data-theme', resolved);
+      if (raw && raw !== resolved) {
+        localStorage.setItem('guulin-theme', resolved);
       }
     } catch {
-      // Ignore localStorage errors
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   }, []);
 
@@ -114,10 +97,13 @@ export function ThemePicker() {
         title="Дэвсгэр өнгөний сэдэв солих"
         aria-label="Өнгөний сэдэв сонгох"
       >
-        <Palette size={16} aria-hidden="true" />
+        {currentTheme === 'dark' ? (
+          <Moon size={15} aria-hidden="true" />
+        ) : (
+          <Sun size={15} aria-hidden="true" />
+        )}
         <span
-          className="app-shell__theme-swatch"
-          style={{ background: activeOption.color, borderColor: activeOption.accent }}
+          className={`app-shell__theme-swatch ${activeOption.swatchClass}`}
           aria-hidden="true"
         />
         <span className="app-shell__theme-label">{activeOption.name}</span>
@@ -127,7 +113,7 @@ export function ThemePicker() {
         <div className="app-shell__theme-menu" role="dialog" aria-label="Өнгөний сонголт">
           <div className="app-shell__theme-menu-head">
             <strong>Дэвсгэр өнгөний сэдэв</strong>
-            <small>Таны хүссэнээр өнгө өөрчлөгдөнө</small>
+            <small>Цайвар эсвэл бараан горим сонгоно уу</small>
           </div>
 
           <div className="app-shell__theme-grid">
@@ -140,11 +126,8 @@ export function ThemePicker() {
                   className={`app-shell__theme-option ${isSelected ? 'is-selected' : ''}`}
                   onClick={() => changeTheme(opt.id)}
                 >
-                  <span
-                    className="app-shell__theme-preview"
-                    style={{ background: opt.color, border: `2px solid ${opt.accent}` }}
-                  >
-                    {isSelected && <Check size={14} color={opt.id === 'parchment' || opt.id === 'mauve' ? '#1e293b' : '#ffffff'} />}
+                  <span className={`app-shell__theme-preview ${opt.swatchClass}`}>
+                    {isSelected && <Check size={14} />}
                   </span>
                   <div className="app-shell__theme-info">
                     <strong>{opt.name}</strong>

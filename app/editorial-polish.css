@@ -139,9 +139,8 @@
 }
 
 /* 4. Theme Harmony for Dark / Deep-Purple / Obsidian / Mauve / Emerald */
-[data-theme="obsidian"] .tree-page-header,
-[data-theme="deep-purple"] .tree-page-header,
-[data-theme="emerald"] .tree-page-header {
+[data-theme="dark"] .tree-page-header,
+[data-theme="dark"] .tree-page-header {
   background: linear-gradient(
     145deg,
     var(--surface-elevated, #1c2420),
@@ -151,35 +150,33 @@
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
 }
 
-[data-theme="obsidian"] .tree-workspace,
-[data-theme="deep-purple"] .tree-workspace,
-[data-theme="emerald"] .tree-workspace {
+[data-theme="dark"] .tree-workspace,
+[data-theme="dark"] .tree-workspace {
   background: var(--surface-card, #141a17);
   border-color: var(--border-subtle, rgba(255, 255, 255, 0.1));
 }
 
-[data-theme="obsidian"] .tree-drawer,
-[data-theme="emerald"] .tree-drawer {
+[data-theme="dark"] .tree-drawer,
+[data-theme="dark"] .tree-drawer {
   background: var(--surface-elevated, #1a221e);
   border-color: var(--border-subtle, rgba(255, 255, 255, 0.12));
   color: var(--text-primary, #f3f0e6);
 }
 
-[data-theme="obsidian"] .tree-drawer-hero-info h2,
-[data-theme="emerald"] .tree-drawer-hero-info h2,
-[data-theme="obsidian"] .tree-bio-header h4,
-[data-theme="emerald"] .tree-bio-header h4 {
+[data-theme="dark"] .tree-drawer-hero-info h2,
+[data-theme="dark"] .tree-bio-header h4,
+[data-theme="dark"] .tree-bio-header h4 {
   color: var(--text-primary, #f8f4e8);
 }
 
-[data-theme="obsidian"] .tree-bio-box,
-[data-theme="obsidian"] .tree-relatives-box,
-[data-theme="obsidian"] .tree-timeline-item,
-[data-theme="obsidian"] .tree-story-card,
-[data-theme="emerald"] .tree-bio-box,
-[data-theme="emerald"] .tree-relatives-box,
-[data-theme="emerald"] .tree-timeline-item,
-[data-theme="emerald"] .tree-story-card {
+[data-theme="dark"] .tree-bio-box,
+[data-theme="dark"] .tree-relatives-box,
+[data-theme="dark"] .tree-timeline-item,
+[data-theme="dark"] .tree-story-card,
+[data-theme="dark"] .tree-bio-box,
+[data-theme="dark"] .tree-relatives-box,
+[data-theme="dark"] .tree-timeline-item,
+[data-theme="dark"] .tree-story-card {
   background: var(--surface-card, #141b17);
   border-color: var(--border-subtle, rgba(255, 255, 255, 0.1));
   color: var(--text-primary, #ece7da);
@@ -352,46 +349,44 @@
 /* ============================================================================
    7. Complete 5-Theme Contrast & Surface Harmony Across All Secondary Pages
    ============================================================================ */
-[data-theme="obsidian"] .heritage-dashboard,
-[data-theme="deep-purple"] .heritage-dashboard,
-[data-theme="emerald"] .heritage-dashboard {
+[data-theme="dark"] .heritage-dashboard,
+[data-theme="dark"] .heritage-dashboard {
   color: var(--text-primary, #f3f0e6);
 }
 
-[data-theme="obsidian"] .heritage-panel,
-[data-theme="obsidian"] .heritage-album-section,
-[data-theme="obsidian"] .heritage-card,
-[data-theme="obsidian"] .profile-card,
-[data-theme="obsidian"] .card,
-[data-theme="deep-purple"] .heritage-panel,
-[data-theme="deep-purple"] .heritage-album-section,
-[data-theme="deep-purple"] .heritage-card,
-[data-theme="deep-purple"] .profile-card,
-[data-theme="deep-purple"] .card,
-[data-theme="emerald"] .heritage-panel,
-[data-theme="emerald"] .heritage-album-section,
-[data-theme="emerald"] .heritage-card,
-[data-theme="emerald"] .profile-card,
-[data-theme="emerald"] .card {
+[data-theme="dark"] .heritage-panel,
+[data-theme="dark"] .heritage-album-section,
+[data-theme="dark"] .heritage-card,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .card,
+[data-theme="dark"] .heritage-panel,
+[data-theme="dark"] .heritage-album-section,
+[data-theme="dark"] .heritage-card,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .card,
+[data-theme="dark"] .heritage-panel,
+[data-theme="dark"] .heritage-album-section,
+[data-theme="dark"] .heritage-card,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .card {
   background: var(--surface-card, #141c18);
   border-color: var(--border-subtle, rgba(255, 255, 255, 0.12));
   color: var(--text-primary, #f3f0e6);
 }
 
-[data-theme="obsidian"] .heritage-panel h2,
-[data-theme="obsidian"] .heritage-panel h3,
-[data-theme="obsidian"] .profile-card h1,
-[data-theme="obsidian"] .profile-card h2,
-[data-theme="deep-purple"] .heritage-panel h2,
-[data-theme="deep-purple"] .heritage-panel h3,
-[data-theme="emerald"] .heritage-panel h2,
-[data-theme="emerald"] .heritage-panel h3 {
+[data-theme="dark"] .heritage-panel h2,
+[data-theme="dark"] .heritage-panel h3,
+[data-theme="dark"] .profile-card h1,
+[data-theme="dark"] .profile-card h2,
+[data-theme="dark"] .heritage-panel h2,
+[data-theme="dark"] .heritage-panel h3,
+[data-theme="dark"] .heritage-panel h2,
+[data-theme="dark"] .heritage-panel h3 {
   color: var(--text-primary, #fbf7ec);
 }
 
-[data-theme="obsidian"] .tree-time-travel-bar,
-[data-theme="deep-purple"] .tree-time-travel-bar,
-[data-theme="emerald"] .tree-time-travel-bar {
+[data-theme="dark"] .tree-time-travel-bar,
+[data-theme="dark"] .tree-time-travel-bar {
   background: var(--surface-elevated, #1a231e);
   border-color: rgba(212, 175, 55, 0.35);
   color: var(--text-primary, #f3f0e6);

@@ -923,438 +923,118 @@
 .profile-locked-notice{display:inline-flex;align-items:center;padding:7px 12px;border-radius:8px;background:#f8fafc;color:#64748b;font-size:11.5px;font-weight:600;border:1px dashed #cbd5e1}
 
 /* Theme Overrides via data-theme attribute */
-[data-theme="mauve"] .app-shell,
-[data-theme="mauve"] .people-page,
-[data-theme="mauve"] .profile-page {
-  background: #f7f2f8 !important;
-}
-[data-theme="mauve"] .app-shell__header {
-  background: rgba(246, 238, 247, 0.98) !important;
-  border-bottom-color: #d8c2d6 !important;
-}
-[data-theme="mauve"] .app-shell__sidebar {
-  background: #f0e4f1 !important;
-  border-right-color: #d8c2d6 !important;
-}
-[data-theme="mauve"] .tree-page {
-  background: #f7f2f8 !important;
-}
-[data-theme="mauve"] .tree-map-scenery {
-  background: radial-gradient(circle at 50% 15%, rgba(214, 212, 226, 0.7) 0%, rgba(247, 242, 248, 0.98) 75%), linear-gradient(180deg, #fcf9fd 0%, #ebe0ed 100%) !important;
-}
-[data-theme="mauve"] .tree-map-scroll {
-  background: #f7f2f8 !important;
-  border-color: #d8c2d6 !important;
-}
-[data-theme="mauve"] .tree-workspace {
-  background: #faf4fb !important;
-  border-color: #d8c2d6 !important;
-}
-
-[data-theme="deep-purple"] .app-shell,
-[data-theme="deep-purple"] .people-page,
-[data-theme="deep-purple"] .profile-page,
-[data-theme="deep-purple"] .tree-page {
-  background: #1c0f24 !important;
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .app-shell__header {
-  background: rgba(36, 18, 48, 0.98) !important;
-  border-bottom-color: #4a295c !important;
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .app-shell__sidebar {
-  background: #251332 !important;
-  border-right-color: #4a295c !important;
-}
-[data-theme="deep-purple"] .app-shell__nav-link strong {
-  color: #e9d5f2 !important;
-}
-[data-theme="deep-purple"] .app-shell__brand strong {
-  color: #f3d8fc !important;
-}
-[data-theme="deep-purple"] .people-stat-card,
-[data-theme="deep-purple"] .people-ownership-tab {
-  background: #281636 !important;
-  border-color: #532d66 !important;
-  color: #e9d5f2 !important;
-}
-[data-theme="deep-purple"] .people-stat-info strong {
-  color: #f8eefb !important;
-}
-[data-theme="emerald"] .people-stat-card,
-[data-theme="emerald"] .people-ownership-tab {
-  background: #11382d !important;
-  border-color: #276251 !important;
-  color: #e1efe9 !important;
-}
-[data-theme="emerald"] .people-stat-info strong {
-  color: #f1f8f5 !important;
-}
-[data-theme="obsidian"] .people-stat-card,
-[data-theme="obsidian"] .people-ownership-tab {
+[data-theme="dark"] .people-stat-card,
+[data-theme="dark"] .people-ownership-tab {
   background: #1e293b !important;
   border-color: #334155 !important;
   color: #f1f5f9 !important;
 }
-[data-theme="obsidian"] .people-stat-info strong {
+[data-theme="dark"] .people-stat-info strong {
   color: #ffffff !important;
 }
 
-[data-theme="deep-purple"] .card,
-[data-theme="deep-purple"] .tree-workspace,
-[data-theme="deep-purple"] .people-toolbar,
-[data-theme="deep-purple"] .people-card,
-[data-theme="deep-purple"] .people-table-wrap,
-[data-theme="deep-purple"] .profile-card,
-[data-theme="deep-purple"] .profile-hero {
-  background: #281636 !important;
-  border-color: #532d66 !important;
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .people-card-identity h2,
-[data-theme="deep-purple"] .people-heading h1,
-[data-theme="deep-purple"] .profile-identity h1,
-[data-theme="deep-purple"] .profile-card-heading h2,
-[data-theme="deep-purple"] .people-table th,
-[data-theme="deep-purple"] .people-table td {
-  color: #f8eefb !important;
-}
-[data-theme="deep-purple"] .tree-map-scenery {
-  background: radial-gradient(circle at 50% 20%, #4a215c 0%, #1c0f24 75%), linear-gradient(180deg, #2b1338 0%, #150a1c 100%) !important;
-}
-[data-theme="deep-purple"] .tree-map-scroll {
-  background: #1c0f24 !important;
-  border-color: #532d66 !important;
-}
-[data-theme="deep-purple"] .tree-person-card {
-  background: #2d183d !important;
-  border-color: #5e3274 !important;
-  color: #f8eefb !important;
-}
-[data-theme="deep-purple"] .tree-person-name {
-  color: #ffffff !important;
-}
-[data-theme="deep-purple"] .tree-drawer {
-  background: #251333 !important;
-  border-color: #532d66 !important;
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .tree-drawer-hero-info h2,
-[data-theme="deep-purple"] .tree-relatives-box,
-[data-theme="deep-purple"] .tree-bio-box {
-  background: #321942 !important;
-  color: #f8eefb !important;
-  border-color: #5e3274 !important;
-}
-
-[data-theme="emerald"] .app-shell,
-[data-theme="emerald"] .people-page,
-[data-theme="emerald"] .profile-page,
-[data-theme="emerald"] .tree-page {
-  background: #06261f !important;
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .app-shell__header {
-  background: rgba(7, 43, 35, 0.98) !important;
-  border-bottom-color: #1e5a4b !important;
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .app-shell__sidebar {
-  background: #09332a !important;
-  border-right-color: #1e5a4b !important;
-}
-[data-theme="emerald"] .app-shell__nav-link strong {
-  color: #d1fae5 !important;
-}
-[data-theme="emerald"] .app-shell__brand strong {
-  color: #fef08a !important;
-}
-[data-theme="emerald"] .card,
-[data-theme="emerald"] .tree-workspace,
-[data-theme="emerald"] .people-toolbar,
-[data-theme="emerald"] .people-card,
-[data-theme="emerald"] .people-table-wrap,
-[data-theme="emerald"] .profile-card,
-[data-theme="emerald"] .profile-hero {
-  background: #0b3d31 !important;
-  border-color: #1c6351 !important;
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .people-card-identity h2,
-[data-theme="emerald"] .people-heading h1,
-[data-theme="emerald"] .profile-identity h1,
-[data-theme="emerald"] .profile-card-heading h2,
-[data-theme="emerald"] .people-table th,
-[data-theme="emerald"] .people-table td {
-  color: #f0fdf4 !important;
-}
-[data-theme="emerald"] .tree-map-scenery {
-  background: radial-gradient(circle at 50% 20%, #115041 0%, #06261f 75%), linear-gradient(180deg, #0a382d 0%, #041c17 100%) !important;
-}
-[data-theme="emerald"] .tree-map-scroll {
-  background: #06261f !important;
-  border-color: #1c6351 !important;
-}
-[data-theme="emerald"] .tree-person-card {
-  background: #0c4336 !important;
-  border-color: #21725e !important;
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .tree-person-name {
-  color: #ffffff !important;
-}
-
-[data-theme="obsidian"] .app-shell,
-[data-theme="obsidian"] .people-page,
-[data-theme="obsidian"] .profile-page,
-[data-theme="obsidian"] .tree-page {
+[data-theme="dark"] .app-shell,
+[data-theme="dark"] .people-page,
+[data-theme="dark"] .profile-page,
+[data-theme="dark"] .tree-page {
   background: #0b0f19 !important;
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .app-shell__header {
+[data-theme="dark"] .app-shell__header {
   background: rgba(15, 23, 42, 0.98) !important;
   border-bottom-color: #334155 !important;
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .app-shell__sidebar {
+[data-theme="dark"] .app-shell__sidebar {
   background: #0f172a !important;
   border-right-color: #334155 !important;
 }
-[data-theme="obsidian"] .app-shell__nav-link strong {
+[data-theme="dark"] .app-shell__nav-link strong {
   color: #f1f5f9 !important;
 }
-[data-theme="obsidian"] .app-shell__brand strong {
+[data-theme="dark"] .app-shell__brand strong {
   color: #fde047 !important;
 }
-[data-theme="obsidian"] .card,
-[data-theme="obsidian"] .tree-workspace,
-[data-theme="obsidian"] .people-toolbar,
-[data-theme="obsidian"] .people-card,
-[data-theme="obsidian"] .people-table-wrap,
-[data-theme="obsidian"] .profile-card,
-[data-theme="obsidian"] .profile-hero {
+[data-theme="dark"] .card,
+[data-theme="dark"] .tree-workspace,
+[data-theme="dark"] .people-toolbar,
+[data-theme="dark"] .people-card,
+[data-theme="dark"] .people-table-wrap,
+[data-theme="dark"] .profile-card,
+[data-theme="dark"] .profile-hero {
   background: #1e293b !important;
   border-color: #334155 !important;
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .people-card-identity h2,
-[data-theme="obsidian"] .people-heading h1,
-[data-theme="obsidian"] .profile-identity h1,
-[data-theme="obsidian"] .profile-card-heading h2,
-[data-theme="obsidian"] .people-table th,
-[data-theme="obsidian"] .people-table td {
+[data-theme="dark"] .people-card-identity h2,
+[data-theme="dark"] .people-heading h1,
+[data-theme="dark"] .profile-identity h1,
+[data-theme="dark"] .profile-card-heading h2,
+[data-theme="dark"] .people-table th,
+[data-theme="dark"] .people-table td {
   color: #ffffff !important;
 }
-[data-theme="obsidian"] .tree-map-scenery {
+[data-theme="dark"] .tree-map-scenery {
   background: radial-gradient(circle at 50% 20%, #1e293b 0%, #0b0f19 75%), linear-gradient(180deg, #111827 0%, #060911 100%) !important;
 }
-[data-theme="obsidian"] .tree-map-scroll {
+[data-theme="dark"] .tree-map-scroll {
   background: #0b0f19 !important;
   border-color: #334155 !important;
 }
-[data-theme="obsidian"] .tree-person-card {
+[data-theme="dark"] .tree-person-card {
   background: #1e293b !important;
   border-color: #475569 !important;
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .tree-person-name {
+[data-theme="dark"] .tree-person-name {
   color: #ffffff !important;
 }
 
 /* Theme Overrides for Tree Bloodline Highlighting */
-[data-theme="mauve"] .tree-bloodline-select {
-  border-color: #8e5886 !important;
-  background: #f7f2f8 !important;
-}
-[data-theme="mauve"] .tree-bloodline-select span {
-  color: #8e5886 !important;
-}
-[data-theme="mauve"] .tree-bloodline-status {
-  background: #edd8e9 !important;
-  color: #64315c !important;
-  border-color: #d8b8d4 !important;
-}
-[data-theme="mauve"] .tree-person-card.is-in-bloodline {
-  border-color: #8e5886 !important;
-  box-shadow: 0 0 0 2.5px #8e5886, 0 12px 28px -4px rgba(142, 88, 134, 0.35) !important;
-}
-[data-theme="mauve"] .tree-bloodline-tag {
-  background: #8e5886 !important;
-}
-[data-theme="mauve"] .tree-connector.is-bloodline-active,
-[data-theme="mauve"] .tree-marriage-dot.is-bloodline-active {
-  stroke: #a87ba8 !important;
-  filter: drop-shadow(0 0 5px rgba(168, 123, 168, 0.75)) !important;
-}
-
-[data-theme="deep-purple"] .tree-bloodline-select {
-  border-color: #7b438b !important;
-  background: #251333 !important;
-}
-[data-theme="deep-purple"] .tree-bloodline-select span {
-  color: #e9d5ff !important;
-}
-[data-theme="deep-purple"] .tree-bloodline-select select {
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .tree-bloodline-status {
-  background: #3b184d !important;
-  color: #f5d0fe !important;
-  border-color: #7e22ce !important;
-}
-[data-theme="deep-purple"] .tree-person-card.is-in-bloodline {
-  border-color: #c084fc !important;
-  box-shadow: 0 0 0 2.5px #c084fc, 0 12px 28px -4px rgba(192, 132, 252, 0.45) !important;
-}
-[data-theme="deep-purple"] .tree-bloodline-tag {
-  background: #9333ea !important;
-}
-[data-theme="deep-purple"] .tree-connector.is-bloodline-active,
-[data-theme="deep-purple"] .tree-marriage-dot.is-bloodline-active {
-  stroke: #c084fc !important;
-  filter: drop-shadow(0 0 6px rgba(192, 132, 252, 0.85)) !important;
-}
-
-[data-theme="emerald"] .tree-bloodline-select {
-  border-color: #d4af37 !important;
-  background: #11382d !important;
-}
-[data-theme="emerald"] .tree-bloodline-select span {
-  color: #fbbf24 !important;
-}
-[data-theme="emerald"] .tree-bloodline-select select {
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .tree-person-card.is-in-bloodline {
-  border-color: #fbbf24 !important;
-  box-shadow: 0 0 0 2.5px #fbbf24, 0 12px 28px -4px rgba(251, 191, 36, 0.35) !important;
-}
-[data-theme="emerald"] .tree-connector.is-bloodline-active {
-  stroke: #fbbf24 !important;
-  filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.75)) !important;
-}
-
-[data-theme="obsidian"] .tree-bloodline-select {
+[data-theme="dark"] .tree-bloodline-select {
   border-color: #f59e0b !important;
   background: #1e293b !important;
 }
-[data-theme="obsidian"] .tree-bloodline-select span {
+[data-theme="dark"] .tree-bloodline-select span {
   color: #f59e0b !important;
 }
-[data-theme="obsidian"] .tree-bloodline-select select {
+[data-theme="dark"] .tree-bloodline-select select {
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .tree-person-card.is-in-bloodline {
+[data-theme="dark"] .tree-person-card.is-in-bloodline {
   border-color: #f59e0b !important;
   box-shadow: 0 0 0 2.5px #f59e0b, 0 12px 28px -4px rgba(245, 158, 11, 0.45) !important;
 }
-[data-theme="obsidian"] .tree-connector.is-bloodline-active {
+[data-theme="dark"] .tree-connector.is-bloodline-active {
   stroke: #f59e0b !important;
   filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.8)) !important;
 }
 
 /* Memories & Stories Theming Across 5 Palettes */
-[data-theme="mauve"] .memories-page,
-[data-theme="mauve"] .stories-page {
-  background: #f7f2f8 !important;
-  color: #3b2d41 !important;
-}
-[data-theme="mauve"] .memory-card,
-[data-theme="mauve"] .story-card,
-[data-theme="mauve"] .memory-composer,
-[data-theme="mauve"] .story-confirm-dialog,
-[data-theme="mauve"] .memory-dialog {
-  background: #ffffff !important;
-  border-color: #d8c2d6 !important;
-  color: #3b2d41 !important;
-}
-[data-theme="mauve"] .memories-hero h1,
-[data-theme="mauve"] .stories-heading h1,
-[data-theme="mauve"] .story-detail-header h1,
-[data-theme="mauve"] .memory-card h3,
-[data-theme="mauve"] .story-card h2 {
-  color: #351e40 !important;
-}
-
-[data-theme="deep-purple"] .memories-page,
-[data-theme="deep-purple"] .stories-page {
-  background: #1c0f24 !important;
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .memory-card,
-[data-theme="deep-purple"] .story-card,
-[data-theme="deep-purple"] .memory-composer,
-[data-theme="deep-purple"] .story-confirm-dialog,
-[data-theme="deep-purple"] .memory-dialog {
-  background: #281636 !important;
-  border-color: #532d66 !important;
-  color: #f3e8f7 !important;
-}
-[data-theme="deep-purple"] .memories-hero h1,
-[data-theme="deep-purple"] .stories-heading h1,
-[data-theme="deep-purple"] .story-detail-header h1,
-[data-theme="deep-purple"] .memory-card h3,
-[data-theme="deep-purple"] .story-card h2 {
-  color: #fae8ff !important;
-}
-[data-theme="deep-purple"] .memory-card p,
-[data-theme="deep-purple"] .story-card p,
-[data-theme="deep-purple"] .story-reading p {
-  color: #d8b4e2 !important;
-}
-
-[data-theme="emerald"] .memories-page,
-[data-theme="emerald"] .stories-page {
-  background: #06261f !important;
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .memory-card,
-[data-theme="emerald"] .story-card,
-[data-theme="emerald"] .memory-composer,
-[data-theme="emerald"] .story-confirm-dialog,
-[data-theme="emerald"] .memory-dialog {
-  background: #0f3d31 !important;
-  border-color: #216954 !important;
-  color: #ecfdf5 !important;
-}
-[data-theme="emerald"] .memories-hero h1,
-[data-theme="emerald"] .stories-heading h1,
-[data-theme="emerald"] .story-detail-header h1,
-[data-theme="emerald"] .memory-card h3,
-[data-theme="emerald"] .story-card h2 {
-  color: #ffffff !important;
-}
-[data-theme="emerald"] .memory-card p,
-[data-theme="emerald"] .story-card p,
-[data-theme="emerald"] .story-reading p {
-  color: #a7f3d0 !important;
-}
-
-[data-theme="obsidian"] .memories-page,
-[data-theme="obsidian"] .stories-page {
+[data-theme="dark"] .memories-page,
+[data-theme="dark"] .stories-page {
   background: #0b0f19 !important;
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .memory-card,
-[data-theme="obsidian"] .story-card,
-[data-theme="obsidian"] .memory-composer,
-[data-theme="obsidian"] .story-confirm-dialog,
-[data-theme="obsidian"] .memory-dialog {
+[data-theme="dark"] .memory-card,
+[data-theme="dark"] .story-card,
+[data-theme="dark"] .memory-composer,
+[data-theme="dark"] .story-confirm-dialog,
+[data-theme="dark"] .memory-dialog {
   background: #1e293b !important;
   border-color: #334155 !important;
   color: #f8fafc !important;
 }
-[data-theme="obsidian"] .memories-hero h1,
-[data-theme="obsidian"] .stories-heading h1,
-[data-theme="obsidian"] .story-detail-header h1,
-[data-theme="obsidian"] .memory-card h3,
-[data-theme="obsidian"] .story-card h2 {
+[data-theme="dark"] .memories-hero h1,
+[data-theme="dark"] .stories-heading h1,
+[data-theme="dark"] .story-detail-header h1,
+[data-theme="dark"] .memory-card h3,
+[data-theme="dark"] .story-card h2 {
   color: #ffffff !important;
 }
-[data-theme="obsidian"] .memory-card p,
-[data-theme="obsidian"] .story-card p,
-[data-theme="obsidian"] .story-reading p {
+[data-theme="dark"] .memory-card p,
+[data-theme="dark"] .story-card p,
+[data-theme="dark"] .story-reading p {
   color: #cbd5e1 !important;
 }
 
@@ -1688,41 +1368,15 @@
 .dashboard-tree-footer-bar span{font-size:12px;color:#64748b;font-weight:500}
 
 /* Theme overrides for dashboard hero & showcase */
-[data-theme="mauve"] .dashboard-hero-card,
-[data-theme="mauve"] .dashboard-tree-showcase{background:#ffffff !important;border-color:#d8c2d6 !important}
-[data-theme="mauve"] .dashboard-hero-stat,
-[data-theme="mauve"] .dashboard-person-card{background:#fdfafe !important;border-color:#e4cfe2 !important}
-[data-theme="mauve"] .dashboard-tree-footer-bar{background:#fbf5fb !important;border-color:#eadeea !important}
-
-[data-theme="deep-purple"] .dashboard-hero-card,
-[data-theme="deep-purple"] .dashboard-tree-showcase{background:#251333 !important;border-color:#532d66 !important;color:#f3e8f7 !important}
-[data-theme="deep-purple"] .dashboard-hero-title,
-[data-theme="deep-purple"] .dashboard-tree-header h2,
-[data-theme="deep-purple"] .dashboard-person-name{color:#fae8ff !important}
-[data-theme="deep-purple"] .dashboard-hero-stat,
-[data-theme="deep-purple"] .dashboard-person-card{background:#2d183d !important;border-color:#5e3274 !important;color:#f3e8f7 !important}
-[data-theme="deep-purple"] .dashboard-hero-stat strong{color:#ffffff !important}
-[data-theme="deep-purple"] .dashboard-tree-footer-bar{background:#1e0f2b !important;border-color:#482359 !important}
-
-[data-theme="emerald"] .dashboard-hero-card,
-[data-theme="emerald"] .dashboard-tree-showcase{background:#11382d !important;border-color:#276251 !important;color:#ecfdf5 !important}
-[data-theme="emerald"] .dashboard-hero-title,
-[data-theme="emerald"] .dashboard-tree-header h2,
-[data-theme="emerald"] .dashboard-person-name{color:#ffffff !important}
-[data-theme="emerald"] .dashboard-hero-stat,
-[data-theme="emerald"] .dashboard-person-card{background:#0c4336 !important;border-color:#21725e !important;color:#ecfdf5 !important}
-[data-theme="emerald"] .dashboard-hero-stat strong{color:#ffffff !important}
-[data-theme="emerald"] .dashboard-tree-footer-bar{background:#082820 !important;border-color:#1c5344 !important}
-
-[data-theme="obsidian"] .dashboard-hero-card,
-[data-theme="obsidian"] .dashboard-tree-showcase{background:#1e293b !important;border-color:#334155 !important;color:#f8fafc !important}
-[data-theme="obsidian"] .dashboard-hero-title,
-[data-theme="obsidian"] .dashboard-tree-header h2,
-[data-theme="obsidian"] .dashboard-person-name{color:#ffffff !important}
-[data-theme="obsidian"] .dashboard-hero-stat,
-[data-theme="obsidian"] .dashboard-person-card{background:#0f172a !important;border-color:#334155 !important;color:#f8fafc !important}
-[data-theme="obsidian"] .dashboard-hero-stat strong{color:#ffffff !important}
-[data-theme="obsidian"] .dashboard-tree-footer-bar{background:#0b0f19 !important;border-color:#1e293b !important}
+[data-theme="dark"] .dashboard-hero-card,
+[data-theme="dark"] .dashboard-tree-showcase{background:#1e293b !important;border-color:#334155 !important;color:#f8fafc !important}
+[data-theme="dark"] .dashboard-hero-title,
+[data-theme="dark"] .dashboard-tree-header h2,
+[data-theme="dark"] .dashboard-person-name{color:#ffffff !important}
+[data-theme="dark"] .dashboard-hero-stat,
+[data-theme="dark"] .dashboard-person-card{background:#0f172a !important;border-color:#334155 !important;color:#f8fafc !important}
+[data-theme="dark"] .dashboard-hero-stat strong{color:#ffffff !important}
+[data-theme="dark"] .dashboard-tree-footer-bar{background:#0b0f19 !important;border-color:#1e293b !important}
 .homev2-hero-meta a,.homev2-text-link{display:inline-flex;align-items:center;gap:6px;color:#355f4d;text-decoration:none;font-size:11px;font-weight:700}
 .homev2-dashboard-search{width:min(420px,100%);margin-bottom:14px}
 .homev2-search{position:relative;display:flex;align-items:center;gap:9px;min-height:42px;padding:0 12px;border:1px solid #d2c7b5;border-radius:12px;background:#fffdf8;color:#7d6c48}
