@@ -475,6 +475,8 @@ def test_trash_minor_visibility_follows_guardian_scope(client, database):
 def test_admin_access_degrades_gracefully_if_grant_table_unavailable(client, database):
     from sqlalchemy import text
 
+    from app.models import FamilyAdminWorkGrant
+
     register_verified(client, "degrade-owner@example.com")
     family = client.post("/api/v1/families", json={"name": "Degrade Family"}).json()["id"]
     client.post("/api/v1/auth/logout")
@@ -486,6 +488,11 @@ def test_admin_access_degrades_gracefully_if_grant_table_unavailable(client, dat
         db.execute(text("DROP TABLE family_admin_work_grants"))
         db.commit()
 
-    response = client.get(f"/api/v1/families/{family}/admin-access")
-    assert response.status_code == 200
-    assert response.json() == {"owner": False, "scopes": []}
+    try:
+        response = client.get(f"/api/v1/families/{family}/admin-access")
+        assert response.status_code == 200
+        assert response.json() == {"owner": False, "scopes": []}
+    finally:
+        with database() as db:
+            FamilyAdminWorkGrant.__table__.create(bind=db.get_bind(), checkfirst=True)
+            db.commit()
