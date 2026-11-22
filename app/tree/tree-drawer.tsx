@@ -23,6 +23,7 @@ interface TreeDrawerProps {
   person: TreePerson | null;
   allPersons: TreePerson[];
   marriages: Marriage[];
+  canEdit?: boolean;
   onSelectRelative: (relativeId: string) => void;
   onCenterPerson: (personId: string) => void;
   onOpenKinship: (personId: string) => void;
@@ -82,6 +83,7 @@ export function TreeDrawer({
   person,
   allPersons,
   marriages,
+  canEdit = false,
   onSelectRelative,
   onCenterPerson,
   onOpenKinship,
@@ -397,38 +399,42 @@ export function TreeDrawer({
         >
           🎯 Төвлөрөх
         </button>
-        <button
-          type="button"
-          className="tree-action-pill"
-          onClick={() => onAddRelation('parent')}
-          title="Энэ хүнд эцэг эсвэл эх нэмэх / холбох"
-        >
-          + Эцэг/Эх
-        </button>
-        <button
-          type="button"
-          className="tree-action-pill"
-          onClick={() => onAddRelation('child')}
-          title="Энэ хүнд хүүхэд нэмэх / холбох"
-        >
-          + Хүүхэд
-        </button>
-        <button
-          type="button"
-          className="tree-action-pill"
-          onClick={() => onAddRelation('spouse')}
-          title="Энэ хүнд хань нэмэх / холбох"
-        >
-          + Хань
-        </button>
-        <button
-          type="button"
-          className="tree-action-pill"
-          onClick={() => onAddRelation('sibling')}
-          title="Энэ хүнд ах, эгч, дүү нэмэх / холбох"
-        >
-          + Ах/Дүү
-        </button>
+        {canEdit && (
+          <>
+            <button
+              type="button"
+              className="tree-action-pill"
+              onClick={() => onAddRelation('parent')}
+              title="Энэ хүнд эцэг эсвэл эх нэмэх / холбох"
+            >
+              + Эцэг/Эх
+            </button>
+            <button
+              type="button"
+              className="tree-action-pill"
+              onClick={() => onAddRelation('child')}
+              title="Энэ хүнд хүүхэд нэмэх / холбох"
+            >
+              + Хүүхэд
+            </button>
+            <button
+              type="button"
+              className="tree-action-pill"
+              onClick={() => onAddRelation('spouse')}
+              title="Энэ хүнд хань нэмэх / холбох"
+            >
+              + Хань
+            </button>
+            <button
+              type="button"
+              className="tree-action-pill"
+              onClick={() => onAddRelation('sibling')}
+              title="Энэ хүнд ах, эгч, дүү нэмэх / холбох"
+            >
+              + Ах/Дүү
+            </button>
+          </>
+        )}
         <Link
           className="tree-action-pill is-link"
           href={profileHref(person.id)}

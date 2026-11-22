@@ -143,6 +143,11 @@ function TreePageContent() {
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
 
+  // Tidy-Tree Collapse, Branch Filter & Daughters' Descendants Toggle
+  const [collapsedUnitIds, setCollapsedUnitIds] = useState<Set<string>>(() => new Set());
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [showDaughtersDescendants, setShowDaughtersDescendants] = useState(true);
+
   // Vector Print & Export Modal State
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
@@ -184,7 +189,12 @@ function TreePageContent() {
   );
 
   const loadTree = useCallback(
-    async (id: string, preferredPersonId?: string, nextDepth = 3) => {
+    async (
+      id: string,
+      preferredPersonId?: string,
+      nextDepth = 3,
+      options?: { expandAll?: boolean },
+    ) => {
       const sequence = ++loadSequence.current;
       loadAbort.current?.abort();
       const controller = new AbortController();
@@ -206,7 +216,12 @@ function TreePageContent() {
         if (sequence !== loadSequence.current) return;
 
         let treeData: TreeData;
-        const treeBase = '/families/' + encodeURIComponent(id) + '/tree?depth=' + String(nextDepth);
+        const treeBase =
+          '/families/' +
+          encodeURIComponent(id) +
+          '/tree?depth=' +
+          String(nextDepth) +
+          '&node_limit=300';
         try {
           const query = preferredPersonId
             ? treeBase + '&person_id=' + encodeURIComponent(preferredPersonId)
@@ -229,6 +244,12 @@ function TreePageContent() {
 
         setFamily(familyData);
         setTree(treeData);
+        if (options?.expandAll) {
+          setCollapsedUnitIds(new Set());
+        } else {
+          const initialLayout = buildAdvancedTreeLayout(treeData);
+          setCollapsedUnitIds(new Set(initialLayout.defaultCollapsedIds));
+        }
         const preferredIsAvailable =
           Boolean(preferredPersonId) &&
           treeData.persons.some((person) => person.id === preferredPersonId);
@@ -359,9 +380,56 @@ function TreePageContent() {
   }, [familyId, router, search]);
 
   const layout: AdvancedTreeLayout = useMemo(
-    () => buildAdvancedTreeLayout(tree ?? EMPTY_TREE),
+    () =>
+      buildAdvancedTreeLayout(tree ?? EMPTY_TREE, {
+        collapsedUnitIds,
+        branchId: activeBranchId,
+        showDaughtersDescendants,
+      }),
+    [tree, collapsedUnitIds, activeBranchId, showDaughtersDescendants],
+  );
+
+  // Export ALWAYS renders the FULL tree ignoring collapse, branch, and daughters' descendants filters.
+  const fullExportLayout: AdvancedTreeLayout = useMemo(
+    () => buildAdvancedTreeLayout(tree ?? EMPTY_TREE, { ignoreFilters: true }),
     [tree],
   );
+
+  const canEditFamily = family?.role === 'owner' || family?.role === 'editor';
+
+  const handleToggleCollapseBasic = useCallback((unitId: string) => {
+    setCollapsedUnitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(unitId)) next.delete(unitId);
+      else next.add(unitId);
+      return next;
+    });
+  }, []);
+
+  const handleExpandAllNine = useCallback(() => {
+    if (!familyId) return;
+    if (depth < 9) {
+      setDepth(9);
+      void loadTree(familyId, tree?.lineage_root_person_id || undefined, 9, { expandAll: true });
+    } else {
+      setCollapsedUnitIds(new Set());
+    }
+  }, [depth, familyId, loadTree, tree?.lineage_root_person_id]);
+
+  const handleCollapseAll = useCallback(() => {
+    setCollapsedUnitIds(new Set(layout.allCollapsibleIds));
+  }, [layout.allCollapsibleIds]);
+
+  const handleFitClassicToScreen = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || layout.width <= 0 || layout.height <= 0) return;
+    const vw = Math.max(320, scroller.clientWidth - 48);
+    const vh = Math.max(320, scroller.clientHeight - 48);
+    const fitZoom = Math.max(0.22, Math.min(1.1, Math.min(vw / layout.width, vh / layout.height)));
+    setZoom(Number(fitZoom.toFixed(2)));
+    setPan({ x: 0, y: 0 });
+    scroller.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
+  }, [layout.height, layout.width]);
 
   const nodeById = layout.nodeById;
 
@@ -1032,21 +1100,21 @@ function TreePageContent() {
                   onChange={(event) => {
                     const next = Number(event.target.value);
                     setDepth(next);
-                    void loadTree(familyId, selectedId || undefined, next);
+                    void loadTree(familyId, tree?.lineage_root_person_id || selectedId || undefined, next);
                   }}
                 >
-                  <option value={1}>1 үе</option>
-                  <option value={2}>2 үе</option>
                   <option value={3}>3 үе</option>
-                  <option value={4}>4 үе</option>
                   <option value={5}>5 үе</option>
+                  <option value={7}>7 үе</option>
+                  <option value={9}>9 үе</option>
+                  <option value={10}>10 үе</option>
                 </select>
               </label>
 
               <div className="tree-zoom" aria-label="Модны хэмжээ">
                 <button
                   type="button"
-                  onClick={() => setZoom((value) => Math.max(0.4, Number((value - 0.1).toFixed(2))))}
+                  onClick={() => setZoom((value) => Math.max(0.22, Number((value - 0.1).toFixed(2))))}
                   aria-label="Жижигрүүлэх"
                 >
                   −
@@ -1059,7 +1127,14 @@ function TreePageContent() {
                 >
                   +
                 </button>
+                <button type="button" onClick={handleFitClassicToScreen}>Багтаах</button>
                 <button type="button" onClick={resetView}>Тэгшлэх</button>
+                <button type="button" onClick={handleExpandAllNine}>
+                  Бүх 9 үеийг нээх
+                </button>
+                <button type="button" onClick={handleCollapseAll}>
+                  Бүгдийг хураах
+                </button>
                 {selectedId && (
                   <button type="button" onClick={() => centerOnPerson(selectedId)}>Төвлөрөх</button>
                 )}
@@ -1220,12 +1295,61 @@ function TreePageContent() {
               </Link>
             </section>
           ) : (
-            <div className={`tree-map-layout ${viewMode === 'gold' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
+            <>
+              {tree && tree.persons.length > 0 && !layout.hasConfirmedRoot && (
+                <p className="tree-truncated-note" role="status">
+                  Удмын эх хүн тохируулаагүй тул үеийн дугаарлалт &ldquo;?&rdquo; гэж харагдаж байна.{' '}
+                  <Link href={'/admin?family=' + encodeURIComponent(familyId)}>
+                    Админ хэсгээс удмын эх хүнийг тохируулна уу →
+                  </Link>
+                </p>
+              )}
+
+              {(layout.branches.length > 0 || (tree && tree.persons.length > 0)) && (
+                <div className="tree-filter-bar" role="region" aria-label="Салбар болон үр хойчийн шүүлтүүр" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                  {layout.branches.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className={`tree-action-pill${activeBranchId === null ? ' is-link' : ''}`}
+                        aria-pressed={activeBranchId === null}
+                        onClick={() => setActiveBranchId(null)}
+                      >
+                        Бүх салбар ({tree?.persons.length ?? 0})
+                      </button>
+                      {layout.branches.map((branch) => (
+                        <button
+                          key={branch.id}
+                          type="button"
+                          className={`tree-action-pill${activeBranchId === branch.id ? ' is-link' : ''}`}
+                          aria-pressed={activeBranchId === branch.id}
+                          onClick={() =>
+                            setActiveBranchId((prev) => (prev === branch.id ? null : branch.id))
+                          }
+                        >
+                          {branch.label} ({branch.count})
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    className={`tree-action-pill${showDaughtersDescendants ? ' is-link' : ''}`}
+                    aria-pressed={showDaughtersDescendants}
+                    onClick={() => setShowDaughtersDescendants((prev) => !prev)}
+                  >
+                    {showDaughtersDescendants ? 'Охидын үр хойч: Нээлттэй' : 'Охидын үр хойч: Нуусан'}
+                  </button>
+                </div>
+              )}
+
+              <div className={`tree-map-layout ${viewMode === 'gold' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
               {viewMode === 'gold' && tree ? (
                 <GoldenHeritageTree
                   layout={layout}
                   selectedId={selectedId}
                   onSelect={(pid) => selectPerson(pid)}
+                  onToggleCollapse={(unitId) => handleToggleCollapseBasic(unitId)}
                   bloodlineMode={bloodlineMode}
                   activeBloodlineIds={bloodline.activeIds}
                   timeTravelOpen={timeTravelOpen}
@@ -1417,6 +1541,20 @@ function TreePageContent() {
                           </g>
                         );
                       })}
+
+                      {/* Non-tree secondary lineage parent dashed edges */}
+                      {layout.secondaryEdges.map((edge) => {
+                        const midY = Math.round((edge.y1 + edge.y2) / 2);
+                        const d = `M ${edge.x1} ${edge.y1} C ${edge.x1} ${midY}, ${edge.x2} ${midY}, ${edge.x2} ${edge.y2}`;
+                        return (
+                          <path
+                            key={edge.id}
+                            d={d}
+                            strokeDasharray="6 5"
+                            className="tree-connector tree-connector--parent"
+                          />
+                        );
+                      })}
                     </svg>
 
                     {layout.nodes.map((node) => {
@@ -1521,81 +1659,41 @@ function TreePageContent() {
                             </div>
                             <strong className="tree-person-name">{personName(person) || 'Нэргүй хүн'}</strong>
                             <span className="tree-person-dates">{lifeSummary(person)}</span>
-                            <em className="tree-person-gen">{generationLabel(node.generation)}</em>
                           </button>
-
-                          <div className="tree-person-meta">
-                            <span>{parentCount} эцэг/эх</span>
-                            <span>{childCount} хүүхэд</span>
-                            <span>{spouseCount} хань</span>
-                          </div>
-
-                          {(person.lineage_name || person.branch_name) && (
-                            <div className="tree-person-tags">
-                              {person.lineage_name ? <span>{person.lineage_name}</span> : null}
-                              {person.branch_name ? <span>{person.branch_name}</span> : null}
-                            </div>
-                          )}
-
-                          {/* Quick Action buttons */}
-                          <div className="tree-card-quick-actions">
-                            <button
-                              type="button"
-                              className="tree-quick-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                selectPerson(person.id);
-                                setWizardAnchorId(person.id);
-                                setWizardRole('father');
-                                setWizardMode('create');
-                                setWizardOpen(true);
-                              }}
-                              title="Эцэг эсвэл Эх нэмэх / холбох"
-                            >
-                              + Эцэг/Эх
-                            </button>
-                            <button
-                              type="button"
-                              className="tree-quick-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                selectPerson(person.id);
-                                setWizardAnchorId(person.id);
-                                setWizardRole('son');
-                                setWizardMode('create');
-                                setWizardOpen(true);
-                              }}
-                              title="Үр хүүхэд нэмэх / холбох"
-                            >
-                              + Хүүхэд
-                            </button>
-                            <button
-                              type="button"
-                              className="tree-quick-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                selectPerson(person.id);
-                                setWizardAnchorId(person.id);
-                                setWizardRole('spouse');
-                                setWizardMode('create');
-                                setWizardOpen(true);
-                              }}
-                              title="Хань нэмэх / холбох"
-                            >
-                              + Хань
-                            </button>
-                            <Link
-                              className="tree-quick-btn is-profile"
-                              href={profileHref(person.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              aria-label={personName(person) + ' дэлгэрэнгүй профайл'}
-                            >
-                              Профайл →
-                            </Link>
-                          </div>
                         </article>
                       );
                     })}
+
+                    {/* Per-unit Collapse / Expand Pills in Classic 2D */}
+                    {layout.unitControls.map((ctrl) => (
+                      <button
+                        key={`classic-ctrl-${ctrl.unitId}`}
+                        type="button"
+                        className="tree-action-pill"
+                        style={{
+                          position: 'absolute',
+                          left: ctrl.x,
+                          top: ctrl.y,
+                          transform: 'translate(-50%, 0)',
+                          zIndex: 6,
+                          padding: '2px 8px',
+                          fontSize: 11,
+                        }}
+                        aria-expanded={!ctrl.isCollapsed}
+                        aria-label={
+                          ctrl.isCollapsed
+                            ? `Салбар нээх (${ctrl.hiddenDescendantCount} үр хойч)`
+                            : 'Салбар хураах'
+                        }
+                        onClick={() => handleToggleCollapseBasic(ctrl.unitId)}
+                      >
+                        {ctrl.isCollapsed
+                          ? ctrl.hiddenDescendantCount > 0
+                            ? `+${ctrl.hiddenDescendantCount}`
+                            : '+…'
+                          : '−'}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1607,6 +1705,7 @@ function TreePageContent() {
                 person={selectedPerson ?? null}
                 allPersons={tree?.persons ?? []}
                 marriages={selectedMarriages}
+                canEdit={canEditFamily}
                 onSelectRelative={(relId) => {
                   selectPerson(relId);
                   centerOnPerson(relId);
@@ -1634,6 +1733,7 @@ function TreePageContent() {
                 profileHref={profileHref}
               />
             </div>
+            </>
           )}
         </section>
 
@@ -1649,13 +1749,13 @@ function TreePageContent() {
         </footer>
       </section>
 
-      {/* Vector Print & Wall Art Export Modal */}
+      {/* Vector Print & Wall Art Export Modal (always renders FULL tree ignoring filters/collapse) */}
       <TreeExportModal
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         family={family}
         tree={tree}
-        layout={layout}
+        layout={fullExportLayout}
       />
 
       {/* Mongolian Pedigree Certificate PDF Modal */}
