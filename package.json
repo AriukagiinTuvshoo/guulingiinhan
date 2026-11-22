@@ -11,6 +11,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
     "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
+    "test:tree-layout": "node scripts/verify-tree-layout.mjs",
     "test:family-map": "node scripts/verify-family-map.mjs",
     "test:family-map-browser": "node scripts/verify-family-map-browser.mjs",
     "test:integrated-browser": "node scripts/verify-integrated-browser.mjs",
