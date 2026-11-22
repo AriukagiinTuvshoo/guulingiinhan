@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from fastapi.testclient import TestClient
+from conftest import CsrfTestClient
 from sqlalchemy import create_engine, event, func, inspect, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
@@ -133,7 +133,9 @@ def _parallel_posts(token, requests):
     def send(item):
         # No lifespan/bootstrap runs: each client makes actual API requests using
         # the isolated get_db override and its own real synthetic session cookie.
-        with_request = TestClient(app, raise_server_exceptions=False)
+        # Requests go through the CSRF-aware client so they satisfy the same
+        # origin and double-submit contract the browser release gate enforces.
+        with_request = CsrfTestClient(app, raise_server_exceptions=False)
         try:
             with_request.cookies.set(cookie_name, token)
             return with_request.post(item[0], json=item[1])
