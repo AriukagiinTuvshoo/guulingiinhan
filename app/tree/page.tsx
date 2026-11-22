@@ -30,6 +30,10 @@ import ProfilePhoto from '../../components/profile-photo';
 import TreePrint from '../../components/tree-print';
 import FamilyMap, { FamilyMapMode, FamilyMapCamera } from '../../components/family-map';
 import SharedAncestryView from '../ancestry/shared-tree-view';
+import { KinshipCalculatorModal } from '../../components/kinship-calculator-modal';
+import { PedigreeCertificateModal } from '../../components/pedigree-certificate-modal';
+import { TreeExportModal } from '../../components/tree-export-modal';
+import { buildAdvancedTreeLayout } from '../../lib/tree-layout';
 
 const Tree3DScene = dynamic(() => import('../../components/tree-3d-scene'), {
   ssr: false,
@@ -144,6 +148,9 @@ function TreePageContent() {
   const [editingPersonIsAlive, setEditingPersonIsAlive] = useState(true);
   const [editPersonError, setEditPersonError] = useState('');
   const [editPersonBusy, setEditPersonBusy] = useState(false);
+  const [showKinship, setShowKinship] = useState(false);
+  const [showCertificate, setShowCertificate] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   useDialogFocus(Boolean(relation || editingPerson || confirmRoot || linkToApprove), '.tree-modal[role="dialog"]', () => {
     if (linkBusy || editPersonBusy) return;
     setRelation(null); setEditingPerson(null); setConfirmRoot(false); setLinkToApprove(null);
@@ -888,6 +895,9 @@ function TreePageContent() {
             <Link className="tree-button tree-button--secondary" href={`/relationships?family=${encodeURIComponent(familyId)}&person=${encodeURIComponent(selectedId)}`}>Хамаарлыг харах</Link>
             <button type="button" className="tree-button tree-button--secondary" disabled={!selectedId} onClick={() => setBranchRoot(branchRoot ? '' : selectedId)}>{branchRoot ? 'Бүх салааг харах' : 'Сонгосон хүний үр удам'}</button>
             <button type="button" className="tree-button tree-button--secondary" onClick={() => window.print()}>Модыг хэвлэх</button>
+            <button type="button" className="tree-button tree-button--secondary" onClick={() => setShowKinship(true)} disabled={!displayedTree.persons.length}>🧭 Ургийн холбоо</button>
+            <button type="button" className="tree-button tree-button--secondary" onClick={() => setShowCertificate(true)} disabled={!displayedTree.persons.length}>📜 Ургийн бичиг</button>
+            <button type="button" className="tree-button tree-button--secondary" onClick={() => setShowExport(true)} disabled={!displayedTree.persons.length}>📥 Экспорт (SVG/GEDCOM)</button>
             <button type="button" className={'tree-button ' + (viewMode === 'full' ? 'tree-button--primary' : 'tree-button--secondary')} onClick={() => switchView('full')}>Бүх удам</button>
             <button type="button" className={'tree-button ' + (viewMode === 'close' ? 'tree-button--primary' : 'tree-button--secondary')} onClick={() => switchView('close')}>Ойрын хүрээ</button>
             {family?.role === 'owner' && !tree?.lineage_root_person_id && selectedId && <button type="button" className="tree-button tree-button--secondary" onClick={() => setConfirmRoot(true)}>Сонгосон хүнийг удмын эх болгох</button>}
@@ -1391,6 +1401,37 @@ function TreePageContent() {
             </form>
           </section>
         </div>
+      )}
+
+      {showKinship && (
+        <KinshipCalculatorModal
+          isOpen={showKinship}
+          onClose={() => setShowKinship(false)}
+          people={displayedTree.persons}
+          relationships={displayedTree.parent_child_relationships}
+          marriages={displayedTree.marriages}
+          initialPersonAId={selectedId || undefined}
+        />
+      )}
+
+      {showCertificate && (
+        <PedigreeCertificateModal
+          isOpen={showCertificate}
+          onClose={() => setShowCertificate(false)}
+          family={family}
+          people={displayedTree.persons as unknown as Person[]}
+          relationships={displayedTree.parent_child_relationships}
+        />
+      )}
+
+      {showExport && (
+        <TreeExportModal
+          isOpen={showExport}
+          onClose={() => setShowExport(false)}
+          family={family}
+          tree={displayedTree}
+          layout={buildAdvancedTreeLayout(displayedTree)}
+        />
       )}
     </main>
   );

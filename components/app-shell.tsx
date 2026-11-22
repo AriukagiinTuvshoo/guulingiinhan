@@ -12,6 +12,7 @@ import {
   Home,
   LogOut,
   Menu,
+  MessageSquare,
   Settings,
   Search,
   ShieldCheck,
@@ -33,9 +34,11 @@ import { FamilyContext } from './family-context';
 import { useDialogFocus } from './use-dialog-focus';
 import SharedDonationBanner from './shared-donation-banner';
 import { InstallAppButton } from './install-app';
+import { ThemePicker } from './theme-picker';
+import { FamilyChatDrawer } from './family-chat-drawer';
 
 type NavItem = {
-  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'settings' | 'search' | 'relationships';
+  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'chat' | 'settings' | 'search' | 'relationships';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -56,6 +59,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'memories', label: 'Дурсамж', description: 'Хадгалсан дурсамж', icon: Globe2, path: '/memories', needsFamily: true },
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
   { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
+  { key: 'chat', label: 'Зурвас', description: 'Гэр бүлийн яриа', icon: MessageSquare, path: '/chat', needsFamily: true },
   { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
 ];
 
@@ -63,7 +67,7 @@ const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
   { label: 'ТОЙМ', keys: ['dashboard'] },
   { label: 'УДАМ', keys: ['tree', 'ancestry', 'people', 'relationships', 'search'] },
   { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
-  { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities'] },
+  { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities', 'chat'] },
   { label: 'АККАУНТ', keys: ['settings'] },
 ];
 
@@ -87,6 +91,8 @@ function isShellRoute(pathname: string) {
     pathname.startsWith('/archives/') ||
     pathname === '/activities' ||
     pathname.startsWith('/activities/') ||
+    pathname === '/chat' ||
+    pathname.startsWith('/chat/') ||
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
     pathname === '/account/security' ||
@@ -112,6 +118,7 @@ function activeKey(pathname: string): NavItem['key'] | null {
   if (pathname === '/memories' || pathname.startsWith('/memories/')) return 'memories';
   if (pathname === '/archives' || pathname.startsWith('/archives/')) return 'archives';
   if (pathname === '/activities' || pathname.startsWith('/activities/')) return 'activities';
+  if (pathname === '/chat' || pathname.startsWith('/chat/')) return 'chat';
   if (
     pathname === '/settings' ||
     pathname.startsWith('/settings/') ||
@@ -605,6 +612,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="app-shell__account" ref={accountRef}>
+          <ThemePicker />
+          {user && currentFamily && <FamilyChatDrawer familyId={currentFamily.id} currentUserId={user.id} />}
           {user && <NotificationBell userId={user.id} closeSignal={accountOpen || mobileOpen} onOpen={() => { setAccountOpen(false); setMobileOpen(false); }} />}
           <button
             type="button"
@@ -640,8 +649,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 </Link>
               ) : null}
               {currentFamily && (
-                <Link role="menuitem" href={familyHref('/admin', currentFamily.id)} onClick={() => setAccountOpen(false)}>
-                  Удирдлага
+                <Link role="menuitem" className="app-shell__account-admin-link" href={familyHref('/admin', currentFamily.id)} onClick={() => setAccountOpen(false)}>
+                  👑 Админы удирдлагын төв
                 </Link>
               )}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>

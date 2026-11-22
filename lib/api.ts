@@ -132,6 +132,7 @@ export type TreeData = {
   meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
 export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'> & {
+  gender?: string | null;
   lineage_id?: string | null;
   lineage_name?: string | null;
   branch_id?: string | null;
@@ -299,9 +300,43 @@ export type StoryListPage = {
   has_next: boolean;
 };
 
+export type FamilyStats = {
+  total_persons: number;
+  male_count: number;
+  female_count: number;
+  living_count: number;
+  deceased_count: number;
+  marriage_count: number;
+  parent_child_count: number;
+  generation_depth: number;
+  total_stories: number;
+  total_archives: number;
+  total_memories: number;
+  member_count: number;
+};
+
 export type Story = StoryListItem & {
   body: string;
   related_people: StoryPerson[];
+};
+
+export type ChatMessage = {
+  id: string;
+  family_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  recipient_id: string | null;
+  content: string;
+  created_at: string;
+};
+
+export type ChatMember = {
+  user_id: string;
+  display_name: string;
+  role: string;
+  person_id?: string | null;
+  person_name?: string | null;
 };
 
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>

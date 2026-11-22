@@ -31,6 +31,13 @@ from app.families import router as families_router
 from app.family_activities import public_funds_router
 from app.family_activities import router as family_activities_router
 from app.family_admin import router as family_admin_router
+from app.family_chat import (
+    router as family_chat_router,
+)
+from app.family_chat import (
+    start_chat_pg_listener,
+    stop_chat_pg_listener,
+)
 from app.heritage_discovery import router as heritage_discovery_router
 from app.heritage_links import router as heritage_links_router
 from app.invitation_preview import router as invitation_preview_router
@@ -54,8 +61,12 @@ configure_logging(settings.log_level, settings.app_env)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     bootstrap_admin_roles()
-    yield
-    engine.dispose()
+    start_chat_pg_listener()
+    try:
+        yield
+    finally:
+        stop_chat_pg_listener()
+        engine.dispose()
 
 
 app = FastAPI(
@@ -226,6 +237,7 @@ app.include_router(memory_photos_router, prefix="/api/v1")
 app.include_router(memory_interactions_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
+app.include_router(family_chat_router, prefix="/api/v1/families")
 app.include_router(public_funds_router, prefix="/api/v1")
 app.include_router(admin_ancestry_requests_router, prefix="/api/v1")
 app.include_router(family_ancestry_requests_router, prefix="/api/v1")
