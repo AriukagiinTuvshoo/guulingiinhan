@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -22,6 +23,7 @@ from app.families import (
     _require_admin_scope,
     _require_minor_scope,
     _require_work_scope,
+    _safe_list_member_scopes,
 )
 from app.models import (
     Branch,
@@ -65,12 +67,7 @@ def admin_access(family_id: UUID, user: User = Depends(get_current_user), db: Se
     if member.role == "owner":
         scopes = sorted(ADMIN_SCOPES)
     else:
-        scopes = sorted([*db.scalars(select(FamilyAdminGrant.scope).where(
-            FamilyAdminGrant.member_id == member.id)).all(),
-            *db.scalars(select(FamilyAdminExtendedGrant.scope).where(
-                FamilyAdminExtendedGrant.member_id == member.id)).all(),
-            *db.scalars(select(FamilyAdminWorkGrant.scope).where(
-                FamilyAdminWorkGrant.member_id == member.id)).all()])
+        scopes = _safe_list_member_scopes(db, member.id)
     return {"owner": member.role == "owner", "scopes": scopes}
 
 
@@ -80,15 +77,16 @@ def list_grants(family_id: UUID, user: User = Depends(get_current_user), db: Ses
     members = db.execute(select(FamilyMember, User.display_name).join(
         User, User.id == FamilyMember.user_id
     ).where(FamilyMember.family_id == family_id).order_by(User.display_name)).all()
-    grants = list(db.execute(select(FamilyAdminGrant.member_id, FamilyAdminGrant.scope).join(
-        FamilyMember, FamilyMember.id == FamilyAdminGrant.member_id
-    ).where(FamilyMember.family_id == family_id)).all())
-    grants.extend(db.execute(select(FamilyAdminExtendedGrant.member_id, FamilyAdminExtendedGrant.scope).join(
-        FamilyMember, FamilyMember.id == FamilyAdminExtendedGrant.member_id
-    ).where(FamilyMember.family_id == family_id)).all())
-    grants.extend(db.execute(select(FamilyAdminWorkGrant.member_id, FamilyAdminWorkGrant.scope).join(
-        FamilyMember, FamilyMember.id == FamilyAdminWorkGrant.member_id
-    ).where(FamilyMember.family_id == family_id)).all())
+    grants: list[tuple[UUID, str]] = []
+    for model in (FamilyAdminGrant, FamilyAdminExtendedGrant, FamilyAdminWorkGrant):
+        try:
+            with db.begin_nested():
+                rows = db.execute(select(model.member_id, model.scope).join(
+                    FamilyMember, FamilyMember.id == model.member_id
+                ).where(FamilyMember.family_id == family_id)).all()
+            grants.extend((row[0], row[1]) for row in rows)
+        except SQLAlchemyError:
+            continue
     return [{"user_id": m.user_id, "display_name": name, "role": m.role,
              "scopes": [scope for member_id, scope in grants if member_id == m.id]}
             for m, name in members if m.role != "owner"]

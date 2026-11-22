@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from sqlalchemy import and_, delete, func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import _consume_otp_rate, _normalized_ip, get_current_user
@@ -740,15 +740,42 @@ EXTENDED_ADMIN_SCOPES = frozenset({"manage_members"})
 ADMIN_SCOPES = frozenset({"view_audit", "manage_trash", "manage_settings"}) | EXTENDED_ADMIN_SCOPES | WORK_ADMIN_SCOPES
 
 
+def _safe_has_grant_scope(
+    db: Session,
+    grant_model: type[FamilyAdminGrant] | type[FamilyAdminExtendedGrant] | type[FamilyAdminWorkGrant],
+    member_id: UUID,
+    scope: str,
+) -> bool:
+    """Query a grant table inside a savepoint so unmigrated/unprivileged tables degrade safely."""
+    try:
+        with db.begin_nested():
+            return db.scalar(select(grant_model.id).where(
+                grant_model.member_id == member_id, grant_model.scope == scope
+            )) is not None
+    except SQLAlchemyError:
+        return False
+
+
+def _safe_list_member_scopes(db: Session, member_id: UUID) -> list[str]:
+    """List all delegated admin scopes for a member without failing if a grant table is unavailable."""
+    scopes: set[str] = set()
+    for model in (FamilyAdminGrant, FamilyAdminExtendedGrant, FamilyAdminWorkGrant):
+        try:
+            with db.begin_nested():
+                rows = db.scalars(select(model.scope).where(model.member_id == member_id)).all()
+            scopes.update(rows)
+        except SQLAlchemyError:
+            continue
+    return sorted(scopes)
+
+
 def _require_admin_scope(db: Session, family_id: UUID, user: User, scope: str) -> FamilyMember:
     if scope not in ADMIN_SCOPES:
         raise ValueError("Unknown admin scope")
     member, _ = _member(db, family_id, user)
     grant_model = (FamilyAdminWorkGrant if scope in WORK_ADMIN_SCOPES else
                    FamilyAdminExtendedGrant if scope in EXTENDED_ADMIN_SCOPES else FamilyAdminGrant)
-    if member.role != "owner" and db.scalar(select(grant_model.id).where(
-        grant_model.member_id == member.id, grant_model.scope == scope
-    )) is None:
+    if member.role != "owner" and not _safe_has_grant_scope(db, grant_model, member.id, scope):
         raise HTTPException(status_code=403, detail="Энэ үйлдлийг хийх эрхгүй.")
     return member
 
@@ -767,9 +794,7 @@ def _require_work_scope(db: Session, family_id: UUID, user: User, scope: str) ->
 def _can_manage_content(db: Session, member: FamilyMember, user: User, creator_id: UUID) -> bool:
     if member.role in {"owner", "editor"} or creator_id == user.id:
         return True
-    return db.scalar(select(FamilyAdminWorkGrant.id).where(
-        FamilyAdminWorkGrant.member_id == member.id, FamilyAdminWorkGrant.scope == "manage_content"
-    )) is not None
+    return _safe_has_grant_scope(db, FamilyAdminWorkGrant, member.id, "manage_content")
 
 
 def _lineage_in_member_family(db: Session, lineage_id: UUID, user: User) -> Lineage:
@@ -1723,9 +1748,7 @@ def update_person(
             UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
         )
     )
-    people_grant = db.scalar(select(FamilyAdminWorkGrant.id).where(
-        FamilyAdminWorkGrant.member_id == member.id, FamilyAdminWorkGrant.scope == "manage_people"
-    )) is not None
+    people_grant = _safe_has_grant_scope(db, FamilyAdminWorkGrant, member.id, "manage_people")
     baseline_edit = member.role in {"owner", "editor"} or linked_to_user is not None or people_grant
     has_scoped_edit = (
         has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")

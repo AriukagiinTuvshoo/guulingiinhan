@@ -470,3 +470,22 @@ def test_trash_minor_visibility_follows_guardian_scope(client, database):
     assert client.post(f"/api/v1/families/{family}/trash/{trash_id}/restore").status_code == 403
     with database() as db:
         assert db.get(FamilyTrashRecord, trash_id) is not None
+
+
+def test_admin_access_degrades_gracefully_if_grant_table_unavailable(client, database):
+    from sqlalchemy import text
+
+    register_verified(client, "degrade-owner@example.com")
+    family = client.post("/api/v1/families", json={"name": "Degrade Family"}).json()["id"]
+    client.post("/api/v1/auth/logout")
+    register_verified(client, "degrade-member@example.com")
+    member_id = client.get("/api/v1/auth/me").json()["id"]
+    with database() as db:
+        db.add(FamilyMember(family_id=UUID(family), user_id=UUID(member_id), role="member"))
+        db.commit()
+        db.execute(text("DROP TABLE family_admin_work_grants"))
+        db.commit()
+
+    response = client.get(f"/api/v1/families/{family}/admin-access")
+    assert response.status_code == 200
+    assert response.json() == {"owner": False, "scopes": []}

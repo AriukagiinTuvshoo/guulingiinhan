@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -351,7 +352,11 @@ def list_chat_messages(
             )
         )
 
-    rows = db.execute(query.order_by(ChatMessage.created_at.desc()).limit(capped_limit)).all()
+    try:
+        with db.begin_nested():
+            rows = db.execute(query.order_by(ChatMessage.created_at.desc()).limit(capped_limit)).all()
+    except SQLAlchemyError:
+        return []
 
     reversed_rows = list(reversed(rows))
     return [
