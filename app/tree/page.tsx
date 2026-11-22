@@ -6,6 +6,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -143,10 +144,13 @@ function TreePageContent() {
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
 
-  // Tidy-Tree Collapse, Branch Filter & Daughters' Descendants Toggle
+  // Tidy-Tree Collapse, Branch Filter, Daughters' Descendants Toggle & Lazy Subtree State
   const [collapsedUnitIds, setCollapsedUnitIds] = useState<Set<string>>(() => new Set());
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
   const [showDaughtersDescendants, setShowDaughtersDescendants] = useState(true);
+  const [loadingUnitId, setLoadingUnitId] = useState<string | null>(null);
+  const lazyLoadedUnitsRef = useRef<Set<string>>(new Set());
+  const classicAnchorRef = useRef<{ personId: string; prevX: number; prevY: number } | null>(null);
 
   // Vector Print & Export Modal State
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -244,6 +248,8 @@ function TreePageContent() {
 
         setFamily(familyData);
         setTree(treeData);
+        lazyLoadedUnitsRef.current = new Set();
+        setLoadingUnitId(null);
         if (options?.expandAll) {
           setCollapsedUnitIds(new Set());
         } else {
@@ -397,14 +403,98 @@ function TreePageContent() {
 
   const canEditFamily = family?.role === 'owner' || family?.role === 'editor';
 
-  const handleToggleCollapseBasic = useCallback((unitId: string) => {
-    setCollapsedUnitIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(unitId)) next.delete(unitId);
-      else next.add(unitId);
-      return next;
-    });
-  }, []);
+  // Keep clicked node at the same screen position after Classic 2D collapse/expand relayout.
+  useLayoutEffect(() => {
+    const anchor = classicAnchorRef.current;
+    if (!anchor) return;
+    const nextNode = layout.nodeById.get(anchor.personId);
+    classicAnchorRef.current = null;
+    if (!nextNode) return;
+    const dx = (nextNode.x - anchor.prevX) * zoom;
+    const dy = (nextNode.y - anchor.prevY) * zoom;
+    const scroller = scrollRef.current;
+    if (scroller && (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5)) {
+      scroller.scrollLeft = Math.max(0, scroller.scrollLeft + dx);
+      scroller.scrollTop = Math.max(0, scroller.scrollTop + dy);
+    }
+  }, [layout, zoom]);
+
+  const handleToggleCollapse = useCallback(
+    async (unitId: string, focalPersonId: string, isFrontier: boolean) => {
+      const isCurrentlyCollapsed = collapsedUnitIds.has(unitId) || isFrontier;
+      if (!isCurrentlyCollapsed) {
+        setCollapsedUnitIds((prev) => {
+          const next = new Set(prev);
+          next.add(unitId);
+          return next;
+        });
+        return;
+      }
+
+      const nodeGen = layout.nodeById.get(focalPersonId)?.generation ?? 1;
+      const needsLazyFetch =
+        Boolean(familyId) &&
+        (isFrontier || (!lazyLoadedUnitsRef.current.has(unitId) && depth < 9 && nodeGen >= depth));
+
+      if (needsLazyFetch) {
+        setLoadingUnitId(unitId);
+        setError('');
+        try {
+          const incoming = await api<TreeData>(
+            '/families/' +
+              encodeURIComponent(familyId) +
+              '/tree?person_id=' +
+              encodeURIComponent(focalPersonId) +
+              '&depth=3&direction=descendants&node_limit=300',
+          );
+          lazyLoadedUnitsRef.current.add(unitId);
+          setTree((prev) => {
+            if (!prev) return incoming;
+            const personMap = new Map(prev.persons.map((p) => [p.id, p]));
+            for (const p of incoming.persons) {
+              if (!personMap.has(p.id)) personMap.set(p.id, p);
+            }
+            const edgeMap = new Map(prev.parent_child_relationships.map((e) => [e.id, e]));
+            for (const e of incoming.parent_child_relationships) {
+              if (!edgeMap.has(e.id)) edgeMap.set(e.id, e);
+            }
+            const marriageMap = new Map(prev.marriages.map((m) => [m.id, m]));
+            for (const m of incoming.marriages) {
+              if (!marriageMap.has(m.id)) marriageMap.set(m.id, m);
+            }
+            return {
+              ...prev,
+              persons: [...personMap.values()],
+              parent_child_relationships: [...edgeMap.values()],
+              marriages: [...marriageMap.values()],
+              meta: prev.meta
+                ? {
+                    ...prev.meta,
+                    node_count: personMap.size,
+                    truncated: Boolean(prev.meta.truncated || incoming.meta?.truncated),
+                  }
+                : incoming.meta,
+            };
+          });
+        } catch (cause) {
+          setError(
+            treeFriendlyError(cause, 'Салбарын үр хойчийг ачаалж чадсангүй. Дахин оролдоно уу.'),
+          );
+          setLoadingUnitId(null);
+          return;
+        } finally {
+          setLoadingUnitId(null);
+        }
+      }
+
+      setCollapsedUnitIds((prev) => {
+        const next = new Set(prev);
+        next.delete(unitId);
+        return next;
+      });
+    },
+    [collapsedUnitIds, depth, familyId, layout.nodeById],
+  );
 
   const handleExpandAllNine = useCallback(() => {
     if (!familyId) return;
@@ -1349,7 +1439,10 @@ function TreePageContent() {
                   layout={layout}
                   selectedId={selectedId}
                   onSelect={(pid) => selectPerson(pid)}
-                  onToggleCollapse={(unitId) => handleToggleCollapseBasic(unitId)}
+                  onToggleCollapse={(unitId, focalPersonId, isFrontier) =>
+                    void handleToggleCollapse(unitId, focalPersonId, isFrontier)
+                  }
+                  loadingUnitId={loadingUnitId}
                   bloodlineMode={bloodlineMode}
                   activeBloodlineIds={bloodline.activeIds}
                   timeTravelOpen={timeTravelOpen}
@@ -1665,35 +1758,51 @@ function TreePageContent() {
                     })}
 
                     {/* Per-unit Collapse / Expand Pills in Classic 2D */}
-                    {layout.unitControls.map((ctrl) => (
-                      <button
-                        key={`classic-ctrl-${ctrl.unitId}`}
-                        type="button"
-                        className="tree-action-pill"
-                        style={{
-                          position: 'absolute',
-                          left: ctrl.x,
-                          top: ctrl.y,
-                          transform: 'translate(-50%, 0)',
-                          zIndex: 6,
-                          padding: '2px 8px',
-                          fontSize: 11,
-                        }}
-                        aria-expanded={!ctrl.isCollapsed}
-                        aria-label={
-                          ctrl.isCollapsed
-                            ? `Салбар нээх (${ctrl.hiddenDescendantCount} үр хойч)`
-                            : 'Салбар хураах'
-                        }
-                        onClick={() => handleToggleCollapseBasic(ctrl.unitId)}
-                      >
-                        {ctrl.isCollapsed
-                          ? ctrl.hiddenDescendantCount > 0
-                            ? `+${ctrl.hiddenDescendantCount}`
-                            : '+…'
-                          : '−'}
-                      </button>
-                    ))}
+                    {layout.unitControls.map((ctrl) => {
+                      const isUnitLoading = loadingUnitId === ctrl.unitId;
+                      return (
+                        <button
+                          key={`classic-ctrl-${ctrl.unitId}`}
+                          type="button"
+                          className="tree-action-pill"
+                          disabled={isUnitLoading}
+                          style={{
+                            position: 'absolute',
+                            left: ctrl.x,
+                            top: ctrl.y,
+                            transform: 'translate(-50%, 0)',
+                            zIndex: 6,
+                            padding: '2px 8px',
+                            fontSize: 11,
+                          }}
+                          aria-expanded={!ctrl.isCollapsed}
+                          aria-label={
+                            ctrl.isCollapsed
+                              ? `Салбар нээх (${ctrl.hiddenDescendantCount} үр хойч)`
+                              : 'Салбар хураах'
+                          }
+                          onClick={() => {
+                            const focalNode = layout.nodeById.get(ctrl.focalPersonId);
+                            if (focalNode) {
+                              classicAnchorRef.current = {
+                                personId: ctrl.focalPersonId,
+                                prevX: focalNode.x,
+                                prevY: focalNode.y,
+                              };
+                            }
+                            void handleToggleCollapse(ctrl.unitId, ctrl.focalPersonId, ctrl.isFrontier);
+                          }}
+                        >
+                          {isUnitLoading
+                            ? '…'
+                            : ctrl.isCollapsed
+                              ? ctrl.hiddenDescendantCount > 0
+                                ? `+${ctrl.hiddenDescendantCount}`
+                                : '+…'
+                              : '−'}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
