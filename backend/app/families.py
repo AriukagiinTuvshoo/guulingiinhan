@@ -3825,8 +3825,9 @@ def set_family_root(
 def family_tree(
     family_id: UUID,
     person_id: UUID | None = Query(default=None, description="Контекстийн гол хүн."),
-    depth: int = Query(default=2, ge=0, le=5, description="Холбооны гүн, хамгийн ихдээ 5."),
+    depth: int = Query(default=2, ge=0, le=10, description="Холбооны гүн, хамгийн ихдээ 10."),
     scope: str = Query(default="context", pattern="^(context|all|family)$"),
+    direction: str = Query(default="both", pattern="^(both|descendants)$"),
     node_limit: int = Query(default=300, ge=1, le=1000),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -4042,15 +4043,18 @@ def family_tree(
     for _level in range(depth):
         if not frontier:
             break
+        parent_filter = (
+            ParentChildRelationship.parent_id.in_(frontier)
+            if direction == "descendants"
+            else or_(
+                ParentChildRelationship.parent_id.in_(frontier),
+                ParentChildRelationship.child_id.in_(frontier),
+            )
+        )
         parent_rows = list(
             db.scalars(
                 select(ParentChildRelationship)
-                .where(
-                    or_(
-                        ParentChildRelationship.parent_id.in_(frontier),
-                        ParentChildRelationship.child_id.in_(frontier),
-                    )
-                )
+                .where(parent_filter)
                 .order_by(ParentChildRelationship.id)
                 .limit(edge_limit + 1)
             ).all()
@@ -4141,17 +4145,38 @@ def family_tree(
                 truncated = True
                 break
         if len(parent_edges) + len(marriages) < edge_limit:
+            spouse_target = set() if direction == "descendants" else next_frontier
             for marriage in marriage_rows:
                 if not (marriage.person_1_id in frontier or marriage.person_2_id in frontier):
                     continue
-                if admit(marriage.person_1_id, visible_candidates, next_frontier) and admit(
-                    marriage.person_2_id, visible_candidates, next_frontier
+                if admit(marriage.person_1_id, visible_candidates, spouse_target) and admit(
+                    marriage.person_2_id, visible_candidates, spouse_target
                 ):
                     marriages[marriage.id] = marriage
                 if len(parent_edges) + len(marriages) >= edge_limit:
                     truncated = True
                     break
         frontier = next_frontier
+
+    if direction == "descendants" and scope == "context" and people and len(parent_edges) + len(marriages) < edge_limit:
+        visible_ids = set(people)
+        co_parent_rows = list(
+            db.scalars(
+                select(ParentChildRelationship)
+                .where(
+                    ParentChildRelationship.parent_id.in_(visible_ids),
+                    ParentChildRelationship.child_id.in_(visible_ids),
+                )
+                .order_by(ParentChildRelationship.id)
+                .limit(edge_limit + 1)
+            ).all()
+        )
+        for edge in co_parent_rows:
+            if edge.id not in parent_edges:
+                if len(parent_edges) + len(marriages) >= edge_limit:
+                    truncated = True
+                    break
+                parent_edges[edge.id] = edge
 
     final_scopes = active_guardian_scopes(db, user.id, family_id, list(people))
     assignment_rows = db.execute(
