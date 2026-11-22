@@ -38,6 +38,7 @@ from app.family_chat import (
     start_chat_pg_listener,
     stop_chat_pg_listener,
 )
+from app.family_smart_tree import router as family_smart_tree_router
 from app.heritage_discovery import router as heritage_discovery_router
 from app.heritage_links import router as heritage_links_router
 from app.invitation_preview import router as invitation_preview_router
@@ -238,6 +239,7 @@ app.include_router(memory_interactions_router, prefix="/api/v1")
 app.include_router(profile_photos_router, prefix="/api/v1")
 app.include_router(family_activities_router, prefix="/api/v1")
 app.include_router(family_chat_router, prefix="/api/v1/families")
+app.include_router(family_smart_tree_router, prefix="/api/v1/families")
 app.include_router(public_funds_router, prefix="/api/v1")
 app.include_router(admin_ancestry_requests_router, prefix="/api/v1")
 app.include_router(family_ancestry_requests_router, prefix="/api/v1")

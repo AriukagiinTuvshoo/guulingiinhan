@@ -119,6 +119,8 @@ export type Person = {
   profile_photo_url?: string | null;
   short_description: string | null;
   visibility: string;
+  can_edit?: boolean;
+  can_delete?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -133,6 +135,8 @@ export type TreeData = {
 };
 export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'> & {
   gender?: string | null;
+  can_edit?: boolean;
+  can_delete?: boolean;
   lineage_id?: string | null;
   lineage_name?: string | null;
   branch_id?: string | null;
@@ -337,6 +341,52 @@ export type ChatMember = {
   role: string;
   person_id?: string | null;
   person_name?: string | null;
+};
+
+export type SmartConnectOut = {
+  created_parent_child_edges: number;
+  created_marriages: number;
+  created_shared_parent_id?: string | null;
+  summary: string;
+};
+
+export type LifeEvent = {
+  id: string;
+  person_id: string;
+  event_type:
+    | 'birth'
+    | 'school'
+    | 'work'
+    | 'marriage'
+    | 'divorce'
+    | 'child_birth'
+    | 'award'
+    | 'move'
+    | 'death'
+    | 'other'
+    | string;
+  title: string;
+  event_date: string | null;
+  date_note: string | null;
+  location: string | null;
+  description: string | null;
+  created_by?: string;
+};
+
+export type ExtractedEventDraft = {
+  event_type: string;
+  title: string;
+  event_date: string | null;
+  date_note: string | null;
+  location: string | null;
+  description: string | null;
+};
+
+export type OralHistoryExtractOut = {
+  suggested_biography: string;
+  extracted_events: ExtractedEventDraft[];
+  created_events_count: number;
+  biography_updated: boolean;
 };
 
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>

@@ -11,6 +11,7 @@ import './family-map.css';
 import './mobile-polish.css';
 import './discovery.css';
 import './mobile-shell.css';
+import './editorial-polish.css';
 import AppShell from '../components/app-shell';
 import { InstallAppProvider } from '../components/install-app';
 
