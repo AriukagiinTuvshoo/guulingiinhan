@@ -102,7 +102,7 @@ function isShellRoute(pathname: string) {
 }
 
 function isDashboardRoute(pathname: string) {
-  return pathname === '/' || pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
 }
 
 function activeKey(pathname: string): NavItem['key'] | null {

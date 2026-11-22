@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-import { Eye, EyeOff, ArrowRight, TreeDeciduous } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { ApiError, api } from '../../lib/api';
+import LivingTreeAuthPortal from '../../components/living-tree-auth-portal';
 
 type Mode = 'email' | 'phone';
 
@@ -99,101 +100,79 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="authv2-shell">
-      <section className="authv2-frame" aria-label="ГУУЛИНГИЙНХАН бүртгэл">
-        <div className="authv2-story">
-          <div className="authv2-story-content">
-            <Link href="/" className="authv2-mark-link" aria-label="Нүүр хуудас">
-              <span className="authv2-mark"><TreeDeciduous size={27} /></span>
-              <span><strong>ГУУЛИНГИЙНХАН</strong><small>Миний удам · Манай түүх</small></span>
-            </Link>
-            <div className="authv2-story-copy">
-              <p className="public-home__eyebrow">ГЭР БҮЛИЙН ӨВ</p>
-              <h1>Түүхээ үлдээх орчноо эндээс эхлүүл.</h1>
-              <p>Гэр бүлийнхээ холбоо, түүх, дурсамжийг бага багаар цуглуулж, дараагийн үедээ үлдээнэ.</p>
-            </div>
-            <div className="authv2-branch-art" aria-hidden="true"><TreeDeciduous size={132} strokeWidth={1.05} /></div>
-            <Link href="/" className="authv2-back">← Нүүр хуудас</Link>
-          </div>
+    <LivingTreeAuthPortal
+      mode="register"
+      regionLabel="ГУУЛИНГИЙНХАН бүртгэл"
+      headline="Түүхээ үлдээх орчноо эндээс эхлүүл."
+      subcopy="Алтан мөчир дээр дарж удмын гэрлээ асааж, гэр бүлийнхээ холбоо, дурсамжаа дараагийн үедээ үлдээгээрэй."
+    >
+      <div className="authv2-heading">
+        <p className="public-home__eyebrow">ХУВИЙН ОРОН ЗАЙ</p>
+        <h2>Бүртгэл үүсгэх</h2>
+        <p>Гэр бүлийнхээ хувийн орчноо эхлүүлье.</p>
+      </div>
+
+      <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
+        <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйлээр</button>
+        <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')} disabled={!phoneEnabled}>Утасны дугаараар{!phoneEnabled && <span className="authv2-tab-status">Түр хаалттай</span>}</button>
+      </div>
+
+      {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
+      {error && <div id="register-error" className="authv2-message authv2-message--error" role="alert">{error}</div>}
+
+      {emailEnabled === null ? (
+        <p className="authv2-availability" role="status">Бүртгэлийн боломжийг шалгаж байна…</p>
+      ) : mode === 'email' && !emailEnabled ? (
+        <div className="authv2-unavailable" role="status">
+          <strong>Имэйл бүртгэл түр хаалттай</strong>
+          <p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна. Тохируулсны дараа эндээс бүртгүүлж болно.</p>
         </div>
-
-        <div className="authv2-form-panel">
-          <div className="authv2-mobile-brand">
-            <Link href="/" className="authv2-mark-link">
-              <span className="authv2-mark"><TreeDeciduous size={23} /></span>
-              <span><strong>ГУУЛИНГИЙНХАН</strong><small>Миний удам · Манай түүх</small></span>
-            </Link>
-          </div>
-
-          <div className="authv2-heading">
-            <p className="public-home__eyebrow">ХУВИЙН ОРОН ЗАЙ</p>
-            <h2>Бүртгэл үүсгэх</h2>
-            <p>Гэр бүлийнхээ хувийн орчноо эхлүүлье.</p>
-          </div>
-
-          <div className="authv2-tabs" role="tablist" aria-label="Бүртгүүлэх арга">
-            <button type="button" role="tab" aria-selected={mode === 'email'} className={mode === 'email' ? 'active' : ''} onClick={() => chooseMode('email')}>Имэйлээр</button>
-            <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')} disabled={!phoneEnabled}>Утасны дугаараар{!phoneEnabled && <span className="authv2-tab-status">Түр хаалттай</span>}</button>
-          </div>
-
-          {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
-          {error && <div id="register-error" className="authv2-message authv2-message--error" role="alert">{error}</div>}
-
-          {emailEnabled === null ? (
-            <p className="authv2-availability" role="status">Бүртгэлийн боломжийг шалгаж байна…</p>
-          ) : mode === 'email' && !emailEnabled ? (
-            <div className="authv2-unavailable" role="status">
-              <strong>Имэйл бүртгэл түр хаалттай</strong>
-              <p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна. Тохируулсны дараа эндээс бүртгүүлж болно.</p>
-            </div>
-          ) : registeredEmail && mode === 'email' ? (
-            <div className="authv2-complete">
-              <span className="authv2-complete-mark" aria-hidden="true">✓</span>
-              <h3>Бүртгэлийн хүсэлт хүлээн авлаа.</h3>
-              <p><strong>{registeredEmail}</strong> хаягт шаардлагатай бол баталгаажуулах холбоос илгээгдэнэ.</p>
-              <Link className="authv2-submit authv2-link-button" href={`/email-verification?email=${encodeURIComponent(registeredEmail)}`}>Имэйлээ шалгах <ArrowRight size={16} /></Link>
-            </div>
-          ) : mode === 'email' ? (
-            <form className="authv2-form" onSubmit={submitEmail} aria-describedby={error ? 'register-error' : undefined}>
-              <label htmlFor="register-surname">Овог</label>
-              <input id="register-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required />
-              <label htmlFor="register-given-name">Нэр</label>
-              <input id="register-given-name" name="given_name" autoComplete="given-name" minLength={1} maxLength={59} required />
-              <label htmlFor="register-email">Имэйл</label>
-              <input id="register-email" name="email" type="email" autoComplete="email" maxLength={320} required />
-              <label htmlFor="register-password">Нууц үг</label>
-              <div className="authv2-password">
-                <input id="register-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required aria-describedby="register-password-help" />
-                <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
-              </div>
-              <span id="register-password-help" className="authv2-help">8-аас доошгүй тэмдэгт.</span>
-              <label htmlFor="register-confirm">Нууц үгээ дахин оруулна</label>
-              <div className="authv2-password">
-                <input id="register-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
-                <button type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}</button>
-              </div>
-              <button className="authv2-submit" type="submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
-            </form>
-          ) : (
-            <form className="authv2-form" onSubmit={submitPhone} aria-describedby={error ? 'register-error' : undefined}>
-              <label htmlFor="register-phone-surname">Овог</label>
-              <input id="register-phone-surname" name="surname" autoComplete="family-name" maxLength={59} required />
-              <label htmlFor="register-phone-given-name">Нэр</label>
-              <input id="register-phone-given-name" name="given_name" autoComplete="given-name" maxLength={59} required />
-              <label htmlFor="register-phone">Утасны дугаар</label>
-              <input id="register-phone" name="phone" type="tel" autoComplete="tel" maxLength={20} placeholder="99112233" required />
-              <label htmlFor="register-phone-password">Нууц үг</label>
-              <input id="register-phone-password" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
-              <label htmlFor="register-phone-confirm">Нууц үгээ давтах</label>
-              <input id="register-phone-confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
-              <p className="authv2-help">Нэвтэрсний дараа Тохиргооноос утсаа баталгаажуулна. Нэвтрэхэд SMS шаардахгүй.</p>
-              <button type="submit" className="authv2-submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
-            </form>
-          )}
-
-          <p className="authv2-switch">Аль хэдийн бүртгэлтэй юу? <Link href="/login">Нэвтрэх</Link></p>
+      ) : registeredEmail && mode === 'email' ? (
+        <div className="authv2-complete">
+          <span className="authv2-complete-mark" aria-hidden="true">✓</span>
+          <h3>Бүртгэлийн хүсэлт хүлээн авлаа.</h3>
+          <p><strong>{registeredEmail}</strong> хаягт шаардлагатай бол баталгаажуулах холбоос илгээгдэнэ.</p>
+          <Link className="authv2-submit authv2-link-button" href={`/email-verification?email=${encodeURIComponent(registeredEmail)}`}>Имэйлээ шалгах <ArrowRight size={16} /></Link>
         </div>
-      </section>
-    </main>
+      ) : mode === 'email' ? (
+        <form className="authv2-form" onSubmit={submitEmail} aria-describedby={error ? 'register-error' : undefined}>
+          <label htmlFor="register-surname">Овог</label>
+          <input id="register-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required />
+          <label htmlFor="register-given-name">Нэр</label>
+          <input id="register-given-name" name="given_name" autoComplete="given-name" minLength={1} maxLength={59} required />
+          <label htmlFor="register-email">Имэйл</label>
+          <input id="register-email" name="email" type="email" autoComplete="email" maxLength={320} required />
+          <label htmlFor="register-password">Нууц үг</label>
+          <div className="authv2-password">
+            <input id="register-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required aria-describedby="register-password-help" />
+            <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+          </div>
+          <span id="register-password-help" className="authv2-help">8-аас доошгүй тэмдэгт.</span>
+          <label htmlFor="register-confirm">Нууц үгээ дахин оруулна</label>
+          <div className="authv2-password">
+            <input id="register-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
+            <button type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+          </div>
+          <button className="authv2-submit" type="submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
+        </form>
+      ) : (
+        <form className="authv2-form" onSubmit={submitPhone} aria-describedby={error ? 'register-error' : undefined}>
+          <label htmlFor="register-phone-surname">Овог</label>
+          <input id="register-phone-surname" name="surname" autoComplete="family-name" maxLength={59} required />
+          <label htmlFor="register-phone-given-name">Нэр</label>
+          <input id="register-phone-given-name" name="given_name" autoComplete="given-name" maxLength={59} required />
+          <label htmlFor="register-phone">Утасны дугаар</label>
+          <input id="register-phone" name="phone" type="tel" autoComplete="tel" maxLength={20} placeholder="99112233" required />
+          <label htmlFor="register-phone-password">Нууц үг</label>
+          <input id="register-phone-password" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
+          <label htmlFor="register-phone-confirm">Нууц үгээ давтах</label>
+          <input id="register-phone-confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
+          <p className="authv2-help">Нэвтэрсний дараа Тохиргооноос утсаа баталгаажуулна. Нэвтрэхэд SMS шаардахгүй.</p>
+          <button type="submit" className="authv2-submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
+        </form>
+      )}
+
+      <p className="authv2-switch">Аль хэдийн бүртгэлтэй юу? <Link href="/login">Нэвтрэх</Link></p>
+    </LivingTreeAuthPortal>
   );
 }

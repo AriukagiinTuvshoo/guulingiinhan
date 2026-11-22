@@ -96,4 +96,40 @@ ALTER TABLE public."user_sessions" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "user_sessions_staging_api" ON public."user_sessions" FOR ALL TO guulingiinhan_staging_app USING (true) WITH CHECK (true);
 ALTER TABLE public."users" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users_staging_api" ON public."users" FOR ALL TO guulingiinhan_staging_app USING (true) WITH CHECK (true);
+
+-- Additional tables introduced after 2026-10-06 (idempotent guards)
+DO $extra_rls$
+DECLARE
+  tbl text;
+  pol text;
+BEGIN
+  FOREACH tbl IN ARRAY ARRAY[
+    'chat_messages',
+    'family_admin_extended_grants',
+    'family_admin_grants',
+    'family_admin_work_grants',
+    'family_clan_links',
+    'family_trash_records',
+    'memory_comments',
+    'memory_likes',
+    'root_connections',
+    'shared_ancestry_requests'
+  ]
+  LOOP
+    IF to_regclass(format('public.%I', tbl)) IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
+      pol := tbl || '_staging_api';
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public' AND tablename = tbl AND policyname = pol
+      ) THEN
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I FOR ALL TO guulingiinhan_staging_app USING (true) WITH CHECK (true)',
+          pol, tbl
+        );
+      END IF;
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO guulingiinhan_staging_app', tbl);
+    END IF;
+  END LOOP;
+END $extra_rls$;
 COMMIT;

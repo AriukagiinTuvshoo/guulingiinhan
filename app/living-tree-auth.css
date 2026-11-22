@@ -1,0 +1,605 @@
+/* ============================================================================
+   GUULINGIINHAN — "Гэрэлтдэг Удмын Мод" (Living Glowing Heritage Tree Portal)
+   Interactive pull/click golden branch auth experience with spring physics,
+   volumetric moonlight/gold illumination, fireflies, and obsidian glassmorphism.
+   ============================================================================ */
+
+.living-auth-shell {
+  position: relative;
+  min-height: 100svh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 3vw, 36px);
+  box-sizing: border-box;
+  background:
+    radial-gradient(ellipse 80% 60% at 24% 38%, rgba(16, 62, 46, 0.55) 0%, transparent 65%),
+    radial-gradient(ellipse 70% 55% at 78% 72%, rgba(20, 44, 36, 0.45) 0%, transparent 65%),
+    linear-gradient(165deg, #050f0c 0%, #091d16 48%, #071510 100%);
+  color: #f3ede0;
+  transition: background 750ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.living-auth-shell[data-lit="true"] {
+  background:
+    radial-gradient(ellipse 68% 58% at 30% 44%, rgba(212, 168, 67, 0.22) 0%, rgba(22, 86, 63, 0.32) 42%, transparent 72%),
+    radial-gradient(ellipse 65% 60% at 74% 50%, rgba(228, 185, 86, 0.14) 0%, transparent 66%),
+    linear-gradient(165deg, #071611 0%, #0d2920 48%, #091c15 100%);
+}
+
+/* Starfield ambience */
+.living-auth-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.2px 1.2px at 12% 18%, rgba(255, 244, 214, 0.65), transparent),
+    radial-gradient(1px 1px at 26% 10%, rgba(255, 244, 214, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 42% 24%, rgba(244, 207, 114, 0.55), transparent),
+    radial-gradient(1px 1px at 64% 14%, rgba(255, 244, 214, 0.55), transparent),
+    radial-gradient(1.3px 1.3px at 82% 22%, rgba(244, 207, 114, 0.6), transparent),
+    radial-gradient(1px 1px at 91% 38%, rgba(255, 244, 214, 0.45), transparent),
+    radial-gradient(1.2px 1.2px at 18% 78%, rgba(255, 244, 214, 0.35), transparent),
+    radial-gradient(1px 1px at 76% 84%, rgba(244, 207, 114, 0.4), transparent);
+  opacity: 0.72;
+  transition: opacity 700ms ease;
+}
+
+.living-auth-shell[data-lit="true"] .living-auth-stars {
+  opacity: 0.48;
+}
+
+/* Main frame */
+.living-auth-frame {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 1120px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(20px, 4vw, 48px);
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* Left stage: Interactive Heritage Tree */
+.living-tree-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 560px;
+  padding: clamp(18px, 2.5vw, 28px);
+  border-radius: 28px;
+  background: linear-gradient(
+    180deg,
+    rgba(13, 39, 30, 0.52) 0%,
+    rgba(7, 21, 16, 0.72) 100%
+  );
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 24px 64px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  transition:
+    border-color 600ms ease,
+    box-shadow 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.living-auth-shell[data-lit="true"] .living-tree-stage {
+  border-color: rgba(232, 192, 92, 0.38);
+  box-shadow:
+    0 1px 0 rgba(255, 236, 179, 0.16) inset,
+    0 24px 72px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(217, 166, 61, 0.14);
+}
+
+.living-tree-topbar {
+  position: relative;
+  z-index: 4;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.living-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #f7f0df;
+}
+
+.living-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.24), rgba(16, 82, 60, 0.65));
+  border: 1px solid rgba(232, 192, 92, 0.35);
+  color: #f4cf72;
+  flex-shrink: 0;
+}
+
+.living-brand-link strong {
+  display: block;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  color: #f9f2e1;
+}
+
+.living-brand-link small {
+  display: block;
+  font-size: 11px;
+  color: rgba(236, 224, 196, 0.72);
+}
+
+.living-home-back {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(244, 207, 114, 0.9);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 207, 114, 0.24);
+  background: rgba(8, 26, 20, 0.55);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.living-home-back:hover {
+  background: rgba(244, 207, 114, 0.14);
+  border-color: rgba(244, 207, 114, 0.55);
+}
+
+/* Tree SVG Container */
+.living-tree-canvas {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  aspect-ratio: 560 / 500;
+  display: grid;
+  place-items: center;
+  margin: 4px 0;
+}
+
+.living-tree-halo {
+  position: absolute;
+  inset: 8% 10%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(244, 207, 114, 0.42) 0%,
+    rgba(39, 138, 99, 0.24) 44%,
+    transparent 74%
+  );
+  filter: blur(22px);
+  opacity: 0.12;
+  transform: scale(0.84);
+  transition:
+    opacity 850ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 850ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.living-auth-shell[data-lit="true"] .living-tree-halo {
+  opacity: 1;
+  transform: scale(1.06);
+}
+
+.living-tree-svg {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Canopy & golden veins */
+.living-canopy-layer {
+  transition: opacity 750ms ease, filter 750ms ease;
+  opacity: 0.42;
+}
+
+.living-auth-shell[data-lit="true"] .living-canopy-layer {
+  opacity: 1;
+  filter: drop-shadow(0 0 14px rgba(232, 192, 92, 0.25));
+}
+
+.living-sap-vein {
+  stroke-dasharray: 420;
+  stroke-dashoffset: 420;
+  opacity: 0.2;
+  transition:
+    stroke-dashoffset 1100ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 650ms ease;
+}
+
+.living-auth-shell[data-lit="true"] .living-sap-vein {
+  stroke-dashoffset: 0;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 6px rgba(248, 214, 118, 0.85));
+}
+
+.living-leaf-spark {
+  opacity: 0.18;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 700ms ease, transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.living-auth-shell[data-lit="true"] .living-leaf-spark {
+  opacity: 1;
+  animation: leaf-shimmer 3.2s ease-in-out infinite alternate;
+}
+
+@keyframes leaf-shimmer {
+  0% { opacity: 0.65; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1.12); }
+}
+
+/* Interactive Clickable Hanging Golden Branch Trigger */
+.living-branch-trigger {
+  position: absolute;
+  right: 8%;
+  top: 43%;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: #f8dfa0;
+  transform-origin: top center;
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.living-branch-trigger:hover {
+  transform: translateY(4px) scale(1.04);
+}
+
+.living-branch-trigger:focus-visible {
+  outline: 2px solid #f4cf72;
+  outline-offset: 4px;
+  border-radius: 14px;
+}
+
+.living-branch-trigger.is-pulling {
+  animation: living-branch-dip 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes living-branch-dip {
+  0% { transform: translateY(0) rotate(0deg); }
+  38% { transform: translateY(18px) rotate(-3deg) scale(1.05); }
+  72% { transform: translateY(-4px) rotate(1.5deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+.living-branch-cord {
+  width: 2px;
+  height: 36px;
+  background: linear-gradient(180deg, rgba(244, 207, 114, 0.35), #f4cf72);
+  border-radius: 2px;
+}
+
+.living-branch-lantern {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 32%, #fff4cc 0%, #e4b243 45%, #8a5b14 100%);
+  border: 2px solid rgba(255, 240, 194, 0.85);
+  color: #162e24;
+  box-shadow:
+    0 0 16px rgba(244, 207, 114, 0.55),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: lantern-pulse 2.6s ease-in-out infinite;
+}
+
+.living-auth-shell[data-lit="true"] .living-branch-lantern {
+  box-shadow:
+    0 0 28px rgba(255, 219, 120, 0.95),
+    0 0 56px rgba(232, 182, 68, 0.5),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes lantern-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+
+.living-branch-hint {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(7, 24, 18, 0.86);
+  border: 1px solid rgba(244, 207, 114, 0.45);
+  color: #fce8b2;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Fireflies */
+.living-fireflies {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 700ms ease;
+}
+
+.living-auth-shell[data-lit="true"] .living-fireflies {
+  opacity: 1;
+}
+
+.living-firefly {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffe69b;
+  box-shadow: 0 0 10px 2px rgba(255, 224, 130, 0.85);
+  animation: firefly-drift 5.5s ease-in-out infinite;
+}
+
+@keyframes firefly-drift {
+  0%, 100% { transform: translate(0, 0) scale(0.8); opacity: 0.25; }
+  45% { transform: translate(12px, -22px) scale(1.25); opacity: 1; }
+  75% { transform: translate(-8px, -36px) scale(0.95); opacity: 0.55; }
+}
+
+/* Tree Story Footer */
+.living-tree-caption {
+  position: relative;
+  z-index: 4;
+  width: 100%;
+  text-align: center;
+  padding-top: 8px;
+}
+
+.living-tree-caption .living-script {
+  display: block;
+  font-family: Georgia, serif;
+  color: #e4bd5d;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.living-tree-caption h1 {
+  margin: 0 0 6px;
+  font-family: Georgia, serif;
+  font-size: clamp(22px, 2.5vw, 30px);
+  line-height: 1.2;
+  color: #fbf5e6;
+}
+
+.living-tree-caption p {
+  margin: 0 auto;
+  max-width: 38ch;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(235, 225, 203, 0.78);
+}
+
+/* Right Column: Glassmorphic Auth Card */
+.living-auth-panel-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: 460px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.living-auth-card {
+  width: 100%;
+  max-width: 460px;
+  padding: clamp(22px, 3vw, 34px);
+  border-radius: 24px;
+  background: linear-gradient(
+    160deg,
+    rgba(252, 248, 239, 0.97) 0%,
+    rgba(246, 238, 222, 0.95) 100%
+  );
+  color: #163227;
+  border: 1px solid rgba(232, 192, 92, 0.45);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    0 0 40px rgba(228, 185, 86, 0.16);
+  box-sizing: border-box;
+  transition:
+    opacity 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 450ms ease;
+}
+
+.living-auth-card.is-hidden {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+  filter: blur(6px);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Dimmed Invitation Overlay when branch is switched OFF */
+.living-dimmed-prompt {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  gap: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition: opacity 480ms ease, transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.living-dimmed-prompt.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.living-dimmed-prompt h2 {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 24px;
+  color: #f9f2e1;
+}
+
+.living-dimmed-prompt p {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(236, 224, 196, 0.78);
+}
+
+.living-relight-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 207, 114, 0.65);
+  background: linear-gradient(135deg, #d9a438, #b47c18);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(217, 164, 56, 0.35);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease;
+}
+
+.living-relight-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(217, 164, 56, 0.48);
+}
+
+/* Mode switch pill inside card */
+.living-auth-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.living-auth-mode-pill {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(20, 62, 46, 0.08);
+  border: 1px solid rgba(20, 62, 46, 0.12);
+}
+
+.living-auth-mode-pill a {
+  padding: 5px 13px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #3b584b;
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.living-auth-mode-pill a.is-active {
+  background: #143d2e;
+  color: #fbf5e6;
+}
+
+.living-light-toggle-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 124, 24, 0.32);
+  background: rgba(217, 164, 56, 0.12);
+  color: #8c5c0d;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.living-light-toggle-mini:hover {
+  background: rgba(217, 164, 56, 0.22);
+}
+
+/* Responsive Mobile (360px - 900px) — Zero Horizontal Overflow */
+@media (max-width: 900px) {
+  .living-auth-frame {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .living-tree-stage {
+    min-height: 310px;
+    padding: 14px 14px 16px;
+    border-radius: 20px;
+  }
+
+  .living-tree-canvas {
+    max-width: 280px;
+    aspect-ratio: 560 / 420;
+  }
+
+  .living-branch-trigger {
+    right: 2%;
+    top: 38%;
+  }
+
+  .living-branch-lantern {
+    width: 36px;
+    height: 36px;
+  }
+
+  .living-branch-hint {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .living-auth-panel-wrap {
+    min-height: auto;
+  }
+
+  .living-auth-card {
+    max-width: 100%;
+    padding: 18px 16px;
+    border-radius: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .living-branch-lantern,
+  .living-leaf-spark,
+  .living-firefly,
+  .living-branch-trigger.is-pulling {
+    animation: none !important;
+  }
+  .living-auth-card,
+  .living-sap-vein,
+  .living-tree-halo {
+    transition: none !important;
+  }
+}
