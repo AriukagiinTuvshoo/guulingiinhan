@@ -34,6 +34,7 @@ import {
 import { TreeDrawer } from './tree-drawer';
 import { TreeExportModal } from '../../components/tree-export-modal';
 import { PedigreeCertificateModal } from '../../components/pedigree-certificate-modal';
+import { FamilyBookModal } from '../../components/family-book-modal';
 import { PedigreeWizardModal, RelativeRole } from '../../components/pedigree-wizard-modal';
 import { KinshipCalculatorModal } from '../../components/kinship-calculator-modal';
 import { useFocusTrap } from '../../lib/use-focus-trap';
@@ -156,7 +157,14 @@ function TreePageContent() {
   // Vector Print & Export Modal State
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
+  const [bookModalOpen, setBookModalOpen] = useState(false);
   const [kinshipModalOpen, setKinshipModalOpen] = useState(false);
+
+  // Interactive Time-Travel Slider State
+  const currentYear = new Date().getFullYear();
+  const [timeTravelOpen, setTimeTravelOpen] = useState(false);
+  const [timeYear, setTimeYear] = useState(currentYear);
+  const [timePlaying, setTimePlaying] = useState(false);
 
   // Pedigree Wizard Modal State
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -367,6 +375,40 @@ function TreePageContent() {
   );
 
   const nodeById = layout.nodeById;
+
+  const timeBounds = useMemo(() => {
+    const years = (tree?.persons ?? [])
+      .map((p) => (p.birth_date ? Number.parseInt(p.birth_date.slice(0, 4), 10) : Number.NaN))
+      .filter((y) => Number.isFinite(y) && y >= 1800 && y <= currentYear);
+    const min = years.length ? Math.max(1850, Math.min(...years) - 5) : 1920;
+    return { min: Math.min(min, currentYear - 10), max: currentYear };
+  }, [tree, currentYear]);
+
+  useEffect(() => {
+    if (!timePlaying || !timeTravelOpen) return;
+    const timer = window.setInterval(() => {
+      setTimeYear((prev) => {
+        if (prev >= timeBounds.max) {
+          setTimePlaying(false);
+          return timeBounds.max;
+        }
+        return prev + 1;
+      });
+    }, 140);
+    return () => window.clearInterval(timer);
+  }, [timePlaying, timeTravelOpen, timeBounds.max]);
+
+  const timeAliveCount = useMemo(() => {
+    if (!timeTravelOpen || !tree) return 0;
+    return tree.persons.filter((p) => {
+      const b = p.birth_date ? Number.parseInt(p.birth_date.slice(0, 4), 10) : Number.NaN;
+      const d = p.death_date ? Number.parseInt(p.death_date.slice(0, 4), 10) : Number.NaN;
+      if (Number.isNaN(b)) return p.is_alive && timeYear >= currentYear - 35;
+      if (timeYear < b) return false;
+      if (!p.is_alive && !Number.isNaN(d) && timeYear > d) return false;
+      return true;
+    }).length;
+  }, [timeTravelOpen, tree, timeYear, currentYear]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('.tree-person-card, button, a, select, input, label')) {
@@ -869,6 +911,41 @@ function TreePageContent() {
             <button
               type="button"
               className="tree-button tree-button--secondary"
+              onClick={() => setBookModalOpen(true)}
+              style={{
+                fontWeight: 600,
+                borderColor: 'rgba(196, 150, 53, 0.55)',
+              }}
+            >
+              📕 Ургийн ном (PDF)
+            </button>
+            <button
+              type="button"
+              className="tree-button tree-button--secondary"
+              onClick={() => {
+                setTimeTravelOpen((prev) => {
+                  const next = !prev;
+                  if (next) {
+                    setTimeYear(timeBounds.min);
+                    setTimePlaying(false);
+                  } else {
+                    setTimePlaying(false);
+                  }
+                  return next;
+                });
+              }}
+              aria-pressed={timeTravelOpen}
+              style={{
+                fontWeight: 600,
+                background: timeTravelOpen ? 'rgba(217, 164, 56, 0.16)' : undefined,
+                borderColor: timeTravelOpen ? '#c49635' : undefined,
+              }}
+            >
+              🕰️ Цаг хугацаа
+            </button>
+            <button
+              type="button"
+              className="tree-button tree-button--secondary"
               onClick={() => setKinshipModalOpen(true)}
               style={{
                 display: 'inline-flex',
@@ -1038,6 +1115,51 @@ function TreePageContent() {
           </div>
 
           <div className="tree-search-wrap">
+            {timeTravelOpen && (
+              <div className="tree-time-travel-bar" role="region" aria-label="Он цагийн аялал">
+                <div className="tree-time-travel-head">
+                  <button
+                    type="button"
+                    className="tree-time-play-btn"
+                    onClick={() => {
+                      if (timeYear >= timeBounds.max) setTimeYear(timeBounds.min);
+                      setTimePlaying((prev) => !prev);
+                    }}
+                  >
+                    {timePlaying ? '⏸ Зогсоох' : '▶ Тоглуулах'}
+                  </button>
+                  <strong className="tree-time-year-badge">{timeYear} он</strong>
+                  <span className="tree-time-alive-stat">
+                    Тухайн онд амьд сэрүүн: <b>{timeAliveCount}</b> хүн
+                  </span>
+                  <button
+                    type="button"
+                    className="tree-time-close-btn"
+                    onClick={() => {
+                      setTimePlaying(false);
+                      setTimeTravelOpen(false);
+                    }}
+                  >
+                    ✕ Хаах
+                  </button>
+                </div>
+                <div className="tree-time-slider-row">
+                  <span>{timeBounds.min}</span>
+                  <input
+                    type="range"
+                    min={timeBounds.min}
+                    max={timeBounds.max}
+                    value={timeYear}
+                    onChange={(event) => {
+                      setTimePlaying(false);
+                      setTimeYear(Number(event.target.value));
+                    }}
+                    aria-label="Он сонгох гулсуур"
+                  />
+                  <span>{timeBounds.max}</span>
+                </div>
+              </div>
+            )}
             <label className="tree-search">
               <span>Гэр бүлийн хүн хайх</span>
               <input
@@ -1317,6 +1439,27 @@ function TreePageContent() {
                       const isDescendant = bloodline.descendantIds.has(person.id);
                       const isSpouse = bloodline.spouseIds.has(person.id);
 
+                      let timeClass = '';
+                      let ageAtTimeYear: number | null = null;
+                      if (timeTravelOpen) {
+                        const bYear = person.birth_date ? Number.parseInt(person.birth_date.slice(0, 4), 10) : Number.NaN;
+                        const dYear = person.death_date ? Number.parseInt(person.death_date.slice(0, 4), 10) : Number.NaN;
+                        if (!Number.isNaN(bYear)) {
+                          if (timeYear < bYear) {
+                            timeClass = 'is-time-unborn ';
+                          } else if (!person.is_alive && !Number.isNaN(dYear) && timeYear > dYear) {
+                            timeClass = 'is-time-passed ';
+                          } else {
+                            timeClass = 'is-time-alive ';
+                            ageAtTimeYear = timeYear - bYear;
+                          }
+                        } else if (person.is_alive && timeYear >= currentYear - 35) {
+                          timeClass = 'is-time-alive ';
+                        } else {
+                          timeClass = 'is-time-unborn ';
+                        }
+                      }
+
                       return (
                         <article
                           key={person.id}
@@ -1331,7 +1474,8 @@ function TreePageContent() {
                             (isDimmed ? 'is-dimmed ' : '') +
                             (isAncestor ? 'is-bloodline-ancestor ' : '') +
                             (isDescendant ? 'is-bloodline-descendant ' : '') +
-                            (isSpouse ? 'is-bloodline-spouse ' : '')
+                            (isSpouse ? 'is-bloodline-spouse ' : '') +
+                            timeClass
                           }
                           style={{
                             left: node.x,
@@ -1340,6 +1484,11 @@ function TreePageContent() {
                             height: node.height,
                           }}
                         >
+                          {timeTravelOpen && ageAtTimeYear !== null && (
+                            <span className="tree-time-age-pill" aria-label={`${timeYear} онд ${ageAtTimeYear} настай`}>
+                              ✨ {ageAtTimeYear} нас
+                            </span>
+                          )}
                           {isHighlighted && (
                             <span className="tree-bloodline-tag" aria-label="Удам угсааны үүрэг">
                               {selected ? '👑 Төв хүн' : isAncestor ? '⭐ Дээдэс' : isDescendant ? '🌱 Үр сад' : isSpouse ? '💍 Хань' : '✨ Ураг'}
@@ -1521,6 +1670,14 @@ function TreePageContent() {
         family={family}
         people={(tree?.persons ?? []) as unknown as Person[]}
         relationships={tree?.parent_child_relationships ?? []}
+      />
+
+      {/* Multi-Page Family Heritage Book PDF Studio */}
+      <FamilyBookModal
+        isOpen={bookModalOpen}
+        onClose={() => setBookModalOpen(false)}
+        family={family}
+        tree={tree}
       />
 
       {/* Pedigree Context Relative Wizard Modal */}

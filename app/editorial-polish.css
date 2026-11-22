@@ -236,3 +236,163 @@
     box-sizing: border-box;
   }
 }
+
+/* ============================================================================
+   6. Time-Travel Cinema Bar & Node Temporal Glow (/tree)
+   ============================================================================ */
+.tree-time-travel-bar {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(196, 150, 53, 0.45);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--surface-elevated, #ffffff) 92%, #d4af37 8%),
+    var(--surface-card, #fbf7ef)
+  );
+  box-shadow: 0 8px 24px rgba(18, 42, 32, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.tree-time-travel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.tree-time-play-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #d9a438, #b47c18);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(217, 164, 56, 0.32);
+}
+
+.tree-time-year-badge {
+  font-family: Georgia, serif;
+  font-size: 18px;
+  color: var(--text-primary, #163227);
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: rgba(196, 150, 53, 0.14);
+}
+
+.tree-time-alive-stat {
+  font-size: 12.5px;
+  color: var(--text-muted, #556b60);
+}
+
+.tree-time-close-btn {
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, #d5c8b2);
+  background: transparent;
+  color: var(--text-muted, #556b60);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tree-time-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted, #556b60);
+}
+
+.tree-time-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: #c49635;
+  cursor: pointer;
+}
+
+.tree-person-card.is-time-alive {
+  box-shadow:
+    0 0 0 2.5px #d4af37,
+    0 14px 32px rgba(212, 175, 55, 0.34);
+  transform: translateY(-2px);
+}
+
+.tree-person-card.is-time-unborn {
+  opacity: 0.22;
+  filter: grayscale(0.85);
+}
+
+.tree-person-card.is-time-passed {
+  opacity: 0.56;
+  filter: sepia(0.45);
+}
+
+.tree-time-age-pill {
+  position: absolute;
+  top: -11px;
+  right: 10px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #d9a438, #b47c18);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+}
+
+/* ============================================================================
+   7. Complete 5-Theme Contrast & Surface Harmony Across All Secondary Pages
+   ============================================================================ */
+[data-theme="obsidian"] .heritage-dashboard,
+[data-theme="deep-purple"] .heritage-dashboard,
+[data-theme="emerald"] .heritage-dashboard {
+  color: var(--text-primary, #f3f0e6);
+}
+
+[data-theme="obsidian"] .heritage-panel,
+[data-theme="obsidian"] .heritage-album-section,
+[data-theme="obsidian"] .heritage-card,
+[data-theme="obsidian"] .profile-card,
+[data-theme="obsidian"] .card,
+[data-theme="deep-purple"] .heritage-panel,
+[data-theme="deep-purple"] .heritage-album-section,
+[data-theme="deep-purple"] .heritage-card,
+[data-theme="deep-purple"] .profile-card,
+[data-theme="deep-purple"] .card,
+[data-theme="emerald"] .heritage-panel,
+[data-theme="emerald"] .heritage-album-section,
+[data-theme="emerald"] .heritage-card,
+[data-theme="emerald"] .profile-card,
+[data-theme="emerald"] .card {
+  background: var(--surface-card, #141c18);
+  border-color: var(--border-subtle, rgba(255, 255, 255, 0.12));
+  color: var(--text-primary, #f3f0e6);
+}
+
+[data-theme="obsidian"] .heritage-panel h2,
+[data-theme="obsidian"] .heritage-panel h3,
+[data-theme="obsidian"] .profile-card h1,
+[data-theme="obsidian"] .profile-card h2,
+[data-theme="deep-purple"] .heritage-panel h2,
+[data-theme="deep-purple"] .heritage-panel h3,
+[data-theme="emerald"] .heritage-panel h2,
+[data-theme="emerald"] .heritage-panel h3 {
+  color: var(--text-primary, #fbf7ec);
+}
+
+[data-theme="obsidian"] .tree-time-travel-bar,
+[data-theme="deep-purple"] .tree-time-travel-bar,
+[data-theme="emerald"] .tree-time-travel-bar {
+  background: var(--surface-elevated, #1a231e);
+  border-color: rgba(212, 175, 55, 0.35);
+  color: var(--text-primary, #f3f0e6);
+}
