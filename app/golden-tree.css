@@ -1,6 +1,8 @@
 /* ============================================================================
-   GUULIN — "Алтан Мод" (Luxury Obsidian & Burnished-Gold Illuminated Tree)
-   Inspired by the user's luxury obsidian-gold heritage mockups.
+   GUULIN — Illuminated Heritage Tree ("Алтан Мод")
+   100% theme-aware via tokens.css:
+   - Light theme: Warm Parchment surface, Forest Green ink, Antique Gold highlight
+   - Dark theme:  Obsidian-Forest surface, Burnished Gold highlight
    ============================================================================ */
 
 .golden-tree-viewport {
@@ -10,13 +12,9 @@
   height: clamp(560px, 72vh, 760px);
   border-radius: 20px;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse 68% 54% at 50% 42%, rgba(216, 178, 92, 0.14) 0%, rgba(28, 24, 17, 0.85) 55%, #0b0a08 100%),
-    linear-gradient(180deg, #0d0c09 0%, #14120d 50%, #0a0907 100%);
-  border: 1px solid rgba(216, 178, 92, 0.28);
-  box-shadow:
-    0 1px 0 rgba(255, 236, 185, 0.1) inset,
-    0 24px 64px rgba(0, 0, 0, 0.5);
+  background: var(--tree-canvas-bg);
+  border: 1px solid var(--tree-canvas-border);
+  box-shadow: var(--ui-shadow-md);
   user-select: none;
   touch-action: none;
 }
@@ -47,7 +45,7 @@
   will-change: transform;
 }
 
-/* Calligraphic Gold Bezier Connectors */
+/* Calligraphic Bezier Connectors */
 .golden-tree-svg {
   position: absolute;
   inset: 0;
@@ -60,95 +58,103 @@
   stroke: url(#guulin-gold-stroke);
   stroke-width: 1.85;
   stroke-linecap: round;
-  opacity: 0.72;
+  opacity: 0.78;
   transition: opacity 280ms ease, stroke-width 280ms ease;
 }
 
 .golden-bezier-path.is-active {
   stroke-width: 2.9;
   opacity: 1;
-  filter: drop-shadow(0 0 7px rgba(235, 198, 108, 0.72));
+  filter: drop-shadow(0 0 6px var(--gold-glow));
 }
 
 .golden-bezier-path.is-dimmed {
-  opacity: 0.14;
+  opacity: 0.16;
+}
+
+.golden-bezier-path.is-secondary {
+  stroke-dasharray: 6 5;
+  opacity: 0.62;
 }
 
 .golden-marriage-line {
   fill: none;
-  stroke: #e5c372;
+  stroke: var(--tree-edge-marriage);
   stroke-width: 1.6;
   stroke-dasharray: 4 3;
-  opacity: 0.78;
+  opacity: 0.82;
 }
 
-/* Luxury Obsidian Portrait Cards */
+.golden-marriage-line.is-divorced {
+  stroke-dasharray: 2 5;
+  opacity: 0.48;
+}
+
+.golden-union-knot {
+  fill: var(--gold-400);
+  stroke: var(--tree-node-bg);
+  stroke-width: 1.5;
+}
+
+/* Compact Portrait Cards */
 .golden-node-card {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 12px 10px 10px;
+  padding: 10px 8px;
   border-radius: 16px;
-  background: linear-gradient(
-    165deg,
-    rgba(36, 32, 26, 0.94) 0%,
-    rgba(21, 19, 15, 0.96) 100%
-  );
-  border: 1px solid rgba(216, 178, 92, 0.34);
-  box-shadow:
-    0 1px 0 rgba(255, 238, 196, 0.1) inset,
-    0 10px 26px rgba(0, 0, 0, 0.55);
-  color: #f6efe0;
+  background: var(--tree-node-bg);
+  border: 1px solid var(--tree-node-border);
+  box-shadow: var(--ui-shadow-sm);
+  color: var(--tree-node-text);
   text-align: center;
-  box-sizing: border-box;
   transition:
     transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 260ms ease,
     border-color 220ms ease,
+    box-shadow 260ms ease,
+    background-color 220ms ease,
     opacity 260ms ease;
 }
 
 .golden-node-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(236, 199, 112, 0.75);
-  box-shadow:
-    0 1px 0 rgba(255, 240, 200, 0.22) inset,
-    0 14px 32px rgba(0, 0, 0, 0.65),
-    0 0 18px rgba(224, 184, 92, 0.28);
+  background: var(--tree-node-bg-hover);
+  border-color: var(--gold-500);
+  box-shadow: var(--ui-shadow-md);
+  z-index: 4;
 }
 
+/* Gold ONLY for selected / highlighted state */
 .golden-node-card.is-selected {
-  border-color: #f0cf7b;
-  background: linear-gradient(
-    165deg,
-    rgba(52, 43, 28, 0.98) 0%,
-    rgba(28, 24, 17, 0.98) 100%
-  );
+  background: var(--tree-node-bg-selected);
+  border-color: var(--gold-500);
   box-shadow:
-    0 0 0 2px rgba(240, 207, 123, 0.85),
-    0 0 32px rgba(235, 194, 98, 0.55),
-    0 14px 34px rgba(0, 0, 0, 0.68);
+    0 0 0 2px var(--gold-400),
+    0 0 24px var(--gold-glow);
   z-index: 5;
 }
 
-.golden-node-card.is-dimmed,
+.golden-node-card.is-dimmed {
+  opacity: 0.22;
+}
+
 .golden-node-card.is-time-unborn {
-  opacity: 0.2;
-  filter: grayscale(0.8);
+  opacity: 0.14;
+  filter: grayscale(0.85);
 }
 
 .golden-node-card.is-time-passed {
   opacity: 0.55;
-  filter: sepia(0.45);
+  filter: sepia(0.35);
 }
 
 .golden-node-card.is-time-alive {
-  border-color: #f0cf7b;
+  border-color: var(--gold-500);
   box-shadow:
-    0 0 0 2px rgba(240, 207, 123, 0.75),
-    0 0 22px rgba(235, 194, 98, 0.42);
+    0 0 0 2px var(--gold-400),
+    0 0 18px var(--gold-glow);
 }
 
 .golden-node-btn {
@@ -164,7 +170,7 @@
 }
 
 .golden-node-btn:focus-visible {
-  outline: 2px solid #f0cf7b;
+  outline: 2px solid var(--gold-500);
   outline-offset: 3px;
   border-radius: 12px;
 }
@@ -176,21 +182,20 @@
   overflow: hidden;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at 35% 30%, #3d3324 0%, #1d1811 100%);
-  border: 1.5px solid rgba(224, 186, 98, 0.6);
-  color: #f4d88e;
+  background: var(--tree-avatar-bg);
+  border: 1.5px solid var(--gold-border);
+  color: var(--tree-avatar-text);
   font-family: Georgia, serif;
   font-weight: 700;
   font-size: 14px;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .golden-node-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: sepia(0.18) contrast(1.04);
 }
 
 .golden-node-name {
@@ -198,7 +203,7 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
-  color: #fbf5e6;
+  color: var(--tree-node-text);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -207,11 +212,51 @@
 
 .golden-node-years {
   font-size: 11px;
-  color: rgba(228, 207, 162, 0.78);
+  color: var(--tree-node-muted);
   letter-spacing: 0.02em;
 }
 
-/* Floating Bottom-Center Glassmorphic Dock Pill (Mockup Match!) */
+/* Generation Rail Badges (theme-aware) */
+.golden-gen-badge {
+  position: absolute;
+  left: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--tree-dock-border);
+  background: var(--tree-gen-bg);
+  color: var(--tree-gen-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+.golden-gen-badge small {
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+/* Per-unit Collapse / Expand Toggle */
+.golden-unit-toggle {
+  position: absolute;
+  transform: translate(-50%, 0);
+  z-index: 6;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 8px;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid var(--tree-dock-border);
+  background: var(--tree-dock-bg);
+  color: var(--tree-dock-text);
+}
+
+/* Floating Bottom-Center Glassmorphic Dock Pill */
 .golden-tree-dock {
   position: absolute;
   left: 50%;
@@ -228,13 +273,11 @@
   overflow-x: auto;
   scrollbar-width: none;
   border-radius: 999px;
-  background: rgba(22, 20, 17, 0.88);
+  background: var(--tree-dock-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(224, 186, 98, 0.34);
-  box-shadow:
-    0 1px 0 rgba(255, 240, 200, 0.1) inset,
-    0 14px 36px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--tree-dock-border);
+  box-shadow: var(--ui-shadow-md);
 }
 
 .golden-tree-dock::-webkit-scrollbar {
@@ -249,31 +292,41 @@
   border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
-  color: #efe5cf;
+  color: var(--tree-dock-text);
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
 }
 
 .golden-dock-btn:hover {
-  background: rgba(224, 186, 98, 0.16);
-  color: #fff6de;
+  background: var(--brand-primary-soft);
+  border-color: var(--brand-primary-border);
 }
 
 .golden-dock-btn.is-active {
-  background: linear-gradient(135deg, #dfbe72, #b88c38);
-  color: #16130d;
+  background: var(--gold-soft);
+  border-color: var(--gold-500);
+  color: var(--ui-accent-text);
   font-weight: 700;
 }
 
 .golden-dock-divider {
   width: 1px;
   height: 18px;
-  background: rgba(224, 186, 98, 0.24);
+  background: var(--tree-dock-border);
   margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.golden-dock-zoom-readout {
+  font-size: 11.5px;
+  font-weight: 700;
+  min-width: 36px;
+  text-align: center;
+  color: var(--tree-dock-text);
 }
 
 @media (max-width: 768px) {
@@ -294,67 +347,4 @@
     padding: 5px 8px;
     font-size: 11px;
   }
-}
-
-/* Tidy-Tree Extensions (zero new hex/rgb colors; reuses existing variables & classes) */
-.golden-bezier-path.is-secondary {
-  stroke-dasharray: 6 5;
-  opacity: 0.58;
-}
-
-.golden-marriage-line.is-divorced {
-  stroke-dasharray: 2 5;
-  opacity: 0.48;
-}
-
-.golden-union-knot {
-  fill: var(--gold-300, currentColor);
-  stroke: var(--surface-card, currentColor);
-  stroke-width: 1.5;
-}
-
-.golden-gen-badge {
-  position: absolute;
-  left: 10px;
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle, currentColor);
-  background: var(--surface-elevated, transparent);
-  color: var(--gold-300, inherit);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  pointer-events: none;
-  opacity: 0.86;
-}
-
-.golden-gen-badge small {
-  font-weight: 500;
-  opacity: 0.72;
-}
-
-.golden-unit-toggle {
-  position: absolute;
-  transform: translate(-50%, 0);
-  z-index: 6;
-  min-width: 28px;
-  height: 22px;
-  padding: 0 8px;
-  justify-content: center;
-  font-size: 11px;
-  line-height: 1;
-  border-color: var(--border-subtle, currentColor);
-  background: var(--surface-card, inherit);
-}
-
-.golden-dock-zoom-readout {
-  font-size: 11.5px;
-  font-weight: 700;
-  min-width: 36px;
-  text-align: center;
-  color: var(--gold-300, inherit);
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { type ReactNode, useState } from 'react';
-import { Sparkles, Sun, Moon, TreeDeciduous } from 'lucide-react';
+import { Moon, Sparkles, Sun, TreeDeciduous } from 'lucide-react';
 import '../app/living-tree-auth.css';
 
 interface LivingTreeAuthPortalProps {
@@ -88,34 +88,34 @@ export default function LivingTreeAuthPortal({
             >
               <defs>
                 <linearGradient id="living-trunk-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#123026" />
-                  <stop offset="50%" stopColor="#1e4a3b" />
-                  <stop offset="100%" stopColor="#0b2019" />
+                  <stop offset="0%" stopColor="var(--auth-trunk-start)" />
+                  <stop offset="50%" stopColor="var(--auth-trunk-mid)" />
+                  <stop offset="100%" stopColor="var(--auth-trunk-end)" />
                 </linearGradient>
                 <radialGradient id="living-canopy-grad" cx="50%" cy="42%" r="55%">
-                  <stop offset="0%" stopColor="#2f7d5d" />
-                  <stop offset="65%" stopColor="#174c39" />
-                  <stop offset="100%" stopColor="#0d2f23" />
+                  <stop offset="0%" stopColor="var(--auth-canopy-start)" />
+                  <stop offset="65%" stopColor="var(--auth-canopy-mid)" />
+                  <stop offset="100%" stopColor="var(--auth-canopy-end)" />
                 </radialGradient>
                 <linearGradient id="living-gold-vein" x1="0" y1="1" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#b57c18" />
-                  <stop offset="50%" stopColor="#f5d070" />
-                  <stop offset="100%" stopColor="#fff1bf" />
+                  <stop offset="0%" stopColor="var(--gold-600)" />
+                  <stop offset="50%" stopColor="var(--gold-300)" />
+                  <stop offset="100%" stopColor="var(--gold-200)" />
                 </linearGradient>
               </defs>
 
               {/* Soft Ground Mound */}
-              <ellipse cx="270" cy="456" rx="190" ry="22" fill="rgba(14, 46, 35, 0.72)" />
-              <ellipse cx="270" cy="456" rx="126" ry="12" fill="rgba(212, 175, 55, 0.16)" />
+              <ellipse cx="270" cy="456" rx="190" ry="22" className="living-ground-shadow" />
+              <ellipse cx="270" cy="456" rx="126" ry="12" className="living-ground-glow" />
 
               {/* Layered Heritage Canopy */}
               <g className="living-canopy-layer">
-                <circle cx="270" cy="186" r="118" fill="url(#living-canopy-grad)" opacity="0.86" />
-                <circle cx="176" cy="212" r="82" fill="url(#living-canopy-grad)" opacity="0.82" />
+                <circle cx="270" cy="186" r="118" fill="url(#living-canopy-grad)" opacity="0.88" />
+                <circle cx="176" cy="212" r="82" fill="url(#living-canopy-grad)" opacity="0.84" />
                 <circle cx="366" cy="208" r="86" fill="url(#living-canopy-grad)" opacity="0.84" />
-                <circle cx="222" cy="128" r="74" fill="#23664c" opacity="0.72" />
-                <circle cx="324" cy="126" r="72" fill="#23664c" opacity="0.72" />
-                <circle cx="272" cy="96" r="62" fill="#2f7d5d" opacity="0.65" />
+                <circle cx="222" cy="128" r="74" fill="var(--auth-canopy-mid)" opacity="0.72" />
+                <circle cx="324" cy="126" r="72" fill="var(--auth-canopy-mid)" opacity="0.72" />
+                <circle cx="272" cy="96" r="62" fill="var(--auth-canopy-start)" opacity="0.65" />
               </g>
 
               {/* Ancient Trunk & Spreading Branches */}
@@ -124,7 +124,7 @@ export default function LivingTreeAuthPortal({
                 fill="url(#living-trunk-grad)"
               />
 
-              {/* Golden Glowing Sap Veins (animate on toggle!) */}
+              {/* Golden Glowing Sap Veins */}
               <path
                 className="living-sap-vein"
                 d="M270 448 C270 380 268 310 268 246 C268 194 282 156 312 128"
@@ -159,14 +159,14 @@ export default function LivingTreeAuthPortal({
               />
 
               {/* Shimmering Golden Heritage Blossoms */}
-              <g>
-                <circle className="living-leaf-spark" cx="182" cy="182" r="4.5" fill="#f7d87c" />
-                <circle className="living-leaf-spark" cx="232" cy="116" r="5" fill="#ffe8a3" />
-                <circle className="living-leaf-spark" cx="316" cy="114" r="4.8" fill="#f7d87c" />
-                <circle className="living-leaf-spark" cx="372" cy="176" r="5.2" fill="#ffe8a3" />
-                <circle className="living-leaf-spark" cx="272" cy="78" r="5.5" fill="#fff1c4" />
-                <circle className="living-leaf-spark" cx="146" cy="216" r="4.2" fill="#f4cf72" />
-                <circle className="living-leaf-spark" cx="342" cy="156" r="3.8" fill="#f7d87c" />
+              <g className="living-blossoms">
+                <circle className="living-leaf-spark" cx="182" cy="182" r="4.5" />
+                <circle className="living-leaf-spark" cx="232" cy="116" r="5" />
+                <circle className="living-leaf-spark" cx="316" cy="114" r="4.8" />
+                <circle className="living-leaf-spark" cx="372" cy="176" r="5.2" />
+                <circle className="living-leaf-spark" cx="272" cy="78" r="5.5" />
+                <circle className="living-leaf-spark" cx="146" cy="216" r="4.2" />
+                <circle className="living-leaf-spark" cx="342" cy="156" r="3.8" />
               </g>
             </svg>
 
@@ -187,7 +187,7 @@ export default function LivingTreeAuthPortal({
                 {isLit ? <Sun size={20} /> : <Moon size={19} />}
               </span>
               <span className="living-branch-hint">
-                {isLit ? '✨ Мөчир дарах (Унтраах)' : '🌿 Мөчир дарж асаах'}
+                {isLit ? 'Мөчир дарах (Унтраах)' : 'Мөчир дарж асаах'}
               </span>
             </button>
           </div>
@@ -201,10 +201,10 @@ export default function LivingTreeAuthPortal({
           </div>
         </div>
 
-        {/* Right Column: Glassmorphic Auth Card (Illuminated by the Tree!) */}
+        {/* Right Column: Token-Backed Auth Card */}
         <div className="living-auth-panel-wrap">
           <div className={`living-dimmed-prompt${!isLit ? ' is-visible' : ''}`} aria-hidden={isLit}>
-            <Sparkles size={32} color="#f4cf72" />
+            <Sparkles size={32} className="living-sparkle-icon" />
             <h2>Удмын модны гэрлээ асаана уу</h2>
             <p>
               Зүүн талын алтан мөчир эсвэл доорх товч дээр дарахад мод гэрэлтэж, нэвтрэх болон
