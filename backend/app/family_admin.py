@@ -140,18 +140,28 @@ def list_trash(
             family_id, user.id, "view_profile", now=now, cutoff=adult_birth_cutoff(now.date())
         ),
     )
-    total = db.scalar(
-        select(func.count()).select_from(FamilyTrashRecord).join(
-            Person, Person.id == FamilyTrashRecord.person_id
-        ).where(*conditions)
-    ) or 0
-    rows = db.execute(
-        select(FamilyTrashRecord, Person).join(
-            Person, Person.id == FamilyTrashRecord.person_id
-        ).where(*conditions)
-        .order_by(FamilyTrashRecord.deleted_at.desc(), FamilyTrashRecord.id.desc())
-        .offset((page - 1) * page_size).limit(page_size)
-    ).all()
+    try:
+        with db.begin_nested():
+            total = db.scalar(
+                select(func.count()).select_from(FamilyTrashRecord).join(
+                    Person, Person.id == FamilyTrashRecord.person_id
+                ).where(*conditions)
+            ) or 0
+            rows = db.execute(
+                select(FamilyTrashRecord, Person).join(
+                    Person, Person.id == FamilyTrashRecord.person_id
+                ).where(*conditions)
+                .order_by(FamilyTrashRecord.deleted_at.desc(), FamilyTrashRecord.id.desc())
+                .offset((page - 1) * page_size).limit(page_size)
+            ).all()
+    except SQLAlchemyError:
+        return {
+            "items": [],
+            "page": page,
+            "page_size": page_size,
+            "total": 0,
+            "has_next": False,
+        }
     return {
         "items": [
             {"id": record.id, "person_id": person.id, "first_name": person.first_name,

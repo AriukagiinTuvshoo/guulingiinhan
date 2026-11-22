@@ -162,7 +162,9 @@ function FamilyAdminConsole({ showSystemAdminLink = false }: { showSystemAdminLi
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {isGlobalAdmin && <Link href="/admin">Системийн удирдлагын төв</Link>}
-          <Link href="/dashboard">Үндсэн хэсэг рүү буцах</Link>
+          <Link href={selected ? `/dashboard?family=${encodeURIComponent(selected)}` : '/dashboard'}>
+            Үндсэн хэсэг рүү буцах
+          </Link>
         </div>
       </header>
       <section className="admin-console__content">

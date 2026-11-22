@@ -396,3 +396,78 @@
   border-color: rgba(212, 175, 55, 0.35);
   color: var(--text-primary, #f3f0e6);
 }
+
+/* ============================================================================
+   8. Live QA Polish Fixes: Topbar Select, 3D Full-Width & HUD, Admin Audit Contrast
+   ============================================================================ */
+#app-shell-family,
+.app-shell__context select {
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 28px 0 12px !important;
+  line-height: 34px !important;
+  vertical-align: middle;
+}
+
+.tree-map-layout--full {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.tree-map-layout--3d .tree-3d-panel {
+  width: 100%;
+  min-height: 600px;
+}
+
+.tree-map-layout--3d .tree-3d-stage {
+  min-height: 540px;
+}
+
+.tree-3d-generations {
+  max-height: 175px;
+  overflow-y: auto;
+  max-width: 240px;
+}
+
+.tree-3d-actions {
+  top: auto !important;
+  bottom: 14px !important;
+  right: 14px !important;
+}
+
+.tree-3d-hint {
+  bottom: 14px !important;
+  left: 14px !important;
+  max-width: 340px;
+}
+
+.admin-console__audit {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-console__audit li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-elevated, #ffffff);
+  color: var(--text-primary, #163227) !important;
+  border: 1px solid var(--border-subtle, #dcd2bf);
+}
+
+.admin-console__audit li strong,
+.admin-console__audit li span,
+.admin-console__audit li time {
+  color: var(--text-primary, #163227) !important;
+}
+
+.admin-console__audit li time {
+  opacity: 0.78;
+  font-size: 12px;
+}

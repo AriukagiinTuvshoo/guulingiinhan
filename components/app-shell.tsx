@@ -47,7 +47,7 @@ type NavItem = {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/', needsFamily: false },
+  { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/dashboard', needsFamily: false },
   { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
   { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
@@ -566,7 +566,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
 
-        <Link className="app-shell__brand" href={familyHref('/', currentFamily?.id ?? null)}>
+        <Link className="app-shell__brand" href={familyHref('/dashboard', currentFamily?.id ?? null)}>
           <span className="app-shell__brand-mark" aria-hidden="true">
             <TreeDeciduous size={21} />
           </span>
@@ -613,7 +613,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <div className="app-shell__account" ref={accountRef}>
           <ThemePicker />
-          {user && currentFamily && <FamilyChatDrawer familyId={currentFamily.id} currentUserId={user.id} />}
+          {user && currentFamily && !pathname.startsWith('/chat') && (
+            <FamilyChatDrawer familyId={currentFamily.id} currentUserId={user.id} />
+          )}
           {user && <NotificationBell userId={user.id} closeSignal={accountOpen || mobileOpen} onOpen={() => { setAccountOpen(false); setMobileOpen(false); }} />}
           <button
             type="button"

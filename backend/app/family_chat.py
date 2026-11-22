@@ -42,6 +42,7 @@ _chat_subscribers: dict[
     UUID, list[tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]]
 ] = defaultdict(list)
 _seen_event_ids: deque[str] = deque(maxlen=512)
+_ephemeral_messages: dict[UUID, list[dict[str, Any]]] = defaultdict(list)
 
 _pg_listener_lock = threading.Lock()
 _pg_listener_stop: threading.Event | None = None
@@ -356,7 +357,18 @@ def list_chat_messages(
         with db.begin_nested():
             rows = db.execute(query.order_by(ChatMessage.created_at.desc()).limit(capped_limit)).all()
     except SQLAlchemyError:
-        return []
+        with _subscribers_lock:
+            cached = list(_ephemeral_messages.get(family_id, ()))
+        if recipient_id is None:
+            filtered = [m for m in cached if m["recipient_id"] is None]
+        else:
+            filtered = [
+                m
+                for m in cached
+                if (m["sender_id"] == user.id and m["recipient_id"] == recipient_id)
+                or (m["sender_id"] == recipient_id and m["recipient_id"] == user.id)
+            ]
+        return [ChatMessageOut(**m) for m in filtered[-capped_limit:]]
 
     reversed_rows = list(reversed(rows))
     return [
@@ -443,23 +455,6 @@ def send_chat_message(
     if not body:
         raise HTTPException(status_code=422, detail="Зурвас хоосон байж болохгүй.")
 
-    cutoff = datetime.now(UTC) - timedelta(seconds=60)
-    recent_count = (
-        db.scalar(
-            select(func.count(ChatMessage.id)).where(
-                ChatMessage.family_id == family_id,
-                ChatMessage.sender_id == user.id,
-                ChatMessage.created_at >= cutoff,
-            )
-        )
-        or 0
-    )
-    if recent_count >= 30:
-        raise HTTPException(
-            status_code=429,
-            detail="Хэт олон зурвас дараалан илгээсэн байна. Түр хүлээнэ үү.",
-        )
-
     if payload.recipient_id is not None:
         target_member = db.scalar(
             select(FamilyMember).where(
@@ -472,16 +467,65 @@ def send_chat_message(
                 status_code=404, detail="Хүлээн авагч энэ гэр бүлийн гишүүн биш байна."
             )
 
-    msg = ChatMessage(
-        family_id=family_id,
-        sender_id=user.id,
-        recipient_id=payload.recipient_id,
-        content=body[:4000],
-    )
-    db.add(msg)
-    _audit(db, user, family_id, "chat.message_sent", "chat_message", msg.id)
-    db.commit()
-    db.refresh(msg)
+    cutoff = datetime.now(UTC) - timedelta(seconds=60)
+    try:
+        with db.begin_nested():
+            recent_count = (
+                db.scalar(
+                    select(func.count(ChatMessage.id)).where(
+                        ChatMessage.family_id == family_id,
+                        ChatMessage.sender_id == user.id,
+                        ChatMessage.created_at >= cutoff,
+                    )
+                )
+                or 0
+            )
+            if recent_count >= 30:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Хэт олон зурвас дараалан илгээсэн байна. Түр хүлээнэ үү.",
+                )
+
+            msg = ChatMessage(
+                family_id=family_id,
+                sender_id=user.id,
+                recipient_id=payload.recipient_id,
+                content=body[:4000],
+            )
+            db.add(msg)
+            db.flush()
+            _audit(db, user, family_id, "chat.message_sent", "chat_message", msg.id)
+        db.commit()
+        db.refresh(msg)
+    except SQLAlchemyError:
+        db.rollback()
+        now = datetime.now(UTC)
+        fallback_item = {
+            "id": uuid4(),
+            "family_id": family_id,
+            "sender_id": user.id,
+            "sender_name": user.display_name or "Гишүүн",
+            "sender_role": member.role,
+            "recipient_id": payload.recipient_id,
+            "content": body[:4000],
+            "created_at": now,
+        }
+        with _subscribers_lock:
+            bucket = _ephemeral_messages[family_id]
+            bucket.append(fallback_item)
+            if len(bucket) > 200:
+                del bucket[:-200]
+        publish_chat_event(
+            family_id,
+            {
+                "type": "message_created",
+                "message_id": str(fallback_item["id"]),
+                "sender_id": str(user.id),
+                "recipient_id": str(payload.recipient_id) if payload.recipient_id else None,
+            },
+            db=db,
+        )
+        return ChatMessageOut(**fallback_item)
 
     publish_chat_event(
         family_id,

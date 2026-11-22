@@ -958,7 +958,7 @@ function TreePageContent() {
             </button>
             <Link
               className="tree-button tree-button--secondary"
-              href="/ancestry"
+              href={familyId ? '/ancestry?family=' + encodeURIComponent(familyId) : '/ancestry'}
             >
               🌲 Эх мод
             </Link>
@@ -1234,7 +1234,7 @@ function TreePageContent() {
               </Link>
             </section>
           ) : (
-            <div className={`tree-map-layout ${viewMode === '3d' ? 'tree-map-layout--3d' : ''}`}>
+            <div className={`tree-map-layout ${viewMode === '3d' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
               {viewMode === '3d' && tree ? (
                 <Tree3DScene
                   data={tree}

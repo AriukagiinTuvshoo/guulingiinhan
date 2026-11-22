@@ -17,6 +17,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
   const [members, setMembers] = useState<ChatMember[]>([]);
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const [memberSearch, setMemberSearch] = useState('');
 
@@ -146,6 +147,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
     if (!content || !familyId || sending) return;
 
     setSending(true);
+    setSendError('');
     try {
       const payload: { content: string; recipient_id?: string } = { content };
       if (activeTab === 'direct' && selectedRecipient) {
@@ -160,7 +162,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
       setMessages((prev) => [...prev, sentMsg]);
       setTimeout(() => scrollToBottom(true), 50);
     } catch {
-      // Message sending error
+      setSendError('Зурвас илгээхэд алдаа гарлаа. Дахин оролдоно уу.');
     } finally {
       setSending(false);
     }
@@ -581,6 +583,21 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
                 })
               )}
               <div ref={messagesEndRef} />
+            </div>
+          )}
+
+          {sendError && (
+            <div
+              role="alert"
+              style={{
+                padding: '8px 12px',
+                fontSize: '12px',
+                background: '#fde8e8',
+                color: '#9b1c1c',
+                borderTop: '1px solid #f8b4b4',
+              }}
+            >
+              {sendError}
             </div>
           )}
 
