@@ -28,10 +28,10 @@ jobs:
         run: npm test
       - name: TypeScript typecheck
         run: npm run typecheck
-      - name: Set non-production API base for CI build
-        run: echo "NEXT_PUBLIC_API_BASE_URL=https://ci.invalid/api/v1" >> "$GITHUB_ENV"
-      - name: Next.js production build
-        run: npm run build
+      - name: Production build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://ci.invalid/api/v1
+        run: npx next build
       - name: Core page route regression
         run: npm run regression:routes
       - name: 3D tree layout regression
@@ -43,6 +43,8 @@ jobs:
       - name: Encrypted private media recovery regression
         run: node --test ops/private-media-backup.test.mjs
       - name: Cloudflare Worker build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://ci.invalid/api/v1
         run: npm run build:vinext
 
   e2e:

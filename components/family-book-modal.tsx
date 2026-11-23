@@ -1,5 +1,6 @@
-import { PRINT_EXPORT_COLORS as P } from '../lib/theme-tokens';
 'use client';
+
+import { PRINT_EXPORT_COLORS as P } from '../lib/theme-tokens';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Printer, X, Check, Sparkles } from 'lucide-react';
