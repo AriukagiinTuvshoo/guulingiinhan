@@ -31,6 +31,7 @@ interface GoldenHeritageTreeProps {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   onSwitchToClassic: () => void;
+  canPrint?: boolean;
   onOpenKinship: () => void;
   onOpenCertificate: () => void;
   onOpenBook: () => void;
@@ -70,6 +71,7 @@ export default function GoldenHeritageTree({
   isFullscreen,
   onToggleFullscreen,
   onSwitchToClassic,
+  canPrint = false,
   onOpenKinship,
   onOpenCertificate,
   onOpenBook,
@@ -423,15 +425,19 @@ export default function GoldenHeritageTree({
         <button type="button" className="golden-dock-btn" onClick={onOpenKinship}>
           <Compass size={13} /> Ургийн холбоо
         </button>
-        <button type="button" className="golden-dock-btn" onClick={onOpenCertificate}>
-          <FileBadge size={13} /> Батламж
-        </button>
-        <button type="button" className="golden-dock-btn" onClick={onOpenBook}>
-          <BookOpen size={13} /> Ургийн ном
-        </button>
-        <button type="button" className="golden-dock-btn" onClick={onOpenExport}>
-          <Printer size={13} /> PDF / SVG
-        </button>
+        {canPrint && (
+          <>
+            <button type="button" className="golden-dock-btn" onClick={onOpenCertificate}>
+              <FileBadge size={13} /> Батламж
+            </button>
+            <button type="button" className="golden-dock-btn" onClick={onOpenBook}>
+              <BookOpen size={13} /> Ургийн ном
+            </button>
+            <button type="button" className="golden-dock-btn" onClick={onOpenExport}>
+              <Printer size={13} /> PDF / SVG
+            </button>
+          </>
+        )}
         <button
           type="button"
           className="golden-dock-btn"

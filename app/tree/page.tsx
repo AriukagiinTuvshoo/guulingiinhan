@@ -144,10 +144,9 @@ function TreePageContent() {
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
 
-  // Tidy-Tree Collapse, Branch Filter, Daughters' Descendants Toggle & Lazy Subtree State
+  // Tidy-Tree Collapse, Branch Filter & Lazy Subtree State
   const [collapsedUnitIds, setCollapsedUnitIds] = useState<Set<string>>(() => new Set());
   const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
-  const [showDaughtersDescendants, setShowDaughtersDescendants] = useState(true);
   const [loadingUnitId, setLoadingUnitId] = useState<string | null>(null);
   const lazyLoadedUnitsRef = useRef<Set<string>>(new Set());
   const classicAnchorRef = useRef<{ personId: string; prevX: number; prevY: number } | null>(null);
@@ -410,18 +409,18 @@ function TreePageContent() {
       buildAdvancedTreeLayout(tree ?? EMPTY_TREE, {
         collapsedUnitIds,
         branchId: activeBranchId,
-        showDaughtersDescendants,
       }),
-    [tree, collapsedUnitIds, activeBranchId, showDaughtersDescendants],
+    [tree, collapsedUnitIds, activeBranchId],
   );
 
-  // Export ALWAYS renders the FULL tree ignoring collapse, branch, and daughters' descendants filters.
+  // Export ALWAYS renders the FULL tree ignoring collapse and branch filters.
   const fullExportLayout: AdvancedTreeLayout = useMemo(
     () => buildAdvancedTreeLayout(tree ?? EMPTY_TREE, { ignoreFilters: true }),
     [tree],
   );
 
   const canEditFamily = family?.role === 'owner' || family?.role === 'editor';
+  const canPrintFamily = family?.role === 'owner';
 
   // Keep clicked node at the same screen position after Classic 2D collapse/expand relayout.
   useLayoutEffect(() => {
@@ -1022,54 +1021,56 @@ function TreePageContent() {
               </button>
             )}
 
-            <div className="tree-header-menu">
-              <button
-                type="button"
-                className={`ui-btn${openHeaderMenu === 'print' ? ' ui-btn--selected' : ''}`}
-                aria-haspopup="menu"
-                aria-expanded={openHeaderMenu === 'print'}
-                onClick={() => setOpenHeaderMenu((prev) => (prev === 'print' ? null : 'print'))}
-              >
-                <Printer size={15} aria-hidden="true" /> Хэвлэх <ChevronDown size={14} aria-hidden="true" />
-              </button>
-              {openHeaderMenu === 'print' && (
-                <div className="tree-header-menu-panel" role="menu" aria-label="Хэвлэх цэс">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="tree-header-menu-item"
-                    onClick={() => {
-                      setOpenHeaderMenu(null);
-                      setExportModalOpen(true);
-                    }}
-                  >
-                    <Printer size={15} aria-hidden="true" /> Хананд хэвлэх (PDF / SVG)
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="tree-header-menu-item"
-                    onClick={() => {
-                      setOpenHeaderMenu(null);
-                      setCertificateModalOpen(true);
-                    }}
-                  >
-                    <FileBadge size={15} aria-hidden="true" /> Ургийн бичиг (PDF)
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="tree-header-menu-item"
-                    onClick={() => {
-                      setOpenHeaderMenu(null);
-                      setBookModalOpen(true);
-                    }}
-                  >
-                    <BookOpen size={15} aria-hidden="true" /> Ургийн ном (PDF)
-                  </button>
-                </div>
-              )}
-            </div>
+            {canPrintFamily && (
+              <div className="tree-header-menu">
+                <button
+                  type="button"
+                  className={`ui-btn${openHeaderMenu === 'print' ? ' ui-btn--selected' : ''}`}
+                  aria-haspopup="menu"
+                  aria-expanded={openHeaderMenu === 'print'}
+                  onClick={() => setOpenHeaderMenu((prev) => (prev === 'print' ? null : 'print'))}
+                >
+                  <Printer size={15} aria-hidden="true" /> Хэвлэх <ChevronDown size={14} aria-hidden="true" />
+                </button>
+                {openHeaderMenu === 'print' && (
+                  <div className="tree-header-menu-panel" role="menu" aria-label="Хэвлэх цэс">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-header-menu-item"
+                      onClick={() => {
+                        setOpenHeaderMenu(null);
+                        setExportModalOpen(true);
+                      }}
+                    >
+                      <Printer size={15} aria-hidden="true" /> Хананд хэвлэх (PDF / SVG)
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-header-menu-item"
+                      onClick={() => {
+                        setOpenHeaderMenu(null);
+                        setCertificateModalOpen(true);
+                      }}
+                    >
+                      <FileBadge size={15} aria-hidden="true" /> Ургийн бичиг (PDF)
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-header-menu-item"
+                      onClick={() => {
+                        setOpenHeaderMenu(null);
+                        setBookModalOpen(true);
+                      }}
+                    >
+                      <BookOpen size={15} aria-hidden="true" /> Ургийн ном (PDF)
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="tree-header-menu">
               <button
@@ -1421,41 +1422,29 @@ function TreePageContent() {
                 </p>
               )}
 
-              {(layout.branches.length > 0 || (tree && tree.persons.length > 0)) && (
-                <div className="tree-filter-bar" role="region" aria-label="Салбар болон үр хойчийн шүүлтүүр" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                  {layout.branches.length > 0 && (
-                    <>
-                      <button
-                        type="button"
-                        className={`tree-action-pill${activeBranchId === null ? ' is-link' : ''}`}
-                        aria-pressed={activeBranchId === null}
-                        onClick={() => setActiveBranchId(null)}
-                      >
-                        Бүх салбар ({tree?.persons.length ?? 0})
-                      </button>
-                      {layout.branches.map((branch) => (
-                        <button
-                          key={branch.id}
-                          type="button"
-                          className={`tree-action-pill${activeBranchId === branch.id ? ' is-link' : ''}`}
-                          aria-pressed={activeBranchId === branch.id}
-                          onClick={() =>
-                            setActiveBranchId((prev) => (prev === branch.id ? null : branch.id))
-                          }
-                        >
-                          {branch.label} ({branch.count})
-                        </button>
-                      ))}
-                    </>
-                  )}
+              {layout.branches.length > 0 && (
+                <div className="tree-filter-bar" role="region" aria-label="Салбарын шүүлтүүр" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                   <button
                     type="button"
-                    className={`tree-action-pill${showDaughtersDescendants ? ' is-link' : ''}`}
-                    aria-pressed={showDaughtersDescendants}
-                    onClick={() => setShowDaughtersDescendants((prev) => !prev)}
+                    className={`tree-action-pill${activeBranchId === null ? ' is-link' : ''}`}
+                    aria-pressed={activeBranchId === null}
+                    onClick={() => setActiveBranchId(null)}
                   >
-                    {showDaughtersDescendants ? 'Охидын үр хойч: Нээлттэй' : 'Охидын үр хойч: Нуусан'}
+                    Бүх салбар ({tree?.persons.length ?? 0})
                   </button>
+                  {layout.branches.map((branch) => (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      className={`tree-action-pill${activeBranchId === branch.id ? ' is-link' : ''}`}
+                      aria-pressed={activeBranchId === branch.id}
+                      onClick={() =>
+                        setActiveBranchId((prev) => (prev === branch.id ? null : branch.id))
+                      }
+                    >
+                      {branch.label} ({branch.count})
+                    </button>
+                  ))}
                 </div>
               )}
 
@@ -1469,6 +1458,7 @@ function TreePageContent() {
                     void handleToggleCollapse(unitId, focalPersonId, isFrontier)
                   }
                   loadingUnitId={loadingUnitId}
+                  canPrint={canPrintFamily}
                   bloodlineMode={bloodlineMode}
                   activeBloodlineIds={bloodline.activeIds}
                   timeTravelOpen={timeTravelOpen}

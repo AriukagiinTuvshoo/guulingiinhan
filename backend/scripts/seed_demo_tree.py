@@ -54,9 +54,10 @@ from urllib.parse import unquote
 from uuid import UUID
 
 DEMO_OWNER_EMAIL = "demo-tree-owner@example.com"
+DEMO_MEMBER_EMAIL = "demo-tree-member@example.com"
 DEMO_OWNER_PASSWORD = "demo-tree-password-123"
-DEMO_FAMILY_NAME = "ТУРШИЛТ — Алтан Овог (Synthetic Demo)"
-DEMO_LINEAGE_NAME = "Туршилтын Алтан Удам"
+DEMO_FAMILY_NAME = "ГУУЛИНГИЙНХАН"
+DEMO_LINEAGE_NAME = "Гуулингийнхны Удам"
 DISPOSABLE_FILENAME_RE = re.compile(r"^guulingiinhan-demo-[a-zA-Z0-9_-]+\.sqlite$")
 
 
@@ -778,6 +779,25 @@ def main() -> None:
         db.add(family)
         db.flush()
         db.add(FamilyMember(family_id=family.id, user_id=owner.id, role="owner"))
+
+        member_user = User(
+            email=DEMO_MEMBER_EMAIL,
+            display_name="Энгийн Гишүүн (Туршилт)",
+            password_hash=_password_hash(DEMO_OWNER_PASSWORD),
+            email_verified_at=now,
+        )
+        db.add(member_user)
+        db.flush()
+        db.add(
+            LoginIdentity(
+                user_id=member_user.id,
+                provider="email",
+                normalized_identifier=DEMO_MEMBER_EMAIL,
+                display_identifier=DEMO_MEMBER_EMAIL,
+                verified_at=now,
+            )
+        )
+        db.add(FamilyMember(family_id=family.id, user_id=member_user.id, role="member"))
 
         lineage_id: UUID | None = None
         branch_specs = [
