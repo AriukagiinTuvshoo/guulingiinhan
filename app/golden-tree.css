@@ -9,7 +9,7 @@
   position: relative;
   width: 100%;
   min-height: 620px;
-  height: clamp(560px, 72vh, 760px);
+  height: clamp(620px, 78vh, 840px);
   border-radius: 20px;
   overflow: hidden;
   background-image:
@@ -99,18 +99,21 @@
   stroke-width: 1.5;
 }
 
-/* Compact Portrait Cards */
+/* Editorial Heritage Portrait Cards */
 .golden-node-card {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 10px 8px;
-  border-radius: 16px;
+  gap: 3px;
+  padding: 12px 10px 10px;
+  border-radius: 18px;
   background: var(--tree-node-bg);
   border: 1px solid var(--tree-node-border);
-  box-shadow: var(--ui-shadow-sm);
+  box-shadow:
+    0 1px 0 inset var(--gold-glow),
+    0 8px 22px -12px rgba(16, 60, 46, 0.22);
   color: var(--tree-node-text);
   text-align: center;
   transition:
@@ -122,10 +125,12 @@
 }
 
 .golden-node-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   background: var(--tree-node-bg-hover);
   border-color: var(--gold-500);
-  box-shadow: var(--ui-shadow-md);
+  box-shadow:
+    0 0 0 1px var(--gold-border),
+    0 14px 30px -12px rgba(16, 60, 46, 0.32);
   z-index: 4;
 }
 
@@ -135,7 +140,7 @@
   border-color: var(--gold-500);
   box-shadow:
     0 0 0 2px var(--gold-400),
-    0 0 24px var(--gold-glow);
+    0 16px 34px -12px rgba(16, 60, 46, 0.36);
   z-index: 5;
 }
 

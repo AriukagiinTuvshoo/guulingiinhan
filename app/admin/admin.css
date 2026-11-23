@@ -1,7 +1,12 @@
+/* ============================================================================
+   GUULIN — Unified Admin Workspace (Operate Mode)
+   100% Theme-Aware via tokens.css (Light Parchment + Dark Obsidian-Forest)
+   ============================================================================ */
+
 .admin-console {
   min-height: 100vh;
-  background: var(--ui-bg, #f5f3ec);
-  color: var(--ui-text, #17372b);
+  background: var(--ui-bg);
+  color: var(--ui-text);
   overflow-x: hidden;
 }
 
@@ -9,133 +14,293 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1.5rem clamp(1rem, 4vw, 3rem);
-  background: linear-gradient(135deg, #0b2d23, #174434);
-  color: #f9f6ee;
-  border-bottom: 1px solid rgba(217, 184, 93, 0.28);
-  box-shadow: 0 8px 24px rgba(7, 37, 29, 0.12);
+  gap: 1.25rem;
+  padding: 1.5rem clamp(1.25rem, 4vw, 3rem);
+  background: var(--brand-primary);
+  color: var(--on-brand, #ffffff);
+  border-bottom: 1px solid var(--gold-border);
+  box-shadow: var(--ui-shadow-md);
 }
 
-.admin-console__header p {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #e4c46a;
-  margin: 0 0 0.4rem;
+.admin-console__header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .admin-console__header h1 {
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(1.45rem, 2.5vw, 1.85rem);
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
   font-weight: 600;
+  letter-spacing: -0.02em;
   margin: 0;
-  color: #ffffff;
+  color: var(--on-brand, #ffffff);
+}
+
+.admin-console__header-sub {
+  margin: 0;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.admin-console__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
 }
 
 .admin-console__header a {
-  color: #f7e9bd;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--on-brand, #ffffff);
   text-decoration: none;
+  font-size: 0.88rem;
   font-weight: 600;
-  padding: 0.48rem 0.95rem;
+  padding: 0.5rem 1rem;
   border-radius: 9999px;
-  border: 1px solid rgba(247, 233, 189, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.08);
-  transition: background 160ms ease, border-color 160ms ease;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
 
 .admin-console__header a:hover,
 .admin-console__header a:focus-visible {
   background: rgba(255, 255, 255, 0.16);
-  border-color: #e4c46a;
+  border-color: var(--gold-400);
+  outline: none;
 }
 
 .admin-console__content {
-  max-width: 68rem;
+  max-width: 72rem;
   margin: 0 auto;
-  padding: 2rem clamp(1rem, 3vw, 1.75rem) 3rem;
+  padding: 1.75rem clamp(1rem, 3.5vw, 2.25rem) 4rem;
+}
+
+.admin-console__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.admin-console__family-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ui-text-muted);
 }
 
 .admin-console__content select,
 .admin-console__content input,
 .admin-console__content textarea {
-  border: 1px solid var(--ui-border, #d5cdbc);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: var(--ui-surface, #fffdf8);
-  color: var(--ui-text, #17372b);
+  background: var(--ui-surface);
+  color: var(--ui-text);
   padding: 0.55rem 0.85rem;
+  font-size: 0.92rem;
   max-width: 100%;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.admin-console__content select {
-  margin-left: 0.6rem;
+.admin-console__content select:focus-visible,
+.admin-console__content input:focus-visible,
+.admin-console__content textarea:focus-visible {
+  outline: none;
+  border-color: var(--gold-500);
+  box-shadow: 0 0 0 3px var(--gold-glow);
 }
 
+/* Unified Segmented Navigation Rail */
 .admin-console__nav {
   display: flex;
-  gap: 0.55rem;
-  margin: 1.5rem 0;
+  gap: 0.45rem;
+  margin: 0 0 1.75rem;
   flex-wrap: wrap;
-  padding: 0.5rem;
+  padding: 0.45rem;
   border-radius: 14px;
-  background: var(--ui-surface, #fffdf8);
-  border: 1px solid var(--ui-border, #dfd6c5);
-  box-shadow: 0 4px 12px rgba(7, 37, 29, 0.05);
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow-sm);
 }
 
 .admin-console__nav a {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
-  padding: 0.4rem 0.9rem;
-  border-radius: 9px;
+  gap: 0.48rem;
+  min-height: 38px;
+  padding: 0.45rem 0.95rem;
+  border-radius: 10px;
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
-  color: var(--ui-text-muted, #465d53);
+  color: var(--ui-text-muted);
   transition: background 150ms ease, color 150ms ease;
 }
 
 .admin-console__nav a:hover,
 .admin-console__nav a:focus-visible {
-  background: var(--ui-surface-subtle, #efe9db);
-  color: var(--ui-text, #17372b);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  outline: none;
 }
 
 .admin-console__nav a[aria-current="page"] {
-  background: #174434;
-  color: #ffffff;
+  background: var(--brand-primary);
+  color: var(--on-brand, #ffffff);
 }
 
+.admin-console__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--gold-500);
+  color: var(--brand-primary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hairline-Divided Executive Summary Strip (Zero Card Slop) */
+.admin-console__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  border-radius: 14px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  overflow: hidden;
+  margin-bottom: 2rem;
+}
+
+.admin-console__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.1rem 1.35rem;
+  border-right: 1px solid var(--ui-border);
+  text-decoration: none;
+  color: inherit;
+  transition: background 150ms ease;
+}
+
+.admin-console__stat:last-child {
+  border-right: 0;
+}
+
+a.admin-console__stat:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.admin-console__stat-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ui-text-muted);
+}
+
+.admin-console__stat-value {
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text);
+}
+
+.admin-console__stat-value.is-gold {
+  color: var(--gold-500);
+}
+
+.admin-console__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.admin-console__content h2 {
+  font-family: var(--font-display, Georgia, "Times New Roman", serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 1.75rem 0 0.65rem;
+  color: var(--ui-text);
+}
+
+.admin-console__section-head h2 {
+  margin: 0;
+}
+
+.admin-console__lead {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--ui-text-muted);
+}
+
+/* Tabular Editorial Audit Ledger */
 .admin-console__audit {
   list-style: none;
   padding: 0;
-  margin-top: 1.5rem;
+  margin: 0.75rem 0 1.5rem;
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--ui-border, #dfd6c5);
-  box-shadow: 0 4px 14px rgba(7, 37, 29, 0.05);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
 }
 
 .admin-console__audit li {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.75rem 1.5rem;
   justify-content: space-between;
-  padding: 1rem 1.15rem;
-  border-bottom: 1px solid var(--ui-border, #e5dece);
-  background: var(--ui-surface, #fffdf8);
+  padding: 0.9rem 1.2rem;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface);
   overflow-wrap: anywhere;
+  transition: background 140ms ease;
+}
+
+.admin-console__audit li:hover {
+  background: var(--ui-surface-subtle);
 }
 
 .admin-console__audit li:last-child {
   border-bottom: 0;
 }
 
+.admin-console__audit-action {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.admin-console__audit-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.18rem 0.55rem;
+  border-radius: 9999px;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-text-muted);
+}
+
 .admin-console__audit time {
-  color: var(--ui-text-muted, #52665b);
-  font-size: 0.88rem;
+  color: var(--ui-text-muted);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .admin-console__member {
@@ -143,42 +308,50 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0.85rem;
-  margin: 1rem 0;
-  padding: 1.15rem 1.25rem;
-  border: 1px solid var(--ui-border, #dfd6c5);
+  margin: 0.75rem 0 1.5rem;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
-  background: var(--ui-surface, #fffdf8);
-  box-shadow: 0 4px 14px rgba(7, 37, 29, 0.05);
+  background: var(--ui-surface);
 }
 
 .admin-console button {
-  padding: 0.52rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.52rem 1.05rem;
   border-radius: 10px;
-  border: 1px solid #1b4d3b;
-  background: #174434;
-  color: #ffffff;
+  border: 1px solid var(--brand-primary);
+  background: var(--brand-primary);
+  color: var(--on-brand, #ffffff);
+  font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 150ms ease, transform 150ms ease;
+  transition: opacity 150ms ease, transform 150ms ease;
 }
 
 .admin-console button:hover:not(:disabled) {
-  background: #1f5944;
+  opacity: 0.92;
 }
 
 .admin-console button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .admin-console__header {
     align-items: flex-start;
     flex-direction: column;
   }
+  .admin-console__stat {
+    border-right: 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  .admin-console__stat:last-child {
+    border-bottom: 0;
+  }
   .admin-console__content select {
-    margin-left: 0;
-    margin-top: 0.45rem;
     width: 100%;
   }
 }

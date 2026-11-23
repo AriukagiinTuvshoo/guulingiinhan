@@ -1185,25 +1185,27 @@ function TreePageContent() {
             </div>
 
             <div className="tree-controls">
-              <div className="tree-segmented" role="group" aria-label="Мод харах горим">
-                <button
-                  type="button"
-                  aria-pressed={viewMode === 'gold'}
-                  onClick={() => setViewMode('gold')}
-                >
-                  Алтан Мод
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={viewMode === '2d'}
-                  onClick={() => setViewMode('2d')}
-                >
-                  Сонгодог 2D
-                </button>
-              </div>
+              {viewMode === '2d' && (
+                <div className="tree-segmented" role="group" aria-label="Мод харах горим">
+                  <button
+                    type="button"
+                    aria-pressed={false}
+                    onClick={() => setViewMode('gold')}
+                  >
+                    Алтан Мод
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={true}
+                    onClick={() => setViewMode('2d')}
+                  >
+                    Сонгодог 2D
+                  </button>
+                </div>
+              )}
 
               <label className="tree-bloodline-select" title="Сонгосон хүний удам угсаа, үр садыг онцлон тодруулах">
-                <span>✨ Удам</span>
+                <span>Удам</span>
                 <select
                   value={bloodlineMode}
                   onChange={(event) => setBloodlineMode(event.target.value as BloodlineMode)}
@@ -1211,10 +1213,10 @@ function TreePageContent() {
                   aria-label="Удам угсаа гэрэлтүүлэх горим"
                 >
                   <option value="none">Энгийн горим</option>
-                  <option value="all">🌟 Бүх шугам (Удам + Үр сад)</option>
-                  <option value="paternal">👑 Эцгийн ураг (Ясан төрөл)</option>
-                  <option value="maternal">🌸 Эхийн тал (Цусан төрөл)</option>
-                  <option value="descendants">🌱 Үр удам (Хүүхдүүд, ач нар)</option>
+                  <option value="all">Бүх шугам (Удам + Үр сад)</option>
+                  <option value="paternal">Эцгийн ураг (Ясан төрөл)</option>
+                  <option value="maternal">Эхийн тал (Цусан төрөл)</option>
+                  <option value="descendants">Үр удам (Хүүхдүүд, ач нар)</option>
                 </select>
               </label>
 
@@ -1242,52 +1244,45 @@ function TreePageContent() {
                 </select>
               </label>
 
-              <div className="tree-zoom" aria-label="Модны хэмжээ">
-                <button
-                  type="button"
-                  onClick={() => setZoom((value) => Math.max(0.22, Number((value - 0.1).toFixed(2))))}
-                  aria-label="Жижигрүүлэх"
-                >
-                  −
-                </button>
-                <span>{Math.round(zoom * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => setZoom((value) => Math.min(2.0, Number((value + 0.1).toFixed(2))))}
-                  aria-label="Томруулах"
-                >
-                  +
-                </button>
-                <button type="button" onClick={handleFitClassicToScreen}>Багтаах</button>
-                <button type="button" onClick={resetView}>Тэгшлэх</button>
+              <div className="tree-zoom" aria-label="Модны удирдлага">
                 <button type="button" onClick={handleExpandAllNine}>
                   Бүх 9 үеийг нээх
                 </button>
                 <button type="button" onClick={handleCollapseAll}>
-                  Бүгдийг хураах
+                  Хураах
                 </button>
-                {selectedId && (
-                  <button type="button" onClick={() => centerOnPerson(selectedId)}>Төвлөрөх</button>
+                {viewMode === '2d' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setZoom((value) => Math.max(0.22, Number((value - 0.1).toFixed(2))))}
+                      aria-label="Жижигрүүлэх"
+                    >
+                      −
+                    </button>
+                    <span>{Math.round(zoom * 100)}%</span>
+                    <button
+                      type="button"
+                      onClick={() => setZoom((value) => Math.min(2.0, Number((value + 0.1).toFixed(2))))}
+                      aria-label="Томруулах"
+                    >
+                      +
+                    </button>
+                    <button type="button" onClick={handleFitClassicToScreen}>Багтаах</button>
+                    <button type="button" onClick={resetView}>Тэгшлэх</button>
+                    {selectedId && (
+                      <button type="button" onClick={() => centerOnPerson(selectedId)}>Төвлөрөх</button>
+                    )}
+                    <button
+                      type="button"
+                      className={isFullscreen ? 'ui-btn--selected' : undefined}
+                      onClick={() => setIsFullscreen((prev) => !prev)}
+                      title={isFullscreen ? 'Цонхыг хэвийн болгох' : 'Дэлгэц дүүргэх'}
+                    >
+                      {isFullscreen ? 'Буцах' : 'Бүтэн дэлгэц'}
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  className={isFullscreen ? 'ui-btn--selected' : undefined}
-                  onClick={() => setIsFullscreen((prev) => !prev)}
-                  title={isFullscreen ? 'Цонхыг хэвийн болгох' : 'Дэлгэц дүүргэх'}
-                >
-                  {isFullscreen ? 'Буцах' : 'Бүтэн дэлгэц'}
-                </button>
-                <button
-                  type="button"
-                  className="ui-btn ui-btn--primary"
-                  style={{ minHeight: '32px', padding: '0 12px', marginLeft: '6px' }}
-                  onClick={() => {
-                    setKinshipInitialPersonId(selectedId || '');
-                    setKinshipModalOpen(true);
-                  }}
-                >
-                  Ураг холбоо шалгах
-                </button>
               </div>
             </div>
           </div>

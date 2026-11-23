@@ -644,17 +644,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   Миний профайл
                 </Link>
               ) : null}
-              {isGlobalAdmin ? (
-                <Link role="menuitem" href="/admin" onClick={() => setAccountOpen(false)}>
+              {(isGlobalAdmin || currentFamily?.role === 'owner' || currentFamily?.role === 'editor') ? (
+                <Link
+                  role="menuitem"
+                  className="app-shell__account-admin-link"
+                  href={currentFamily ? familyHref('/admin', currentFamily.id) : '/admin'}
+                  onClick={() => setAccountOpen(false)}
+                >
                   <ShieldCheck size={14} aria-hidden="true" />
-                  Админ удирдлага
+                  Админы удирдлага
                 </Link>
               ) : null}
-              {currentFamily && (
-                <Link role="menuitem" className="app-shell__account-admin-link" href={familyHref('/admin', currentFamily.id)} onClick={() => setAccountOpen(false)}>
-                  👑 Админы удирдлагын төв
-                </Link>
-              )}
               <Link role="menuitem" href="/families" onClick={() => setAccountOpen(false)}>
                 Гэр бүлүүд
               </Link>

@@ -3,6 +3,16 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  FileText,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Trash2,
+  UserCheck,
+  Users,
+} from 'lucide-react';
 import AccountPhoto from '../../components/account-photo';
 import AdminAnnouncements from '../../components/admin-announcements';
 import { ArchivedFamilies } from '../../components/admin-family-archive';
@@ -76,11 +86,34 @@ function fallbackAccessForFamily(family: Family): AdminAccess {
   return { owner: false, scopes: [] };
 }
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  'person.created': 'Ургийн модонд хүн нэмсэн',
+  'person.updated': 'Хүний мэдээлэл шинэчилсэн',
+  'person.deleted': 'Хүн устгасан',
+  'person.link_requested': 'Профайл холбох хүсэлт илгээсэн',
+  'person.link_approved': 'Профайл холбоос баталсан',
+  'tree_join.requested': 'Модонд орох хүсэлт илгээсэн',
+  'tree_join.approved': 'Модонд орох хүсэлт баталсан',
+  'tree_join.rejected': 'Модонд орох хүсэлт буцаасан',
+  'tree_join.parent_attached': 'Эцэг/эхийн ухаалаг холбоос үүсгэсэн',
+  'member.role_updated': 'Гишүүний эрх шинэчилсэн',
+  'story.created': 'Түүх нэмсэн',
+  'story.updated': 'Түүх шинэчилсэн',
+  'story.deleted': 'Түүх устгасан',
+  'memory.created': 'Дурсамж нэмсэн',
+  'invitation.created': 'Шинэ урилга илгээсэн',
+  'invitation.revoked': 'Урилга цуцалсан',
+  'family.updated': 'Гэр бүлийн тохиргоо шинэчилсэн',
+};
+
 function FamilyAdminConsole({ showSystemAdminLink = false }: { showSystemAdminLink?: boolean }) {
   const [families, setFamilies] = useState<Family[]>([]);
   const [selected, setSelected] = useState('');
   const [accessByFamily, setAccessByFamily] = useState<Record<string, AdminAccess>>({});
   const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [pendingJoinCount, setPendingJoinCount] = useState(0);
+  const [smartMatchCount, setSmartMatchCount] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [isGlobalAdmin, setIsGlobalAdmin] = useState(showSystemAdminLink);
@@ -129,9 +162,41 @@ function FamilyAdminConsole({ showSystemAdminLink = false }: { showSystemAdminLi
   }, []);
 
   useEffect(() => {
-    if (!selected || !accessByFamily[selected]?.scopes.includes('view_audit')) return;
+    if (!selected) return;
+    const access = accessByFamily[selected];
     const controller = new AbortController();
-    api<AuditEntry[]>(`/families/${encodeURIComponent(selected)}/audit`, { signal: controller.signal })
+    const base = `/families/${encodeURIComponent(selected)}`;
+
+    void api<unknown[]>(`${base}/members`, { signal: controller.signal })
+      .then((rows) => {
+        if (!controller.signal.aborted) setMemberCount(rows.length);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMemberCount(null);
+      });
+
+    if (access?.owner) {
+      void api<unknown[]>(`${base}/tree-join-requests?status=pending`, { signal: controller.signal })
+        .then((rows) => {
+          if (!controller.signal.aborted) setPendingJoinCount(rows.length);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setPendingJoinCount(0);
+        });
+      void api<unknown[]>(`${base}/tree-join-requests/smart-matches`, { signal: controller.signal })
+        .then((rows) => {
+          if (!controller.signal.aborted) setSmartMatchCount(rows.length);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setSmartMatchCount(0);
+        });
+    } else {
+      setPendingJoinCount(0);
+      setSmartMatchCount(0);
+    }
+
+    if (!access?.scopes.includes('view_audit')) return () => controller.abort();
+    api<AuditEntry[]>(`${base}/audit`, { signal: controller.signal })
       .then((rows) => {
         if (!controller.signal.aborted) {
           setEntries(rows);
@@ -153,60 +218,134 @@ function FamilyAdminConsole({ showSystemAdminLink = false }: { showSystemAdminLi
     setSelected(value);
   }
 
+  const activeFamily = families.find((f) => f.id === selected);
+  const pendingTotal = pendingJoinCount + smartMatchCount;
+
   return (
     <main className="admin-console">
       <header className="admin-console__header">
-        <div>
-          <p>ГУУЛИНГИЙНХАН</p>
+        <div className="admin-console__header-title">
           <h1>Удирдлага</h1>
+          <p className="admin-console__header-sub">
+            {activeFamily ? `${activeFamily.name} · Эрх, гишүүд, ургийн мод ба аудит` : 'Гэр бүлийн удирдлагын төв'}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {isGlobalAdmin && <Link href="/admin">Системийн удирдлагын төв</Link>}
+        <div className="admin-console__header-actions">
+          {isGlobalAdmin && (
+            <Link href="/admin">
+              <ShieldCheck size={15} aria-hidden="true" />
+              Системийн удирдлагын төв
+            </Link>
+          )}
           <Link href={selected ? `/dashboard?family=${encodeURIComponent(selected)}` : '/dashboard'}>
+            <ArrowLeft size={15} aria-hidden="true" />
             Үндсэн хэсэг рүү буцах
           </Link>
         </div>
       </header>
       <section className="admin-console__content">
-        <h2>Үйлдлийн бүртгэл</h2>
-        <p>Сонгосон гэр бүлийн сүүлийн 100 үйлдэл, зөвшөөрөлтэй хэрэглэгчид харагдана.</p>
         {loading && <p role="status">Ачаалж байна…</p>}
         {error && <p role="alert">{error}</p>}
         {!loading && families.length === 0 && !error && <p>Удирдах эрхтэй гэр бүл алга.</p>}
+
         {families.length > 0 && (
-          <label>
-            Гэр бүл{' '}
-            <select value={selected} onChange={(event) => chooseFamily(event.target.value)}>
-              {families.map((family) => (
-                <option key={family.id} value={family.id}>
-                  {family.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="admin-console__toolbar">
+            <label className="admin-console__family-picker">
+              <span>Гэр бүл</span>
+              <select value={selected} onChange={(event) => chooseFamily(event.target.value)}>
+                {families.map((family) => (
+                  <option key={family.id} value={family.id}>
+                    {family.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         )}
+
         {selected && (
           <nav aria-label="Удирдлагын хэсгүүд" className="admin-console__nav">
-            {accessByFamily[selected]?.scopes.includes('manage_trash') && (
-              <Link href={`/admin/trash?family=${encodeURIComponent(selected)}`}>Хогийн сав</Link>
-            )}
-            {accessByFamily[selected]?.scopes.includes('manage_settings') && (
-              <Link href={`/admin/settings?family=${encodeURIComponent(selected)}`}>Гэр бүлийн тохиргоо</Link>
-            )}
             {accessByFamily[selected]?.scopes.includes('manage_members') && (
-              <Link href={`/admin/members?family=${encodeURIComponent(selected)}`}>Гишүүд ба урилга</Link>
+              <Link href={`/admin/members?family=${encodeURIComponent(selected)}`}>
+                <Users size={15} aria-hidden="true" />
+                Гишүүд ба урилга
+                {pendingTotal > 0 && <span className="admin-console__badge">{pendingTotal}</span>}
+              </Link>
             )}
             {accessByFamily[selected]?.scopes.includes('manage_people') && (
-              <Link href={`/admin/people?family=${encodeURIComponent(selected)}`}>Хүмүүс</Link>
+              <Link href={`/admin/people?family=${encodeURIComponent(selected)}`}>
+                <UserCheck size={15} aria-hidden="true" />
+                Хүмүүс
+              </Link>
             )}
             {accessByFamily[selected]?.scopes.includes('manage_content') && (
-              <Link href={`/admin/content?family=${encodeURIComponent(selected)}`}>Агуулга</Link>
+              <Link href={`/admin/content?family=${encodeURIComponent(selected)}`}>
+                <FileText size={15} aria-hidden="true" />
+                Агуулга
+              </Link>
+            )}
+            {accessByFamily[selected]?.scopes.includes('manage_settings') && (
+              <Link href={`/admin/settings?family=${encodeURIComponent(selected)}`}>
+                <Settings size={15} aria-hidden="true" />
+                Гэр бүлийн тохиргоо
+              </Link>
             )}
             {accessByFamily[selected]?.owner && (
-              <Link href={`/admin/permissions?family=${encodeURIComponent(selected)}`}>Админ эрх</Link>
+              <Link href={`/admin/permissions?family=${encodeURIComponent(selected)}`}>
+                <Shield size={15} aria-hidden="true" />
+                Админ эрх
+              </Link>
+            )}
+            {accessByFamily[selected]?.scopes.includes('manage_trash') && (
+              <Link href={`/admin/trash?family=${encodeURIComponent(selected)}`}>
+                <Trash2 size={15} aria-hidden="true" />
+                Хогийн сав
+              </Link>
             )}
           </nav>
         )}
+
+        {selected && (
+          <div className="admin-console__summary" aria-label="Товч үзүүлэлт">
+            <Link
+              href={`/admin/members?family=${encodeURIComponent(selected)}`}
+              className="admin-console__stat"
+            >
+              <span className="admin-console__stat-label">Нийт гишүүн</span>
+              <span className="admin-console__stat-value">{memberCount ?? '—'}</span>
+            </Link>
+            <Link
+              href={`/admin/members?family=${encodeURIComponent(selected)}`}
+              className="admin-console__stat"
+            >
+              <span className="admin-console__stat-label">Модонд орох хүсэлт</span>
+              <span className={`admin-console__stat-value${pendingJoinCount > 0 ? ' is-gold' : ''}`}>
+                {pendingJoinCount}
+              </span>
+            </Link>
+            <Link
+              href={`/admin/members?family=${encodeURIComponent(selected)}`}
+              className="admin-console__stat"
+            >
+              <span className="admin-console__stat-label">Ухаалаг холболтын санал</span>
+              <span className={`admin-console__stat-value${smartMatchCount > 0 ? ' is-gold' : ''}`}>
+                {smartMatchCount}
+              </span>
+            </Link>
+            <div className="admin-console__stat">
+              <span className="admin-console__stat-label">Сүүлийн үйлдлүүд</span>
+              <span className="admin-console__stat-value">{entries.length}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="admin-console__section-head">
+          <h2>Үйлдлийн бүртгэл</h2>
+        </div>
+        <p className="admin-console__lead">
+          Сонгосон гэр бүлийн сүүлийн 100 үйлдэл, зөвшөөрөлтэй хэрэглэгчид харагдана.
+        </p>
+
         {selected && !accessByFamily[selected]?.scopes.includes('view_audit') && (
           <p>Үйлдлийн бүртгэл харах эрхгүй.</p>
         )}
@@ -214,9 +353,13 @@ function FamilyAdminConsole({ showSystemAdminLink = false }: { showSystemAdminLi
           <ul className="admin-console__audit">
             {entries.map((entry) => (
               <li key={entry.id}>
-                <strong>{entry.action}</strong>
-                <span>{entry.target_type}</span>
-                <time dateTime={entry.created_at}>{new Date(entry.created_at).toLocaleString('mn-MN')}</time>
+                <span className="admin-console__audit-action">
+                  <span>{AUDIT_ACTION_LABELS[entry.action] ?? entry.action}</span>
+                  <span className="admin-console__audit-tag">{entry.target_type}</span>
+                </span>
+                <time dateTime={entry.created_at}>
+                  {new Date(entry.created_at).toLocaleString('mn-MN')}
+                </time>
               </li>
             ))}
           </ul>
