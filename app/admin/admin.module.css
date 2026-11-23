@@ -68,3 +68,41 @@
 .navLink{display:flex;align-items:center;gap:12px;width:100%;padding:12px;color:#e8eee3;border:1px solid transparent;border-radius:7px;text-decoration:none;font-size:12px}.navLink>svg{flex-shrink:0;color:#d8be78}.navLink[aria-current=page]{background:#285343;border-color:#476953}.navLink:hover{background:#1d4739;color:#fff}.nav .navLink .navText{display:grid;gap:5px;width:auto;line-height:1.2;color:inherit;font-size:12px;text-align:left}@media(max-width:900px){.navLink{width:auto;min-width:138px;min-height:54px;padding:10px;white-space:nowrap}.navLink>svg{width:18px}}
 
 .skipLink{position:absolute;top:8px;left:12px;z-index:100;transform:translateY(-150%);background:#fff9e8;color:#173e30;padding:12px 16px;border-radius:7px;font-size:13px;font-weight:700;text-decoration:none}.skipLink:focus{transform:translateY(0)}.portraitPicker{position:relative;flex:1 1 230px;min-width:0}.portraitPicker :global(.account-photo-editor__file){position:absolute;width:1px!important;height:1px!important;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0!important;border:0!important;min-height:0!important}.portraitPicker label{display:inline-flex;min-height:44px;align-items:center;justify-content:center;padding:0 17px;border:1px solid #b3c5ad;background:#f2f6eb;color:#244f38;border-radius:7px;cursor:pointer;font-size:12px}.portraitPicker label[aria-disabled=true]{opacity:.5;cursor:not-allowed}.portraitPicker:has(input:focus-visible) label{outline:3px solid #bd9d4e;outline-offset:2px}.portraitPicker p{font-size:11px;color:#6d7c68;margin:8px 0 0;overflow-wrap:anywhere}
+
+/* Next-Gen Governance Console Parity (Forest Green #103c2e + Antique Gold + Light/Dark Tokens) */
+.page { background: var(--ui-bg); color: var(--ui-text); }
+.header { background: var(--brand-primary); border-bottom: 2px solid var(--gold-500); }
+.nav { background: var(--brand-primary); border-color: var(--brand-primary); }
+.nav button[aria-current=page],
+.navLink[aria-current=page] {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--gold-border);
+  border-left: 3px solid var(--gold-400);
+  color: var(--brand-primary-contrast);
+}
+.content { background: var(--ui-surface); border-color: var(--ui-border); color: var(--ui-text); }
+.heading { border-bottom-color: var(--ui-border); }
+.heading h1 { color: var(--ui-text); }
+.heading .eyebrow { color: var(--ui-accent-text); }
+.dashboardMetrics > div,
+.dashboardPanel,
+.panel,
+.list,
+.detailCard {
+  background: var(--ui-surface-elevated);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+.dashboardMetrics strong { color: var(--ui-text); }
+.dashboardMetrics span,
+.dashboardMetrics small,
+.dashboardWelcome p,
+.dashboardAudit span { color: var(--ui-text-secondary); }
+.dashboardAudit time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--ui-text-muted);
+}
+.dashboardAudit li:before { background: var(--gold-500); }
+.dashboardPrimary { background: var(--ui-primary); color: var(--ui-primary-contrast); }
+.dashboardPrimary:hover { background: var(--ui-primary-hover); }

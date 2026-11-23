@@ -501,18 +501,18 @@ export function TreeExportModal({
             <div className="tree-export-actions">
               <button
                 type="button"
-                className="tree-button tree-button--primary tree-export-primary-btn"
-                onClick={handleDownloadSvg}
+                className="ui-btn ui-btn--primary"
+                onClick={handlePrint}
               >
-                <Download size={16} /> Вектор татах (.SVG)
+                <Printer size={16} /> Өндөр нарийвчлалтай PDF татах
               </button>
 
               <button
                 type="button"
-                className="tree-button tree-button--secondary"
-                onClick={handlePrint}
+                className="ui-btn"
+                onClick={handleDownloadSvg}
               >
-                <Printer size={16} /> Хэвлэх (PDF / Print)
+                <Download size={16} /> Вектор SVG татах
               </button>
 
               <button
@@ -556,7 +556,7 @@ export function TreeExportModal({
               <span>Формат: <strong>Вектор (Infinite resolution)</strong></span>
             </div>
 
-            <div className="tree-export-preview-frame">
+            <div className="tree-export-preview-frame export-studio-preview">
               <div className="tree-export-svg-container">
                 {previewUrl ? (
                   <img
