@@ -1052,6 +1052,51 @@ def list_members(
     return members
 
 
+class MemberRoleUpdate(BaseModel):
+    role: str = Field(pattern="^(editor|member)$")
+
+
+@router.patch("/{family_id}/members/{target_user_id}", response_model=MemberOut)
+def update_member_role(
+    family_id: UUID,
+    target_user_id: UUID,
+    body: MemberRoleUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _member(db, family_id, user, {"owner"})
+    if target_user_id == user.id:
+        raise HTTPException(status_code=400, detail="Өөрийн эзэмшигчийн эрхийг эндээс өөрчлөх боломжгүй.")
+    target_member = db.scalar(
+        select(FamilyMember).where(
+            FamilyMember.family_id == family_id,
+            FamilyMember.user_id == target_user_id,
+        )
+    )
+    if target_member is None:
+        raise HTTPException(status_code=404, detail="Гэр бүлийн гишүүн олдсонгүй.")
+    if target_member.role == "owner":
+        raise HTTPException(status_code=403, detail="Эзэмшигчийн эрхийг бууруулах боломжгүй.")
+    target_member.role = body.role
+    _audit(db, user, family_id, "member.role_updated", "user", target_user_id)
+    db.commit()
+    target_user = db.get(User, target_user_id)
+    person_id = db.scalar(
+        select(UserPersonLink.person_id)
+        .join(FamilyPerson, and_(
+            FamilyPerson.person_id == UserPersonLink.person_id,
+            FamilyPerson.family_id == family_id,
+        ))
+        .where(UserPersonLink.user_id == target_user_id)
+    )
+    return MemberOut(
+        user_id=target_user_id,
+        display_name=target_user.display_name if target_user else "Нэргүй хэрэглэгч",
+        role=target_member.role,
+        person_id=person_id,
+    )
+
+
 @router.get("/{family_id}/lineages", response_model=list[LineageOut])
 def list_lineages(
     family_id: UUID,
@@ -3151,7 +3196,7 @@ def create_story(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_work_scope(db, family_id, user, "manage_content")
+    _member(db, family_id, user)
     people = _validate_story_people(db, family_id, body.person_ids, user)
     _validate_story_photos(db, family_id, user, body.body, body.visibility)
     story = Story(
@@ -3224,11 +3269,19 @@ def update_story(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    member = _require_work_scope(db, family_id, user, "manage_content")
+    _member(db, family_id, user)
     story = db.scalar(select(Story).where(Story.id == story_id, Story.family_id == family_id))
     if story is None or not _story_visible(db, story, user):
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
-    if member.role not in {"owner", "editor"}:
+    if story.created_by != user.id:
+        member = _require_work_scope(db, family_id, user, "manage_content")
+    else:
+        member = db.scalar(
+            select(FamilyMember).where(
+                FamilyMember.family_id == family_id, FamilyMember.user_id == user.id
+            )
+        )
+    if member is None or member.role not in {"owner", "editor"}:
         existing_ids = list(db.scalars(select(StoryPerson.person_id).where(StoryPerson.story_id == story.id)).all())
         _validate_story_people(db, family_id, existing_ids, user)
     updates = body.model_dump(exclude_unset=True, exclude={"person_ids"})
@@ -3279,11 +3332,19 @@ def delete_story(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    member = _require_work_scope(db, family_id, user, "manage_content")
+    _member(db, family_id, user)
     story = db.scalar(select(Story).where(Story.id == story_id, Story.family_id == family_id))
     if story is None or not _story_visible(db, story, user):
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
-    if member.role not in {"owner", "editor"}:
+    if story.created_by != user.id:
+        member = _require_work_scope(db, family_id, user, "manage_content")
+    else:
+        member = db.scalar(
+            select(FamilyMember).where(
+                FamilyMember.family_id == family_id, FamilyMember.user_id == user.id
+            )
+        )
+    if member is None or member.role not in {"owner", "editor"}:
         existing_ids = list(db.scalars(select(StoryPerson.person_id).where(StoryPerson.story_id == story.id)).all())
         _validate_story_people(db, family_id, existing_ids, user)
     _audit(db, user, family_id, "story.deleted", "story", story.id)

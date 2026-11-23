@@ -10,6 +10,7 @@ import {
   type ArchiveListPage,
 } from "../../lib/api";
 import { useFamilyContext } from "../../components/family-context";
+import TreeJoinRequestCard from "../../components/tree-join-request-card";
 import { useDashboardSection } from "../../components/dashboard/use-dashboard-section";
 import {
   ArchivePreview,
@@ -109,7 +110,7 @@ function FamilyMembersGallery({
   );
 }
 
-function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
+function FamilyDashboard({ family, name, userId }: { family: Family; name?: string; userId: string }) {
   const base = `/families/${encodeURIComponent(family.id)}`;
   const people = useDashboardSection<Person[]>(
     `${base}/persons`,
@@ -133,6 +134,7 @@ function FamilyDashboard({ family, name }: { family: Family; name?: string }) {
   return (
     <main className="heritage-dashboard" id="family-dashboard">
       <DashboardHero family={family} name={name} />
+      <TreeJoinRequestCard familyId={family.id} userId={userId} />
       <section
         className="heritage-stats luxury-kpi-grid"
         aria-label="Танд харагдах гэр бүлийн мэдээллийн тоо"
@@ -244,7 +246,7 @@ function DashboardContent() {
       </main>
     );
   return (
-    <FamilyDashboard key={family.id} family={family} name={user.display_name} />
+    <FamilyDashboard key={family.id} family={family} name={user.display_name} userId={user.id} />
   );
 }
 export default function DashboardPage() {

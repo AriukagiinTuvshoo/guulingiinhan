@@ -1254,3 +1254,74 @@ class ChatMessage(Base):
     )
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class TreeJoinRequest(Base):
+    """Self-registration request from a family member to be placed on the family tree."""
+
+    __tablename__ = "tree_join_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "gender IS NULL OR gender IN ('male', 'female', 'other')",
+            name="ck_tree_join_request_gender",
+        ),
+        CheckConstraint(
+            "claimed_generation IS NULL OR (claimed_generation >= 1 AND claimed_generation <= 15)",
+            name="ck_tree_join_request_generation",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected')",
+            name="ck_tree_join_request_status",
+        ),
+        CheckConstraint(
+            "father_person_id IS NULL OR mother_person_id IS NULL OR father_person_id <> mother_person_id",
+            name="ck_tree_join_request_distinct_parents",
+        ),
+        Index("ix_tree_join_request_family_status", "family_id", "status", "created_at"),
+        Index(
+            "uq_tree_join_request_pending_user",
+            "family_id",
+            "user_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    family_id: Mapped[UUID] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    first_name: Mapped[str] = mapped_column(String(120))
+    last_name: Mapped[str] = mapped_column(String(120), default="")
+    middle_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    birth_place: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    biography: Mapped[str | None] = mapped_column(Text, nullable=True)
+    branch_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("branches.id", ondelete="SET NULL"), nullable=True
+    )
+    claimed_generation: Mapped[int | None] = mapped_column(nullable=True)
+    father_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), nullable=True
+    )
+    mother_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), nullable=True
+    )
+    declared_father_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    declared_mother_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
+    created_person_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("persons.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
