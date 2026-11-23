@@ -1004,3 +1004,34 @@
     left: 10px;
   }
 }
+
+/* ============================================================================
+   10. Final Dark-Mode Cascade Parity (loaded last after globals/turshilt CSS)
+   ============================================================================ */
+html[data-theme="dark"] .ui-btn {
+  background: var(--ui-surface-elevated);
+  border-color: var(--ui-border-strong);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .ui-btn--primary {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--ui-primary-contrast);
+}
+
+html[data-theme="dark"] .tree-action-pill,
+html[data-theme="dark"] .tree-drawer-badges span,
+html[data-theme="dark"] .tree-zoom button,
+html[data-theme="dark"] .tree-zoom span {
+  background: var(--ui-surface-elevated);
+  border-color: var(--ui-border-strong);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .tree-action-pill.is-link,
+html[data-theme="dark"] .tree-action-pill[aria-pressed="true"] {
+  background: var(--gold-soft);
+  border-color: var(--gold-500);
+  color: var(--ui-accent-text);
+}

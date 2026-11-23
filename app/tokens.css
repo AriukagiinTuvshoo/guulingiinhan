@@ -710,3 +710,100 @@ html[data-theme="dark"] .homev2-button--dark {
   background: var(--gold-soft);
   color: var(--ui-accent-text);
 }
+
+/* ==========================================================================
+   Dark-Mode Contrast Parity (Auth Portal, AppShell, Dashboard, Tree)
+   ========================================================================== */
+
+html[data-theme="dark"] .app-shell,
+html[data-theme="dark"] .app-shell__main,
+html[data-theme="dark"] .app-shell__body,
+html[data-theme="dark"] .heritage-dashboard,
+html[data-theme="dark"] .tree-page {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .app-shell__header,
+html[data-theme="dark"] .app-shell__sidebar {
+  background: var(--ui-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .app-shell__account-button,
+html[data-theme="dark"] .app-shell__account-button strong,
+html[data-theme="dark"] .app-shell__account-button span,
+html[data-theme="dark"] .app-shell__brand strong,
+html[data-theme="dark"] .app-shell__nav-link,
+html[data-theme="dark"] .app-shell__nav-link strong {
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .app-shell__nav-link.is-active,
+html[data-theme="dark"] .app-shell__nav-link.is-active strong,
+html[data-theme="dark"] .app-shell__nav-link.is-active small {
+  background: var(--ui-primary);
+  border-color: var(--brand-primary-border);
+  color: var(--ui-primary-contrast);
+}
+
+html[data-theme="dark"] .living-auth-card h1,
+html[data-theme="dark"] .living-auth-card h2,
+html[data-theme="dark"] .living-auth-card h3,
+html[data-theme="dark"] .living-auth-card strong,
+html[data-theme="dark"] .living-auth-card label {
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .living-auth-card p,
+html[data-theme="dark"] .living-auth-card small,
+html[data-theme="dark"] .living-auth-card .muted {
+  color: var(--ui-text-secondary);
+}
+
+html[data-theme="dark"] .living-auth-card input,
+html[data-theme="dark"] .living-auth-card select,
+html[data-theme="dark"] .living-auth-card textarea {
+  background: var(--ui-input-bg);
+  border-color: var(--ui-input-border);
+  color: var(--ui-input-text);
+}
+
+html[data-theme="dark"] .living-auth-card .auth-method-tabs,
+html[data-theme="dark"] .living-auth-card .auth-method-note,
+html[data-theme="dark"] .living-auth-card .notice,
+html[data-theme="dark"] .living-auth-card .field-note {
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border);
+  color: var(--ui-text-secondary);
+}
+
+html[data-theme="dark"] .tree-page h1,
+html[data-theme="dark"] .tree-page h2,
+html[data-theme="dark"] .tree-workspace,
+html[data-theme="dark"] .tree-toolbar,
+html[data-theme="dark"] .tree-toolbar strong,
+html[data-theme="dark"] .tree-toolbar span,
+html[data-theme="dark"] .tree-lede {
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .tree-workspace,
+html[data-theme="dark"] .tree-toolbar,
+html[data-theme="dark"] .tree-zoom,
+html[data-theme="dark"] .tree-action-pill,
+html[data-theme="dark"] .tree-search-wrap input,
+html[data-theme="dark"] .tree-toolbar select {
+  background: var(--ui-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .tree-action-pill.is-link,
+html[data-theme="dark"] .tree-action-pill[aria-pressed="true"] {
+  background: var(--gold-soft);
+  border-color: var(--gold-500);
+  color: var(--ui-accent-text);
+}
+
