@@ -1,516 +1,283 @@
 /* ==========================================================================
-   ГУУЛИНГИЙНХАН — 4-Theme Natural Heritage Design Token System
-   Themes:
-     1. mutuu  (Муутуу Цаас — Archival Parchment & Pine, default light)
-     2. khush  (Хуш Мод — Carved Cedar & Bronze, warm organic dark)
-     3. taiga  (Тайгын Ой — Deep Taiga Pine & Brass, forest heritage dark)
-     4. kheer  (Хээрийн Чулуу — Steppe Stone & Sumi Ink, calm daylight)
+   GUULINGIINHAN — Unified 2-Theme Semantic Design Tokens (Light / Dark)
+   Brand: Forest Green (#103c2e) + Antique Gold (#c49635) + Parchment (#f6f2e8)
    ========================================================================== */
 
-:root {
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
-  --radius-pill: 9999px;
-
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-}
-
-/* 1. МУУТУУ ЦААС (Archival Parchment & Pine — Default Light) */
 :root,
-html[data-theme="mutuu"],
-html[data-theme="parchment"] {
+html[data-theme="light"] {
   color-scheme: light;
-  --parchment-canvas: #f2ece0;
-  --parchment-card: #faf6ee;
-  --parchment-border: #ddd2be;
-  --ink-primary: #1f1c18;
-  --ink-secondary: #4a433a;
-  --ink-muted: #736a5d;
 
-  --ui-bg: #f2ece0;
-  --ui-surface: #faf6ee;
-  --ui-surface-subtle: #efe8d8;
-  --ui-surface-elevated: #fffdf8;
-  --ui-border: #ddd2be;
-  --ui-border-strong: #c5b69c;
-  --ui-text: #1f1c18;
-  --ui-text-secondary: #4a433a;
-  --ui-text-muted: #736a5d;
+  /* Brand & Gold Scale (defined here so no var(--gold-*, #hex) fallbacks are needed) */
+  --brand-primary: #103c2e;
+  --brand-primary-hover: #0b2d22;
+  --brand-primary-active: #08231a;
+  --brand-primary-soft: rgba(16, 60, 46, 0.1);
+  --brand-primary-border: rgba(16, 60, 46, 0.28);
+  --brand-primary-contrast: #faf6ee;
 
-  --ui-primary: #1e3d2f;
-  --ui-primary-hover: #28513f;
-  --ui-primary-contrast: #faf6ee;
+  --gold-200: #f6e4b4;
+  --gold-300: #e8c97a;
+  --gold-400: #d4ad4d;
+  --gold-500: #c49635;
+  --gold-600: #a17722;
+  --gold-700: #7d5b18;
+  --gold-soft: rgba(196, 150, 53, 0.14);
+  --gold-border: rgba(196, 150, 53, 0.44);
+  --gold-glow: rgba(196, 150, 53, 0.28);
 
-  --ui-accent: #9a7432;
-  --ui-accent-bright: #b48a40;
-  --ui-accent-soft: #f3e9d4;
-  --ui-accent-border: #d7c093;
-  --ui-accent-text: #7a5920;
-  --ui-accent-contrast: #ffffff;
+  /* Legacy Parchment / Ink Aliases */
+  --parchment-canvas: #f6f2e8;
+  --parchment-card: #fffdf9;
+  --parchment-border: #e2d9c8;
+  --ink-primary: #103c2e;
+  --ink-secondary: #3b5349;
+  --ink-muted: #5d7269;
 
-  --ui-sidebar-bg: #193227;
-  --ui-sidebar-border: #284a3b;
-  --ui-sidebar-title: #f5efe2;
-  --ui-sidebar-text: #c5d3ca;
-  --ui-sidebar-muted: #8ca396;
-  --ui-sidebar-active-bg: #254738;
-  --ui-sidebar-active-border: #3b6552;
+  /* Semantic Surface / Text / Border Aliases */
+  --surface-bg: #f6f2e8;
+  --surface-card: #fffdf9;
+  --surface-subtle: #efe9da;
+  --surface-elevated: #ffffff;
+  --border-subtle: #e2d9c8;
+  --border-strong: #c8bca4;
+  --text-primary: #103c2e;
+  --text-secondary: #3b5349;
+  --text-muted: #5d7269;
 
-  --ui-input-bg: #fffdf8;
-  --ui-input-border: #cfc2aa;
-  --ui-input-text: #1f1c18;
-
-  --ui-success-bg: #e6f0e9;
-  --ui-success-border: #b7d1bf;
-  --ui-success-text: #1f563a;
-  --ui-danger-bg: #f9ebe7;
-  --ui-danger-border: #deb4a8;
-  --ui-danger-text: #8c2f23;
-  --ui-info-bg: #e8eff2;
-  --ui-info-border: #bccfd7;
-  --ui-info-text: #224c5c;
-  --ui-warning-bg: #f6ecd7;
-  --ui-warning-border: #dac18c;
-  --ui-warning-text: #7a5920;
-
-  --ui-backdrop: rgba(25, 22, 18, 0.56);
-  --ui-shadow-sm: 0 2px 8px rgba(31, 28, 24, 0.05);
-  --ui-shadow-md: 0 10px 24px rgba(31, 28, 24, 0.09);
-  --ui-shadow-modal: 0 24px 56px rgba(25, 22, 18, 0.24);
-}
-
-/* 2. ХУШ МОД (Carved Cedar & Bronze — Warm Organic Dark) */
-html[data-theme="khush"],
-html[data-theme="obsidian"] {
-  color-scheme: dark;
-  --parchment-canvas: #15120e;
-  --parchment-card: #1e1a14;
-  --parchment-border: #383024;
-  --ink-primary: #f0e9dc;
-  --ink-secondary: #c8bda9;
-  --ink-muted: #978c7a;
-
-  --ui-bg: #15120e;
-  --ui-surface: #1e1a14;
-  --ui-surface-subtle: #26211a;
-  --ui-surface-elevated: #2a241c;
-  --ui-border: #383024;
-  --ui-border-strong: #4f4434;
-  --ui-text: #f0e9dc;
-  --ui-text-secondary: #c8bda9;
-  --ui-text-muted: #978c7a;
-
-  --ui-primary: #3e644d;
-  --ui-primary-hover: #4b785d;
-  --ui-primary-contrast: #f5efe2;
-
-  --ui-accent: #c9a45c;
-  --ui-accent-bright: #dfbe7a;
-  --ui-accent-soft: #2e261a;
-  --ui-accent-border: #5a492c;
-  --ui-accent-text: #dfbe7a;
-  --ui-accent-contrast: #15120e;
-
-  --ui-sidebar-bg: #100e0b;
-  --ui-sidebar-border: #2c261d;
-  --ui-sidebar-title: #f2ebd9;
-  --ui-sidebar-text: #beb3a0;
-  --ui-sidebar-muted: #867b6a;
-  --ui-sidebar-active-bg: #252018;
-  --ui-sidebar-active-border: #4c3e28;
-
-  --ui-input-bg: #181510;
-  --ui-input-border: #4a3f30;
-  --ui-input-text: #f0e9dc;
-
-  --ui-success-bg: #1b2e24;
-  --ui-success-border: #2f523e;
-  --ui-success-text: #8cc5a2;
-  --ui-danger-bg: #351d1a;
-  --ui-danger-border: #66352f;
-  --ui-danger-text: #f0a49a;
-  --ui-info-bg: #19282e;
-  --ui-info-border: #2d4b57;
-  --ui-info-text: #95c5d6;
-  --ui-warning-bg: #2f2617;
-  --ui-warning-border: #5e4b2b;
-  --ui-warning-text: #e3c178;
-
-  --ui-backdrop: rgba(8, 6, 4, 0.76);
-  --ui-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.34);
-  --ui-shadow-md: 0 12px 28px rgba(0, 0, 0, 0.48);
-  --ui-shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.72);
-}
-
-/* 3. ТАЙГЫН ОЙ (Deep Taiga Pine & Brass — Forest Heritage Dark) */
-html[data-theme="taiga"],
-html[data-theme="emerald"] {
-  color-scheme: dark;
-  --parchment-canvas: #0b1d17;
-  --parchment-card: #122a22;
-  --parchment-border: #24473b;
-  --ink-primary: #edf2ec;
-  --ink-secondary: #c2d4ca;
-  --ink-muted: #8ca89b;
-
-  --ui-bg: #0b1d17;
-  --ui-surface: #122a22;
-  --ui-surface-subtle: #17342a;
-  --ui-surface-elevated: #1b3d32;
-  --ui-border: #24473b;
-  --ui-border-strong: #346353;
-  --ui-text: #edf2ec;
-  --ui-text-secondary: #c2d4ca;
-  --ui-text-muted: #8ca89b;
-
-  --ui-primary: #2b614c;
-  --ui-primary-hover: #35755c;
-  --ui-primary-contrast: #f4f7f3;
-
-  --ui-accent: #ceac5a;
-  --ui-accent-bright: #e2c478;
-  --ui-accent-soft: #223326;
-  --ui-accent-border: #575434;
-  --ui-accent-text: #e2c478;
-  --ui-accent-contrast: #0b1d17;
-
-  --ui-sidebar-bg: #071510;
-  --ui-sidebar-border: #1d3b30;
-  --ui-sidebar-title: #f2f6f0;
-  --ui-sidebar-text: #b4c9be;
-  --ui-sidebar-muted: #789688;
-  --ui-sidebar-active-bg: #16352a;
-  --ui-sidebar-active-border: #2e5b4a;
-
-  --ui-input-bg: #0e231c;
-  --ui-input-border: #2e5a4b;
-  --ui-input-text: #edf2ec;
-
-  --ui-success-bg: #143326;
-  --ui-success-border: #285c45;
-  --ui-success-text: #7fd1a6;
-  --ui-danger-bg: #361d1c;
-  --ui-danger-border: #6b3532;
-  --ui-danger-text: #f3a6a2;
-  --ui-info-bg: #122c33;
-  --ui-info-border: #265561;
-  --ui-info-text: #94cfde;
-  --ui-warning-bg: #292c1b;
-  --ui-warning-border: #57532d;
-  --ui-warning-text: #e5c97a;
-
-  --ui-backdrop: rgba(4, 14, 11, 0.78);
-  --ui-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.34);
-  --ui-shadow-md: 0 12px 28px rgba(0, 0, 0, 0.48);
-  --ui-shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.72);
-}
-
-/* 4. ХЭЭРИЙН ЧУЛУУ (Steppe Stone & Sumi Ink — Calm Daylight Minimal) */
-html[data-theme="kheer"] {
-  color-scheme: light;
-  --parchment-canvas: #f4f3ee;
-  --parchment-card: #ffffff;
-  --parchment-border: #dcd9ce;
-  --ink-primary: #1a1e1c;
-  --ink-secondary: #474d4a;
-  --ink-muted: #6e7570;
-
-  --ui-bg: #f4f3ee;
-  --ui-surface: #ffffff;
-  --ui-surface-subtle: #eceae3;
+  /* Semantic --ui-* Tokens */
+  --ui-bg: #f6f2e8;
+  --ui-surface: #fffdf9;
+  --ui-surface-subtle: #f1ebdd;
   --ui-surface-elevated: #ffffff;
-  --ui-border: #dcd9ce;
-  --ui-border-strong: #c2beb1;
-  --ui-text: #1a1e1c;
-  --ui-text-secondary: #474d4a;
-  --ui-text-muted: #6e7570;
+  --ui-border: #e2d9c8;
+  --ui-border-strong: #c8bca4;
+  --ui-text: #103c2e;
+  --ui-text-secondary: #3b5349;
+  --ui-text-muted: #5d7269;
 
-  --ui-primary: #234036;
-  --ui-primary-hover: #2d5245;
+  /* Primary = Forest Green; Accent/Highlight = Antique Gold; Destructive = Red */
+  --ui-primary: #103c2e;
+  --ui-primary-hover: #0b2d22;
   --ui-primary-contrast: #ffffff;
 
-  --ui-accent: #8c6a2e;
-  --ui-accent-bright: #a57f39;
-  --ui-accent-soft: #f3ece0;
-  --ui-accent-border: #d5c3a1;
-  --ui-accent-text: #6f521e;
-  --ui-accent-contrast: #ffffff;
-
-  --ui-sidebar-bg: #eae7df;
-  --ui-sidebar-border: #d6d2c7;
-  --ui-sidebar-title: #1a1e1c;
-  --ui-sidebar-text: #434a46;
-  --ui-sidebar-muted: #727873;
-  --ui-sidebar-active-bg: #ffffff;
-  --ui-sidebar-active-border: #c7c2b4;
+  --ui-accent: #c49635;
+  --ui-accent-bright: #d4ad4d;
+  --ui-accent-soft: rgba(196, 150, 53, 0.14);
+  --ui-accent-border: rgba(196, 150, 53, 0.45);
+  --ui-accent-text: #7d5b18;
+  --ui-accent-contrast: #103c2e;
 
   --ui-input-bg: #ffffff;
-  --ui-input-border: #cbc7bc;
-  --ui-input-text: #1a1e1c;
+  --ui-input-border: #d4c9b4;
+  --ui-input-text: #103c2e;
 
-  --ui-success-bg: #e7f2ec;
-  --ui-success-border: #b7d4c3;
-  --ui-success-text: #1d573a;
-  --ui-danger-bg: #faeae7;
-  --ui-danger-border: #e0b6ae;
-  --ui-danger-text: #942f22;
-  --ui-info-bg: #eaf1f4;
-  --ui-info-border: #bfd2db;
-  --ui-info-text: #214e5f;
-  --ui-warning-bg: #f6efe0;
-  --ui-warning-border: #dcc699;
-  --ui-warning-text: #73541e;
+  --ui-success-bg: rgba(16, 60, 46, 0.1);
+  --ui-success-border: rgba(16, 60, 46, 0.3);
+  --ui-success-text: #103c2e;
+  --ui-danger: #b91c1c;
+  --ui-danger-hover: #991b1b;
+  --ui-danger-contrast: #ffffff;
+  --ui-danger-bg: rgba(185, 28, 28, 0.09);
+  --ui-danger-border: rgba(185, 28, 28, 0.32);
+  --ui-danger-text: #b91c1c;
+  --ui-info-bg: rgba(16, 60, 46, 0.08);
+  --ui-info-border: rgba(16, 60, 46, 0.24);
+  --ui-info-text: #103c2e;
+  --ui-warning-bg: rgba(196, 150, 53, 0.14);
+  --ui-warning-border: rgba(196, 150, 53, 0.42);
+  --ui-warning-text: #7d5b18;
 
-  --ui-backdrop: rgba(20, 24, 22, 0.52);
-  --ui-shadow-sm: 0 2px 8px rgba(26, 30, 28, 0.05);
-  --ui-shadow-md: 0 10px 24px rgba(26, 30, 28, 0.08);
-  --ui-shadow-modal: 0 24px 56px rgba(20, 24, 22, 0.22);
+  --ui-backdrop: rgba(10, 26, 20, 0.54);
+  --ui-shadow-sm: 0 4px 12px rgba(16, 60, 46, 0.07);
+  --ui-shadow-md: 0 12px 28px rgba(16, 60, 46, 0.12);
+  --ui-shadow-modal: 0 24px 60px rgba(10, 26, 20, 0.26);
+
+  /* Theme-aware Tree Canvas Tokens (Light = Parchment Heritage Surface) */
+  --tree-canvas-bg: radial-gradient(ellipse 74% 58% at 50% 35%, #fffdf8 0%, #f6f2e8 60%, #ece4d2 100%);
+  --tree-canvas-border: #d8ccb4;
+  --tree-node-bg: #fffdf9;
+  --tree-node-bg-hover: #ffffff;
+  --tree-node-bg-selected: #fbf4e1;
+  --tree-node-border: #d8ccb4;
+  --tree-node-text: #103c2e;
+  --tree-node-muted: #5d7269;
+  --tree-avatar-bg: #103c2e;
+  --tree-avatar-text: #f6e4b4;
+  --tree-edge-stroke: #8f7232;
+  --tree-edge-marriage: #a17722;
+  --tree-dock-bg: rgba(255, 253, 249, 0.92);
+  --tree-dock-border: #d4c7ad;
+  --tree-dock-text: #103c2e;
+  --tree-gen-bg: rgba(255, 253, 249, 0.92);
+  --tree-gen-text: #103c2e;
+
+  /* Theme-aware Auth Portal Tokens (Light = Parchment + Forest Green + Antique Gold) */
+  --auth-bg: radial-gradient(ellipse 75% 60% at 24% 38%, rgba(16, 60, 46, 0.08) 0%, transparent 64%),
+    linear-gradient(165deg, #f6f2e8 0%, #efe8d8 52%, #f6f2e8 100%);
+  --auth-bg-lit: radial-gradient(ellipse 68% 58% at 30% 44%, rgba(196, 150, 53, 0.18) 0%, rgba(16, 60, 46, 0.08) 44%, transparent 72%),
+    linear-gradient(165deg, #f8f4ea 0%, #f1ead9 52%, #f6f2e8 100%);
+  --auth-stage-bg: linear-gradient(180deg, #103c2e 0%, #0b2a20 100%);
+  --auth-stage-text: #f6f2e8;
+  --auth-panel-bg: #fffdf9;
+  --auth-panel-border: #ddd2bc;
+  --auth-panel-text: #103c2e;
+  --auth-panel-muted: #5d7269;
+  --auth-trunk-start: #0f3629;
+  --auth-trunk-mid: #1a5440;
+  --auth-trunk-end: #092119;
+  --auth-canopy-start: #2c7a5b;
+  --auth-canopy-mid: #184f3b;
+  --auth-canopy-end: #0d3225;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand-primary: #1a5c46;
+  --brand-primary-hover: #217056;
+  --brand-primary-active: #144937;
+  --brand-primary-soft: rgba(26, 92, 70, 0.26);
+  --brand-primary-border: rgba(94, 179, 146, 0.34);
+  --brand-primary-contrast: #f6f2e8;
+
+  --gold-200: #f7e6b7;
+  --gold-300: #eccd7c;
+  --gold-400: #dfb963;
+  --gold-500: #c89a3e;
+  --gold-600: #a67d2a;
+  --gold-700: #805f1e;
+  --gold-soft: rgba(223, 185, 99, 0.16);
+  --gold-border: rgba(223, 185, 99, 0.42);
+  --gold-glow: rgba(223, 185, 99, 0.34);
+
+  --parchment-canvas: #0b120f;
+  --parchment-card: #131f1a;
+  --parchment-border: #243830;
+  --ink-primary: #f5efe2;
+  --ink-secondary: #c5d4cb;
+  --ink-muted: #8ea59a;
+
+  --surface-bg: #0b120f;
+  --surface-card: #131f1a;
+  --surface-subtle: #0f1915;
+  --surface-elevated: #192922;
+  --border-subtle: #243830;
+  --border-strong: #345044;
+  --text-primary: #f5efe2;
+  --text-secondary: #c5d4cb;
+  --text-muted: #8ea59a;
+
+  --ui-bg: #0b120f;
+  --ui-surface: #131f1a;
+  --ui-surface-subtle: #0f1915;
+  --ui-surface-elevated: #192922;
+  --ui-border: #243830;
+  --ui-border-strong: #345044;
+  --ui-text: #f5efe2;
+  --ui-text-secondary: #c5d4cb;
+  --ui-text-muted: #8ea59a;
+
+  --ui-primary: #1a5c46;
+  --ui-primary-hover: #217056;
+  --ui-primary-contrast: #f6f2e8;
+
+  --ui-accent: #dfb963;
+  --ui-accent-bright: #eccd7c;
+  --ui-accent-soft: rgba(223, 185, 99, 0.16);
+  --ui-accent-border: rgba(223, 185, 99, 0.44);
+  --ui-accent-text: #f7e6b7;
+  --ui-accent-contrast: #0b120f;
+
+  --ui-input-bg: #0d1612;
+  --ui-input-border: #2c453b;
+  --ui-input-text: #f5efe2;
+
+  --ui-success-bg: rgba(26, 92, 70, 0.28);
+  --ui-success-border: rgba(94, 179, 146, 0.44);
+  --ui-success-text: #a7e4ca;
+  --ui-danger: #dc2626;
+  --ui-danger-hover: #b91c1c;
+  --ui-danger-contrast: #ffffff;
+  --ui-danger-bg: rgba(220, 38, 38, 0.18);
+  --ui-danger-border: rgba(248, 113, 113, 0.42);
+  --ui-danger-text: #fca5a5;
+  --ui-info-bg: rgba(26, 92, 70, 0.22);
+  --ui-info-border: rgba(94, 179, 146, 0.35);
+  --ui-info-text: #c5e6d7;
+  --ui-warning-bg: rgba(223, 185, 99, 0.16);
+  --ui-warning-border: rgba(223, 185, 99, 0.42);
+  --ui-warning-text: #f7e6b7;
+
+  --ui-backdrop: rgba(4, 10, 8, 0.76);
+  --ui-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.36);
+  --ui-shadow-md: 0 14px 32px rgba(0, 0, 0, 0.5);
+  --ui-shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.72);
+
+  /* Theme-aware Tree Canvas Tokens (Dark = Obsidian & Burnished-Gold Variant) */
+  --tree-canvas-bg: radial-gradient(ellipse 68% 54% at 50% 42%, rgba(216, 178, 92, 0.14) 0%, rgba(16, 26, 21, 0.88) 55%, #090c0a 100%),
+    linear-gradient(180deg, #0b110e 0%, #101915 50%, #090d0b 100%);
+  --tree-canvas-border: rgba(223, 185, 99, 0.28);
+  --tree-node-bg: rgba(20, 29, 24, 0.92);
+  --tree-node-bg-hover: rgba(28, 41, 34, 0.96);
+  --tree-node-bg-selected: rgba(34, 46, 36, 0.98);
+  --tree-node-border: rgba(223, 185, 99, 0.3);
+  --tree-node-text: #f7f1e3;
+  --tree-node-muted: #c7b897;
+  --tree-avatar-bg: radial-gradient(circle at 35% 30%, #3d3324 0%, #1d1811 100%);
+  --tree-avatar-text: #f4d88e;
+  --tree-edge-stroke: #c89a3e;
+  --tree-edge-marriage: #eccd7c;
+  --tree-dock-bg: rgba(15, 22, 18, 0.88);
+  --tree-dock-border: rgba(223, 185, 99, 0.34);
+  --tree-dock-text: #f5efe2;
+  --tree-gen-bg: rgba(15, 22, 18, 0.88);
+  --tree-gen-text: #eccd7c;
+
+  /* Theme-aware Auth Portal Tokens (Dark = Deep Forest & Gold) */
+  --auth-bg: radial-gradient(ellipse 80% 60% at 24% 38%, rgba(16, 60, 46, 0.55) 0%, transparent 65%),
+    linear-gradient(165deg, #060f0c 0%, #0b1e17 48%, #071510 100%);
+  --auth-bg-lit: radial-gradient(ellipse 68% 58% at 30% 44%, rgba(223, 185, 99, 0.2) 0%, rgba(16, 60, 46, 0.35) 44%, transparent 72%),
+    linear-gradient(165deg, #071611 0%, #0d2920 48%, #091c15 100%);
+  --auth-stage-bg: linear-gradient(180deg, rgba(16, 60, 46, 0.54) 0%, rgba(8, 22, 17, 0.78) 100%);
+  --auth-stage-text: #f5efe2;
+  --auth-panel-bg: rgba(15, 26, 21, 0.9);
+  --auth-panel-border: rgba(223, 185, 99, 0.26);
+  --auth-panel-text: #f5efe2;
+  --auth-panel-muted: #9eb3a8;
+  --auth-trunk-start: #123026;
+  --auth-trunk-mid: #1e4a3b;
+  --auth-trunk-end: #0b2019;
+  --auth-canopy-start: #2f7d5d;
+  --auth-canopy-mid: #174c39;
+  --auth-canopy-end: #0d2f23;
 }
 
 /* ==========================================================================
-   Global Base & All-Theme Synchronization
+   Global Page & Shell Token Overrides (2 themes: light / dark)
    ========================================================================== */
 
-body {
+html[data-theme="dark"] body,
+html[data-theme="dark"] .homev2-main--shell {
   background: var(--ui-bg);
   color: var(--ui-text);
 }
 
-/* Compact Theme Picker (Topbar + Floating Corner Dock) */
-.theme-picker {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.theme-picker__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 5px 10px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--ui-surface-subtle);
-  color: var(--ui-text);
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.theme-picker__btn:hover,
-.theme-picker__btn:focus-visible {
-  border-color: var(--ui-accent);
+html[data-theme="dark"] .homev2-panel,
+html[data-theme="dark"] .homev2-tree-card,
+html[data-theme="dark"] .homev2-loading,
+html[data-theme="dark"] .homev2-state {
   background: var(--ui-surface);
-  outline: none;
-}
-
-.theme-picker__btn:focus-visible {
-  box-shadow: 0 0 0 2px var(--ui-accent-soft), 0 0 0 3px var(--ui-accent);
-}
-
-.theme-picker__btn--compact {
-  min-height: 34px;
-  padding: 4px 9px;
-  font-size: 12px;
-}
-
-.theme-picker__dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 1.5px solid var(--ui-border-strong);
-  flex-shrink: 0;
-}
-
-.theme-picker__label {
-  white-space: nowrap;
-}
-
-@media (max-width: 720px) {
-  .theme-picker__btn--topbar .theme-picker__label {
-    display: none;
-  }
-}
-
-.theme-picker__menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  z-index: 120;
-  width: 256px;
-  padding: 10px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--ui-surface-elevated);
-  color: var(--ui-text);
-  box-shadow: var(--ui-shadow-modal);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.theme-picker__menu--up {
-  top: auto;
-  bottom: calc(100% + 8px);
-}
-
-.theme-picker__head {
-  padding: 2px 4px 8px;
-  border-bottom: 1px solid var(--ui-border);
-}
-
-.theme-picker__head strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ui-text);
-}
-
-.theme-picker__head small {
-  display: block;
-  font-size: 11px;
-  color: var(--ui-text-muted);
-  margin-top: 2px;
-}
-
-.theme-picker__list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.theme-picker__option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 9px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--ui-text);
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease;
-}
-
-.theme-picker__option:hover {
-  background: var(--ui-surface-subtle);
   border-color: var(--ui-border);
-}
-
-.theme-picker__option.is-selected {
-  background: var(--ui-accent-soft);
-  border-color: var(--ui-accent-border);
-}
-
-.theme-picker__tri {
-  display: flex;
-  width: 30px;
-  height: 22px;
-  border-radius: 5px;
-  overflow: hidden;
-  border: 1px solid var(--ui-border-strong);
-  flex-shrink: 0;
-}
-
-.theme-picker__tri span {
-  flex: 1;
-  height: 100%;
-}
-
-.theme-picker__info {
-  flex: 1;
-  min-width: 0;
-}
-
-.theme-picker__info strong {
-  display: block;
-  font-size: 12.5px;
-  font-weight: 600;
   color: var(--ui-text);
-  line-height: 1.25;
 }
 
-.theme-picker__info small {
-  display: block;
-  font-size: 11px;
-  color: var(--ui-text-muted);
-  margin-top: 1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.theme-picker__check {
-  color: var(--ui-accent-text);
-  flex-shrink: 0;
-}
-
-/* Floating compact corner switcher for Public / Auth / standalone pages */
-.floating-theme-corner {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 90;
-}
-
-.floating-theme-corner .theme-picker__btn {
-  background: var(--ui-surface-elevated);
-  border-color: var(--ui-border-strong);
-  box-shadow: var(--ui-shadow-md);
-  min-height: 36px;
-  padding: 5px 11px;
-}
-
-@media (max-width: 600px) {
-  .floating-theme-corner {
-    right: 12px;
-    bottom: 12px;
-  }
-}
-
-/* ==========================================================================
-   Unified Token Overrides Across Core App & Feature Pages
-   ========================================================================== */
-
-.homev2-main--shell,
-.families-page,
-.people-page,
-.profile-page,
-.stories-page,
-.invite-page {
+.families-page {
   background: var(--ui-bg);
   color: var(--ui-text);
 }
 
-.homev2-panel,
-.homev2-tree-card,
-.homev2-loading,
-.homev2-state,
 .families-sidebar-card,
-.families-main-card,
-.profile-hero,
-.profile-card,
-.story-card,
-.story-detail-header,
-.people-card,
-.people-toolbar,
-.people-state {
+.families-main-card {
   background: var(--ui-surface);
   border-color: var(--ui-border);
   color: var(--ui-text);
@@ -519,25 +286,44 @@ body {
 .families-header h1,
 .admin-stat-item strong,
 .admin-role-select,
-.family-nav-item strong,
-.people-heading h1,
-.people-state h2,
-.people-stat-info strong,
-.people-card-identity h2,
-.profile-identity h1,
-.profile-card-heading h2,
-.profile-state h1,
-.history-item strong,
-.relationship-item strong,
-.stories-heading h1,
-.story-detail-header h1,
-.story-card h2,
-.stories-state h2 {
+.family-nav-item strong {
   color: var(--ui-text);
 }
 
 .families-header p,
-.admin-info-banner,
+.admin-info-banner {
+  color: var(--ui-text-secondary);
+}
+
+.admin-member-card,
+.admin-stat-item {
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+.admin-role-select {
+  background: var(--ui-input-bg);
+  border-color: var(--ui-input-border);
+  color: var(--ui-input-text);
+}
+
+html[data-theme="dark"] .family-nav-item.is-active {
+  background: var(--brand-primary-soft);
+  border-color: var(--gold-border);
+}
+
+.people-page {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+.people-heading h1,
+.people-state h2,
+.people-stat-info strong {
+  color: var(--ui-text);
+}
+
 .people-lede,
 .people-control,
 .people-search,
@@ -545,47 +331,13 @@ body {
 .people-results-head,
 .people-description,
 .people-card-dates,
-.people-state p,
-.profile-facts dd,
-.profile-note,
-.profile-text,
-.profile-life,
-.stories-lede,
-.story-card p,
-.story-body p {
+.people-state p {
   color: var(--ui-text-secondary);
 }
 
-.profile-facts dt,
-.profile-empty,
-.relationship-item small,
-.history-item span,
-.history-item small,
-.people-card-identity span,
-.story-card-footer {
-  color: var(--ui-text-muted);
-}
-
-.admin-member-card,
-.admin-stat-item,
-.relationship-item,
-.story-related-person,
-.people-secondary-tag {
-  background: var(--ui-surface-subtle);
-  border-color: var(--ui-border);
-  color: var(--ui-text);
-}
-
-.admin-role-select,
 .people-control select,
 .people-filters-row select,
-.people-filters select,
-.people-search input,
-.profile-card input,
-.profile-card select,
-.profile-card textarea,
-.stories-family select,
-.stories-toolbar input {
+.people-search input {
   background: var(--ui-input-bg);
   border-color: var(--ui-input-border);
   color: var(--ui-input-text);
@@ -597,19 +349,31 @@ body {
   color: var(--ui-text-secondary);
 }
 
-/* Unified Architectural Buttons (replaces childish amber gradient pills) */
+html[data-theme="dark"] .homev2-button--light {
+  background: var(--ui-surface-elevated);
+  border-color: var(--ui-border-strong);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .homev2-button--dark {
+  background: var(--ui-primary);
+  border-color: var(--brand-primary-border);
+  color: var(--ui-primary-contrast);
+}
+
+/* Unified Button Grammar: Primary = Forest Green; Selected/Highlight = Gold; Destructive = Red */
 .people-page .button,
 .invite-page .button,
 .families-page .button,
 .profile-page .button,
-.stories-page .button {
+.ui-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 38px;
-  padding: 0 15px;
-  border-radius: var(--radius-md);
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
   border: 1px solid var(--ui-border-strong);
   background: var(--ui-surface-elevated);
   color: var(--ui-text);
@@ -617,15 +381,15 @@ body {
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .people-page .button:hover:not(:disabled),
 .invite-page .button:hover:not(:disabled),
 .families-page .button:hover:not(:disabled),
 .profile-page .button:hover:not(:disabled),
-.stories-page .button:hover:not(:disabled) {
-  border-color: var(--ui-accent);
+.ui-btn:hover:not(:disabled) {
+  border-color: var(--brand-primary);
   background: var(--ui-surface-subtle);
 }
 
@@ -633,11 +397,11 @@ body {
 .invite-page .button.primary,
 .families-page .button.primary,
 .profile-page .button.primary,
-.stories-page .button.primary {
+.ui-btn--primary {
   border: 1px solid var(--ui-primary);
   background: var(--ui-primary);
   color: var(--ui-primary-contrast);
-  font-weight: 600;
+  font-weight: 700;
   box-shadow: var(--ui-shadow-sm);
 }
 
@@ -645,17 +409,35 @@ body {
 .invite-page .button.primary:hover:not(:disabled),
 .families-page .button.primary:hover:not(:disabled),
 .profile-page .button.primary:hover:not(:disabled),
-.stories-page .button.primary:hover:not(:disabled) {
+.ui-btn--primary:hover:not(:disabled) {
   background: var(--ui-primary-hover);
   border-color: var(--ui-primary-hover);
+}
+
+.ui-btn--danger {
+  border: 1px solid var(--ui-danger);
+  background: var(--ui-danger);
+  color: var(--ui-danger-contrast);
+  font-weight: 700;
+}
+
+.ui-btn--danger:hover:not(:disabled) {
+  background: var(--ui-danger-hover);
+  border-color: var(--ui-danger-hover);
+}
+
+.ui-btn--selected {
+  border-color: var(--gold-500);
+  background: var(--gold-soft);
+  color: var(--ui-accent-text);
 }
 
 .people-page .button:disabled,
 .invite-page .button:disabled,
 .families-page .button:disabled,
 .profile-page .button:disabled,
-.stories-page .button:disabled {
-  opacity: 0.55;
+.ui-btn:disabled {
+  opacity: 0.58;
   cursor: not-allowed;
 }
 
@@ -664,7 +446,7 @@ body {
 .families-page .error,
 .profile-page .error {
   padding: 12px 16px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: var(--ui-danger-bg);
   border: 1px solid var(--ui-danger-border);
   color: var(--ui-danger-text);
@@ -677,7 +459,7 @@ body {
 .families-page .success,
 .profile-page .success {
   padding: 12px 16px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   background: var(--ui-success-bg);
   border: 1px solid var(--ui-success-border);
   color: var(--ui-success-text);
@@ -692,13 +474,15 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
+  background: var(--ui-bg);
+  color: var(--ui-text);
 }
 
 .invite-card {
   max-width: 640px;
   width: 100%;
   padding: 32px 28px;
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
   box-shadow: var(--ui-shadow-md);
@@ -723,10 +507,10 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-xl);
+  border-radius: 20px;
   background: var(--ui-surface);
   color: var(--ui-text);
-  border: 1px solid var(--ui-border-strong);
+  border: 1px solid var(--ui-border);
   box-shadow: var(--ui-shadow-modal);
 }
 
@@ -759,7 +543,7 @@ body {
 .ui-label {
   display: block;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ui-text-secondary);
 }
 
@@ -768,29 +552,29 @@ body {
 .ui-textarea {
   width: 100%;
   padding: 9px 12px;
-  border-radius: var(--radius-md);
+  border-radius: 10px;
   border: 1px solid var(--ui-input-border);
   background: var(--ui-input-bg);
   color: var(--ui-input-text);
   font-size: 13px;
   outline: none;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ui-input:focus,
 .ui-select:focus,
 .ui-textarea:focus {
-  border-color: var(--ui-accent);
-  box-shadow: 0 0 0 3px var(--ui-accent-soft);
+  border-color: var(--gold-500);
+  box-shadow: 0 0 0 3px var(--gold-soft);
 }
 
 .ui-callout {
   padding: 12px 14px;
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   border: 1px solid var(--ui-border);
   background: var(--ui-surface-subtle);
   color: var(--ui-text-secondary);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .ui-callout--warning {
@@ -816,3 +600,210 @@ body {
   border-color: var(--ui-danger-border);
   color: var(--ui-danger-text);
 }
+
+/* Profile & Theme Compatibility Additions */
+.profile-page {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+.profile-hero,
+.profile-card {
+  background: var(--ui-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+.profile-identity h1,
+.profile-card-heading h2,
+.profile-state h1,
+.history-item strong,
+.relationship-item strong {
+  color: var(--ui-text);
+}
+
+.profile-facts dd,
+.profile-note,
+.profile-text,
+.profile-life {
+  color: var(--ui-text-secondary);
+}
+
+.profile-facts dt,
+.profile-empty,
+.relationship-item small,
+.history-item span,
+.history-item small {
+  color: var(--ui-text-muted);
+}
+
+.relationship-item {
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+.profile-card input,
+.profile-card select,
+.profile-card textarea {
+  background: var(--ui-input-bg);
+  border-color: var(--ui-input-border);
+  color: var(--ui-input-text);
+}
+
+/* Reusable Theme Picker Swatches & Tree Dropdown Menu */
+.theme-swatch--light {
+  background: #f6f2e8;
+  border-color: #103c2e;
+  color: #103c2e;
+}
+
+.theme-swatch--dark {
+  background: #0b120f;
+  border-color: #dfb963;
+  color: #f5efe2;
+}
+
+.tree-header-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.tree-header-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 210px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree-header-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tree-header-menu-item:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.tree-header-menu-item[aria-pressed="true"] {
+  background: var(--gold-soft);
+  color: var(--ui-accent-text);
+}
+
+/* ==========================================================================
+   Dark-Mode Contrast Parity (Auth Portal, AppShell, Dashboard, Tree)
+   ========================================================================== */
+
+html[data-theme="dark"] .app-shell,
+html[data-theme="dark"] .app-shell__main,
+html[data-theme="dark"] .app-shell__body,
+html[data-theme="dark"] .heritage-dashboard,
+html[data-theme="dark"] .tree-page {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .app-shell__header,
+html[data-theme="dark"] .app-shell__sidebar {
+  background: var(--ui-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .app-shell__account-button,
+html[data-theme="dark"] .app-shell__account-button strong,
+html[data-theme="dark"] .app-shell__account-button span,
+html[data-theme="dark"] .app-shell__brand strong,
+html[data-theme="dark"] .app-shell__nav-link,
+html[data-theme="dark"] .app-shell__nav-link strong {
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .app-shell__nav-link.is-active,
+html[data-theme="dark"] .app-shell__nav-link.is-active strong,
+html[data-theme="dark"] .app-shell__nav-link.is-active small {
+  background: var(--ui-primary);
+  border-color: var(--brand-primary-border);
+  color: var(--ui-primary-contrast);
+}
+
+html[data-theme="dark"] .living-auth-card h1,
+html[data-theme="dark"] .living-auth-card h2,
+html[data-theme="dark"] .living-auth-card h3,
+html[data-theme="dark"] .living-auth-card strong,
+html[data-theme="dark"] .living-auth-card label {
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .living-auth-card p,
+html[data-theme="dark"] .living-auth-card small,
+html[data-theme="dark"] .living-auth-card .muted {
+  color: var(--ui-text-secondary);
+}
+
+html[data-theme="dark"] .living-auth-card input,
+html[data-theme="dark"] .living-auth-card select,
+html[data-theme="dark"] .living-auth-card textarea {
+  background: var(--ui-input-bg);
+  border-color: var(--ui-input-border);
+  color: var(--ui-input-text);
+}
+
+html[data-theme="dark"] .living-auth-card .auth-method-tabs,
+html[data-theme="dark"] .living-auth-card .auth-method-note,
+html[data-theme="dark"] .living-auth-card .notice,
+html[data-theme="dark"] .living-auth-card .field-note {
+  background: var(--ui-surface-subtle);
+  border-color: var(--ui-border);
+  color: var(--ui-text-secondary);
+}
+
+html[data-theme="dark"] .tree-page h1,
+html[data-theme="dark"] .tree-page h2,
+html[data-theme="dark"] .tree-workspace,
+html[data-theme="dark"] .tree-toolbar,
+html[data-theme="dark"] .tree-toolbar strong,
+html[data-theme="dark"] .tree-toolbar span,
+html[data-theme="dark"] .tree-lede {
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .tree-workspace,
+html[data-theme="dark"] .tree-toolbar,
+html[data-theme="dark"] .tree-zoom,
+html[data-theme="dark"] .tree-action-pill,
+html[data-theme="dark"] .tree-search-wrap input,
+html[data-theme="dark"] .tree-toolbar select {
+  background: var(--ui-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+}
+
+html[data-theme="dark"] .tree-action-pill.is-link,
+html[data-theme="dark"] .tree-action-pill[aria-pressed="true"] {
+  background: var(--gold-soft);
+  border-color: var(--gold-500);
+  color: var(--ui-accent-text);
+}
+
