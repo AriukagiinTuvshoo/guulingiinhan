@@ -1,14 +1,23 @@
 :root {
-  --font-body: 'Noto Sans', 'DM Sans', Arial, sans-serif;
-  --font-display: Georgia, 'Noto Serif', 'Times New Roman', serif;
+  --font-body: var(--font-noto-sans), 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-lora), 'Lora', Georgia, 'Times New Roman', serif;
 }
 
 body {
   font-family: var(--font-body);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1,
 h2,
 h3 {
   font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+time,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

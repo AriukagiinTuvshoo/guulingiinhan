@@ -1,12 +1,13 @@
-/* ============================================================================
-   GUULIN — Unified Admin Workspace (Operate Mode)
-   100% Theme-Aware via tokens.css (Light Parchment + Dark Obsidian-Forest)
-   ============================================================================ */
+/* ==========================================================================
+   ГУУЛИНГИЙНХАН — Family Admin Console (Unified 4-Theme Executive Style)
+   Mirrors the exact Figma design language of AdminShell + admin.module.css.
+   ========================================================================== */
 
 .admin-console {
   min-height: 100vh;
   background: var(--ui-bg);
   color: var(--ui-text);
+  font-family: var(--font-body);
   overflow-x: hidden;
 }
 
@@ -14,245 +15,154 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.25rem;
-  padding: 1.5rem clamp(1.25rem, 4vw, 3rem);
-  background: var(--brand-primary);
-  color: var(--on-brand, #ffffff);
-  border-bottom: 1px solid var(--gold-border);
-  box-shadow: var(--ui-shadow-md);
+  gap: 1rem;
+  padding: 14px clamp(16px, 4vw, 36px);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  border-bottom: 1px solid var(--ui-border);
 }
 
-.admin-console__header-title {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+.admin-console__header p {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-accent-text);
+  margin: 0 0 4px;
 }
 
 .admin-console__header h1 {
-  font-family: var(--font-display, Georgia, "Times New Roman", serif);
-  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  font-family: var(--font-display);
+  font-size: clamp(22px, 2.4vw, 28px);
   font-weight: 600;
-  letter-spacing: -0.02em;
   margin: 0;
-  color: var(--on-brand, #ffffff);
-}
-
-.admin-console__header-sub {
-  margin: 0;
-  font-size: 0.88rem;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--ui-text);
 }
 
 .admin-console__header-actions {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .admin-console__header a {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  color: var(--on-brand, #ffffff);
+  min-height: 36px;
+  color: var(--ui-text);
   text-decoration: none;
-  font-size: 0.88rem;
+  font-size: 12.5px;
   font-weight: 600;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: rgba(255, 255, 255, 0.08);
-  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-surface-subtle);
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
 
 .admin-console__header a:hover,
 .admin-console__header a:focus-visible {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: var(--gold-400);
-  outline: none;
+  background: var(--ui-surface-elevated);
+  border-color: var(--ui-accent);
 }
 
 .admin-console__content {
-  max-width: 72rem;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 1.75rem clamp(1rem, 3.5vw, 2.25rem) 4rem;
+  padding: 28px clamp(16px, 3vw, 32px) 52px;
 }
 
-.admin-console__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-bottom: 1.25rem;
+.admin-console__content h2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ui-text);
+  margin: 24px 0 10px;
 }
 
-.admin-console__family-picker {
+.admin-console__content > h2:first-child {
+  margin-top: 0;
+}
+
+.admin-console__content p {
+  color: var(--ui-text-secondary);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.admin-console__content label {
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
-  font-size: 0.88rem;
+  gap: 8px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
 }
 
 .admin-console__content select,
-.admin-console__content input,
+.admin-console__content input:not([type='checkbox']),
 .admin-console__content textarea {
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  background: var(--ui-surface);
-  color: var(--ui-text);
-  padding: 0.55rem 0.85rem;
-  font-size: 0.92rem;
+  border: 1px solid var(--ui-input-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-input-bg);
+  color: var(--ui-input-text);
+  padding: 8px 12px;
+  font-size: 13px;
   max-width: 100%;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  min-height: 38px;
 }
 
 .admin-console__content select:focus-visible,
 .admin-console__content input:focus-visible,
 .admin-console__content textarea:focus-visible {
-  outline: none;
-  border-color: var(--gold-500);
-  box-shadow: 0 0 0 3px var(--gold-glow);
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
 }
 
-/* Unified Segmented Navigation Rail */
 .admin-console__nav {
   display: flex;
-  gap: 0.45rem;
-  margin: 0 0 1.75rem;
+  gap: 6px;
+  margin: 18px 0 22px;
   flex-wrap: wrap;
-  padding: 0.45rem;
-  border-radius: 14px;
+  padding: 6px;
+  border-radius: var(--radius-lg);
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
-  box-shadow: var(--ui-shadow-sm);
 }
 
 .admin-console__nav a {
   display: inline-flex;
   align-items: center;
-  gap: 0.48rem;
-  min-height: 38px;
-  padding: 0.45rem 0.95rem;
-  border-radius: 10px;
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
   text-decoration: none;
-  font-size: 0.88rem;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--ui-text-muted);
-  transition: background 150ms ease, color 150ms ease;
+  color: var(--ui-text-secondary);
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
 }
 
 .admin-console__nav a:hover,
 .admin-console__nav a:focus-visible {
   background: var(--ui-surface-subtle);
-  color: var(--ui-text);
-  outline: none;
-}
-
-.admin-console__nav a[aria-current="page"] {
-  background: var(--brand-primary);
-  color: var(--on-brand, #ffffff);
-}
-
-.admin-console__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 9999px;
-  background: var(--gold-500);
-  color: var(--brand-primary);
-  font-size: 0.74rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Hairline-Divided Executive Summary Strip (Zero Card Slop) */
-.admin-console__summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  border-radius: 14px;
-  background: var(--ui-surface);
-  border: 1px solid var(--ui-border);
-  overflow: hidden;
-  margin-bottom: 2rem;
-}
-
-.admin-console__stat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 1.1rem 1.35rem;
-  border-right: 1px solid var(--ui-border);
-  text-decoration: none;
-  color: inherit;
-  transition: background 150ms ease;
-}
-
-.admin-console__stat:last-child {
-  border-right: 0;
-}
-
-a.admin-console__stat:hover {
-  background: var(--ui-surface-subtle);
-}
-
-.admin-console__stat-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--ui-text-muted);
-}
-
-.admin-console__stat-value {
-  font-family: var(--font-display, Georgia, "Times New Roman", serif);
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
+  border-color: var(--ui-border);
   color: var(--ui-text);
 }
 
-.admin-console__stat-value.is-gold {
-  color: var(--gold-500);
+.admin-console__nav a[aria-current='page'] {
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--ui-primary-contrast);
 }
 
-.admin-console__section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 2rem 0 0.75rem;
-}
-
-.admin-console__content h2 {
-  font-family: var(--font-display, Georgia, "Times New Roman", serif);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 1.75rem 0 0.65rem;
-  color: var(--ui-text);
-}
-
-.admin-console__section-head h2 {
-  margin: 0;
-}
-
-.admin-console__lead {
-  margin: 0 0 1rem;
-  font-size: 0.9rem;
-  color: var(--ui-text-muted);
-}
-
-/* Tabular Editorial Audit Ledger */
 .admin-console__audit {
   list-style: none;
   padding: 0;
-  margin: 0.75rem 0 1.5rem;
-  border-radius: 14px;
+  margin: 14px 0 22px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--ui-border);
   background: var(--ui-surface);
@@ -262,13 +172,13 @@ a.admin-console__stat:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem 1.5rem;
+  gap: 10px 18px;
   justify-content: space-between;
-  padding: 0.9rem 1.2rem;
+  padding: 13px 18px;
   border-bottom: 1px solid var(--ui-border);
   background: var(--ui-surface);
   overflow-wrap: anywhere;
-  transition: background 140ms ease;
+  font-size: 13px;
 }
 
 .admin-console__audit li:hover {
@@ -279,27 +189,18 @@ a.admin-console__stat:hover {
   border-bottom: 0;
 }
 
-.admin-console__audit-action {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-weight: 600;
+.admin-console__audit strong {
   color: var(--ui-text);
+  font-weight: 600;
 }
 
-.admin-console__audit-tag {
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.18rem 0.55rem;
-  border-radius: 9999px;
-  background: var(--ui-surface-subtle);
-  border: 1px solid var(--ui-border);
-  color: var(--ui-text-muted);
+.admin-console__audit span {
+  color: var(--ui-text-secondary);
 }
 
 .admin-console__audit time {
   color: var(--ui-text-muted);
-  font-size: 0.84rem;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -307,35 +208,42 @@ a.admin-console__stat:hover {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.85rem;
-  margin: 0.75rem 0 1.5rem;
-  padding: 1.25rem 1.35rem;
+  gap: 12px;
+  margin: 14px 0 20px;
+  padding: 20px 22px;
   border: 1px solid var(--ui-border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--ui-surface);
 }
 
+.admin-console__member legend {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ui-text);
+  padding: 0 6px;
+}
+
 .admin-console button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.52rem 1.05rem;
-  border-radius: 10px;
-  border: 1px solid var(--brand-primary);
-  background: var(--brand-primary);
-  color: var(--on-brand, #ffffff);
-  font-size: 0.88rem;
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ui-primary);
+  background: var(--ui-primary);
+  color: var(--ui-primary-contrast);
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 150ms ease, transform 150ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
 
 .admin-console button:hover:not(:disabled) {
-  opacity: 0.92;
+  background: var(--ui-primary-hover);
+  border-color: var(--ui-primary-hover);
 }
 
 .admin-console button:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -344,14 +252,18 @@ a.admin-console__stat:hover {
     align-items: flex-start;
     flex-direction: column;
   }
-  .admin-console__stat {
-    border-right: 0;
-    border-bottom: 1px solid var(--ui-border);
+  .admin-console__header a,
+  .admin-console button {
+    min-height: 44px;
   }
-  .admin-console__stat:last-child {
-    border-bottom: 0;
-  }
-  .admin-console__content select {
+  .admin-console__content label {
+    display: grid;
     width: 100%;
+  }
+  .admin-console__content select,
+  .admin-console__content input:not([type='checkbox']),
+  .admin-console__content textarea {
+    width: 100%;
+    min-height: 44px;
   }
 }
