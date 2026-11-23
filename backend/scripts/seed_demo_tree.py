@@ -122,11 +122,11 @@ _BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from app.auth import _password_hash  # noqa: E402
-from app.db import SessionLocal  # noqa: E402
-from app.models import (  # noqa: E402
+from app.auth import _password_hash
+from app.db import SessionLocal
+from app.models import (
     Branch,
     Family,
     FamilyMember,
@@ -140,9 +140,9 @@ from app.models import (  # noqa: E402
     PersonLineageAssignment,
     User,
 )
-from app.person_search import normalize_search_name  # noqa: E402
-from app.privacy import person_is_minor  # noqa: E402
-from app.relationships import canonical_pair  # noqa: E402
+from app.person_search import normalize_search_name
+from app.privacy import person_is_minor
+from app.relationships import canonical_pair
 
 # Synthetic Mongolian given names and family surnames (no real individuals).
 MALE_NAMES = [
@@ -710,7 +710,7 @@ def _verify_seeded_invariants(builder: _SyntheticTreeBuilder, founder_id: UUID) 
 
     # 3. Single parent count: exactly one parent whose children have only 1 parent & no marriage.
     single_parents = {
-        parents_map[cid][0]
+        plist[0]
         for cid, plist in parents_map.items()
         if len(plist) == 1 and marriage_counts[plist[0]] == 0
     }

@@ -244,7 +244,7 @@ export default function AdminMembersPage() {
   return (
     <main className="admin-console">
       <header className="admin-console__header">
-        <h1>Гишүүд, урилга ба ургийн модны хүсэлтүүд</h1>
+        <h1>Гишүүд ба урилга</h1>
         <Link href={`/admin?family=${encodeURIComponent(family)}`}>Удирдлага руу буцах</Link>
       </header>
       <section className="admin-console__content">

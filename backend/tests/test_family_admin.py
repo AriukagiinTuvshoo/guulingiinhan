@@ -339,6 +339,7 @@ def test_people_and_content_grants_are_scoped_and_preserve_privacy(client, datab
     child = client.post(f"/api/v1/families/{family}/persons", json={"first_name": "Child", "birth_date": "2018-01-01"}).json()["id"]
     private = client.post(f"/api/v1/families/{family}/persons", json={"first_name": "Private", "visibility": "private"}).json()["id"]
     private_story = client.post(f"/api/v1/families/{family}/stories", json={"title": "Secret", "body": "Secret", "visibility": "private"}).json()["id"]
+    owner_story = client.post(f"/api/v1/families/{family}/stories", json={"title": "Owner Public", "body": "Owner Body"}).json()["id"]
     client.post("/api/v1/auth/logout")
     register_verified(client, "work-delegate@example.com")
     delegate = client.get("/api/v1/auth/me").json()["id"]
@@ -353,7 +354,8 @@ def test_people_and_content_grants_are_scoped_and_preserve_privacy(client, datab
     assert client.patch(f"/api/v1/families/{family}/persons/{child}", json={"first_name": "Denied"}).status_code == 403
     assert client.patch(f"/api/v1/families/{family}/persons/{private}", json={"first_name": "Denied"}).status_code == 404
     assert client.post(f"/api/v1/families/{other}/persons", json={"first_name": "Denied"}).status_code == 403
-    assert client.post(f"/api/v1/families/{family}/stories", json={"title": "Denied", "body": "Body"}).status_code == 403
+    assert client.put(f"/api/v1/families/{family}/stories/{owner_story}", json={"title": "Denied"}).status_code == 403
+    assert client.delete(f"/api/v1/families/{family}/stories/{owner_story}").status_code == 403
     login(client, "work-owner@example.com")
     assert client.put(grant_url, json={"scopes": ["manage_content"]}).status_code == 204
     login(client, "work-delegate@example.com")
@@ -368,7 +370,8 @@ def test_people_and_content_grants_are_scoped_and_preserve_privacy(client, datab
     login(client, "work-owner@example.com")
     assert client.put(grant_url, json={"scopes": []}).status_code == 204
     login(client, "work-delegate@example.com")
-    assert client.post(f"/api/v1/families/{family}/stories", json={"title": "Denied", "body": "Body"}).status_code == 403
+    assert client.put(f"/api/v1/families/{family}/stories/{owner_story}", json={"title": "Denied"}).status_code == 403
+    assert client.delete(f"/api/v1/families/{family}/stories/{owner_story}").status_code == 403
 
 
 def test_trash_privacy_filter_runs_before_count_and_pagination(client, database):

@@ -3273,6 +3273,7 @@ def update_story(
     story = db.scalar(select(Story).where(Story.id == story_id, Story.family_id == family_id))
     if story is None or not _story_visible(db, story, user):
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
+    member: FamilyMember | None
     if story.created_by != user.id:
         member = _require_work_scope(db, family_id, user, "manage_content")
     else:
@@ -3336,6 +3337,7 @@ def delete_story(
     story = db.scalar(select(Story).where(Story.id == story_id, Story.family_id == family_id))
     if story is None or not _story_visible(db, story, user):
         raise HTTPException(status_code=404, detail="Түүх олдсонгүй.")
+    member: FamilyMember | None
     if story.created_by != user.id:
         member = _require_work_scope(db, family_id, user, "manage_content")
     else:

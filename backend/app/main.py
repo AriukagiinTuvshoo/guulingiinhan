@@ -39,7 +39,6 @@ from app.family_chat import (
     stop_chat_pg_listener,
 )
 from app.family_smart_tree import router as family_smart_tree_router
-from app.tree_join_requests import router as tree_join_requests_router
 from app.heritage_discovery import router as heritage_discovery_router
 from app.heritage_links import router as heritage_links_router
 from app.invitation_preview import router as invitation_preview_router
@@ -55,6 +54,7 @@ from app.shared_ancestry import family_router as family_root_connection_router
 from app.shared_ancestry import router as shared_ancestry_router
 from app.shared_ancestry_requests import admin_router as admin_ancestry_requests_router
 from app.shared_ancestry_requests import family_router as family_ancestry_requests_router
+from app.tree_join_requests import router as tree_join_requests_router
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.app_env)
