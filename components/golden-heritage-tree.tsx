@@ -13,8 +13,9 @@ import {
   RotateCcw,
   Scan,
 } from 'lucide-react';
-import { API_BASE, personName, TreePerson } from '../lib/api';
+import { personName, TreePerson } from '../lib/api';
 import { AdvancedTreeLayout } from '../lib/tree-layout';
+import ProfilePhoto from './profile-photo';
 import { UlziiKnot } from './mongolian-ornament-band';
 import '../app/golden-tree.css';
 
@@ -303,19 +304,12 @@ export default function GoldenHeritageTree({
                     onClick={() => onSelect(person.id)}
                   >
                     <span className="golden-node-avatar" aria-hidden="true">
-                      {person.profile_photo_url ? (
-                        <img
-                          src={
-                            person.profile_photo_url.startsWith('/')
-                              ? `${API_BASE}${person.profile_photo_url}`
-                              : person.profile_photo_url
-                          }
-                          alt=""
-                          loading="lazy"
-                        />
-                      ) : (
-                        initials(person)
-                      )}
+                      <ProfilePhoto
+                        url={person.profile_photo_url}
+                        name={personName(person) || 'Хүн'}
+                        fallback={initials(person)}
+                        className="golden-node-photo"
+                      />
                     </span>
                     <strong className="golden-node-name">{personName(person) || 'Нэргүй хүн'}</strong>
                     <span className="golden-node-years">{yearsText(person)}</span>

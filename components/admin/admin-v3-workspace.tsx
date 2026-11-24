@@ -16,8 +16,9 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react';
-import { API_BASE, ApiError, api, Family, Person, personName, TreeData } from '../../lib/api';
-import { IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
+import { ApiError, api, Family, Person, personName, TreeData } from '../../lib/api';
+import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
+import ProfilePhoto from '../profile-photo';
 import { ThemePicker } from '../theme-picker';
 import { MongolianOrnamentBand } from '../mongolian-ornament-band';
 import '../../app/admin/admin-v3.css';
@@ -379,7 +380,8 @@ export default function AdminV3Workspace() {
     setSaving(true);
     try {
       const prepared = await prepareImageUpload(file);
-      await api(`/persons/${encodeURIComponent(person.id)}/photo`, {
+      const endpoint = `/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(person.id)}/profile-photo`;
+      const result = await api<{ profile_photo_url?: string }>(endpoint, {
         method: 'POST',
         body: prepared,
         headers: {
@@ -387,10 +389,15 @@ export default function AdminV3Workspace() {
           'X-File-Name': encodeURIComponent(prepared.name),
         },
       });
+      announcePhotoChange({
+        endpoint,
+        hasPhoto: true,
+        url: result?.profile_photo_url || `${endpoint}?v=${Date.now()}`,
+      });
       await refreshFamilyData(familyId);
       showToast(`${personName(person)}-ийн зураг шинэчлэгдлээ`);
-    } catch {
-      setError('Зураг оруулахад алдаа гарлаа.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Зураг оруулахад алдаа гарлаа.');
     } finally {
       setSaving(false);
     }
@@ -780,14 +787,12 @@ export default function AdminV3Workspace() {
                             <td>
                               <div className="adv3-person-cell">
                                 <span className={`adv3-av ${p.gender === 'female' ? 'is-female' : ''}`}>
-                                  {p.profile_photo_url ? (
-                                    <img
-                                      src={p.profile_photo_url.startsWith('/') ? `${API_BASE}${p.profile_photo_url}` : p.profile_photo_url}
-                                      alt={personName(p)}
-                                    />
-                                  ) : (
-                                    (p.first_name || '?').slice(0, 1).toUpperCase()
-                                  )}
+                                  <ProfilePhoto
+                                    url={p.profile_photo_url}
+                                    name={personName(p)}
+                                    fallback={(p.first_name || '?').slice(0, 1).toUpperCase()}
+                                    className="adv3-av-photo"
+                                  />
                                 </span>
                                 <div>
                                   <strong>{personName(p)}</strong>

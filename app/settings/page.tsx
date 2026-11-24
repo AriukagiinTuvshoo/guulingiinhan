@@ -304,6 +304,7 @@ function SettingsContent() {
               <div className="settings-v2-photo-col">
                 <AccountPhoto
                   hasPhoto={Boolean(user?.profile_photo_url)}
+                  linkedFamilyId={selectedFamily?.id ?? null}
                   linkedPersonId={user?.person_id ?? null}
                   onChanged={() => {
                     void api<User>('/auth/me')

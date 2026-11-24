@@ -8,11 +8,13 @@ import './account-photo.css';
 
 export default function AccountPhoto({
   endpoint = '/auth/me/photo',
+  linkedFamilyId = null,
   linkedPersonId = null,
   hasPhoto,
   onChanged,
 }: {
   endpoint?: string;
+  linkedFamilyId?: string | null;
   linkedPersonId?: string | null;
   hasPhoto: boolean;
   onChanged: () => void;
@@ -64,15 +66,19 @@ export default function AccountPhoto({
       const prepared = await prepareImageUpload(file);
       const result = await api<{ cleanup_pending: boolean }>(endpoint, { method: 'POST', body: prepared,
         headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) } });
-      if (linkedPersonId && endpoint === '/auth/me/photo') {
-        const personEndpoint = `/persons/${encodeURIComponent(linkedPersonId)}/photo`;
+      if (linkedFamilyId && linkedPersonId && endpoint === '/auth/me/photo') {
+        const personEndpoint = `/families/${encodeURIComponent(linkedFamilyId)}/persons/${encodeURIComponent(linkedPersonId)}/profile-photo`;
         try {
-          await api(personEndpoint, {
+          const synced = await api<{ profile_photo_url?: string }>(personEndpoint, {
             method: 'POST',
             body: prepared,
             headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) },
           });
-          announcePhotoChange({ endpoint: personEndpoint, hasPhoto: true, url: `${personEndpoint}?v=${Date.now()}` });
+          announcePhotoChange({
+            endpoint: personEndpoint,
+            hasPhoto: true,
+            url: synced?.profile_photo_url || `${personEndpoint}?v=${Date.now()}`,
+          });
         } catch {
           // Account photo succeeded; person photo sync is best-effort if permissions differ
         }

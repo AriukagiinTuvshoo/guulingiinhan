@@ -2413,6 +2413,17 @@ html[data-th] .admin-stat-card b {
   display: none;
 }
 
+.golden-node-photo,
+.adv3-av-photo {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .tree-fullscreen-exit-btn {
   position: fixed;
   top: max(12px, env(safe-area-inset-top, 12px));
