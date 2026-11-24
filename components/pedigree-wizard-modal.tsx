@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ApiError, api, Person, Marriage, SmartConnectOut } from '../lib/api';
 import { useFocusTrap } from '../lib/use-focus-trap';
+import SmartDateInput, { normalizeFlexibleDate } from './smart-date-input';
 
 export type RelativeRole =
   | 'father'
@@ -249,13 +250,6 @@ export function PedigreeWizardModal({
 
   if (!isOpen) return null;
 
-  const normalizeDateInput = (raw: string): string | null => {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    if (/^\d{4}$/.test(trimmed)) return `${trimmed}-01-01`;
-    return trimmed;
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -294,6 +288,18 @@ export function PedigreeWizardModal({
           setLoading(false);
           return;
         }
+        const parsedBirth = normalizeFlexibleDate(birthDate);
+        if (parsedBirth.error) {
+          setError(parsedBirth.error);
+          setLoading(false);
+          return;
+        }
+        const parsedDeath = !isAlive ? normalizeFlexibleDate(deathDate) : { iso: null, error: null };
+        if (parsedDeath.error) {
+          setError(parsedDeath.error);
+          setLoading(false);
+          return;
+        }
         targetPerson = await api<Person>(`/families/${familyId}/persons`, {
           method: 'POST',
           body: JSON.stringify({
@@ -301,9 +307,9 @@ export function PedigreeWizardModal({
             first_name: firstName.trim(),
             middle_name: lineageName.trim() || null,
             gender,
-            birth_date: normalizeDateInput(birthDate),
+            birth_date: parsedBirth.iso,
             is_alive: isAlive,
-            death_date: !isAlive ? normalizeDateInput(deathDate) : null,
+            death_date: parsedDeath.iso,
           }),
         });
       }
@@ -341,7 +347,7 @@ export function PedigreeWizardModal({
       onClose();
     } catch (cause) {
       if (cause instanceof ApiError) {
-        setError(cause.message);
+        setError(cause.validationMessage || cause.message);
       } else {
         setError('Ургийн холболт үүсгэхэд алдаа гарлаа. Дахин оролдоно уу.');
       }
@@ -956,18 +962,16 @@ export function PedigreeWizardModal({
                   </select>
                 </label>
 
-                <label className="ui-label">
-                  Төрсөн огноо (Он эсвэл YYYY-MM-DD)
-                  <input
-                    type="text"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    placeholder="1985 эсвэл 1985-06-15"
-                    disabled={loading}
-                    className="ui-input"
-                    style={{ marginTop: '4px' }}
-                  />
-                </label>
+                <div className="ui-label" style={{ gridColumn: '1 / -1' }}>
+                  Төрсөн огноо (Он эсвэл Он-Сар-Өдөр)
+                  <div style={{ marginTop: '4px' }}>
+                    <SmartDateInput
+                      value={birthDate}
+                      onChange={setBirthDate}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div
@@ -1000,18 +1004,16 @@ export function PedigreeWizardModal({
                 </label>
 
                 {!isAlive && (
-                  <label className="ui-label">
+                  <div className="ui-label" style={{ gridColumn: '1 / -1' }}>
                     Нас барсан он / огноо:
-                    <input
-                      type="text"
-                      value={deathDate}
-                      onChange={(e) => setDeathDate(e.target.value)}
-                      placeholder="2018"
-                      disabled={loading}
-                      className="ui-input"
-                      style={{ marginTop: '4px' }}
-                    />
-                  </label>
+                    <div style={{ marginTop: '4px' }}>
+                      <SmartDateInput
+                        value={deathDate}
+                        onChange={setDeathDate}
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
                 )}
 
                 <label className="ui-label">

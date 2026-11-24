@@ -19,6 +19,7 @@ import {
 import { ApiError, api, Family, Person, personName, TreeData } from '../../lib/api';
 import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
 import ProfilePhoto from '../profile-photo';
+import SmartDateInput, { normalizeFlexibleDate } from '../smart-date-input';
 import { ThemePicker } from '../theme-picker';
 import { MongolianOrnamentBand } from '../mongolian-ornament-band';
 import '../../app/admin/admin-v3.css';
@@ -352,24 +353,32 @@ export default function AdminV3Workspace() {
   async function commitDiff() {
     if (!pendingDiff || !familyId) return;
     const diff = pendingDiff;
+    const birthCheck = normalizeFlexibleDate(String(diff.nextPayload.birth_date || ''));
+    if (birthCheck.error) {
+      setError(birthCheck.error);
+      return;
+    }
+    const cleanNext = { ...diff.nextPayload, birth_date: birthCheck.iso };
     setSaving(true);
+    setError('');
     try {
-      await api(`/persons/${encodeURIComponent(diff.personId)}`, {
+      const personUrl = `/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(diff.personId)}`;
+      await api(personUrl, {
         method: 'PATCH',
-        body: JSON.stringify(diff.nextPayload),
+        body: JSON.stringify(cleanNext),
       });
       setPendingDiff(null);
       setEditingPerson(null);
       await refreshFamilyData(familyId);
       showToast(`${diff.personLabel}-ийн мэдээлэл хадгалагдлаа`, async () => {
-        await api(`/persons/${encodeURIComponent(diff.personId)}`, {
+        await api(personUrl, {
           method: 'PATCH',
           body: JSON.stringify(diff.prevPayload),
         });
         await refreshFamilyData(familyId);
       });
-    } catch {
-      setError('Хүний мэдээллийг хадгалж чадсангүй.');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Хүний мэдээллийг хадгалж чадсангүй.');
     } finally {
       setSaving(false);
     }
@@ -406,7 +415,13 @@ export default function AdminV3Workspace() {
   async function handleAddPerson(event: FormEvent) {
     event.preventDefault();
     if (!familyId || !newPersonForm.first_name.trim()) return;
+    const parsedBirth = normalizeFlexibleDate(newPersonForm.birth_date);
+    if (parsedBirth.error) {
+      setError(parsedBirth.error);
+      return;
+    }
     setSaving(true);
+    setError('');
     try {
       await api(`/families/${encodeURIComponent(familyId)}/persons`, {
         method: 'POST',
@@ -414,7 +429,7 @@ export default function AdminV3Workspace() {
           first_name: newPersonForm.first_name.trim(),
           last_name: newPersonForm.last_name.trim(),
           gender: newPersonForm.gender,
-          birth_date: newPersonForm.birth_date || null,
+          birth_date: parsedBirth.iso,
           birth_place: newPersonForm.birth_place.trim() || null,
           is_alive: true,
           visibility: 'family',
@@ -424,8 +439,8 @@ export default function AdminV3Workspace() {
       setNewPersonForm({ first_name: '', last_name: '', gender: 'male', birth_date: '', birth_place: '' });
       await refreshFamilyData(familyId);
       showToast('Шинэ хүн амжилттай бүртгэгдлээ');
-    } catch {
-      setError('Хүн нэмэхэд алдаа гарлаа.');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Хүн нэмэхэд алдаа гарлаа.');
     } finally {
       setSaving(false);
     }
@@ -435,6 +450,7 @@ export default function AdminV3Workspace() {
     event.preventDefault();
     if (!familyId || !linkingPerson || !linkTargetId) return;
     setSaving(true);
+    setError('');
     try {
       if (linkRelation === 'spouse_of') {
         await api(`/families/${encodeURIComponent(familyId)}/marriages`, {
@@ -448,7 +464,7 @@ export default function AdminV3Workspace() {
       } else {
         const parent_id = linkRelation === 'parent_of' ? linkingPerson.id : linkTargetId;
         const child_id = linkRelation === 'parent_of' ? linkTargetId : linkingPerson.id;
-        await api(`/families/${encodeURIComponent(familyId)}/parent-child-relationships`, {
+        await api(`/families/${encodeURIComponent(familyId)}/relationships/parent-child`, {
           method: 'POST',
           body: JSON.stringify({ parent_id, child_id, relationship_type: 'biological' }),
         });
@@ -458,8 +474,8 @@ export default function AdminV3Workspace() {
       setLinkTargetId('');
       await refreshFamilyData(familyId);
       showToast(`${linkedName} амжилттай модонд холбогдлоо`);
-    } catch {
-      setError('Модонд холбоход алдаа гарлаа.');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Модонд холбоход алдаа гарлаа.');
     } finally {
       setSaving(false);
     }
@@ -728,10 +744,16 @@ export default function AdminV3Workspace() {
                         <option value="unknown">Тодорхойгүй</option>
                       </select>
                     </label>
-                    <label>
-                      Төрсөн огноо
-                      <input type="date" value={newPersonForm.birth_date} onChange={(e) => setNewPersonForm({ ...newPersonForm, birth_date: e.target.value })} />
-                    </label>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--gt)', marginBottom: 4 }}>
+                        Төрсөн огноо (Он эсвэл Он-Сар-Өдөр)
+                      </span>
+                      <SmartDateInput
+                        value={newPersonForm.birth_date}
+                        onChange={(val) => setNewPersonForm({ ...newPersonForm, birth_date: val })}
+                        disabled={saving}
+                      />
+                    </div>
                     <label>
                       Төрсөн газар
                       <input value={newPersonForm.birth_place} onChange={(e) => setNewPersonForm({ ...newPersonForm, birth_place: e.target.value })} placeholder="Архангай" />
@@ -869,7 +891,16 @@ export default function AdminV3Workspace() {
                           <option value="unknown">Тодорхойгүй</option>
                         </select>
                       </label>
-                      <label>Төрсөн огноо<input type="date" value={editForm.birth_date} onChange={(e) => setEditForm({ ...editForm, birth_date: e.target.value })} /></label>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: 'var(--gt)', marginBottom: 4 }}>
+                          Төрсөн огноо (Он эсвэл Он-Сар-Өдөр)
+                        </span>
+                        <SmartDateInput
+                          value={editForm.birth_date}
+                          onChange={(val) => setEditForm({ ...editForm, birth_date: val })}
+                          disabled={saving}
+                        />
+                      </div>
                       <label>Төрсөн газар<input value={editForm.birth_place} onChange={(e) => setEditForm({ ...editForm, birth_place: e.target.value })} /></label>
                     </div>
                     <label style={{ display: 'block', marginTop: 10, fontSize: 12.5, fontWeight: 700, color: 'var(--gt)' }}>
