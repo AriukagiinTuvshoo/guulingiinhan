@@ -64,7 +64,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
-  { label: 'УДАМ', keys: ['ancestry', 'tree', 'people', 'relationships', 'search'] },
+  { label: 'УДАМ', keys: ['tree', 'ancestry', 'people', 'relationships', 'search'] },
   { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
   { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities', 'chat'] },
   { label: 'АККАУНТ', keys: ['settings'] },
@@ -643,7 +643,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   Миний профайл
                 </Link>
               ) : null}
-              {(isGlobalAdmin || currentFamily?.role === 'owner' || currentFamily?.role === 'editor') ? (
+              {isGlobalAdmin ? (
                 <Link
                   role="menuitem"
                   className="app-shell__account-admin-link"

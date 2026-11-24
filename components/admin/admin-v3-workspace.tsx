@@ -20,12 +20,42 @@ import {
 import { ApiError, api, Family, Person, personName, TreeData } from '../../lib/api';
 import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
 import ProfilePhoto from '../profile-photo';
+import SharedAncestryReview from '../shared-ancestry-review';
 import SmartDateInput, { normalizeFlexibleDate } from '../smart-date-input';
 import { ThemePicker } from '../theme-picker';
 import { MongolianOrnamentBand } from '../mongolian-ornament-band';
 import '../../app/admin/admin-v3.css';
 
-type AdminTab = 'overview' | 'people' | 'members' | 'content' | 'settings' | 'archive';
+type AdminTab = 'overview' | 'ancestry' | 'people' | 'members' | 'content' | 'settings' | 'archive';
+
+type GlobalAdminAccount = {
+  id: string;
+  display_name: string;
+  email: string | null;
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'MODERATOR';
+  is_active: boolean;
+};
+
+type GlobalUserRow = {
+  id: string;
+  display_name: string;
+  email: string | null;
+  is_active: boolean;
+  email_verified_at?: string | null;
+};
+
+type PendingRootConnection = {
+  family_id: string;
+  family_name: string | null;
+  status: string;
+  person_id: string;
+  person_name: string;
+  target_person_id: string;
+  target_name: string;
+  relationship_type: string;
+  requested_by_name: string | null;
+  requested_at: string | null;
+};
 type PeopleFilter = 'all' | 'incomplete' | 'unconnected';
 
 type AuditEntry = {
@@ -90,6 +120,13 @@ function genderLabel(g: string) {
 export default function AdminV3Workspace() {
   const router = useRouter();
   const [tab, setTab] = useState<AdminTab>('overview');
+  const [adminIdentity, setAdminIdentity] = useState<{ id: string; email?: string | null; role: string } | null>(null);
+  const [adminGateChecked, setAdminGateChecked] = useState(false);
+  const [globalAdmins, setGlobalAdmins] = useState<GlobalAdminAccount[]>([]);
+  const [globalUsers, setGlobalUsers] = useState<GlobalUserRow[]>([]);
+  const [grantUserId, setGrantUserId] = useState('');
+  const [grantRole, setGrantRole] = useState<'ADMIN' | 'MODERATOR'>('ADMIN');
+  const [pendingConnections, setPendingConnections] = useState<PendingRootConnection[]>([]);
   const [families, setFamilies] = useState<Family[]>([]);
   const [familyId, setFamilyId] = useState('');
   const [people, setPeople] = useState<Person[]>([]);
@@ -171,19 +208,34 @@ export default function AdminV3Workspace() {
     };
   }, []);
 
-  // Load families
+  // Verify Global Admin identity + load families, pending root connections, and admin accounts
+  const refreshGlobalAdminData = useCallback(async (role: string) => {
+    const [conns, adminsList, usersList] = await Promise.all([
+      api<PendingRootConnection[]>('/admin/shared-lineage/connections?status=pending').catch(() => []),
+      role === 'SUPER_ADMIN' ? api<GlobalAdminAccount[]>('/admin/admins').catch(() => []) : Promise.resolve([]),
+      role === 'SUPER_ADMIN' ? api<GlobalUserRow[]>('/admin/users?limit=100').catch(() => []) : Promise.resolve([]),
+    ]);
+    setPendingConnections(Array.isArray(conns) ? conns : []);
+    setGlobalAdmins(Array.isArray(adminsList) ? adminsList : []);
+    setGlobalUsers(Array.isArray(usersList) ? usersList : []);
+  }, []);
+
   useEffect(() => {
     let active = true;
-    api<Family[]>('/families')
-      .then((list) => {
+    api<{ id: string; email?: string | null; role: string }>('/admin/me')
+      .then(async (me) => {
         if (!active) return;
-        const allowed = list.filter((f) => f.role === 'owner' || f.role === 'editor');
-        setFamilies(allowed);
+        setAdminIdentity(me);
+        setAdminGateChecked(true);
+        void refreshGlobalAdminData(me.role);
+        const list = await api<Family[]>('/families');
+        if (!active) return;
+        setFamilies(list);
         const paramFam =
           typeof window !== 'undefined'
             ? new URLSearchParams(window.location.search).get('family') ?? ''
             : '';
-        const chosen = allowed.find((f) => f.id === paramFam)?.id ?? allowed[0]?.id ?? '';
+        const chosen = list.find((f) => f.id === paramFam)?.id ?? list[0]?.id ?? '';
         setFamilyId(chosen);
         if (!chosen) setLoading(false);
       })
@@ -193,13 +245,14 @@ export default function AdminV3Workspace() {
           router.replace('/login');
           return;
         }
-        setError('Удирдлагын орчныг ачаалж чадсангүй.');
+        setAdminIdentity(null);
+        setAdminGateChecked(true);
         setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, refreshGlobalAdminData]);
 
   // Load temporary archive list from localStorage for this family
   useEffect(() => {
@@ -650,10 +703,78 @@ export default function AdminV3Workspace() {
     }
   }
 
-  if (loading && !families.length) {
+  async function handleDecideRootConnection(targetFamilyId: string, approve: boolean) {
+    if (saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/shared-lineage/connections/${encodeURIComponent(targetFamilyId)}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ approve }),
+      });
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast(approve ? 'Гэр бүлийн салбарыг Эх модонд баталж холболоо!' : 'Холбогдох хүсэлтийг татгалзлаа');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Хүсэлтийг шийдвэрлэж чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleGrantGlobalAdmin(event: FormEvent) {
+    event.preventDefault();
+    if (!grantUserId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/admins/${encodeURIComponent(grantUserId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: grantRole }),
+      });
+      setGrantUserId('');
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast('Системийн Админ эрх амжилттай олголоо');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Админ эрх олгож чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRevokeGlobalAdmin(userId: string) {
+    if (saving) return;
+    if (typeof window !== 'undefined' && !window.confirm('Энэ хэрэглэгчийн системийн Админ эрхийг цуцлах уу?')) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/admins/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast('Админ эрхийг цуцаллаа');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Админ эрхийг цуцалж чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!adminGateChecked || (loading && !families.length)) {
     return (
       <div className="adv3-content">
         <div className="hush-empty">Удирдлагын төвийг ачаалж байна…</div>
+      </div>
+    );
+  }
+
+  if (!adminIdentity) {
+    return (
+      <div className="adv3-content">
+        <div className="hush-empty">
+          <h2>Зөвхөн Ерөнхий Админы хэсэг</h2>
+          <p>Энэ удирдлагын төвд зөвхөн системийн Ерөнхий Админ хандах эрхтэй. Та өөрийн гэр бүлийн хүмүүсээ Удмын мод дээрээсээ удирдана уу.</p>
+          <Link href="/tree" className="adv3-btn is-primary" style={{ marginTop: 12 }}>
+            ← Удмын мод руу буцах
+          </Link>
+        </div>
       </div>
     );
   }
@@ -683,8 +804,9 @@ export default function AdminV3Workspace() {
         {(
           [
             ['overview', 'Тойм', LayoutDashboard, 0],
+            ['ancestry', 'Эх мод & Хүсэлтүүд', ShieldCheck, pendingConnections.length],
             ['people', 'Хүмүүс & Холбоос', Users, orphanPeople.length],
-            ['members', 'Гишүүд & Урилга', ShieldCheck, members.length],
+            ['members', 'Гишүүд & Урилга', Users, members.length],
             ['content', 'Агуулга', FileText, 0],
             ['settings', 'Эрх & Тохиргоо', Link2, 0],
             ['archive', 'Түр архив & Хогийн сав', Archive, archivedPeople.length + trashItems.length],
@@ -813,9 +935,9 @@ export default function AdminV3Workspace() {
                       <strong>🌳 Нийтлэг Эх Мод &amp; Шинэ гэр бүлийн холболтууд</strong>
                       <div className="adv3-sub">Шинэ гэр бүлүүд (жишээ нь Долгор, Баавай, Бадамдорж, Нансалмаагийн салаа) эх модонд холбогдох хүсэлтийг батлах.</div>
                     </div>
-                    <Link href="/admin/ancestry" className="adv3-btn is-primary">
-                      Эх мод удирдах →
-                    </Link>
+                    <button type="button" className="adv3-btn is-primary" onClick={() => setTab('ancestry')}>
+                      Хүсэлт батлах ({pendingConnections.length}) →
+                    </button>
                   </div>
                 </section>
 
@@ -835,6 +957,63 @@ export default function AdminV3Workspace() {
                     ))
                   )}
                 </section>
+              </div>
+            </>
+          )}
+
+          {/* TAB 1.5: SHARED CLAN TREE & APPROVALS (Эх мод & Хүсэлтүүд) */}
+          {tab === 'ancestry' && (
+            <>
+              <div className="adv3-head">
+                <div>
+                  <h1>Эх мод &amp; Холбогдох хүсэлтүүд</h1>
+                  <p className="adv3-sub">Шинэ гэр бүлүүд (Долгор, Баавай, Бадамдорж, Нансалмаагийн салаа) Гуулингийнхны нэгдсэн Эх модонд холбогдох хүсэлтийг эндээс 1 товшилтоор батална.</p>
+                </div>
+                <Link href="/ancestry" className="adv3-btn">
+                  🌳 Нийтлэг удам үзэх →
+                </Link>
+              </div>
+              <MongolianOrnamentBand />
+
+              <div className="adv3-card" style={{ marginBottom: 16 }}>
+                <h3>Хүлээгдэж буй гэр бүл холбох хүсэлтүүд ({pendingConnections.length})</h3>
+                {pendingConnections.length === 0 ? (
+                  <p className="adv3-sub">Одоогоор хүлээгдэж буй гэр бүл холбох хүсэлт алга байна.</p>
+                ) : (
+                  pendingConnections.map((conn) => (
+                    <div className="adv3-list-item" key={conn.family_id} style={{ alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                      <div>
+                        <strong>{conn.family_name || 'Шинэ гэр бүл'}</strong> — <span>{conn.person_name}</span> → <strong>{conn.target_name}</strong>
+                        <div className="adv3-sub" style={{ margin: 0 }}>
+                          Хүсэлт илгээсэн: {conn.requested_by_name || 'Хэрэглэгч'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          className="adv3-btn is-primary"
+                          disabled={saving}
+                          onClick={() => void handleDecideRootConnection(conn.family_id, true)}
+                        >
+                          <Check size={14} /> Батлах
+                        </button>
+                        <button
+                          type="button"
+                          className="adv3-btn is-danger"
+                          disabled={saving}
+                          onClick={() => void handleDecideRootConnection(conn.family_id, false)}
+                        >
+                          Татгалзах
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="adv3-card">
+                <h3>Хувь хүний холбогдох хүсэлтүүд</h3>
+                <SharedAncestryReview onApproved={() => { if (adminIdentity) void refreshGlobalAdminData(adminIdentity.role); }} />
               </div>
             </>
           )}
@@ -1345,6 +1524,66 @@ export default function AdminV3Workspace() {
                 </div>
               </div>
               <MongolianOrnamentBand />
+
+              {adminIdentity.role === 'SUPER_ADMIN' && (
+                <div className="adv3-card" style={{ marginBottom: 16 }}>
+                  <h3>🛡️ Системийн Ерөнхий Админ эрх олгох / хасах</h3>
+                  <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
+                    Зөвхөн <strong>Ерөнхий Админ (SUPER_ADMIN)</strong> бусад баталгаажсан аккаунтуудад админ эрх олгож эсвэл цуцалж чадна.
+                  </p>
+                  {globalAdmins.map((adm) => (
+                    <div className="adv3-list-item" key={adm.id}>
+                      <div>
+                        <strong>{adm.display_name || adm.email}</strong>
+                        <div className="adv3-sub" style={{ margin: 0 }}>{adm.email || ''}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="adv3-tag is-ok">{adm.role}</span>
+                        {adm.role !== 'SUPER_ADMIN' && (
+                          <button
+                            type="button"
+                            className="adv3-btn is-danger"
+                            disabled={saving}
+                            onClick={() => void handleRevokeGlobalAdmin(adm.id)}
+                          >
+                            <Trash2 size={13} /> Эрх хасах
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <form onSubmit={handleGrantGlobalAdmin} style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                    <select
+                      value={grantUserId}
+                      onChange={(e) => setGrantUserId(e.target.value)}
+                      aria-label="Админ эрх олгох хэрэглэгч сонгох"
+                      style={{ flex: '1 1 220px', minHeight: 40, padding: '6px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)' }}
+                    >
+                      <option value="">Хэрэглэгч сонгох…</option>
+                      {globalUsers
+                        .filter((u) => !globalAdmins.some((a) => a.id === u.id))
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.display_name || u.email} {u.email ? `(${u.email})` : ''}
+                          </option>
+                        ))}
+                    </select>
+                    <select
+                      value={grantRole}
+                      onChange={(e) => setGrantRole(e.target.value as 'ADMIN' | 'MODERATOR')}
+                      aria-label="Олгох админ түвшин"
+                      style={{ minHeight: 40, padding: '6px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)' }}
+                    >
+                      <option value="ADMIN">ADMIN (Бүх гэр бүл удирдах)</option>
+                      <option value="MODERATOR">MODERATOR (Хянагч)</option>
+                    </select>
+                    <button type="submit" className="adv3-btn is-primary" disabled={saving || !grantUserId}>
+                      <Plus size={14} /> Админ эрх олгох
+                    </button>
+                  </form>
+                </div>
+              )}
+
               <div className="adv3-two-col">
                 <div className="adv3-card">
                   <h3>Гишүүдийн эрх удирдах ({members.length})</h3>
