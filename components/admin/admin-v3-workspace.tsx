@@ -151,6 +151,26 @@ function genderLabel(g: string) {
   return 'Тодорхойгүй';
 }
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  'person.created': 'Шинэ хүн бүртгэсэн',
+  'person.updated': 'Хүний мэдээлэл зассан',
+  'person.deleted': 'Хүн устгасан',
+  'person.restored': 'Хүнийг сэргээсэн',
+  'relationship.parent_child.created': 'Эцэг/эх — хүүхдийн холбоос нэмсэн',
+  'relationship.parent_child.deleted': 'Эцэг/эх — хүүхдийн холбоос салгасан',
+  'marriage.created': 'Гэрлэлтийн холбоос нэмсэн',
+  'marriage.deleted': 'Гэрлэлтийн холбоос салгасан',
+  'member.role_updated': 'Гишүүний эрх шинэчилсэн',
+  'invitation.created': 'Шинэ урилга илгээсэн',
+  'clan.onboarding.approved': 'Шинэ гишүүний хүсэлт баталсан',
+  'clan.onboarding.rejected': 'Шинэ гишүүний хүсэлт татгалзсан',
+  'clan.onboarding.banned': 'Хуурамч аккаунт хаасан (Ban)',
+};
+
+function auditActionLabel(action: string) {
+  return AUDIT_ACTION_LABELS[action] || action;
+}
+
 export default function AdminV3Workspace() {
   const router = useRouter();
   const [tab, setTab] = useState<AdminTab>('overview');
@@ -1094,7 +1114,7 @@ export default function AdminV3Workspace() {
                     audits.slice(0, 8).map((log) => (
                       <div className="adv3-list-item" key={log.id}>
                         <div>
-                          <strong>{log.action}</strong>
+                          <strong>{auditActionLabel(log.action)}</strong>
                           <div className="adv3-sub">{new Date(log.created_at).toLocaleString('mn-MN')}</div>
                         </div>
                         <span className="adv3-tag">{log.target_type}</span>

@@ -166,6 +166,7 @@ function SettingsContent() {
         body: JSON.stringify({ display_name: displayName }),
       });
       setUser(updated);
+      window.dispatchEvent(new CustomEvent('guulingiinhan:user-updated', { detail: updated }));
       setNotice({ kind: 'success', text: 'Дэлгэцийн нэр амжилттай хадгалагдлаа.' });
     } catch (cause) {
       setNotice({ kind: 'error', text: friendlyError(cause, 'Дэлгэцийн нэрийг хадгалж чадсангүй.') });
@@ -382,7 +383,7 @@ function SettingsContent() {
                     <Globe2 size={18} />
                     <div>
                       <h3>Google</h3>
-                      <small>{googleIdentity?.display_identifier || 'Холбогдоогүй'}</small>
+                      <small>{googleIdentity?.display_identifier || 'Google бүртгэл холбоогүй'}</small>
                     </div>
                   </div>
                   {googleIdentity ? (

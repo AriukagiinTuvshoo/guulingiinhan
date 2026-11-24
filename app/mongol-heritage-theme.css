@@ -725,12 +725,15 @@ html[data-th="dark"] .app-shell__account-avatar {
   inset: auto;
   transform: none;
   background: transparent;
-  padding: 0;
+  padding: 0 14px;
   border: 0;
-  font-size: 10.5px;
-  letter-spacing: 0.16em;
+  max-width: calc(100% - 20px);
+  white-space: normal;
+  line-height: 1.4;
+  font-size: clamp(8.5px, 2.1vw, 10px);
+  letter-spacing: 0.1em;
   color: #ebd59a;
-  opacity: 0.85;
+  opacity: 0.88;
   font-weight: 700;
   margin-top: 14px;
   text-align: center;
@@ -2776,7 +2779,7 @@ html[data-th] .people-profile-cta {
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 
-  /* 3. Native-feel Sticky Bottom Navigation Bar */
+  /* 3. Native-feel Sticky Bottom Navigation Bar (100% solid opaque so content never bleeds through) */
   .app-shell__bottom-nav {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -2785,12 +2788,44 @@ html[data-th] .people-profile-cta {
     right: 0;
     bottom: 0;
     z-index: 950;
-    background: color-mix(in srgb, var(--card) 96%, transparent);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+    background: var(--card);
     border-top: 1.5px solid var(--goldl);
-    box-shadow: 0 -6px 22px color-mix(in srgb, var(--hd) 10%, transparent);
+    box-shadow: 0 -8px 24px color-mix(in srgb, var(--hd) 14%, transparent);
     padding: 4px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  html[data-th] .app-shell__content {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Settings mobile overflow & avatar centering fix (390px) */
+  .settings-v2-tabs,
+  .settings-v2-nav {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    max-width: 100% !important;
+    overflow-x: visible !important;
+  }
+  .settings-v2-tabs button,
+  .settings-v2-nav button,
+  .settings-v2-tabs a,
+  .settings-v2-nav a {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    font-size: 12.5px !important;
+    padding: 8px 10px !important;
+  }
+  .settings-v2-avatar-box,
+  .settings-v2-photo-row,
+  .photo-upload-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    margin-inline: auto !important;
   }
 
   .app-shell__bottom-item {
@@ -3013,4 +3048,24 @@ html[data-th] .people-profile-cta {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 10px !important;
   }
+
+  .settings-v2-profile-card > * {
+    margin-inline: auto !important;
+  }
+}
+
+/* Crisp contrast for Хөх тэнгэр (blue) theme sidebar */
+html[data-th='blue'] .app-shell__sidebar,
+html[data-th='blue'] .app-shell__nav-link,
+html[data-th='blue'] .app-shell__nav-link strong {
+  color: #edf4ff !important;
+}
+html[data-th='blue'] .app-shell__nav-link small,
+html[data-th='blue'] .app-shell__nav-group-label {
+  color: rgba(212, 228, 255, 0.78) !important;
+}
+html[data-th='blue'] .app-shell__nav-link.is-active,
+html[data-th='blue'] .app-shell__nav-link.is-active strong,
+html[data-th='blue'] .app-shell__nav-link.is-active small {
+  color: #ffffff !important;
 }

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Archive, ArrowRight, BookOpen, Camera, GitFork, ShieldCheck } from 'lucide-react';
 import { MongolianOrnamentBand } from '../components/mongolian-ornament-band';
 import { ThemePicker } from '../components/theme-picker';
+import { LandingAuthButton } from '../components/landing-auth-button';
 
 const features = [
   {
@@ -36,9 +37,7 @@ export default function HomePage() {
 
         <div className="luxury-landing__auth-actions">
           <ThemePicker variant="compact" showLabel={false} />
-          <Link href="/login" className="luxury-landing__signin-pill">
-            Нэвтрэх
-          </Link>
+          <LandingAuthButton />
         </div>
       </header>
 
@@ -46,7 +45,7 @@ export default function HomePage() {
       <section className="luxury-landing__hero">
         <div className="luxury-landing__hero-copy">
           <p className="luxury-landing__eyebrow">
-            HERITAGE ARCHIVE · МОНГОЛ УРГИЙН САН · EST 2026
+            ГУУЛИНГИЙНХАН · МОНГОЛ УРГИЙН САН · 2026
           </p>
           <h1 className="luxury-landing__title">
             Өв удмаа <em>Мөнхөд</em> Хадгалъя.

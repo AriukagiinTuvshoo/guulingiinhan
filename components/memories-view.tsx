@@ -343,7 +343,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
 
         <header className="memories-hero">
           <div>
-            <p className="memories-eyebrow">ГУУЛИНГИЙНХАН · MEMORY ARCHIVE</p>
+            <p className="memories-eyebrow">ГУУЛИНГИЙНХАН · ДУРСАМЖИЙН САН</p>
             <h1>{createMode ? 'Шинэ дурсамж' : 'Гэр бүлийн дурсамж'}</h1>
             <p>Өдөр тутмын жижиг мөчөөс эхлээд үе дамжин үлдэх гэрэл зураг, тэмдэглэлүүдээ гэр бүлийнхээ орчинд цэгцтэй хадгал.</p>
           </div>
@@ -491,7 +491,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
           </section>
         ) : memories && memories.items.length === 0 ? (
           <section className="memory-state">
-            <p className="memories-eyebrow">MEMORY ARCHIVE · ХООСОН</p>
+            <p className="memories-eyebrow">ДУРСАМЖИЙН САН · ХООСОН</p>
             <h2>{Object.values(filters).some(Boolean) ? 'Хайлтад тохирох дурсамж алга.' : 'Одоогоор дурсамж хадгалагдаагүй байна.'}</h2>
             <p>Эхний дурсамжаа нэмээд гэр бүлийн тань өдөр тутмын мөчүүдийг энэ архивт үлдээгээрэй.</p>
             <button type="button" className="memories-primary" onClick={() => setShowComposer(true)} aria-controls="memory-composer">Анхны дурсамж нэмэх</button>

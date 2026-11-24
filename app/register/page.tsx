@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { ApiError, api } from '../../lib/api';
 import LivingTreeAuthPortal from '../../components/living-tree-auth-portal';
@@ -27,6 +28,7 @@ function registerError(cause: unknown) {
 }
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>('email');
   const [registeredEmail, setRegisteredEmail] = useState('');
   const [error, setError] = useState('');
@@ -46,29 +48,39 @@ export default function RegisterPage() {
     setError('');
     setNotice('');
     const values = new FormData(event.currentTarget);
+    const surname = String(values.get('surname') ?? '').trim();
+    const givenName = String(values.get('given_name') ?? '').trim();
+    const email = String(values.get('email') ?? '').trim();
     const password = String(values.get('password') ?? '');
     const confirm = String(values.get('confirm') ?? '');
+    if (!surname || !givenName) {
+      setError('Овог болон нэрээ бүрэн оруулна уу.');
+      return;
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Зөв имэйл хаяг оруулна уу.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Нууц үг 8-аас доошгүй тэмдэгттэй байх ёстой.');
+      return;
+    }
     if (password !== confirm) {
       setError('Нууц үг таарахгүй байна.');
       return;
     }
+    const displayName = composeDisplayName(surname, givenName);
+    if (!displayName || displayName.length > 120) {
+      setError('Овог, нэрээ шалгана уу. Нийлсэн нэр 120 тэмдэгтээс хэтрэхгүй байх ёстой.');
+      return;
+    }
     setBusy(true);
     try {
-      const email = String(values.get('email') ?? '').trim();
-      const displayName = composeDisplayName(
-        String(values.get('surname') ?? ''),
-        String(values.get('given_name') ?? ''),
-      );
-      if (!displayName || displayName.length > 120) {
-        setError('Овог, нэрээ шалгана уу. Нийлсэн нэр 120 тэмдэгтээс хэтрэхгүй байх ёстой.');
-        return;
-      }
-      const result = await api<{ message: string }>('/auth/register', {
+      await api<{ message: string }>('/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, password, display_name: displayName }),
       });
       setRegisteredEmail(email);
-      setNotice(result.message);
     } catch (cause) {
       setError(registerError(cause));
     } finally {
@@ -78,18 +90,56 @@ export default function RegisterPage() {
 
   async function submitPhone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError('');
+    setNotice('');
     const form = event.currentTarget;
     const values = new FormData(form);
-    if (values.get('password') !== values.get('confirm')) { setError('Нууц үг таарахгүй байна.'); return; }
-    setBusy(true); setError(''); setNotice('');
+    const surname = String(values.get('surname') ?? '').trim();
+    const givenName = String(values.get('given_name') ?? '').trim();
+    const phone = String(values.get('phone') ?? '').trim();
+    const password = String(values.get('password') ?? '');
+    const confirm = String(values.get('confirm') ?? '');
+    if (!surname || !givenName) {
+      setError('Овог болон нэрээ бүрэн оруулна уу.');
+      return;
+    }
+    if (!phone || phone.replace(/\D/g, '').length < 8) {
+      setError('Зөв утасны дугаар оруулна уу (жишээ нь 99112233).');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Нууц үг 8-аас доошгүй тэмдэгттэй байх ёстой.');
+      return;
+    }
+    if (password !== confirm) {
+      setError('Нууц үг таарахгүй байна.');
+      return;
+    }
+    setBusy(true);
     try {
-      const result = await api<{ message: string }>('/auth/register/phone', {
-        method: 'POST', body: JSON.stringify({ phone: values.get('phone'), password: values.get('password'),
-          display_name: composeDisplayName(String(values.get('surname') ?? ''), String(values.get('given_name') ?? '')) }),
+      const displayName = composeDisplayName(surname, givenName);
+      await api<{ message: string }>('/auth/register/phone', {
+        method: 'POST',
+        body: JSON.stringify({ phone, password, display_name: displayName }),
       });
-      form.reset(); setNotice(result.message);
-    } catch (cause) { setError(registerError(cause)); }
-    finally { setBusy(false); }
+      // Automatically sign in the newly registered phone user and enter onboarding
+      try {
+        await api('/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ identifier: phone, password }),
+        });
+        router.replace('/onboarding');
+        return;
+      } catch {
+        form.reset();
+        setNotice('Бүртгэл амжилттай үүслээ. Одоо нэвтрэх хуудас руу шилжиж байна…');
+        router.replace('/login');
+      }
+    } catch (cause) {
+      setError(registerError(cause));
+    } finally {
+      setBusy(false);
+    }
   }
 
   function chooseMode(nextMode: Mode) {
@@ -135,7 +185,7 @@ export default function RegisterPage() {
           <Link className="authv2-submit authv2-link-button" href={`/email-verification?email=${encodeURIComponent(registeredEmail)}`}>Имэйлээ шалгах <ArrowRight size={16} /></Link>
         </div>
       ) : mode === 'email' ? (
-        <form className="authv2-form" onSubmit={submitEmail} aria-describedby={error ? 'register-error' : undefined}>
+        <form className="authv2-form" noValidate onSubmit={submitEmail} aria-describedby={error ? 'register-error' : undefined}>
           <label htmlFor="register-surname">Овог</label>
           <input id="register-surname" name="surname" autoComplete="family-name" minLength={1} maxLength={59} required />
           <label htmlFor="register-given-name">Нэр</label>
@@ -148,7 +198,7 @@ export default function RegisterPage() {
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
           <span id="register-password-help" className="authv2-help">8-аас доошгүй тэмдэгт.</span>
-          <label htmlFor="register-confirm">Нууц үгээ дахин оруулна</label>
+          <label htmlFor="register-confirm">Нууц үгээ давтах</label>
           <div className="authv2-password">
             <input id="register-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
             <button type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}</button>
@@ -156,7 +206,7 @@ export default function RegisterPage() {
           <button className="authv2-submit" type="submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
         </form>
       ) : (
-        <form className="authv2-form" onSubmit={submitPhone} aria-describedby={error ? 'register-error' : undefined}>
+        <form className="authv2-form" noValidate onSubmit={submitPhone} aria-describedby={error ? 'register-error' : undefined}>
           <label htmlFor="register-phone-surname">Овог</label>
           <input id="register-phone-surname" name="surname" autoComplete="family-name" maxLength={59} required />
           <label htmlFor="register-phone-given-name">Нэр</label>
@@ -164,9 +214,16 @@ export default function RegisterPage() {
           <label htmlFor="register-phone">Утасны дугаар</label>
           <input id="register-phone" name="phone" type="tel" autoComplete="tel" maxLength={20} placeholder="99112233" required />
           <label htmlFor="register-phone-password">Нууц үг</label>
-          <input id="register-phone-password" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
+          <div className="authv2-password">
+            <input id="register-phone-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required aria-describedby="register-phone-password-help" />
+            <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+          </div>
+          <span id="register-phone-password-help" className="authv2-help">8-аас доошгүй тэмдэгт.</span>
           <label htmlFor="register-phone-confirm">Нууц үгээ давтах</label>
-          <input id="register-phone-confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
+          <div className="authv2-password">
+            <input id="register-phone-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
+            <button type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+          </div>
           <p className="authv2-help">Нэвтэрсний дараа Тохиргооноос утсаа баталгаажуулна. Нэвтрэхэд SMS шаардахгүй.</p>
           <button type="submit" className="authv2-submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
         </form>

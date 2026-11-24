@@ -16,11 +16,24 @@ export default function InvitePage() {
     setFamilyId(fid); setToken(invitationToken);
     if (fid) api<Family>(`/families/${fid}`).then(setFamily).catch((cause) => setError(cause instanceof Error ? cause.message : 'Гэр бүлийг ачаалж чадсангүй.'));
   }, []);
-  async function inspectInvitation() {
+  async function inspectInvitation(overrideToken?: string) {
+    const code = (overrideToken ?? token).trim();
+    if (!code) {
+      setError('Урилгын кодоо оруулна уу.');
+      return;
+    }
     setBusy(true); setError('');
-    try { setPreview(await api('/invitations/preview', { method: 'POST', body: JSON.stringify({ token }) })); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Урилгыг шалгаж чадсангүй.'); }
-    finally { setBusy(false); }
+    try {
+      const result = await api<{ family_name: string; role: string; expires_at: string }>('/invitations/preview', {
+        method: 'POST',
+        body: JSON.stringify({ token: code }),
+      });
+      setToken(code);
+      setPreview(result);
+    } catch (cause) {
+      setPreview(null);
+      setError(cause instanceof ApiError && cause.message ? cause.message : 'Урилгын код буруу эсвэл хугацаа нь дууссан байна.');
+    } finally { setBusy(false); }
   }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = new FormData(event.currentTarget); setBusy(true); setError('');
@@ -49,12 +62,12 @@ export default function InvitePage() {
     {error && <div className="error" role="alert">{error}</div>}
     {done ? <div className="success" role="status"><h2>Гэр бүлд амжилттай нэгдлээ</h2><p>Шинэ гэр бүл үүсгэх шаардлагагүй. Гишүүд хэсгээс өөрийн бүртгэлээ баталгаажуулж, байгаа модонд нэгдээрэй.</p><p>{preview?.family_name} · {preview?.role === 'editor' ? 'Засварлагч' : 'Гишүүн'}</p><Link className="button primary" href={`/tree?view=family&family=${encodeURIComponent(acceptedFamilyId)}`}>Гэр бүлийн модыг нээх →</Link><Link className="button" href={`/people?family=${encodeURIComponent(acceptedFamilyId)}`}>Өөрийн удмын бүртгэлийг холбох →</Link></div> : token ? <>
       <ol><li>Урьсан имэйлтэй бүртгэлээр нэвтэрнэ.</li><li>Гэр бүл болон олгох эрхийг шалгана.</li><li>Зөвшөөрч нэгдэнэ.</li></ol>
-      {preview ? <section className="card"><h2>{preview.family_name}</h2><p>Танд олгох эрх: <strong>{preview.role === 'editor' ? 'Засварлагч' : 'Гишүүн'}</strong></p><p>{preview.role === 'editor' ? 'Гэр бүлийн мэдээлэл нэмэх, засах эрхтэй. Эзэмшигч болон глобал админ эрх олгохгүй.' : 'Гэр бүлийн зөвшөөрөгдсөн мэдээллийг үзэж, өөрийн дурсамжийг нэмнэ.'}</p><p>Урилгын хугацаа: {new Date(preview.expires_at).toLocaleDateString('mn-MN')}</p><button type="button" className="primary" disabled={busy} onClick={accept}>{busy ? 'Нэгдэж байна…' : 'Зөвшөөрч гэр бүлд нэгдэх'}</button></section> : <button type="button" className="primary" disabled={busy} onClick={inspectInvitation}>{busy ? 'Шалгаж байна…' : 'Урилгын гэр бүл, эрхийг шалгах'}</button>}
+      {preview ? <section className="card"><h2>{preview.family_name}</h2><p>Танд олгох эрх: <strong>{preview.role === 'editor' ? 'Засварлагч' : 'Гишүүн'}</strong></p><p>{preview.role === 'editor' ? 'Гэр бүлийн мэдээлэл нэмэх, засах эрхтэй. Эзэмшигч болон глобал админ эрх олгохгүй.' : 'Гэр бүлийн зөвшөөрөгдсөн мэдээллийг үзэж, өөрийн дурсамжийг нэмнэ.'}</p><p>Урилгын хугацаа: {new Date(preview.expires_at).toLocaleDateString('mn-MN')}</p><button type="button" className="primary" disabled={busy} onClick={accept}>{busy ? 'Нэгдэж байна…' : 'Зөвшөөрч гэр бүлд нэгдэх'}</button></section> : <button type="button" className="primary" disabled={busy} onClick={() => void inspectInvitation()}>{busy ? 'Шалгаж байна…' : 'Урилгын гэр бүл, эрхийг шалгах'}</button>}
       <div className="row"><Link href={`/login#invite=${encodeURIComponent(token)}`}>Нэвтрэх</Link><Link href={`/register#invite=${encodeURIComponent(token)}`}>Бүртгүүлэх</Link></div>
     </> : family?.role === 'owner' ? <>
       <h2>{family.name}</h2><p>Имэйлээр хүлээн авагчид нь зориулсан холбоос илгээнэ. 7 хоногийн дараа хүчингүй болно; та урилгыг цуцалж болно.</p>
       <form onSubmit={create}><label>Урих имэйл<input name="email" type="email" maxLength={320} required autoComplete="email" /></label><label>Олгох эрх<select name="role" value={selectedRole} onChange={event => setSelectedRole(event.target.value)} aria-describedby="invitation-role-help"><option value="member">Гишүүн</option><option value="editor">Засварлагч</option></select></label><p id="invitation-role-help">{selectedRole === 'editor' ? 'Гэр бүлийн мэдээлэл нэмэх, засах боломж олгоно. Зөвхөн итгэлтэй хүнд сонгоно уу.' : 'Зөвшөөрөгдсөн мэдээллийг үзэх болон өөрийн дурсамжийг нэмэх эрх.'}</p><button className="primary" disabled={busy}>{busy ? 'Илгээж байна…' : 'Урилга илгээх'}</button></form>
       {issued && <div className="card" role="status" style={{ marginTop: 18 }}><h2>Урилга илгээгдлээ</h2><p>{issued.email} хаягт очсон холбоосоор зөвхөн тэр бүртгэл нэгдэнэ.</p><button type="button" disabled={busy} onClick={revoke}>Урилгыг цуцлах</button></div>}
-    </> : familyId ? <p>Гэр бүлийн эзэмшигч урилга илгээнэ. Гэр бүлийн мэдээлэл ачаалж байгаа эсвэл танд энэ эрх байхгүй байна.</p> : <form onSubmit={event => { event.preventDefault(); setToken(pastedCode.trim()); setPreview(null); }}><p>Имэйлээр ирсэн холбоосыг нээнэ үү. Эсвэл урилгын кодыг энд оруулж болно.</p><label>Урилгын код<input type="password" value={pastedCode} onChange={event => setPastedCode(event.target.value)} minLength={32} maxLength={128} autoComplete="off" required /></label><button className="primary" type="submit">Кодыг шалгах</button></form>}
+    </> : familyId ? <p>Гэр бүлийн эзэмшигч урилга илгээнэ. Гэр бүлийн мэдээлэл ачаалж байгаа эсвэл танд энэ эрх байхгүй байна.</p> : <form noValidate onSubmit={event => { event.preventDefault(); void inspectInvitation(pastedCode); }}><p>Имэйлээр ирсэн холбоосыг нээнэ үү. Эсвэл урилгын кодыг энд оруулж шалгаж болно.</p><label>Урилгын код<input type="text" value={pastedCode} onChange={event => { setPastedCode(event.target.value); if (error) setError(''); }} maxLength={128} autoComplete="off" placeholder="Урилгын кодоо энд хуулна уу" /></label><button className="primary" type="submit" disabled={busy}>{busy ? 'Шалгаж байна…' : 'Кодыг шалгах'}</button></form>}
   </section></main>;
 }

@@ -60,7 +60,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'archives', label: 'Архив', description: 'Гэр бүлийн баримт', icon: Archive, path: '/archives', needsFamily: true },
   { key: 'activities', label: 'Сан ба уулзалт', description: 'Хандив, арга хэмжээ', icon: CalendarDays, path: '/activities', needsFamily: true },
   { key: 'chat', label: 'Зурвас', description: 'Гэр бүлийн яриа', icon: MessageSquare, path: '/chat', needsFamily: true },
-  { key: 'settings', label: 'Тохиргоо', description: 'Account ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
+  { key: 'settings', label: 'Тохиргоо', description: 'Аккаунт ба аюулгүй байдал', icon: Settings, path: '/settings', needsFamily: false },
 ];
 
 const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
@@ -431,8 +431,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
       if ((event as CustomEvent<{ endpoint?: string }>).detail?.endpoint !== '/auth/me/photo') return;
       void api<User>('/auth/me').then(current => { if (active) setUser(current); }).catch(() => undefined);
     };
+    const refreshUser = (event: Event) => {
+      const updated = (event as CustomEvent<User>).detail;
+      if (updated && typeof updated.display_name === 'string') {
+        if (active) setUser((prev) => (prev ? { ...prev, ...updated } : updated));
+      } else {
+        void api<User>('/auth/me').then(current => { if (active) setUser(current); }).catch(() => undefined);
+      }
+    };
     window.addEventListener('guulingiinhan:photo-changed', refreshPhoto);
-    return () => { active = false; window.removeEventListener('guulingiinhan:photo-changed', refreshPhoto); };
+    window.addEventListener('guulingiinhan:user-updated', refreshUser);
+    return () => {
+      active = false;
+      window.removeEventListener('guulingiinhan:photo-changed', refreshPhoto);
+      window.removeEventListener('guulingiinhan:user-updated', refreshUser);
+    };
   }, [shouldRenderShell, user?.id]);
 
   useEffect(() => {
@@ -630,23 +643,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <FamilyChatDrawer familyId={currentFamily.id} currentUserId={user.id} />
           )}
           {user && <NotificationBell userId={user.id} closeSignal={accountOpen || mobileOpen} onOpen={() => { setAccountOpen(false); setMobileOpen(false); }} />}
-          <button
-            type="button"
-            className="app-shell__account-button"
-            aria-haspopup="menu"
-            aria-label="Миний бүртгэлийн цэс"
-            aria-expanded={accountOpen}
-            onClick={() => { setMobileOpen(false); setAccountOpen((value) => !value); }}
-          >
-            <ProfilePhoto url={headerPhoto} className="app-shell__avatar" name={user?.display_name || 'Хэрэглэгч'} fallback={(user?.display_name?.trim().slice(0, 1) || '?').toUpperCase()} />
-            <span className="app-shell__account-name">{user?.display_name || 'Хэрэглэгч'}</span>
-          </button>
+          {user && (
+            <button
+              type="button"
+              className="app-shell__account-button"
+              aria-haspopup="menu"
+              aria-label="Миний бүртгэлийн цэс"
+              aria-expanded={accountOpen}
+              onClick={() => { setMobileOpen(false); setAccountOpen((value) => !value); }}
+            >
+              <ProfilePhoto url={headerPhoto} className="app-shell__avatar" name={user.display_name || 'Гишүүн'} fallback={(user.display_name?.trim().slice(0, 1) || 'Г').toUpperCase()} />
+              <span className="app-shell__account-name">{user.display_name || 'Гишүүн'}</span>
+            </button>
+          )}
 
-          {accountOpen && (
+          {accountOpen && user && (
             <div className="app-shell__account-menu" role="menu" aria-label="Хэрэглэгчийн цэс">
               <div className="app-shell__account-heading">
-                <strong>{user?.display_name || 'Хэрэглэгч'}</strong>
-                <small>Таны account</small>
+                <strong>{user.display_name || 'Гишүүн'}</strong>
+                <small>Таны бүртгэл</small>
               </div>
               {user?.person_id && currentFamily ? (
                 <Link
