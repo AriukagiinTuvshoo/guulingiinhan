@@ -762,6 +762,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </div>)}
             </nav>
 
+            <div className="app-shell__drawer-theme" aria-label="Өнгөний сэдэв">
+              <span className="app-shell__drawer-theme-label">Өнгөний сэдэв</span>
+              <ThemePicker variant="compact" showLabel={false} />
+            </div>
+
             <div className="app-shell__sidebar-footer">
               <p>Өнгөрсөн түүхээ танин мэдэж, өнөөдрийн дурсамжаа ирээдүйд өвлүүлэн үлдээе.</p>
               <Link href={familyHref('/families', null)} onClick={() => setMobileOpen(false)}>
@@ -792,6 +797,52 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
+
+      {/* Native-feel Mobile Bottom Navigation Bar (<= 768px) */}
+      <nav className="app-shell__bottom-nav" aria-label="Гар утасны үндсэн цэс">
+        <Link
+          href={familyHref('/tree', currentFamily?.id ?? null)}
+          className={'app-shell__bottom-item' + (active === 'tree' ? ' is-active' : '')}
+          aria-current={active === 'tree' ? 'page' : undefined}
+        >
+          <GitFork size={20} aria-hidden="true" />
+          <span>Мод</span>
+        </Link>
+        <Link
+          href={familyHref('/stories', currentFamily?.id ?? null)}
+          className={'app-shell__bottom-item' + (active === 'stories' ? ' is-active' : '')}
+          aria-current={active === 'stories' ? 'page' : undefined}
+        >
+          <BookOpen size={20} aria-hidden="true" />
+          <span>Түүх</span>
+        </Link>
+        <Link
+          href={familyHref('/memories', currentFamily?.id ?? null)}
+          className={'app-shell__bottom-item' + (active === 'memories' ? ' is-active' : '')}
+          aria-current={active === 'memories' ? 'page' : undefined}
+        >
+          <Globe2 size={20} aria-hidden="true" />
+          <span>Дурсамж</span>
+        </Link>
+        <Link
+          href={familyHref('/chat', currentFamily?.id ?? null)}
+          className={'app-shell__bottom-item' + (active === 'chat' ? ' is-active' : '')}
+          aria-current={active === 'chat' ? 'page' : undefined}
+        >
+          <MessageSquare size={20} aria-hidden="true" />
+          <span>Зурвас</span>
+        </Link>
+        <button
+          type="button"
+          className={'app-shell__bottom-item' + (mobileOpen ? ' is-active' : '')}
+          onClick={() => { setAccountOpen(false); setMobileOpen((value) => !value); }}
+          aria-expanded={mobileOpen}
+          aria-label="Бүх цэс нээх"
+        >
+          {mobileOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+          <span>Цэс</span>
+        </button>
+      </nav>
       </div>
     </AppShellContext.Provider>
   );

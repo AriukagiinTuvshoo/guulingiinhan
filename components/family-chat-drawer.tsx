@@ -189,6 +189,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
       {!isOpen && (
         <button
           type="button"
+          className="family-chat-fab"
           onClick={() => setIsOpen(true)}
           aria-label="Гэр бүлийн чат нээх"
           style={{
@@ -251,6 +252,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
       {/* Expanded Messenger Window / Drawer */}
       {isOpen && (
         <div
+          className="family-chat-panel"
           style={{
             position: 'fixed',
             bottom: '24px',

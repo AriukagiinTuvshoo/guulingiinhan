@@ -145,6 +145,7 @@ function TreePageContent() {
   const [viewMode, setViewMode] = useState<'gold' | 'hush' | 'toono' | '2d'>('gold');
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
 
   // Tidy-Tree Collapse, Branch Filter & Lazy Subtree State
   const [collapsedUnitIds, setCollapsedUnitIds] = useState<Set<string>>(() => new Set());
@@ -1218,6 +1219,16 @@ function TreePageContent() {
                 </button>
               </div>
 
+              <button
+                type="button"
+                className="tree-mobile-filter-toggle"
+                aria-expanded={mobileToolsOpen}
+                onClick={() => setMobileToolsOpen((prev) => !prev)}
+              >
+                {mobileToolsOpen ? 'Шүүлтүүр хаах ▲' : 'Хайлт & Шүүлтүүр ▼'}
+              </button>
+
+              <div className={`tree-controls-secondary tree-mobile-collapsible${mobileToolsOpen ? ' is-open' : ''}`}>
               <label className="tree-bloodline-select" title="Сонгосон хүний удам угсаа, үр садыг онцлон тодруулах">
                 <span>Удам</span>
                 <select
@@ -1298,10 +1309,11 @@ function TreePageContent() {
                   </>
                 )}
               </div>
+              </div>
             </div>
           </div>
 
-          <div className="tree-search-wrap">
+          <div className={`tree-search-wrap tree-mobile-collapsible${mobileToolsOpen ? ' is-open' : ''}`}>
             {timeTravelOpen && (
               <div className="tree-time-travel-bar" role="region" aria-label="Он цагийн аялал">
                 <div className="tree-time-travel-head">
@@ -1432,7 +1444,7 @@ function TreePageContent() {
               )}
 
               {layout.branches.length > 0 && (
-                <div className="tree-filter-bar" role="region" aria-label="Салбарын шүүлтүүр" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <div className={`tree-filter-bar tree-mobile-collapsible${mobileToolsOpen ? ' is-open' : ''}`} role="region" aria-label="Салбарын шүүлтүүр" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                   <button
                     type="button"
                     className={`tree-action-pill${activeBranchId === null ? ' is-link' : ''}`}

@@ -328,7 +328,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
     <main className="memories-page">
       <section className="memories-shell">
         <nav className="memories-breadcrumb" aria-label="Замын мөр">
-          <Link href={family ? `/dashboard?family=${encodeURIComponent(family.id)}` : '/dashboard'}>← Dashboard</Link>
+          <Link href={family ? `/tree?family=${encodeURIComponent(family.id)}` : '/tree'}>← Удмын мод</Link>
           <span>Дурсамж</span>
         </nav>
 
