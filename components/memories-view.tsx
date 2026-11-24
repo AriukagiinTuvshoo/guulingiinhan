@@ -11,6 +11,7 @@ import { API_BASE, ApiError, api, MemoryListItem, PersonSearchPage } from '../li
 import { memoryDraftError } from '../lib/memory-draft';
 import { useAppShellContext } from './app-shell';
 import MemoryPhotoInput from './memory-photo-input';
+import SmartDateInput, { normalizeFlexibleDate } from './smart-date-input';
 import HeritageLinkPicker from './heritage-link-picker';
 import { MongolianOrnamentBand } from './mongolian-ornament-band';
 import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../lib/heritage-links';
@@ -90,6 +91,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
   const { families, currentFamily: family, familyId, contextError, contextLoading } = useAppShellContext();
   const [memories, setMemories] = useState<MemoryListPage | null>(null);
   const [memoryViewTab, setMemoryViewTab] = useState<'album' | 'timeline' | 'untagged'>('album');
+  const [draftMemoryDate, setDraftMemoryDate] = useState('');
   const [personQuery, setPersonQuery] = useState('');
   const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
   const [personPage, setPersonPage] = useState(1);
@@ -266,6 +268,12 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
       setBusy(false);
       return;
     }
+    const parsedDate = normalizeFlexibleDate(draftMemoryDate);
+    if (parsedDate.error) {
+      setComposerError(parsedDate.error);
+      setBusy(false);
+      return;
+    }
     let createdId = '';
     try {
       const created = await api<{ id: string }>(`/families/${familyId}/memories`, {
@@ -273,7 +281,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
         body: JSON.stringify({
           title,
           description: draftDescription.trim() || null,
-          memory_date: String(form.get('memory_date') ?? '') || null,
+          memory_date: parsedDate.iso,
           visibility,
           person_ids: selectedPeople.map((person) => person.id),
         }),
@@ -300,6 +308,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
       if (operationFamilyRequestId !== familyRequestRef.current) return;
       formElement.reset();
       setDraftDescription('');
+      setDraftMemoryDate('');
       setSelectedPhotoFiles([]);
       setSelectedPeople([]);
       setPersonQuery('');
@@ -393,10 +402,10 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                 <span>Гарчиг *</span>
                 <input name="title" maxLength={180} required placeholder="Жишээ нь: Зуны наадмын өдөр" />
               </label>
-              <label>
-                <span>Огноо</span>
-                <input name="memory_date" type="date" />
-              </label>
+              <div>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--gt)', marginBottom: 4 }}>Огноо (Он эсвэл Он-Сар-Өдөр)</span>
+                <SmartDateInput value={draftMemoryDate} onChange={setDraftMemoryDate} disabled={busy} />
+              </div>
               <label className="memory-composer-wide">
                 <span>Тайлбар</span>
                 <textarea name="description" value={heritageEditorText(draftDescription)} onChange={event => setDraftDescription(editHeritageText(event.target.value, draftDescription))} maxLength={20000} rows={5} placeholder="Энэ мөчийн тухай санаанд үлдсэн зүйлс…" />

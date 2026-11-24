@@ -13,6 +13,7 @@ import {
   personName,
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import { MongolianOrnamentBand } from '../../components/mongolian-ornament-band';
 import ProfilePhoto from '../../components/profile-photo';
 import PeopleMembersHub from '../../components/people-members-hub';
 
@@ -235,11 +236,11 @@ function PeoplePageContent() {
       <section className="people-shell">
         <div className="people-heading">
           <div>
-            <Link href={familyId ? `/dashboard?family=${encodeURIComponent(familyId)}` : '/dashboard'}>← Аппын нүүр</Link>
-            <p className="eyebrow">ГУУЛИНГИЙНХАН · ХҮМҮҮС</p>
-            <h1>Хүмүүс</h1>
+            <Link className="people-back-link" href={familyId ? `/tree?family=${encodeURIComponent(familyId)}` : '/tree'}>← Удмын мод</Link>
+            <p className="eyebrow">ГУУЛИНГИЙНХАН · ХҮМҮҮС &amp; ГИШҮҮД</p>
+            <h1>Гэр бүлийн гишүүд</h1>
             <p className="people-lede">
-              Таны эрхтэй гэр бүлийн бодит хүмүүсийг нэр болон удам угсаагаар нь олоорой.
+              Гэр бүлийн аккаунт гишүүд болон удмын модны хүмүүсийн лавлах. Энгийн гишүүд зөвхөн харах эрхтэй, харин Эзэмшигч болон Засагч мэдээлэл засна.
             </p>
           </div>
           <div className="people-heading-actions">
@@ -399,29 +400,23 @@ function PeoplePageContent() {
 
                   <div className="people-card-tags">
                     {person.lineage_name ? (
-                      <span className="tag">{person.lineage_name}</span>
-                    ) : (
-                      <span className="tag">Хуваарилагдаагүй</span>
-                    )}
-                    {person.lineage_name && (
+                      <span className="people-chip">{person.lineage_name}</span>
+                    ) : null}
+                    {person.lineage_name && person.branch_name ? (
                       <span className="people-secondary-tag">
-                        {person.branch_name ?? 'Салаа хуваарилагдаагүй'}
+                        {person.branch_name}
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {person.short_description && (
                     <p className="people-description">{person.short_description}</p>
                   )}
 
-                  <span className="button people-profile-link" aria-hidden="true">Профайл нээх →</span>
+                  <span className="people-profile-cta" aria-hidden="true">
+                    {family?.role === 'owner' || family?.role === 'editor' ? 'Профайл харах / засах →' : 'Профайл үзэх →'}
+                  </span>
                 </Link>
-                {(family?.role === 'owner' || family?.role === 'editor') && <button type="button" disabled={busy} onClick={async () => {
-                  setBusy(true); setError(''); setNotice('');
-                  try { await api(`/families/${familyId}/featured-person`, { method: 'PUT', body: JSON.stringify({ person_id: person.id }) }); setNotice('Нүүр хуудсанд онцлох хүнийг хадгаллаа.'); }
-                  catch { setError('Онцлох хүнийг хадгалж чадсангүй. Гэр бүлд харагдах насанд хүрсэн хүн сонгоно уу.'); }
-                  finally { setBusy(false); }
-                }}>⭐ Нүүр хуудсанд онцлох</button>}
                 </article>
               ))}
             </div>

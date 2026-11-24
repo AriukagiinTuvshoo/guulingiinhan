@@ -48,39 +48,42 @@ export default function MemoryPhotoInput({
 
   return (
     <section className="memory-photo-input memory-composer-wide" aria-labelledby={`${id}-label`}>
-      <label id={`${id}-label`} htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        multiple
-        disabled={disabled}
-        aria-describedby={`${id}-help`}
-        onChange={choose}
-      />
-      <small id={`${id}-help`}>
-        JPEG, PNG, WebP зураг; нэг файл 10 MB-аас ихгүй, нэг удаад 20 хүртэл.
-        Бичлэг байршуулах боломж одоогоор байхгүй.
-      </small>
+      <span id={`${id}-label`} style={{ fontSize: 13, fontWeight: 700, color: 'var(--gt)' }}>{label}</span>
+      <label className="heritage-dropzone" htmlFor={id}>
+        <input
+          id={id}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+          multiple
+          hidden
+          disabled={disabled}
+          aria-describedby={`${id}-help`}
+          onChange={choose}
+        />
+        <strong>📷 Зураг сонгох эсвэл энд дарж оруулна уу</strong>
+        <small id={`${id}-help`}>
+          JPG, PNG, WebP · 10 МБ хүртэл · Нэг удаад 20 зураг хүртэл
+        </small>
+      </label>
       {error && <p role="alert" className="memory-photo-input-error">{error}</p>}
       {files.length > 0 && (
-        <ul className="memory-photo-queue" aria-label="Байршуулах зурагнууд">
+        <div className="heritage-preview-grid" aria-label="Байршуулах зурагнууд">
           {files.map((file, index) => (
-            <li key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+            <div className="heritage-preview-item" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
               {previews[index] && <img src={previews[index]} alt={`${file.name} зургийн урьдчилан харах`} />}
-              <span title={file.name}>{file.name}</span>
-              <small>{(file.size / (1024 * 1024)).toFixed(1)} MB</small>
               <button
                 type="button"
+                className="heritage-preview-remove"
                 disabled={disabled}
                 onClick={() => remove(index)}
                 aria-label={`${file.name} зургийг жагсаалтаас хасах`}
+                title="Хасах"
               >
-                Хасах
+                ×
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </section>
   );

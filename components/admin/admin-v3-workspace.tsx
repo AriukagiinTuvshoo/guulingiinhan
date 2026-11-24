@@ -14,6 +14,7 @@ import {
   Plus,
   RotateCcw,
   ShieldCheck,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { ApiError, api, Family, Person, personName, TreeData } from '../../lib/api';
@@ -494,6 +495,44 @@ export default function AdminV3Workspace() {
     showToast('Түр архиваас буцааж гаргалаа');
   }
 
+  async function handleDeletePerson(p: Person) {
+    if (!familyId || saving) return;
+    if (typeof window !== 'undefined' && !window.confirm(`"${personName(p)}" хүнийг хогийн сав руу шилжүүлэх үү? (Дараа нь Түр архив & Хогийн сав хэсгээс сэргээх боломжтой)`)) {
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/persons/${encodeURIComponent(p.id)}`, {
+        method: 'DELETE',
+      });
+      await refreshFamilyData(familyId);
+      showToast(`${personName(p)} хогийн сав руу шилжлээ`);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Хүнийг устгаж чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdateMemberRole(targetUserId: string, nextRole: 'owner' | 'editor' | 'viewer') {
+    if (!familyId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/members/${encodeURIComponent(targetUserId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role: nextRole }),
+      });
+      await refreshFamilyData(familyId);
+      showToast('Гишүүний эрх шинэчлэгдлээ');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Гишүүний эрхийг өөрчилж чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function sendInvitation(event: FormEvent) {
     event.preventDefault();
     if (!familyId || inviteBusy || !inviteEmail.trim()) return;
@@ -852,6 +891,7 @@ export default function AdminV3Workspace() {
                                     hidden
                                     onChange={(e) => {
                                       const f = e.target.files?.[0];
+                                      e.target.value = '';
                                       if (f) void handleDirectPhotoUpload(p, f);
                                     }}
                                   />
@@ -865,7 +905,10 @@ export default function AdminV3Workspace() {
                                   </button>
                                 )}
                                 <button type="button" className="adv3-btn" onClick={() => tempArchivePerson(p)} title="Түр архивлах">
-                                  <Archive size={13} />
+                                  <Archive size={13} /> Архив
+                                </button>
+                                <button type="button" className="adv3-btn is-danger" disabled={saving} onClick={() => void handleDeletePerson(p)} title="Хогийн сав руу устгах">
+                                  <Trash2 size={13} /> Устгах
                                 </button>
                               </div>
                             </td>
@@ -1001,7 +1044,10 @@ export default function AdminV3Workspace() {
               </form>
 
               <div className="adv3-card">
-                <h3>Идэвхтэй гишүүд ({members.length})</h3>
+                <h3>Идэвхтэй аккаунт гишүүд ({members.length})</h3>
+                <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
+                  Энд апп-д нэвтэрсэн <strong>аккаунт эзэмшигчид</strong> харагдана (Удмын модны нийт {people.length} хүнээс тусдаа).
+                </p>
                 {members.length === 0 ? (
                   <p className="adv3-sub">Гишүүдийн мэдээлэл одоогоор хоосон байна.</p>
                 ) : (
@@ -1009,9 +1055,23 @@ export default function AdminV3Workspace() {
                     <div className="adv3-list-item" key={m.user_id}>
                       <div>
                         <strong>{m.display_name || m.email || 'Гишүүн'}</strong>
-                        <div className="adv3-sub" style={{ margin: 0 }}>{m.email || ''}</div>
+                        <div className="adv3-sub" style={{ margin: 0 }}>{m.email || 'Бүртгэлтэй аккаунт'}</div>
                       </div>
-                      <span className="adv3-tag is-ok">{m.role}</span>
+                      {currentFamily?.role === 'owner' ? (
+                        <select
+                          aria-label={`${m.display_name || 'Гишүүн'}-ийн эрх`}
+                          value={m.role}
+                          disabled={saving}
+                          onChange={(e) => void handleUpdateMemberRole(m.user_id, e.target.value as 'owner' | 'editor' | 'viewer')}
+                          style={{ minHeight: 34, padding: '4px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)', fontWeight: 700, fontSize: 12.5 }}
+                        >
+                          <option value="owner">Эзэмшигч (Owner)</option>
+                          <option value="editor">Засагч (Editor)</option>
+                          <option value="viewer">Уншигч (Viewer)</option>
+                        </select>
+                      ) : (
+                        <span className="adv3-tag is-ok">{m.role === 'owner' ? 'Эзэмшигч' : m.role === 'editor' ? 'Засагч' : 'Уншигч'}</span>
+                      )}
                     </div>
                   ))
                 )}
@@ -1077,19 +1137,44 @@ export default function AdminV3Workspace() {
               <MongolianOrnamentBand />
               <div className="adv3-two-col">
                 <div className="adv3-card">
-                  <h3>Эрхийн хуваарилалт</h3>
-                  <div className="adv3-list-item"><strong>Эзэмшигч (Owner)</strong><span className="adv3-tag is-ok">Бүрэн эрх</span></div>
-                  <div className="adv3-list-item"><strong>Засагч (Editor)</strong><span className="adv3-tag is-ok">Хүн нэмэх · Засах · Холбох · Архивлах</span></div>
-                  <div className="adv3-list-item"><strong>Уншигч (Viewer)</strong><span className="adv3-tag">Зөвхөн харах</span></div>
+                  <h3>Гишүүдийн эрх удирдах ({members.length})</h3>
+                  {members.map((m) => (
+                    <div className="adv3-list-item" key={m.user_id}>
+                      <div>
+                        <strong>{m.display_name || m.email || 'Гишүүн'}</strong>
+                        <div className="adv3-sub" style={{ margin: 0 }}>{m.email || 'Бүртгэлтэй аккаунт'}</div>
+                      </div>
+                      {currentFamily?.role === 'owner' ? (
+                        <select
+                          aria-label={`${m.display_name || 'Гишүүн'}-ийн эрх солих`}
+                          value={m.role}
+                          disabled={saving}
+                          onChange={(e) => void handleUpdateMemberRole(m.user_id, e.target.value as 'owner' | 'editor' | 'viewer')}
+                          style={{ minHeight: 34, padding: '4px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)', fontWeight: 700, fontSize: 12.5 }}
+                        >
+                          <option value="owner">Эзэмшигч (Owner)</option>
+                          <option value="editor">Засагч (Editor)</option>
+                          <option value="viewer">Уншигч (Viewer)</option>
+                        </select>
+                      ) : (
+                        <span className="adv3-tag is-ok">{m.role === 'owner' ? 'Эзэмшигч' : m.role === 'editor' ? 'Засагч' : 'Уншигч'}</span>
+                      )}
+                    </div>
+                  ))}
                   <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Link href={`/admin/permissions?family=${encodeURIComponent(familyId)}`} className="adv3-btn">Нарийвчилсан эрх →</Link>
-                    <Link href={`/admin/settings?family=${encodeURIComponent(familyId)}`} className="adv3-btn">Гэр бүлийн тохиргоо →</Link>
+                    <button type="button" className="adv3-btn is-primary" onClick={() => setTab('members')}>
+                      + Шинэ гишүүн урих
+                    </button>
                   </div>
                 </div>
                 <div className="adv3-card">
-                  <h3>Үндсэн орчин</h3>
-                  <p className="adv3-sub">Гэр бүлийн нэр: <strong>{currentFamily?.name}</strong></p>
-                  <p className="adv3-sub">Нийт хүн: <strong>{people.length}</strong></p>
+                  <h3>Эрхийн түвшний тайлбар</h3>
+                  <div className="adv3-list-item"><strong>Эзэмшигч (Owner)</strong><span className="adv3-tag is-ok">Бүрэн эрх</span></div>
+                  <div className="adv3-list-item"><strong>Засагч (Editor)</strong><span className="adv3-tag is-ok">Хүн нэмэх · Засах · Холбох</span></div>
+                  <div className="adv3-list-item"><strong>Уншигч (Viewer)</strong><span className="adv3-tag">Зөвхөн харах (засах эрхгүй)</span></div>
+                  <p className="adv3-sub" style={{ marginTop: 12 }}>
+                    Гэр бүлийн нэр: <strong>{currentFamily?.name}</strong> · Нийт хүн: <strong>{people.length}</strong>
+                  </p>
                 </div>
               </div>
             </>

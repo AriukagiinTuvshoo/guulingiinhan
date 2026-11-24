@@ -2413,6 +2413,165 @@ html[data-th] .admin-stat-card b {
   display: none;
 }
 
+/* Dark mode native <select> dropdown & badge contrast fix */
+html[data-th="dark"] {
+  color-scheme: dark;
+}
+
+html[data-th="dark"] select,
+html[data-th="dark"] select option,
+html[data-th="dark"] optgroup {
+  background-color: #1c1711 !important;
+  color: #f4ead6 !important;
+}
+
+html[data-th="dark"] .tree-inspector-badge,
+html[data-th="dark"] .person-badge,
+html[data-th="dark"] .tree-badge {
+  background-color: #2a2117 !important;
+  color: #f4ead6 !important;
+  border-color: rgba(225, 179, 69, 0.35) !important;
+}
+
+/* ==========================================================================
+   Clean 5-Theme People Directory (/people) + Story & Memory Upload Polish
+   ========================================================================== */
+html[data-th] .people-page {
+  background: var(--bg) !important;
+  color: var(--ink) !important;
+}
+
+html[data-th] .people-back-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gt) !important;
+  text-decoration: none !important;
+  margin-bottom: 6px;
+}
+
+html[data-th] .people-heading h1 {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  color: var(--hd) !important;
+}
+
+html[data-th] .people-card {
+  background: var(--card) !important;
+  border: 1.5px solid var(--goldl) !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--hd) 6%, transparent);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+html[data-th] .people-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold) !important;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--hd) 11%, transparent);
+}
+
+html[data-th] .people-card a {
+  text-decoration: none !important;
+  color: inherit !important;
+}
+
+html[data-th] .people-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+  color: var(--hd);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+html[data-th] .people-profile-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--goldl);
+  background: var(--bg2);
+  color: var(--pr);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Luxury Photo Dropzone for Memories & Stories */
+.heritage-dropzone {
+  border: 2px dashed var(--gold);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg2) 72%, var(--card));
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.heritage-dropzone:hover {
+  border-color: var(--pr);
+  background: color-mix(in srgb, var(--pr) 6%, var(--card));
+}
+
+.heritage-dropzone strong {
+  font-size: 14.5px;
+  color: var(--hd);
+}
+
+.heritage-dropzone small {
+  font-size: 12px;
+  color: var(--gt);
+}
+
+.heritage-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.heritage-preview-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid var(--goldl);
+  background: var(--bg2);
+}
+
+.heritage-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.heritage-preview-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(20, 14, 10, 0.78);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .golden-node-photo,
 .adv3-av-photo {
   width: 100%;

@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, api, MemoryListItem, MemoryPhotoPage, PersonSearchPage, Story } from '../lib/api';
+import { ApiError, api, MemoryListItem, MemoryPhoto, MemoryPhotoPage, PersonSearchPage, Story } from '../lib/api';
+import { IMAGE_ACCEPT, prepareImageUpload } from '../lib/image-upload';
 import { useAppShellContext } from './app-shell';
+import { MongolianOrnamentBand } from './mongolian-ornament-band';
 import ProfilePhoto from './profile-photo';
+import SmartDateInput, { normalizeFlexibleDate } from './smart-date-input';
 import HeritageLinkPicker from './heritage-link-picker';
 import OralHistoryRecorder from './oral-history-recorder';
 import { editHeritageText, heritageEditorText } from '../lib/heritage-links';
@@ -63,7 +66,9 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   const [photoPagesByMemory, setPhotoPagesByMemory] = useState<Record<string, MemoryPhotoPage>>({});
   const [photoMemoryLoading, setPhotoMemoryLoading] = useState('');
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const directAlbumIdRef = useRef<string>('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const routeParams = useParams<{ id?: string }>();
   const loadRequestRef = useRef(0);
@@ -251,6 +256,52 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     });
   }
 
+  async function handleDirectStoryPhotoUpload(fileList: FileList | null) {
+    if (!fileList || !fileList.length || !familyId || photoUploading) return;
+    setPhotoUploading(true);
+    setPhotoError('');
+    try {
+      let albumId = directAlbumIdRef.current;
+      if (!albumId) {
+        const created = await api<{ id: string }>(`/families/${familyId}/memories`, {
+          method: 'POST',
+          body: JSON.stringify({
+            title: title.trim() ? `${title.trim()} · Зургууд` : 'Түүхийн зургууд',
+            description: 'Түүхэнд шууд хавсаргасан гэрэл зургууд',
+            memory_date: normalizeFlexibleDate(eventDate).iso,
+            visibility,
+            person_ids: selectedPeople.map((p) => p.id),
+          }),
+        });
+        albumId = created.id;
+        directAlbumIdRef.current = albumId;
+      }
+      for (const rawFile of Array.from(fileList)) {
+        const prepared = await prepareImageUpload(rawFile);
+        const saved = await api<MemoryPhoto>(`/families/${familyId}/memories/${albumId}/photos`, {
+          method: 'POST',
+          body: prepared,
+          headers: {
+            'Content-Type': prepared.type,
+            'X-File-Name': encodeURIComponent(prepared.name),
+          },
+        });
+        const label = rawFile.name.replace(/\.[^.]*$/, '').slice(0, 80) || title.trim() || 'Түүхийн зураг';
+        insertPhoto(saved.id, label);
+      }
+    } catch (cause) {
+      setPhotoError(
+        cause instanceof ApiError
+          ? (cause.validationMessage || cause.message)
+          : cause instanceof Error
+            ? cause.message
+            : 'Зураг оруулж чадсангүй. Дахин оролдоно уу.',
+      );
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   async function openPhotoPicker() {
     if (showPhotoPicker) { setShowPhotoPicker(false); return; }
     setShowPhotoPicker(true);
@@ -435,6 +486,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
           <h1>{mode === 'create' ? 'Шинэ түүх' : 'Түүхийг засах'}</h1>
           <p>Гэр бүлийн дурсамж, үйл явдал, огноо, газар болон холбоотой хүмүүсийг нэг түүх болгон хадгална.</p>
         </header>
+        <MongolianOrnamentBand />
 
         {error && <div className="error stories-error" role="alert" id="story-editor-error">{error}</div>}
 
@@ -444,10 +496,10 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
               Гарчиг *
               <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={180} required aria-required="true" />
             </label>
-            <label>
-              Огноо
-              <input value={eventDate} onChange={(event) => setEventDate(event.target.value)} type="date" />
-            </label>
+            <div>
+              <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--gt)', marginBottom: 4 }}>Огноо (Он эсвэл Он-Сар-Өдөр)</span>
+              <SmartDateInput value={eventDate} onChange={setEventDate} disabled={saving} />
+            </div>
             <label>
               Газар
               <input value={place} onChange={(event) => setPlace(event.target.value)} maxLength={240} placeholder="Жишээ: Улаанбаатар" />
@@ -475,6 +527,25 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
             </div>
             <textarea id="story-body" ref={textareaRef} value={heritageEditorText(body)} onChange={(event) => setBody(editHeritageText(event.target.value, body))} maxLength={100000} required aria-required="true" placeholder="Энэ үйл явдал хэрхэн болсон тухай бичнэ үү…" />
             <span className="story-field-hint">{body.length.toLocaleString()} / 100,000</span>
+            <label className="heritage-dropzone" style={{ marginTop: 12 }}>
+              <input
+                type="file"
+                accept={IMAGE_ACCEPT}
+                multiple
+                hidden
+                disabled={photoUploading || saving}
+                onChange={(e) => {
+                  const list = e.target.files;
+                  void handleDirectStoryPhotoUpload(list).finally(() => {
+                    e.target.value = '';
+                  });
+                }}
+              />
+              <strong>{photoUploading ? 'Зураг хавсаргаж байна…' : '📷 Төхөөрөмжөөс түүхэнд шууд зураг оруулах'}</strong>
+              <small>JPG, PNG, WebP · Сонгомогц түүхэнд шууд нэмэгдэнэ (эсвэл дээрх «📷 Зураг» товчоор хуучин дурсамжаас сонгоно)</small>
+            </label>
+            {photoError && !showPhotoPicker && <p role="alert" style={{ color: 'var(--red)', fontSize: 13, marginTop: 6 }}>{photoError}</p>}
+
             {embeddedPhotos.length > 0 && <section className="story-inserted-photos" aria-label="Түүхэнд оруулсан зургууд">
               <h3>Түүхэнд оруулсан зураг · {embeddedPhotos.length}</h3>
               <ul>
