@@ -2408,8 +2408,53 @@ html[data-th] .admin-stat-card b {
 /* Desktop defaults for new mobile-only helpers */
 .app-shell__bottom-nav,
 .app-shell__drawer-theme,
+.tree-mobile-quick-row,
 .tree-mobile-filter-toggle {
   display: none;
+}
+
+.tree-fullscreen-exit-btn {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: 12px;
+  z-index: 1300;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: color-mix(in srgb, var(--sb) 94%, transparent);
+  color: var(--goldl);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.tree-map-layout--fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1200 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: var(--bg) !important;
+  border-radius: 0 !important;
+  overflow: auto !important;
+}
+
+.tree-map-layout--fullscreen .golden-tree-stage,
+.tree-map-layout--fullscreen .hush-tree-stage,
+.tree-map-layout--fullscreen .toono-stage {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: 0 !important;
 }
 
 .tree-controls-secondary {
@@ -2604,32 +2649,80 @@ html[data-th] .admin-stat-card b {
     background: color-mix(in srgb, var(--pr) 11%, transparent);
   }
 
-  /* 4. Family Tree (/tree) — Canvas First, Zero Clipped Tabs, Collapsible Filters */
+  /* 4. Family Tree (/tree) — Edge-to-Edge Huge Tree, Compact Header, 3 Clean Modes */
+  html[data-th] .tree-page {
+    padding: 8px 8px 0 !important;
+  }
+
+  html[data-th] .tree-page-header {
+    padding: 8px 10px !important;
+    margin-bottom: 6px !important;
+    gap: 6px !important;
+    border-radius: 14px !important;
+  }
+
+  html[data-th] .tree-page-header > div:first-child {
+    display: none !important;
+  }
+
+  html[data-th] .tree-header-actions {
+    width: 100%;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-th] .tree-header-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-th] .tree-header-actions > button,
+  html[data-th] .tree-header-actions .tree-header-menu > button {
+    flex: 1 0 auto !important;
+    min-height: 36px !important;
+    padding: 0 10px !important;
+    font-size: 12.5px !important;
+    white-space: nowrap !important;
+  }
+
+  html[data-th] .tree-toolbar {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+    border-radius: 14px !important;
+  }
+
+  html[data-th] .tree-stats {
+    display: none !important;
+  }
+
   html[data-th] .tree-controls {
-    gap: 8px !important;
+    gap: 6px !important;
     width: 100%;
   }
 
   html[data-th] .tree-segmented {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
     width: 100%;
     max-width: 100%;
   }
 
-  html[data-th] .tree-segmented::-webkit-scrollbar {
-    display: none;
+  html[data-th] .tree-segmented button {
+    white-space: nowrap !important;
+    padding: 0 6px !important;
+    font-size: 12.5px !important;
+    min-height: 38px !important;
+    justify-content: center;
   }
 
-  html[data-th] .tree-segmented button {
-    flex: 1 0 auto !important;
-    white-space: nowrap !important;
-    padding: 0 10px !important;
-    font-size: 12.5px !important;
-    min-height: 40px !important;
+  .tree-mobile-quick-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    width: 100%;
   }
 
   .tree-mobile-filter-toggle {
@@ -2638,15 +2731,33 @@ html[data-th] .admin-stat-card b {
     justify-content: center;
     gap: 6px;
     width: 100%;
-    min-height: 38px;
-    padding: 0 14px;
+    min-height: 36px;
+    padding: 0 12px;
     border-radius: 10px;
     border: 1px solid var(--goldl);
     background: var(--bg2);
     color: var(--hd);
     font: inherit;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
+    cursor: pointer;
+  }
+
+  .tree-mobile-fullscreen-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1.5px solid var(--gold);
+    background: var(--pr);
+    color: var(--pt);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
     cursor: pointer;
   }
 
@@ -2661,10 +2772,28 @@ html[data-th] .admin-stat-card b {
     display: none !important;
   }
 
+  html[data-th] .tree-map-layout {
+    padding: 0 !important;
+    gap: 10px !important;
+  }
+
   html[data-th] .golden-tree-stage,
   html[data-th] .hush-tree-stage,
   html[data-th] .toono-stage {
-    min-height: 58dvh !important;
+    min-height: 68dvh !important;
+    border-radius: 14px !important;
+  }
+
+  html[data-th] .golden-tree-dock {
+    max-width: calc(100% - 12px) !important;
+    padding: 4px 6px !important;
+    gap: 2px !important;
+    bottom: 8px !important;
+  }
+
+  html[data-th] .golden-dock-btn {
+    padding: 5px 7px !important;
+    font-size: 11.5px !important;
   }
 
   /* 5. Settings, Stories, Memories, Archives & Modals */

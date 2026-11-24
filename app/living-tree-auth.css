@@ -587,6 +587,79 @@
   }
 }
 
+/* Mobile-First Compact Auth Fit (<= 600px): Glowing Tree Banner + Full Form Above the Fold */
+@media (max-width: 600px) {
+  .living-auth-shell {
+    padding: 10px 10px 28px;
+    align-items: flex-start;
+  }
+
+  .living-auth-frame {
+    gap: 12px;
+  }
+
+  .living-tree-stage {
+    min-height: auto;
+    padding: 12px 14px 14px;
+    border-radius: 18px;
+    gap: 6px;
+  }
+
+  .living-tree-canvas {
+    max-width: 148px;
+    aspect-ratio: 560 / 330;
+    margin: 0 auto;
+  }
+
+  .living-branch-lantern {
+    width: 30px;
+    height: 30px;
+  }
+
+  .living-branch-hint {
+    display: none;
+  }
+
+  .living-tree-caption {
+    gap: 2px;
+  }
+
+  .living-tree-caption .living-script {
+    font-size: 11px;
+  }
+
+  .living-tree-caption h1 {
+    font-size: 19px;
+    line-height: 1.22;
+    margin: 0;
+  }
+
+  .living-tree-caption p {
+    display: none;
+  }
+
+  .living-auth-card {
+    padding: 16px 14px 18px;
+    border-radius: 18px;
+  }
+
+  .living-auth-card h2,
+  .living-auth-card .auth-heading {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
+
+  .living-auth-card input:not([type="checkbox"]):not([type="radio"]) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .living-auth-card button[type="submit"] {
+    min-height: 46px;
+    font-size: 15px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .living-branch-lantern,
   .living-leaf-spark,

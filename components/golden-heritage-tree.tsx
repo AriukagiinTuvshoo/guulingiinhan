@@ -31,7 +31,6 @@ interface GoldenHeritageTreeProps {
   currentYear: number;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
-  onSwitchToClassic: () => void;
   canPrint?: boolean;
   onOpenKinship: () => void;
   onOpenCertificate: () => void;
@@ -71,7 +70,6 @@ export default function GoldenHeritageTree({
   currentYear,
   isFullscreen,
   onToggleFullscreen,
-  onSwitchToClassic,
   canPrint = false,
   onOpenKinship,
   onOpenCertificate,
@@ -372,13 +370,6 @@ export default function GoldenHeritageTree({
 
       {/* Floating Bottom-Center Glassmorphic Dock */}
       <div className="golden-tree-dock" role="toolbar" aria-label="Удмын модны удирдлага">
-        <button type="button" className="golden-dock-btn is-active" aria-pressed={true}>
-          Алтан Мод
-        </button>
-        <button type="button" className="golden-dock-btn" onClick={onSwitchToClassic}>
-          Сонгодог 2D
-        </button>
-        <span className="golden-dock-divider" aria-hidden="true" />
         <button
           type="button"
           className="golden-dock-btn"

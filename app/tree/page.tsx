@@ -142,7 +142,7 @@ function TreePageContent() {
   });
 
   // Bloodline Highlight & Interaction States
-  const [viewMode, setViewMode] = useState<'gold' | 'hush' | 'toono' | '2d'>('gold');
+  const [viewMode, setViewMode] = useState<'gold' | 'hush' | 'toono'>('gold');
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
@@ -992,9 +992,6 @@ function TreePageContent() {
       <section className="tree-shell">
         <header className="tree-page-header">
           <div>
-            <Link className="tree-back-link" href={'/dashboard?family=' + encodeURIComponent(familyId)}>
-              ← Гэр бүлийн тойм
-            </Link>
             <p className="tree-eyebrow">
               <span className="tree-mongolian-script" style={{ fontFamily: 'Georgia, serif', color: 'var(--gold-500)', marginRight: '8px', fontSize: '13px', letterSpacing: '1px' }}>
                 ᠮᠣᠩᠭᠣᠯ ᠤᠷᠤᠭ ᠤᠨ ᠪᠢᠴᠢᠭ
@@ -1020,7 +1017,7 @@ function TreePageContent() {
                   setWizardOpen(true);
                 }}
               >
-                <Plus size={15} aria-hidden="true" /> + Хүн нэмэх
+                <Plus size={15} aria-hidden="true" /> Хүн нэмэх
               </button>
             )}
 
@@ -1210,23 +1207,25 @@ function TreePageContent() {
                 >
                   Тооно Нархан
                 </button>
-                <button
-                  type="button"
-                  aria-pressed={viewMode === '2d'}
-                  onClick={() => setViewMode('2d')}
-                >
-                  2D
-                </button>
               </div>
 
-              <button
-                type="button"
-                className="tree-mobile-filter-toggle"
-                aria-expanded={mobileToolsOpen}
-                onClick={() => setMobileToolsOpen((prev) => !prev)}
-              >
-                {mobileToolsOpen ? 'Шүүлтүүр хаах ▲' : 'Хайлт & Шүүлтүүр ▼'}
-              </button>
+              <div className="tree-mobile-quick-row">
+                <button
+                  type="button"
+                  className="tree-mobile-filter-toggle"
+                  aria-expanded={mobileToolsOpen}
+                  onClick={() => setMobileToolsOpen((prev) => !prev)}
+                >
+                  {mobileToolsOpen ? 'Шүүлтүүр хаах ▲' : 'Хайлт & Шүүлтүүр ▼'}
+                </button>
+                <button
+                  type="button"
+                  className={`tree-mobile-fullscreen-btn${isFullscreen ? ' is-active' : ''}`}
+                  onClick={() => setIsFullscreen((prev) => !prev)}
+                >
+                  {isFullscreen ? '✕ Гарах' : '⛶ Томруулах'}
+                </button>
+              </div>
 
               <div className={`tree-controls-secondary tree-mobile-collapsible${mobileToolsOpen ? ' is-open' : ''}`}>
               <label className="tree-bloodline-select" title="Сонгосон хүний удам угсаа, үр садыг онцлон тодруулах">
@@ -1276,38 +1275,14 @@ function TreePageContent() {
                 <button type="button" onClick={handleCollapseAll}>
                   Хураах
                 </button>
-                {viewMode === '2d' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setZoom((value) => Math.max(0.22, Number((value - 0.1).toFixed(2))))}
-                      aria-label="Жижигрүүлэх"
-                    >
-                      −
-                    </button>
-                    <span>{Math.round(zoom * 100)}%</span>
-                    <button
-                      type="button"
-                      onClick={() => setZoom((value) => Math.min(2.0, Number((value + 0.1).toFixed(2))))}
-                      aria-label="Томруулах"
-                    >
-                      +
-                    </button>
-                    <button type="button" onClick={handleFitClassicToScreen}>Багтаах</button>
-                    <button type="button" onClick={resetView}>Тэгшлэх</button>
-                    {selectedId && (
-                      <button type="button" onClick={() => centerOnPerson(selectedId)}>Төвлөрөх</button>
-                    )}
-                    <button
-                      type="button"
-                      className={isFullscreen ? 'ui-btn--selected' : undefined}
-                      onClick={() => setIsFullscreen((prev) => !prev)}
-                      title={isFullscreen ? 'Цонхыг хэвийн болгох' : 'Дэлгэц дүүргэх'}
-                    >
-                      {isFullscreen ? 'Буцах' : 'Бүтэн дэлгэц'}
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  className={isFullscreen ? 'ui-btn--selected' : undefined}
+                  onClick={() => setIsFullscreen((prev) => !prev)}
+                  title={isFullscreen ? 'Цонхыг хэвийн болгох' : 'Дэлгэц дүүргэх'}
+                >
+                  {isFullscreen ? 'Буцах' : 'Бүтэн дэлгэц'}
+                </button>
               </div>
               </div>
             </div>
@@ -1469,7 +1444,16 @@ function TreePageContent() {
                 </div>
               )}
 
-              <div className={`tree-map-layout ${viewMode === 'gold' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
+              <div className={`tree-map-layout ${viewMode === 'gold' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}${isFullscreen ? ' tree-map-layout--fullscreen' : ''}`}>
+              {isFullscreen && (
+                <button
+                  type="button"
+                  className="tree-fullscreen-exit-btn"
+                  onClick={() => setIsFullscreen(false)}
+                >
+                  ✕ Гарах
+                </button>
+              )}
               {viewMode === 'hush' && tree ? (
                 <HushTreeView
                   tree={tree}
@@ -1511,7 +1495,6 @@ function TreePageContent() {
                   currentYear={currentYear}
                   isFullscreen={isFullscreen}
                   onToggleFullscreen={() => setIsFullscreen((prev) => !prev)}
-                  onSwitchToClassic={() => setViewMode('2d')}
                   onOpenKinship={() => {
                     setKinshipInitialPersonId(selectedId || '');
                     setKinshipModalOpen(true);
