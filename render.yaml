@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: guulingiinhan-backend-staging
+    runtime: docker
+    plan: free
+    region: singapore
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/ready
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: CORS_ORIGINS
+        value: https://guulingiinhan-staging.tuvshoo0331.workers.dev
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: STORAGE_BUCKET
+        value: guulingiinhan-staging-media
+      - key: STORAGE_REGION
+        value: auto
+      - key: EMAIL_SMTP_STARTTLS
+        value: "true"
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: EMAIL_PUBLIC_BASE_URL
+        value: https://guulingiinhan-staging.tuvshoo0331.workers.dev
+      - key: SMS_PROVIDER
+        value: disabled
+      - key: DATABASE_URL
+        sync: false
+      - key: OTP_HASH_SECRET
+        sync: false
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_ACCESS_KEY
+        sync: false
+      - key: STORAGE_SECRET_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_SMTP_HOST
+        sync: false
+      - key: EMAIL_SMTP_PORT
+        value: "587"
+      - key: EMAIL_SMTP_USERNAME
+        sync: false
+      - key: EMAIL_SMTP_PASSWORD
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        value: tuvshoo0331@gmail.com
