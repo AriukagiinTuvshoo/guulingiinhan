@@ -1008,13 +1008,6 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions" ref={headerMenusRef}>
-            <Link
-              className="ui-btn"
-              href={familyId ? `/ancestry/connect?family=${encodeURIComponent(familyId)}` : '/ancestry/connect'}
-              title="Энэ гэр бүлээ Гуулингийнхны нэгдсэн Эх модонд (Ядамсүрэн ⚭ Гүнд) холбох"
-            >
-              <Link2 size={15} aria-hidden="true" /> Эх модонд холбох
-            </Link>
             {canEditFamily && (
               <button
                 type="button"
