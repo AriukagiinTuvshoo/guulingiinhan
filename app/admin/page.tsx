@@ -1242,30 +1242,5 @@ function GlobalAdminWorkspace({ onFallbackToFamily }: { onFallbackToFamily: () =
 }
 
 export default function AdminPage() {
-  const [mode, setMode] = useState<'global' | 'family'>(() => {
-    if (typeof window === 'undefined') return 'family';
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('family') && !params.get('section')) return 'family';
-    return 'global';
-  });
-
-  useEffect(() => {
-    const syncMode = () => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('family') && !params.get('section')) {
-        setMode('family');
-      } else {
-        setMode('global');
-      }
-    };
-    syncMode();
-    window.addEventListener('popstate', syncMode);
-    return () => window.removeEventListener('popstate', syncMode);
-  }, []);
-
-  if (mode === 'family') {
-    return <AdminV3Workspace />;
-  }
-
-  return <GlobalAdminWorkspace onFallbackToFamily={() => setMode('family')} />;
+  return <AdminV3Workspace />;
 }
