@@ -9,25 +9,61 @@ export class ApiError extends Error {
     message: string,
     public code: string | null = null,
     public requestId: string | null = null,
+    public validationMessage: string | null = null,
   ) {
     super(message);
   }
+}
+
+let csrfToken: string | null = null;
+let csrfTokenRequest: Promise<string> | null = null;
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (csrfTokenRequest) return csrfTokenRequest;
+  const pendingRequest = (async (): Promise<string> => {
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}/auth/csrf`, { credentials: 'include' });
+    } catch {
+      throw new ApiError(0, 'Аюулгүй хүсэлтийн token авах үед холболт тасарлаа.', 'CSRF_TOKEN_UNAVAILABLE');
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, 'Аюулгүй хүсэлтийн token авах боломжгүй байна.', 'CSRF_TOKEN_UNAVAILABLE');
+    }
+    const token = response.headers.get('X-CSRF-Token');
+    if (!token) {
+      throw new ApiError(0, 'Аюулгүй хүсэлтийн token буруу байна.', 'CSRF_TOKEN_INVALID');
+    }
+    csrfToken = token;
+    return token;
+  })();
+  const request = pendingRequest.finally(() => {
+    csrfTokenRequest = null;
+  });
+  csrfTokenRequest = request;
+  return request;
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!API_BASE) {
     throw new ApiError(0, 'API тохиргоо олдсонгүй. Дахин оролдоно уу.', 'API_CONFIGURATION_MISSING');
   }
-  let response: Response;
+  const method = (init.method ?? 'GET').toUpperCase();
+  const isUnsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
   const isRawBody = init.body instanceof FormData || init.body instanceof Blob;
+  const headers = new Headers(init.headers);
+  if (init.body && !isRawBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (isUnsafe) headers.set('X-CSRF-Token', await getCsrfToken());
+
+  let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
       credentials: 'include',
-      headers: {
-        ...(init.body && !isRawBody ? { 'Content-Type': 'application/json' } : {}),
-        ...init.headers,
-      },
+      headers,
     });
   } catch {
     throw new ApiError(0, 'Холболтод асуудал гарлаа. Дахин оролдоно уу.');
@@ -35,11 +71,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
     let code: string | null = null;
+    let validationMessage: string | null = null;
     let requestId = response.headers.get('X-Request-ID');
     try {
-      const payload = await response.json();
+      const parsed: unknown = await response.json();
+      const payload = parsed && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : {};
       code = typeof payload.error_code === 'string' ? payload.error_code : null;
       requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
+      if ((response.status === 422 || response.status === 409) && typeof payload.detail === 'string' && payload.detail.length <= 300) {
+        validationMessage = payload.detail;
+      }
       message =
         response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
         response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
@@ -48,18 +91,19 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
         response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
         response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
-        payload.detail ?? message;
+        typeof payload.detail === 'string' ? payload.detail : message;
     } catch {
       // Keep the friendly fallback message when the server sends no JSON.
     }
-    throw new ApiError(response.status, message, code, requestId);
+    if (code === 'CSRF_TOKEN_INVALID' || code === 'CSRF_TOKEN_REQUIRED') csrfToken = null;
+    throw new ApiError(response.status, message, code, requestId, validationMessage);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-export type User = { id: string; email: string | null; display_name: string; person_id: string | null };
-export type Family = { id: string; name: string; description: string | null; role: string };
+export type User = { id: string; email: string | null; display_name: string; person_id: string | null; profile_photo_url?: string | null };
+export type Family = { id: string; name: string; description: string | null; role: string; created_at: string };
 export type Person = {
   id: string;
   first_name: string;
@@ -75,15 +119,24 @@ export type Person = {
   profile_photo_url?: string | null;
   short_description: string | null;
   visibility: string;
+  can_edit?: boolean;
+  can_delete?: boolean;
+  created_at: string;
+  updated_at: string;
 };
 export type TreeData = {
   persons: TreePerson[];
   parent_child_relationships: { id: string; parent_id: string; child_id: string; relationship_type: string }[];
   marriages: Marriage[];
   root_person_id?: string | null;
+  lineage_root_person_id?: string | null;
+  linked_person_id?: string | null;
   meta?: { depth: number; node_count: number; node_limit: number; truncated: boolean };
 };
-export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date'> & {
+export type TreePerson = Pick<Person, 'id' | 'first_name' | 'last_name' | 'middle_name' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'> & {
+  gender?: string | null;
+  can_edit?: boolean;
+  can_delete?: boolean;
   lineage_id?: string | null;
   lineage_name?: string | null;
   branch_id?: string | null;
@@ -95,6 +148,7 @@ export type ProfileRelationPerson = Pick<
   'id' | 'first_name' | 'last_name' | 'middle_name' | 'nickname' | 'gender' | 'birth_date' | 'is_alive' | 'death_date' | 'profile_photo_url'
 >;
 export type PersonProfile = Person & {
+  can_edit_profile: boolean;
   lineage_id: string | null;
   lineage_name: string | null;
   branch_id: string | null;
@@ -104,7 +158,7 @@ export type PersonProfile = Person & {
   spouses: ProfileRelationPerson[];
 };
 
-export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null }[]; page: number; page_size: number; total: number; has_next: boolean };
+export type PersonSearchPage = { items: { id: string; name: string; birth_year: number | null; family_name?: string | null; branch_name?: string | null }[]; page: number; page_size: number; total: number; has_next: boolean };
 export type PersonDirectoryItem = Person & {
   lineage_id: string | null;
   lineage_name: string | null;
@@ -173,6 +227,26 @@ export type ArchiveInput = {
   person_ids: string[];
 };
 
+export type MemoryPhoto = {
+  id: string;
+  title: string | null;
+  description?: string | null;
+  photo_date?: string | null;
+  created_at?: string;
+  thumbnail_url: string;
+  content_url: string;
+  person_ids?: string[];
+  person_names?: string[];
+};
+
+export type MemoryPhotoPage = {
+  items: MemoryPhoto[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
 export type MemoryListItem = {
   id: string;
   title: string;
@@ -181,14 +255,25 @@ export type MemoryListItem = {
   visibility: string;
   person_ids: string[];
   person_names?: string[];
+  liked?: boolean;
+  like_count?: number;
+  comment_count?: number;
+  author_name?: string;
   created_at: string;
-  photos?: {
-    id: string;
-    title: string | null;
-    thumbnail_url: string;
-    content_url: string;
-  }[];
+  photos?: MemoryPhoto[];
+  photos_page?: number;
+  photos_page_size?: number;
+  photos_total?: number;
+  photos_has_next?: boolean;
 };
+
+export type MemoryListPage = { items: MemoryListItem[]; page: number; page_size: number; total: number; has_next: boolean };
+export type RelationshipResult = {
+  status: 'same' | 'found' | 'not_found' | 'limited'; truncated: boolean; paths_limited: boolean;
+  paths: { people: { id: string; name: string }[]; steps: { kind: 'parent' | 'child' | 'spouse'; relationship_type?: string; status?: string }[]; distance: number; generation_distance: number }[];
+  common_ancestors: { id: string; name: string; first_distance: number; second_distance: number }[];
+};
+export type TimelinePage = { items: { id: string; kind: string; date: string | null; title: string; href: string | null }[]; page: number; has_next: boolean; total: number; truncated: boolean };
 
 export type StoryPerson = {
   id: string;
@@ -219,9 +304,89 @@ export type StoryListPage = {
   has_next: boolean;
 };
 
+export type FamilyStats = {
+  total_persons: number;
+  male_count: number;
+  female_count: number;
+  living_count: number;
+  deceased_count: number;
+  marriage_count: number;
+  parent_child_count: number;
+  generation_depth: number;
+  total_stories: number;
+  total_archives: number;
+  total_memories: number;
+  member_count: number;
+};
+
 export type Story = StoryListItem & {
   body: string;
   related_people: StoryPerson[];
+};
+
+export type ChatMessage = {
+  id: string;
+  family_id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: string;
+  recipient_id: string | null;
+  content: string;
+  created_at: string;
+};
+
+export type ChatMember = {
+  user_id: string;
+  display_name: string;
+  role: string;
+  person_id?: string | null;
+  person_name?: string | null;
+};
+
+export type SmartConnectOut = {
+  created_parent_child_edges: number;
+  created_marriages: number;
+  created_shared_parent_id?: string | null;
+  summary: string;
+};
+
+export type LifeEvent = {
+  id: string;
+  person_id: string;
+  event_type:
+    | 'birth'
+    | 'school'
+    | 'work'
+    | 'marriage'
+    | 'divorce'
+    | 'child_birth'
+    | 'award'
+    | 'move'
+    | 'death'
+    | 'other'
+    | string;
+  title: string;
+  event_date: string | null;
+  date_note: string | null;
+  location: string | null;
+  description: string | null;
+  created_by?: string;
+};
+
+export type ExtractedEventDraft = {
+  event_type: string;
+  title: string;
+  event_date: string | null;
+  date_note: string | null;
+  location: string | null;
+  description: string | null;
+};
+
+export type OralHistoryExtractOut = {
+  suggested_biography: string;
+  extracted_events: ExtractedEventDraft[];
+  created_events_count: number;
+  biography_updated: boolean;
 };
 
 export const personName = (person: Pick<Person, 'first_name' | 'last_name' | 'middle_name'>) =>

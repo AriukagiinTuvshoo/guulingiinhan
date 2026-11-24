@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Family, FamilyMember, Invitation, User
 
 INDEX_SQL = """
-CREATE UNIQUE INDEX uq_invitation_active_family_email
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invitation_active_family_email
 ON invitations (family_id, invited_email)
 WHERE accepted_at IS NULL AND revoked_at IS NULL
 """
@@ -49,7 +49,6 @@ def _invitation(family, user, email, **states):
 
 
 def test_active_invitation_database_index_rejects_sequential_duplicate(database):
-    _install_index(database)
     with database() as db:
         user, family = _seed_family(db, "owner@example.com")
         db.add(_invitation(family, user, "Member@Example.com".casefold()))
@@ -61,7 +60,6 @@ def test_active_invitation_database_index_rejects_sequential_duplicate(database)
 
 
 def test_active_invitation_allows_same_email_in_different_families(database):
-    _install_index(database)
     with database() as db:
         user_a, family_a = _seed_family(db, "owner-a@example.com")
         user_b, family_b = _seed_family(db, "owner-b@example.com")
@@ -75,7 +73,6 @@ def test_active_invitation_allows_same_email_in_different_families(database):
 
 
 def test_revoked_invitation_allows_new_active_invitation(database):
-    _install_index(database)
     with database() as db:
         user, family = _seed_family(db, "owner@example.com")
         first = _invitation(family, user, "member@example.com")
@@ -90,7 +87,6 @@ def test_revoked_invitation_allows_new_active_invitation(database):
 
 
 def test_accepted_invitation_allows_new_active_invitation(database):
-    _install_index(database)
     with database() as db:
         user, family = _seed_family(db, "owner@example.com")
         first = _invitation(family, user, "member@example.com")

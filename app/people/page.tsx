@@ -13,6 +13,9 @@ import {
   personName,
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import { MongolianOrnamentBand } from '../../components/mongolian-ornament-band';
+import ProfilePhoto from '../../components/profile-photo';
+import PeopleMembersHub from '../../components/people-members-hub';
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -58,6 +61,7 @@ function PeoplePageContent() {
   const [busy, setBusy] = useState(false);
   const [metaError, setMetaError] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [metaBusy, setMetaBusy] = useState(false);
   const peopleRequestRef = useRef(0);
   const familyRequestRef = useRef(0);
@@ -232,11 +236,11 @@ function PeoplePageContent() {
       <section className="people-shell">
         <div className="people-heading">
           <div>
-            <Link href={familyId ? `/dashboard?family=${encodeURIComponent(familyId)}` : '/dashboard'}>← Аппын нүүр</Link>
-            <p className="eyebrow">ГУУЛИНГИЙНХАН · ХҮМҮҮС</p>
-            <h1>Хүмүүс</h1>
+            <Link className="people-back-link" href={familyId ? `/tree?family=${encodeURIComponent(familyId)}` : '/tree'}>← Удмын мод</Link>
+            <p className="eyebrow">ГУУЛИНГИЙНХАН · ХҮМҮҮС &amp; ГИШҮҮД</p>
+            <h1>Гэр бүлийн гишүүд</h1>
             <p className="people-lede">
-              Таны эрхтэй гэр бүлийн бодит хүмүүсийг нэр болон удам угсаагаар нь олоорой.
+              Гэр бүлийн аккаунт гишүүд болон удмын модны хүмүүсийн лавлах. Энгийн гишүүд зөвхөн харах эрхтэй, харин Эзэмшигч болон Засагч мэдээлэл засна.
             </p>
           </div>
           <div className="people-heading-actions">
@@ -260,6 +264,7 @@ function PeoplePageContent() {
           </div>
         </div>
 
+        {notice && <p role="status">{notice}</p>}
         {contextError && <div className="error people-error" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (
           <div className="error people-error" role="alert">
@@ -276,6 +281,7 @@ function PeoplePageContent() {
             </button>
           </div>
         )}
+        {family && <PeopleMembersHub />}
         {family && (
         <section
           className="people-toolbar card"
@@ -377,6 +383,7 @@ function PeoplePageContent() {
             </div>
             <div className="people-grid" aria-busy={busy}>
               {people?.items.map((person) => (
+                <article key={person.id}>
                 <Link
                   className="card people-card"
                   key={person.id}
@@ -384,9 +391,7 @@ function PeoplePageContent() {
                   aria-label={`${personName(person) || 'Нэргүй хүн'} профайлыг нээх`}
                 >
                   <div className="people-card-top">
-                    <span className="personavatar people-avatar" aria-hidden="true">
-                      {initials(person)}
-                    </span>
+                    <ProfilePhoto className="personavatar people-avatar" url={person.profile_photo_url} name={personName(person)} fallback={initials(person)} />
                     <div className="people-card-identity">
                       <h2>{personName(person) || 'Нэргүй хүн'}</h2>
                       <span>{lifeSummary(person)}</span>
@@ -395,23 +400,24 @@ function PeoplePageContent() {
 
                   <div className="people-card-tags">
                     {person.lineage_name ? (
-                      <span className="tag">{person.lineage_name}</span>
-                    ) : (
-                      <span className="tag">Хуваарилагдаагүй</span>
-                    )}
-                    {person.lineage_name && (
+                      <span className="people-chip">{person.lineage_name}</span>
+                    ) : null}
+                    {person.lineage_name && person.branch_name ? (
                       <span className="people-secondary-tag">
-                        {person.branch_name ?? 'Салаа хуваарилагдаагүй'}
+                        {person.branch_name}
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {person.short_description && (
                     <p className="people-description">{person.short_description}</p>
                   )}
 
-                  <span className="button people-profile-link" aria-hidden="true">Профайл нээх →</span>
+                  <span className="people-profile-cta" aria-hidden="true">
+                    {family?.role === 'owner' || family?.role === 'editor' ? 'Профайл харах / засах →' : 'Профайл үзэх →'}
+                  </span>
                 </Link>
+                </article>
               ))}
             </div>
 

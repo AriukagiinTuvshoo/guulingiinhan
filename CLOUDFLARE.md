@@ -1,6 +1,8 @@
 # Cloudflare frontend staging
 
-The frontend is configured as a separate Cloudflare Worker named `guulingiinhan-staging` in `cloudflare.config.ts`. The existing `guulingiinhan` Worker must remain untouched. The FastAPI backend, PostgreSQL database, and object storage stay on their existing infrastructure.
+Custom-domain readiness and hostname cutover steps are documented in [`docs/CLOUDFLARE_CUSTOM_DOMAIN.md`](docs/CLOUDFLARE_CUSTOM_DOMAIN.md). Do not replace staging or production hostnames until the domain owner confirms the exact domain and its Cloudflare zone is active.
+
+The frontend is configured as a separate Cloudflare Worker named `guulingiinhan-staging` in `cloudflare.config.ts`. The existing `guulingiinhan` Worker must remain untouched. Staging uses the separate Cloudflare FastAPI Container, Supabase PostgreSQL project, and private R2 bucket.
 
 ## Build and deploy
 
@@ -12,9 +14,11 @@ The repository also retains the original `npm run build` Next.js build for compa
 
 ## Backend and auth gates
 
-Before connecting staging, confirm `GET https://<backend>/health` and `/health/ready` both return 200, with `database=ok` from readiness. The backend must have a working PostgreSQL connection and its required production SMTP, SMS, OIDC, and S3-compatible storage configuration. Add the **actual** Cloudflare staging HTTPS origin to backend `CORS_ORIGINS` with credentials enabled. The session cookie's `Secure; HttpOnly; SameSite=None` attributes require HTTPS. Test registration, login, refresh with `/api/v1/auth/me`, logout, family isolation, and private media access in a browser. Do not use a Vercel preview URL that redirects to Vercel SSO as the API base.
+Before connecting staging, confirm `GET https://<backend>/health` and `/health/ready` both return 200, with `database=ok` from readiness. The backend needs working staging PostgreSQL and S3-compatible storage. Email, SMS, and OIDC may remain disabled until real providers are configured; routes that need them will be unavailable. Add the **actual** Cloudflare staging HTTPS origin to backend `CORS_ORIGINS` with credentials enabled. The session cookie's `Secure; HttpOnly; SameSite=None` attributes require HTTPS. Test registration, login, refresh with `/api/v1/auth/me`, logout, family isolation, and private media access in a browser. Do not use a Vercel preview URL that redirects to Vercel SSO as the API base.
 
-Current backend discovery: the previously linked Vercel preview redirects to Vercel SSO; the candidate stable `guulingiinhan-a6te.vercel.app/health` returned HTTP 500 on 2026-09-29. Neither is a verified usable API endpoint. Replace this observation after the backend operator provides a healthy public HTTPS URL.
+Current staging URLs: frontend `https://guulingiinhan-staging.tuvshoo0331.workers.dev` and backend API `https://guulingiinhan-backend-staging.tuvshoo0331.workers.dev/api/v1`. The frontend build variable `NEXT_PUBLIC_API_BASE_URL` points to that backend. Backend `CORS_ORIGINS` lists the exact frontend origin.
+
+Email registration and password reset require a real delivery provider. The staging backend currently supports SMTP: configure `EMAIL_PROVIDER=smtp`, `EMAIL_FROM`, `EMAIL_PUBLIC_BASE_URL` (the staging frontend origin), `EMAIL_SMTP_HOST`, `EMAIL_SMTP_USERNAME`, and `EMAIL_SMTP_PASSWORD` on the **backend staging Worker only**. `EMAIL_SMTP_PORT` defaults to `587`. Phone registration and login already use OTP endpoints; to activate them, configure `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER` on the same Worker. Put credentials in Cloudflare secrets, not source files or frontend variables. The registration and login UI displays provider availability; it must not claim that a code or email was sent when delivery is disabled. Verify live delivery, browser login, family isolation, and private media before treating staging as fully functional.
 
 ## Release and recovery
 

@@ -1,0 +1,358 @@
+/* ============================================================================
+   GUULIN — Illuminated Heritage Tree ("Алтан Мод")
+   100% theme-aware via tokens.css:
+   - Light theme: Warm Parchment surface, Forest Green ink, Antique Gold highlight
+   - Dark theme:  Obsidian-Forest surface, Burnished Gold highlight
+   ============================================================================ */
+
+.golden-tree-viewport {
+  position: relative;
+  width: 100%;
+  min-height: 620px;
+  height: clamp(620px, 78vh, 840px);
+  border-radius: 20px;
+  overflow: hidden;
+  background-image:
+    radial-gradient(circle, var(--gold-border) 1px, transparent 1px),
+    var(--tree-canvas-bg);
+  background-size: 24px 24px, 100% 100%;
+  border: 1px solid var(--tree-canvas-border);
+  box-shadow: var(--ui-shadow-md);
+  user-select: none;
+  touch-action: none;
+}
+
+.golden-tree-viewport.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  height: 100svh;
+  border-radius: 0;
+}
+
+.golden-tree-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  position: relative;
+  cursor: grab;
+}
+
+.golden-tree-scroll.is-dragging {
+  cursor: grabbing;
+}
+
+.golden-tree-stage {
+  position: relative;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* Calligraphic Bezier Connectors */
+.golden-tree-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.golden-bezier-path {
+  fill: none;
+  stroke: url(#guulin-gold-stroke);
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  opacity: 0.78;
+  transition: opacity 280ms ease, stroke-width 280ms ease;
+}
+
+.golden-bezier-path.is-active {
+  stroke-width: 2.9;
+  opacity: 1;
+  filter: drop-shadow(0 0 6px var(--gold-glow));
+}
+
+.golden-bezier-path.is-dimmed {
+  opacity: 0.16;
+}
+
+.golden-bezier-path.is-secondary {
+  stroke-dasharray: 6 5;
+  opacity: 0.62;
+}
+
+.golden-marriage-line {
+  fill: none;
+  stroke: var(--tree-edge-marriage);
+  stroke-width: 1.6;
+  stroke-dasharray: 4 3;
+  opacity: 0.82;
+}
+
+.golden-marriage-line.is-divorced {
+  stroke-dasharray: 2 5;
+  opacity: 0.48;
+}
+
+.golden-union-knot {
+  fill: var(--gold-400);
+  stroke: var(--tree-node-bg);
+  stroke-width: 1.5;
+}
+
+/* Editorial Heritage Portrait Cards */
+.golden-node-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 12px 10px 10px;
+  border-radius: 18px;
+  background: var(--tree-node-bg);
+  border: 1px solid var(--tree-node-border);
+  box-shadow:
+    0 1px 0 inset var(--gold-glow),
+    0 8px 22px -12px rgba(16, 60, 46, 0.22);
+  color: var(--tree-node-text);
+  text-align: center;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease,
+    box-shadow 260ms ease,
+    background-color 220ms ease,
+    opacity 260ms ease;
+}
+
+.golden-node-card:hover {
+  transform: translateY(-4px);
+  background: var(--tree-node-bg-hover);
+  border-color: var(--gold-500);
+  box-shadow:
+    0 0 0 1px var(--gold-border),
+    0 14px 30px -12px rgba(16, 60, 46, 0.32);
+  z-index: 4;
+}
+
+/* Gold ONLY for selected / highlighted state */
+.golden-node-card.is-selected {
+  background: var(--tree-node-bg-selected);
+  border-color: var(--gold-500);
+  box-shadow:
+    0 0 0 2px var(--gold-400),
+    0 16px 34px -12px rgba(16, 60, 46, 0.36);
+  z-index: 5;
+}
+
+.golden-node-card.is-dimmed {
+  opacity: 0.22;
+}
+
+.golden-node-card.is-time-unborn {
+  opacity: 0.14;
+  filter: grayscale(0.85);
+}
+
+.golden-node-card.is-time-passed {
+  opacity: 0.55;
+  filter: sepia(0.35);
+}
+
+.golden-node-card.is-time-alive {
+  border-color: var(--gold-500);
+  box-shadow:
+    0 0 0 2px var(--gold-400),
+    0 0 18px var(--gold-glow);
+}
+
+.golden-node-btn {
+  all: unset;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.golden-node-btn:focus-visible {
+  outline: 2px solid var(--gold-500);
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+
+.golden-node-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--tree-avatar-bg);
+  border: 1.5px solid var(--gold-border);
+  color: var(--tree-avatar-text);
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.golden-node-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.golden-node-name {
+  font-family: Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--tree-node-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.golden-node-years {
+  font-size: 11px;
+  color: var(--tree-node-muted);
+  letter-spacing: 0.02em;
+}
+
+/* Generation Rail Badges (theme-aware) */
+.golden-gen-badge {
+  position: absolute;
+  left: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--tree-dock-border);
+  background: var(--tree-gen-bg);
+  color: var(--tree-gen-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
+.golden-gen-badge small {
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+/* Per-unit Collapse / Expand Toggle */
+.golden-unit-toggle {
+  position: absolute;
+  transform: translate(-50%, 0);
+  z-index: 6;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 8px;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid var(--tree-dock-border);
+  background: var(--tree-dock-bg);
+  color: var(--tree-dock-text);
+}
+
+/* Floating Bottom-Center Glassmorphic Dock Pill */
+.golden-tree-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 6px 10px;
+  max-width: calc(100% - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-radius: 999px;
+  background: var(--tree-dock-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--tree-dock-border);
+  box-shadow: var(--ui-shadow-md);
+}
+
+.golden-tree-dock::-webkit-scrollbar {
+  display: none;
+}
+
+.golden-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--tree-dock-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.golden-dock-btn:hover {
+  background: var(--brand-primary-soft);
+  border-color: var(--brand-primary-border);
+}
+
+.golden-dock-btn.is-active {
+  background: var(--gold-soft);
+  border-color: var(--gold-500);
+  color: var(--ui-accent-text);
+  font-weight: 700;
+}
+
+.golden-dock-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--tree-dock-border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.golden-dock-zoom-readout {
+  font-size: 11.5px;
+  font-weight: 700;
+  min-width: 36px;
+  text-align: center;
+  color: var(--tree-dock-text);
+}
+
+@media (max-width: 768px) {
+  .golden-tree-viewport {
+    min-height: 480px;
+    height: 64vh;
+    border-radius: 16px;
+  }
+
+  .golden-tree-dock {
+    border-radius: 18px;
+    bottom: 10px;
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .golden-dock-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+}

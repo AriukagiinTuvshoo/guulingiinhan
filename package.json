@@ -7,33 +7,56 @@
     "dev": "next dev --hostname 0.0.0.0",
     "build": "node scripts/verify-production-env.mjs && next build",
     "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint . && npm run lint:no-hex",
+    "lint:no-hex": "node scripts/check-no-hex-tsx.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:tree-3d": "node scripts/verify-tree-3d-layout.mjs",
+    "test:tree-layout": "node scripts/verify-tree-layout.mjs",
+    "test:family-map": "node scripts/verify-family-map.mjs",
+    "test:family-map-browser": "node scripts/verify-family-map-browser.mjs",
+    "test:integrated-browser": "node scripts/verify-integrated-browser.mjs",
+    "test:mobile-admin": "node scripts/verify-mobile-admin.mjs",
+    "test:pwa": "node scripts/verify-pwa.mjs",
+    "test:root-linking": "node --experimental-strip-types scripts/verify-root-linking.mjs",
+    "test:heritage": "node --experimental-strip-types scripts/verify-heritage-readiness.mjs",
+    "regression:routes": "node scripts/verify-core-routes.mjs",
     "start": "next start --hostname 0.0.0.0",
     "dev:vinext": "vite dev --port 3001",
     "build:vinext": "node scripts/verify-production-env.mjs && vite build",
     "start:vinext": "vite preview",
-    "deploy:vinext": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy"
+    "deploy:vinext": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy",
+    "deploy:staging": "node scripts/verify-production-env.mjs && vinext-cloudflare deploy"
   },
   "dependencies": {
-    "@vinext/cloudflare": "^1.0.0",
     "lucide-react": "latest",
-    "next": "16.3.6",
+    "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-server-dom-webpack": "^19.3.0",
-    "vinext": "^1.0.0"
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^2.0.0-beta.sha-ad79608dd",
+    "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vinext/cloudflare": "^1.0.0",
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.35",
     "cf": "^1.0.0-beta.5",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.0"
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.4.6",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vinext": "^1.0.0"
   },
   "overrides": {
-    "fflate": "0.7.5"
+    "sharp": "0.35.5",
+    "fflate": "0.7.5",
+    "source-map-js": "1.2.2",
+    "undici": "7.29.1"
   }
 }

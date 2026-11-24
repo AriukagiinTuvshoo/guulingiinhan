@@ -1,0 +1,3016 @@
+/* ==========================================================================
+   GUULINGIINHAN — 5-Theme Mongolian Heritage Design System (Organic Layer)
+   Themes: mn (Монгол хээ), blue (Хөх тэнгэр), ger (Гэрийн хээ),
+           dark (Өлзий алтан), paper (Ургийн бичиг)
+   STRICT RULE: Never overrides /login or /register (.auth-shell / --auth-*).
+   ========================================================================== */
+
+:root,
+html[data-th="mn"] {
+  color-scheme: light;
+  --bg: #f7f0e3;
+  --bg2: #efe4cc;
+  --ink: #3b2415;
+  --hd: #4a2c19;
+  --sb: #4a2c19;
+  --sbt: #e9dcc0;
+  --pr: #2f6b45;
+  --pr-hover: #245636;
+  --pt: #ffffff;
+  --gold: #b88a2e;
+  --gt: #7a5a17;
+  --goldl: #ebd59a;
+  --card: #fffbf2;
+  --red: #9e2a22;
+
+  /* Map organically onto existing app semantic tokens */
+  --brand-primary: var(--pr);
+  --brand-primary-hover: var(--pr-hover);
+  --brand-primary-contrast: var(--pt);
+  --gold-300: var(--goldl);
+  --gold-400: var(--gold);
+  --gold-500: var(--gold);
+  --gold-600: var(--gt);
+  --gold-700: var(--gt);
+  --gold-border: color-mix(in srgb, var(--gold) 50%, transparent);
+  --gold-soft: color-mix(in srgb, var(--gold) 15%, transparent);
+
+  --parchment-canvas: var(--bg);
+  --parchment-card: var(--card);
+  --parchment-border: var(--goldl);
+  --ink-primary: var(--hd);
+  --ink-secondary: var(--ink);
+  --ink-muted: var(--gt);
+
+  --surface-bg: var(--bg);
+  --surface-card: var(--card);
+  --surface-subtle: var(--bg2);
+  --surface-elevated: var(--card);
+  --border-subtle: var(--goldl);
+  --border-strong: var(--gold);
+  --text-primary: var(--hd);
+  --text-secondary: var(--ink);
+  --text-muted: var(--gt);
+
+  --ui-bg: var(--bg);
+  --ui-surface: var(--card);
+  --ui-surface-subtle: var(--bg2);
+  --ui-surface-elevated: var(--card);
+  --ui-border: var(--goldl);
+  --ui-border-strong: var(--gold);
+  --ui-text: var(--ink);
+  --ui-text-secondary: var(--hd);
+  --ui-text-muted: var(--gt);
+  --ui-primary: var(--pr);
+  --ui-primary-hover: var(--pr-hover);
+  --ui-primary-contrast: var(--pt);
+  --ui-accent: var(--gold);
+  --ui-accent-text: var(--gt);
+  --ui-accent-border: var(--gold);
+  --ui-accent-soft: color-mix(in srgb, var(--gold) 14%, transparent);
+  --ui-input-bg: var(--bg);
+  --ui-input-border: var(--gold);
+  --ui-input-text: var(--ink);
+  --ui-danger: var(--red);
+  --ui-danger-text: var(--red);
+
+  --tree-canvas-bg: radial-gradient(ellipse 74% 58% at 50% 35%, var(--card) 0%, var(--bg) 62%, var(--bg2) 100%);
+  --tree-canvas-border: var(--goldl);
+  --tree-node-bg: var(--card);
+  --tree-node-bg-hover: var(--bg);
+  --tree-node-bg-selected: var(--bg2);
+  --tree-node-border: var(--gold);
+  --tree-node-text: var(--hd);
+  --tree-node-muted: var(--gt);
+  --tree-avatar-bg: var(--pr);
+  --tree-avatar-text: var(--pt);
+  --tree-edge-stroke: var(--gold);
+  --tree-edge-marriage: var(--hd);
+  --tree-dock-bg: color-mix(in srgb, var(--card) 92%, transparent);
+  --tree-dock-border: var(--goldl);
+  --tree-dock-text: var(--hd);
+  --tree-gen-bg: color-mix(in srgb, var(--card) 92%, transparent);
+  --tree-gen-text: var(--hd);
+}
+
+html[data-th="blue"] {
+  color-scheme: light;
+  --bg: #f1f5fa;
+  --bg2: #e3ebf5;
+  --ink: #14233f;
+  --hd: #0f2b5b;
+  --sb: #0f2b5b;
+  --sbt: #d9e4f5;
+  --pr: #1b4fa0;
+  --pr-hover: #143d7d;
+  --pt: #ffffff;
+  --gold: #b08a3c;
+  --gt: #7a5e1e;
+  --goldl: #e4d3a3;
+  --card: #ffffff;
+  --red: #b3262b;
+}
+
+html[data-th="ger"] {
+  color-scheme: light;
+  --bg: #fbf1dc;
+  --bg2: #f4e2bc;
+  --ink: #3a1a0c;
+  --hd: #3a1a0c;
+  --sb: #1f5b3f;
+  --sbt: #fbf1dc;
+  --pr: #c4501b;
+  --pr-hover: #a24014;
+  --pt: #ffffff;
+  --gold: #d9962b;
+  --gt: #8a5409;
+  --goldl: #f2d9a0;
+  --card: #fff9ec;
+  --red: #b3262b;
+}
+
+html[data-th="dark"] {
+  color-scheme: dark;
+  --bg: #14100d;
+  --bg2: #1e1813;
+  --ink: #eadbb5;
+  --hd: #f1e3be;
+  --sb: #0c0907;
+  --sbt: #d8c79b;
+  --pr: #e1b345;
+  --pr-hover: #cfa032;
+  --pt: #14100d;
+  --gold: #c99a2e;
+  --gt: #e1b345;
+  --goldl: #4a3a1e;
+  --card: #1e1813;
+  --red: #e07a73;
+}
+
+html[data-th="paper"] {
+  color-scheme: light;
+  --bg: #efe2c4;
+  --bg2: #e6d5ae;
+  --ink: #2a1b10;
+  --hd: #2a1b10;
+  --sb: #2a1b10;
+  --sbt: #efe2c4;
+  --pr: #9e2a22;
+  --pr-hover: #7f2019;
+  --pt: #f8edd3;
+  --gold: #8a6a33;
+  --gt: #6f5326;
+  --goldl: #d9c79b;
+  --card: #f8edd3;
+  --red: #9e2a22;
+}
+
+/* Re-apply semantic mappings for all 5 themes so custom properties cascade cleanly */
+html[data-th="blue"],
+html[data-th="ger"],
+html[data-th="dark"],
+html[data-th="paper"] {
+  --brand-primary: var(--pr);
+  --brand-primary-hover: var(--pr-hover);
+  --brand-primary-contrast: var(--pt);
+  --gold-300: var(--goldl);
+  --gold-400: var(--gold);
+  --gold-500: var(--gold);
+  --gold-600: var(--gt);
+  --gold-700: var(--gt);
+  --gold-border: color-mix(in srgb, var(--gold) 50%, transparent);
+  --gold-soft: color-mix(in srgb, var(--gold) 15%, transparent);
+
+  --parchment-canvas: var(--bg);
+  --parchment-card: var(--card);
+  --parchment-border: var(--goldl);
+  --ink-primary: var(--hd);
+  --ink-secondary: var(--ink);
+  --ink-muted: var(--gt);
+
+  --surface-bg: var(--bg);
+  --surface-card: var(--card);
+  --surface-subtle: var(--bg2);
+  --surface-elevated: var(--card);
+  --border-subtle: var(--goldl);
+  --border-strong: var(--gold);
+  --text-primary: var(--hd);
+  --text-secondary: var(--ink);
+  --text-muted: var(--gt);
+
+  --ui-bg: var(--bg);
+  --ui-surface: var(--card);
+  --ui-surface-subtle: var(--bg2);
+  --ui-surface-elevated: var(--card);
+  --ui-border: var(--goldl);
+  --ui-border-strong: var(--gold);
+  --ui-text: var(--ink);
+  --ui-text-secondary: var(--hd);
+  --ui-text-muted: var(--gt);
+  --ui-primary: var(--pr);
+  --ui-primary-hover: var(--pr-hover);
+  --ui-primary-contrast: var(--pt);
+  --ui-accent: var(--gold);
+  --ui-accent-text: var(--gt);
+  --ui-accent-border: var(--gold);
+  --ui-accent-soft: color-mix(in srgb, var(--gold) 14%, transparent);
+  --ui-input-bg: var(--bg);
+  --ui-input-border: var(--gold);
+  --ui-input-text: var(--ink);
+  --ui-danger: var(--red);
+  --ui-danger-text: var(--red);
+
+  --tree-canvas-bg: radial-gradient(ellipse 74% 58% at 50% 35%, var(--card) 0%, var(--bg) 62%, var(--bg2) 100%);
+  --tree-canvas-border: var(--goldl);
+  --tree-node-bg: var(--card);
+  --tree-node-bg-hover: var(--bg);
+  --tree-node-bg-selected: var(--bg2);
+  --tree-node-border: var(--gold);
+  --tree-node-text: var(--hd);
+  --tree-node-muted: var(--gt);
+  --tree-avatar-bg: var(--pr);
+  --tree-avatar-text: var(--pt);
+  --tree-edge-stroke: var(--gold);
+  --tree-edge-marriage: var(--hd);
+  --tree-dock-bg: color-mix(in srgb, var(--card) 92%, transparent);
+  --tree-dock-border: var(--goldl);
+  --tree-dock-text: var(--hd);
+  --tree-gen-bg: color-mix(in srgb, var(--card) 92%, transparent);
+  --tree-gen-text: var(--hd);
+}
+
+/* ==========================================================================
+   Typography & Base Polish (Scoped strictly outside .auth-shell!)
+   ========================================================================== */
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  transition: background-color 220ms ease, color 220ms ease;
+}
+
+.app-shell,
+.luxury-landing {
+  font-family: var(--font-noto-serif), "Noto Serif", Georgia, serif;
+}
+
+.app-shell h1,
+.app-shell h2,
+.app-shell h3,
+.app-shell .app-shell__brand strong,
+.luxury-landing h1,
+.luxury-landing h2,
+.luxury-landing h3,
+.luxury-landing__wordmark {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+}
+
+.luxury-landing h1,
+.luxury-landing h2,
+.luxury-landing h3,
+.luxury-landing__wordmark {
+  color: var(--hd);
+}
+
+/* ==========================================================================
+   5-Dot Split-Circle Theme Switcher (Claude Heritage Signature)
+   ========================================================================== */
+
+.theme-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg2) 72%, transparent);
+  border: 1px solid var(--goldl);
+}
+
+.theme-dots__label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gt);
+  font-weight: 700;
+  margin-right: 2px;
+  user-select: none;
+}
+
+.theme-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 1.5px var(--gold);
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.theme-dot:hover {
+  transform: scale(1.12);
+}
+
+.theme-dot.is-active {
+  box-shadow: 0 0 0 2.5px var(--pr);
+  transform: scale(1.08);
+}
+
+.theme-dot:focus-visible {
+  outline: 3px solid var(--pr);
+  outline-offset: 2px;
+}
+
+.theme-dots--compact .theme-dots__label {
+  display: none;
+}
+
+.theme-dots--compact .theme-dot {
+  width: 22px;
+  height: 22px;
+}
+
+@media (max-width: 720px) {
+  .theme-dots__label {
+    display: none;
+  }
+  .theme-dots {
+    gap: 6px;
+    padding: 3px 7px;
+  }
+  .theme-dot {
+    width: 21px;
+    height: 21px;
+  }
+}
+
+/* ==========================================================================
+   AppShell Organic Heritage Upgrade (Sidebar + Topbar + Surfaces)
+   ========================================================================== */
+
+.app-shell {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app-shell__header {
+  background: var(--card);
+  border-bottom: 1.5px solid var(--goldl);
+  color: var(--hd);
+}
+
+.app-shell__brand strong {
+  letter-spacing: 0.08em;
+  color: var(--hd);
+}
+
+.app-shell__brand small {
+  color: var(--gt);
+}
+
+.app-shell__brand-mark {
+  background: var(--sb);
+  color: var(--goldl);
+  border: 1.5px solid var(--gold);
+}
+
+html[data-th] .app-shell__sidebar {
+  background: var(--sb) !important;
+  background-image: none !important;
+  color: var(--sbt) !important;
+  border-right: 1.5px solid color-mix(in srgb, var(--gold) 35%, transparent);
+}
+
+html[data-th] .app-shell__header {
+  background: var(--card) !important;
+  border-bottom: 1.5px solid var(--goldl);
+  color: var(--hd);
+}
+
+html[data-th] .app-shell__nav-group-label {
+  color: var(--goldl) !important;
+  opacity: 0.85;
+  letter-spacing: 0.12em;
+}
+
+html[data-th] .app-shell__nav-link {
+  color: var(--sbt) !important;
+  border-radius: 10px;
+  background: transparent;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+html[data-th] .app-shell__nav-link strong,
+html[data-th] .app-shell__nav-link span {
+  color: var(--sbt) !important;
+  background: transparent !important;
+}
+
+html[data-th] .app-shell__nav-link small {
+  color: color-mix(in srgb, var(--sbt) 78%, transparent) !important;
+  background: transparent !important;
+}
+
+html[data-th] .app-shell__nav-link svg {
+  color: var(--goldl) !important;
+}
+
+html[data-th] .app-shell__nav-link:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+html[data-th] .app-shell__nav-link:hover strong,
+html[data-th] .app-shell__nav-link:hover span {
+  color: #ffffff !important;
+}
+
+html[data-th] .app-shell__nav-link.is-active,
+html[data-th] .app-shell__nav-link[aria-current="page"] {
+  background: var(--pr) !important;
+  color: var(--pt) !important;
+  font-weight: 700;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--pr) 32%, transparent);
+}
+
+html[data-th] .app-shell__nav-link.is-active strong,
+html[data-th] .app-shell__nav-link.is-active span,
+html[data-th] .app-shell__nav-link.is-active svg,
+html[data-th] .app-shell__nav-link[aria-current="page"] strong,
+html[data-th] .app-shell__nav-link[aria-current="page"] span,
+html[data-th] .app-shell__nav-link[aria-current="page"] svg {
+  color: var(--pt) !important;
+  background: transparent !important;
+}
+
+html[data-th] .app-shell__nav-link.is-active small,
+html[data-th] .app-shell__nav-link[aria-current="page"] small {
+  color: color-mix(in srgb, var(--pt) 84%, transparent) !important;
+  background: transparent !important;
+}
+
+html[data-th] .app-shell__account-button {
+  color: var(--hd);
+}
+
+html[data-th="dark"] .app-shell__account-button,
+html[data-th="dark"] .app-shell__account-button span {
+  color: var(--hd) !important;
+}
+
+html[data-th="dark"] .app-shell__account-avatar {
+  background: #2c231a !important;
+  color: #f1e3be !important;
+  border: 1.5px solid var(--gold);
+}
+
+.app-shell__context-pill {
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+  color: var(--hd);
+}
+
+.app-shell__context-pill small {
+  color: var(--gt);
+}
+
+/* Mongolian Алхан хээ Ornament Band */
+.mongol-ornament-band {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: 18px;
+  margin: 10px 0 16px;
+  opacity: 0.85;
+}
+
+/* ==========================================================================
+   Natural Organic Mongolian Heritage Landing Page (/)
+   User Comment 2: "yg ene nuur huudaasiig iluu goy baigaliin zagvartai bolgoj ogooroi"
+   ========================================================================== */
+
+.luxury-landing {
+  position: relative;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 85% 52% at 15% 8%, color-mix(in srgb, var(--pr) 12%, transparent), transparent 62%),
+    radial-gradient(ellipse 68% 58% at 88% 18%, color-mix(in srgb, var(--gold) 18%, transparent), transparent 65%),
+    radial-gradient(ellipse 90% 45% at 50% 100%, color-mix(in srgb, var(--bg2) 85%, transparent), transparent 70%),
+    var(--bg);
+  color: var(--ink);
+  overflow-x: hidden;
+}
+
+.luxury-landing__header {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.luxury-landing__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.luxury-landing__wordmark {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--hd);
+}
+
+.luxury-landing__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 25%, transparent);
+}
+
+.luxury-landing__auth-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.luxury-landing__signin-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--pr);
+  color: var(--pt);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1.5px solid color-mix(in srgb, var(--gold) 45%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--pr) 24%, transparent);
+  transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.luxury-landing__signin-pill:hover {
+  background: var(--pr-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--pr) 30%, transparent);
+}
+
+.luxury-landing__hero {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 28px 44px;
+  display: grid;
+  grid-template-columns: 1.15fr 0.95fr;
+  gap: 44px;
+  align-items: center;
+}
+
+.luxury-landing__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--goldl);
+  color: var(--hd);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 18px;
+}
+
+.luxury-landing__title {
+  font-size: clamp(38px, 5.2vw, 62px);
+  line-height: 1.08;
+  margin: 0 0 18px;
+  color: var(--hd);
+}
+
+.luxury-landing__title em {
+  font-style: italic;
+  color: var(--pr);
+}
+
+.luxury-landing__lede {
+  font-size: 17px;
+  line-height: 1.72;
+  color: var(--ink);
+  opacity: 0.9;
+  max-width: 540px;
+  margin: 0 0 28px;
+}
+
+.luxury-landing__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.luxury-landing__primary-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  padding: 4px 8px 4px 22px;
+  border-radius: 999px;
+  background: var(--pr);
+  color: var(--pt);
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--pr) 28%, transparent);
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.luxury-landing__primary-cta:hover {
+  background: var(--pr-hover);
+  transform: translateY(-2px);
+}
+
+.luxury-landing__cta-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--pt) 18%, transparent);
+  display: grid;
+  place-items: center;
+}
+
+.luxury-landing__secondary-cta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 0 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: color-mix(in srgb, var(--card) 75%, transparent);
+  color: var(--hd);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.luxury-landing__secondary-cta:hover {
+  background: var(--card);
+  border-color: var(--pr);
+}
+
+.luxury-landing__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 22px;
+  border-top: 1.5px solid var(--goldl);
+  max-width: 480px;
+}
+
+.luxury-landing__metrics strong {
+  display: block;
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 26px;
+  color: var(--pr);
+  line-height: 1.1;
+}
+
+.luxury-landing__metrics span {
+  font-size: 12px;
+  color: var(--gt);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Natural Botanical & Cedar Arch Medallion */
+.luxury-landing__hero-visual {
+  display: flex;
+  justify-content: center;
+}
+
+.luxury-landing__arch-frame {
+  position: relative;
+  width: 100%;
+  max-width: 410px;
+  aspect-ratio: 4 / 5;
+  border-radius: 210px 210px 22px 22px;
+  padding: 26px 22px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background:
+    radial-gradient(ellipse 80% 55% at 50% 24%, color-mix(in srgb, var(--gold) 24%, transparent), transparent 65%),
+    linear-gradient(178deg, #1b3d2b 0%, #122a1e 56%, #231911 100%);
+  border: 2.5px solid var(--gold);
+  box-shadow:
+    0 0 0 8px var(--bg),
+    0 0 0 10px var(--goldl),
+    0 24px 54px rgba(42, 27, 16, 0.22);
+  overflow: hidden;
+}
+
+.luxury-landing__coords {
+  position: static;
+  inset: auto;
+  transform: none;
+  background: transparent;
+  padding: 0;
+  border: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: #ebd59a;
+  opacity: 0.85;
+  font-weight: 700;
+  margin-top: 14px;
+  text-align: center;
+}
+
+.luxury-landing__tree-medallion {
+  width: 84%;
+  max-width: 310px;
+  height: auto;
+  filter: drop-shadow(0 8px 24px rgba(184, 138, 46, 0.28));
+}
+
+.luxury-landing__floating-badge {
+  position: static;
+  inset: auto;
+  transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 251, 242, 0.12);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(235, 213, 154, 0.45);
+  color: #f7f0e3;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.luxury-landing__badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e1b345;
+  box-shadow: 0 0 10px #e1b345;
+}
+
+.luxury-landing__ornament-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.luxury-landing__ticker {
+  max-width: 1180px;
+  margin: 6px auto 0;
+  padding: 12px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--gt);
+  opacity: 0.85;
+}
+
+.luxury-landing__pillars {
+  max-width: 1180px;
+  margin: 18px auto 0;
+  padding: 16px 28px 48px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.luxury-landing__pillar-card {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--hd) 7%, transparent);
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.luxury-landing__pillar-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--gold);
+}
+
+.luxury-landing__pillar-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+  color: var(--pr);
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+}
+
+.luxury-landing__pillar-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--gt);
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.luxury-landing__pillar-card h2 {
+  font-size: 21px;
+  line-height: 1.28;
+  margin: 0 0 10px;
+}
+
+.luxury-landing__pillar-card p:last-child {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  opacity: 0.88;
+  margin: 0;
+}
+
+.luxury-landing__footer {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 28px 36px;
+  border-top: 1.5px solid var(--goldl);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--gt);
+}
+
+@media (max-width: 900px) {
+  .luxury-landing__hero {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    padding: 18px 18px 32px;
+  }
+  .luxury-landing__pillars {
+    grid-template-columns: 1fr;
+    padding: 12px 18px 36px;
+  }
+  .luxury-landing__header {
+    padding: 16px 18px;
+  }
+}
+
+
+/* ==========================================================================
+   Phase 2: Exact Claude Burnished Imperial Gold "Алтан Мод"
+   Claude Gold Tokens: #B88A2E (antique), #E1B345 (luminous), #EBD59A (champagne), #7A5A17 (bronze)
+   ========================================================================== */
+
+html[data-th] .golden-tree-viewport {
+  background:
+    radial-gradient(ellipse 80% 56% at 50% 18%, rgba(225, 179, 69, 0.14), transparent 64%),
+    radial-gradient(ellipse 74% 58% at 50% 50%, var(--card) 0%, var(--bg) 62%, var(--bg2) 100%);
+  border: 2px solid #b88a2e;
+  box-shadow:
+    inset 0 0 0 5px color-mix(in srgb, var(--bg) 82%, transparent),
+    inset 0 0 0 6.5px #ebd59a,
+    0 18px 42px rgba(74, 44, 25, 0.14);
+  border-radius: 20px;
+}
+
+html[data-th="dark"] .golden-tree-viewport {
+  background:
+    radial-gradient(ellipse 76% 52% at 50% 16%, rgba(225, 179, 69, 0.16), transparent 62%),
+    radial-gradient(ellipse 80% 70% at 50% 60%, #1e1813 0%, #14100d 72%, #0c0907 100%);
+  border-color: #c99a2e;
+  box-shadow:
+    inset 0 0 0 5px #14100d,
+    inset 0 0 0 6.5px #4a3a1e,
+    0 20px 46px rgba(0, 0, 0, 0.55);
+}
+
+html[data-th] .golden-bezier-path {
+  stroke: url(#guulin-gold-stroke);
+  stroke-width: 2.6;
+  opacity: 0.92;
+  filter: drop-shadow(0 1px 2px rgba(122, 90, 23, 0.22));
+}
+
+html[data-th] .golden-bezier-path.is-active {
+  stroke: #e1b345;
+  stroke-width: 3.8;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px rgba(225, 179, 69, 0.6));
+}
+
+html[data-th] .golden-marriage-line {
+  stroke: #b88a2e;
+  stroke-width: 2.4;
+  stroke-dasharray: none;
+  opacity: 0.9;
+}
+
+html[data-th] .golden-gen-badge {
+  background: linear-gradient(135deg, var(--card) 0%, var(--bg2) 100%);
+  border: 1.5px solid #b88a2e;
+  color: var(--hd);
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  box-shadow: 0 4px 12px rgba(122, 90, 23, 0.12);
+}
+
+html[data-th] .golden-gen-badge small {
+  color: var(--gt);
+}
+
+html[data-th] .golden-node-card {
+  background: linear-gradient(180deg, var(--card) 0%, color-mix(in srgb, var(--bg2) 55%, var(--card)) 100%);
+  border: 1.5px solid #b88a2e;
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(235, 213, 154, 0.7),
+    inset 0 0 0 1px rgba(184, 138, 46, 0.2),
+    0 10px 24px rgba(74, 44, 25, 0.12);
+  color: var(--hd);
+}
+
+html[data-th="dark"] .golden-node-card {
+  background: linear-gradient(180deg, #241d17 0%, #1a1410 100%);
+  border-color: #c99a2e;
+  box-shadow:
+    inset 0 1px 0 rgba(225, 179, 69, 0.35),
+    0 12px 26px rgba(0, 0, 0, 0.45);
+}
+
+html[data-th] .golden-node-card:hover {
+  border-color: #e1b345;
+  transform: translateY(-4px);
+  box-shadow:
+    0 0 0 2.5px rgba(225, 179, 69, 0.45),
+    0 16px 32px rgba(122, 90, 23, 0.22);
+}
+
+html[data-th] .golden-node-card.is-selected {
+  border-color: #e1b345;
+  background: linear-gradient(180deg, color-mix(in srgb, #ebd59a 35%, var(--card)) 0%, var(--bg2) 100%);
+  box-shadow:
+    0 0 0 3px #b88a2e,
+    0 0 22px rgba(225, 179, 69, 0.38),
+    0 16px 34px rgba(74, 44, 25, 0.2);
+}
+
+html[data-th="dark"] .golden-node-card.is-selected {
+  background: linear-gradient(180deg, #322619 0%, #221a12 100%);
+  box-shadow:
+    0 0 0 3px #e1b345,
+    0 0 24px rgba(225, 179, 69, 0.35);
+}
+
+html[data-th] .golden-node-name {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  color: var(--hd);
+  font-weight: 700;
+}
+
+html[data-th] .golden-node-years {
+  color: var(--gt);
+  font-weight: 600;
+}
+
+html[data-th] .golden-node-avatar {
+  background: linear-gradient(135deg, var(--pr) 0%, color-mix(in srgb, var(--pr) 75%, #000) 100%);
+  color: var(--pt);
+  border: 2.5px solid #e1b345;
+  box-shadow: 0 3px 10px rgba(184, 138, 46, 0.3);
+}
+
+html[data-th] .golden-node-card.is-female .golden-node-avatar {
+  background: linear-gradient(135deg, #ebd59a 0%, #d4ad4d 100%);
+  color: #3b2415;
+  border: 2.5px solid #b88a2e;
+}
+
+/* Shared Heritage Tree Views (Hush / Toono / 7-Gen) */
+.hush-view,
+.toono-view,
+.gen-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.hush-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.hush-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1.5px solid var(--gold);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.hush-seg button {
+  border: 0;
+  background: transparent;
+  min-height: 38px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--hd);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.hush-seg button.is-on {
+  background: var(--pr);
+  color: var(--pt);
+}
+
+.hush-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: var(--card);
+  color: var(--hd);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.hush-chip-btn:hover {
+  border-color: var(--pr);
+}
+
+.hush-chip-btn.is-on {
+  background: var(--pr);
+  color: var(--pt);
+  border-color: var(--pr);
+}
+
+.hush-path {
+  flex: 1 1 260px;
+  font-size: 13.5px;
+  background: var(--bg2);
+  color: var(--ink);
+  border-left: 4px solid var(--pr);
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+
+.hush-path strong {
+  color: var(--hd);
+}
+
+.hush-canvas {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  padding: 10px;
+  overflow: auto;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--hd) 8%, transparent);
+}
+
+.hush-svg,
+.toono-svg,
+.gen-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.toono-svg {
+  max-width: 760px;
+}
+
+.gen-svg {
+  max-width: 580px;
+}
+
+.hush-branch {
+  fill: none;
+  stroke: var(--hd);
+  stroke-width: 6.5;
+  stroke-linecap: round;
+  opacity: 0.72;
+  transition: stroke 180ms ease, opacity 180ms ease;
+}
+
+.hush-branch.is-hl {
+  stroke: var(--pr);
+  opacity: 1;
+}
+
+.hush-node {
+  cursor: pointer;
+  transition: opacity 180ms ease;
+}
+
+.hush-node.is-dim {
+  opacity: 0.25;
+}
+
+.hush-node__circle {
+  fill: var(--goldl);
+  stroke: var(--gold);
+  stroke-width: 2;
+  transition: stroke 160ms ease, stroke-width 160ms ease;
+}
+
+.hush-node.is-male .hush-node__circle {
+  fill: var(--pr);
+}
+
+.hush-node:hover .hush-node__circle,
+.hush-node.is-hl .hush-node__circle {
+  stroke: var(--pr);
+  stroke-width: 3.5;
+}
+
+.hush-node.is-sel .hush-node__circle {
+  stroke: var(--hd);
+  stroke-width: 4.5;
+}
+
+.hush-node__ini {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-weight: 700;
+  font-size: 24px;
+  fill: var(--hd);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.hush-node.is-male .hush-node__ini {
+  fill: var(--pt);
+}
+
+.hush-node__card {
+  fill: var(--card);
+  stroke: var(--gold);
+  stroke-width: 1.4;
+}
+
+.hush-node__name {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-weight: 700;
+  font-size: 12px;
+  fill: var(--hd);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.hush-node__role {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--gt);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.hush-ghost {
+  cursor: pointer;
+}
+
+.hush-ghost circle {
+  fill: color-mix(in srgb, var(--bg2) 60%, transparent);
+  stroke: var(--gt);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  transition: stroke 150ms ease, fill 150ms ease;
+}
+
+.hush-ghost text {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--gt);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.hush-ghost:hover circle {
+  stroke: var(--pr);
+  fill: color-mix(in srgb, var(--pr) 12%, transparent);
+}
+
+.hush-ghost:hover text {
+  fill: var(--pr);
+}
+
+.hush-quick-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hush-empty {
+  text-align: center;
+  padding: 32px;
+  border: 1.5px dashed var(--gold);
+  border-radius: 16px;
+  color: var(--gt);
+  background: var(--card);
+}
+
+/* 7 / 9 Generations Tracker */
+.gen-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.gen-panel {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.gen-score strong {
+  display: block;
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 32px;
+  color: var(--pr);
+  line-height: 1.1;
+}
+
+.gen-score span {
+  font-size: 13.5px;
+  color: var(--gt);
+}
+
+.gen-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.gen-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--goldl);
+  background: var(--bg);
+}
+
+.gen-row.is-filled {
+  border-color: var(--gold);
+  background: var(--bg2);
+}
+
+.gen-row__num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--goldl);
+  color: var(--hd);
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.gen-row.is-filled .gen-row__num {
+  background: var(--pr);
+  color: var(--pt);
+}
+
+.gen-row__body strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--hd);
+}
+
+.gen-row__body small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--gt);
+  margin-top: 2px;
+}
+
+.gen-person-link {
+  border: 0;
+  background: var(--card);
+  color: var(--pr);
+  border: 1px solid var(--goldl);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gen-person-link:hover {
+  border-color: var(--pr);
+}
+
+@media (max-width: 900px) {
+  .gen-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ==========================================================================
+   Interactive 9-Generation Lineage Ladder ("Есөн Үе") & Tree-First Dashboard
+   ========================================================================== */
+
+.nine-gen-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.nine-gen-anchor-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1.5px solid var(--gold);
+  color: var(--hd);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.nine-gen-anchor-box select {
+  min-height: 34px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--goldl);
+  background: var(--bg);
+  color: var(--hd);
+  font: inherit;
+  font-size: 13.5px;
+  width: auto;
+}
+
+.nine-gen-columns {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.nine-gen-section {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.nine-gen-section__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1.5px solid var(--goldl);
+  color: var(--pr);
+}
+
+.nine-gen-section__head h3 {
+  font-size: 18px;
+  margin: 0;
+  color: var(--hd);
+}
+
+.nine-gen-section__head small {
+  display: block;
+  font-size: 12.5px;
+  color: var(--gt);
+  margin-top: 2px;
+}
+
+.nine-gen-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nine-gen-tier {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--goldl);
+  background: var(--bg);
+}
+
+.nine-gen-tier.is-filled {
+  background: var(--bg2);
+  border-color: var(--gold);
+}
+
+.nine-gen-tier.is-anchor {
+  border: 2px solid var(--pr);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--pr) 14%, transparent);
+}
+
+.nine-gen-tier.is-frontier {
+  border-style: dashed;
+  border-color: var(--gold);
+}
+
+.nine-gen-tier__badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--goldl);
+  color: var(--hd);
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.nine-gen-tier.is-filled .nine-gen-tier__badge {
+  background: var(--pr);
+  color: var(--pt);
+}
+
+.nine-gen-tier__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nine-gen-tier__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.nine-gen-tier__title strong {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 15px;
+  color: var(--hd);
+}
+
+.nine-gen-tier__title span {
+  font-size: 12px;
+  color: var(--gt);
+}
+
+.nine-gen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.nine-gen-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: var(--card);
+  color: var(--hd);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.nine-gen-chip:hover {
+  border-color: var(--pr);
+  transform: translateY(-1px);
+}
+
+.nine-gen-chip.is-anchor {
+  border-color: var(--pr);
+  background: color-mix(in srgb, var(--pr) 10%, var(--card));
+}
+
+.nine-gen-chip__ini {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--pr);
+  color: var(--pt);
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 13px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.nine-gen-chip b {
+  display: block;
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.nine-gen-chip em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--gt);
+}
+
+.nine-gen-add-btn {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1.5px dashed var(--pr);
+  background: transparent;
+  color: var(--pr);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nine-gen-add-btn:hover {
+  background: color-mix(in srgb, var(--pr) 10%, transparent);
+}
+
+.nine-gen-empty-note {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--gt);
+  opacity: 0.78;
+}
+
+/* Tree-First Dashboard Showcase */
+.dash-tree-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.dash-tree-showcase__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+}
+
+.dash-tree-showcase__eyebrow {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--gt);
+  font-weight: 700;
+}
+
+.dash-tree-showcase__title h1 {
+  margin: 2px 0 0;
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--hd);
+}
+
+.dash-tree-showcase__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-tree-showcase__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--pr);
+  color: var(--pt);
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid color-mix(in srgb, var(--gold) 50%, transparent);
+}
+
+.dash-tree-showcase__open:hover {
+  background: var(--pr-hover);
+}
+
+.dash-tree-showcase__stage .golden-tree-viewport {
+  min-height: 540px;
+  height: clamp(540px, 66vh, 680px);
+}
+
+@media (max-width: 960px) {
+  .nine-gen-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ==========================================================================
+   Phase 3: Stories (Voice/MP4 + Interview Prompts + Drop-Cap),
+            Memories (Decade Timeline + Untagged), Archives (KPI + Provenance)
+   ========================================================================== */
+
+.story-card p:first-of-type::first-letter {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 42px;
+  float: left;
+  line-height: 0.9;
+  padding: 2px 7px 0 0;
+  color: var(--red);
+  font-weight: 700;
+}
+
+.oral-history-studio {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.oral-history-card {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.oral-history-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  background: var(--goldl);
+  color: var(--hd);
+  padding: 2px 9px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+
+.oral-history-card__head h3 {
+  font-size: 18px;
+  margin: 0 0 4px;
+  color: var(--hd);
+}
+
+.oral-history-card__head p {
+  font-size: 13.5px;
+  color: var(--gt);
+  margin: 0 0 12px;
+}
+
+.oral-history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.oral-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.oral-btn--rec {
+  background: var(--pr);
+  color: var(--pt);
+  border: 0;
+}
+
+.oral-btn--stop {
+  background: var(--red);
+  color: #ffffff;
+  border: 0;
+}
+
+.oral-btn--upload {
+  background: transparent;
+  color: var(--hd);
+  border: 1.5px solid var(--gold);
+}
+
+.oral-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--red);
+}
+
+.oral-preview {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+}
+
+.oral-preview__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--hd);
+  font-size: 13px;
+}
+
+.oral-preview__meta strong {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oral-clear {
+  border: 0;
+  background: transparent;
+  color: var(--red);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.oral-audio,
+.oral-video {
+  width: 100%;
+  border-radius: 8px;
+  max-height: 220px;
+}
+
+.oral-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--gt);
+  font-weight: 600;
+}
+
+.oral-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oral-prompt-btn {
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--goldl);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.oral-prompt-btn:hover {
+  border-color: var(--pr);
+  background: var(--bg2);
+}
+
+/* Memories Decade Timeline */
+.memories-decade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.memories-decade-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1.5px solid var(--goldl);
+}
+
+.memories-decade-badge {
+  display: inline-flex;
+  justify-content: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--bg2);
+  border: 1.5px solid var(--gold);
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--hd);
+}
+
+.memories-decade-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.memories-decade-card {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  text-decoration: none;
+  color: var(--hd);
+}
+
+.memories-decade-card:hover {
+  border-color: var(--pr);
+}
+
+.memories-decade-card strong {
+  display: block;
+  font-size: 14.5px;
+  margin-bottom: 4px;
+}
+
+.memories-decade-card small {
+  color: var(--gt);
+  font-size: 12.5px;
+}
+
+/* Archives KPI & Provenance */
+.archive-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.archive-kpi-card {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.archive-kpi-card strong {
+  display: block;
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 30px;
+  color: var(--pr);
+  line-height: 1.1;
+}
+
+.archive-kpi-card span {
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gt);
+  font-weight: 700;
+}
+
+.archive-provenance-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg2);
+  border-left: 4px solid var(--gold);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.archive-provenance-banner p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .memories-decade-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ==========================================================================
+   Phase 4: Family Book Studio, Heirloom Memory Cards, Unified 5-Theme Admin & Settings
+   ========================================================================== */
+
+.book-studio-grid {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.book-cover-preview {
+  border-radius: 12px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  min-height: 290px;
+  box-shadow:
+    inset 0 0 0 5px rgba(225, 179, 69, 0.14),
+    0 14px 30px rgba(42, 27, 16, 0.22);
+}
+
+@media (max-width: 720px) {
+  .book-studio-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Luxury Heirloom Memory Cards */
+html[data-th] .memory-card {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--goldl) 55%, transparent),
+    0 10px 26px color-mix(in srgb, var(--hd) 9%, transparent);
+  transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+html[data-th] .memory-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--gold);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--hd) 14%, transparent);
+}
+
+html[data-th] .memory-card-body {
+  padding: 18px 20px;
+}
+
+html[data-th] .memory-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--gt);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+html[data-th] .memory-card-body h3 {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 21px;
+  color: var(--hd);
+  margin: 0 0 8px;
+  line-height: 1.25;
+}
+
+html[data-th] .memory-card-body p {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+
+html[data-th] .memory-person-link {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--goldl);
+  color: var(--hd);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  margin-right: 6px;
+}
+
+html[data-th] .memory-card-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  font-weight: 700;
+  color: var(--pr);
+  text-decoration: none;
+}
+
+/* Unified 5-Theme Admin Console & Settings Polish */
+html[data-th] .admin-page,
+html[data-th] .family-admin-page,
+html[data-th] .settings-page {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+html[data-th] .admin-header,
+html[data-th] .admin-hero,
+html[data-th] .family-admin-hero {
+  background: var(--sb) !important;
+  color: var(--sbt) !important;
+  border-bottom: 2px solid var(--gold);
+}
+
+html[data-th] .admin-header h1,
+html[data-th] .admin-hero h1,
+html[data-th] .family-admin-hero h1 {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  color: var(--goldl) !important;
+}
+
+html[data-th] .admin-card,
+html[data-th] .admin-panel,
+html[data-th] .admin-stat-card,
+html[data-th] .settings-card {
+  background: var(--card) !important;
+  border: 1.5px solid var(--goldl) !important;
+  border-radius: 16px;
+  color: var(--ink);
+}
+
+html[data-th] .admin-stat-card strong,
+html[data-th] .admin-stat-card b {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  color: var(--pr);
+}
+
+
+/* ==========================================================================
+   Redesigned Clutter-Free Mongolian Heritage Settings Page (/settings)
+   ========================================================================== */
+
+.settings-v2-page {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  padding: 24px 28px 48px;
+}
+
+.settings-v2-shell {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.settings-v2-back {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gt);
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+
+.settings-v2-back:hover {
+  color: var(--pr);
+}
+
+.settings-v2-eyebrow {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--gt);
+  font-weight: 700;
+}
+
+.settings-v2-header h1 {
+  font-size: 34px;
+  margin: 4px 0 6px;
+  color: var(--hd);
+}
+
+.settings-v2-header p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink);
+  opacity: 0.85;
+}
+
+.settings-v2-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.settings-v2-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1.5px solid var(--goldl);
+  background: var(--card);
+  color: var(--hd);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.settings-v2-tab:hover {
+  border-color: var(--gold);
+}
+
+.settings-v2-tab.is-active {
+  background: var(--pr);
+  color: var(--pt);
+  border-color: var(--pr);
+}
+
+.settings-v2-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-v2-notice.is-success {
+  background: color-mix(in srgb, var(--pr) 12%, var(--card));
+  border: 1.5px solid var(--pr);
+  color: var(--hd);
+}
+
+.settings-v2-notice.is-error {
+  background: color-mix(in srgb, var(--red) 12%, var(--card));
+  border: 1.5px solid var(--red);
+  color: var(--red);
+}
+
+.settings-v2-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-v2-two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.settings-v2-card {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--hd) 7%, transparent);
+}
+
+.settings-v2-profile-card {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: center;
+}
+
+.settings-v2-card-head h2 {
+  font-size: 22px;
+  margin: 0 0 6px;
+  color: var(--hd);
+}
+
+.settings-v2-card-head p {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--gt);
+}
+
+.settings-v2-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hd);
+}
+
+.settings-v2-name-form {
+  margin-top: 18px;
+}
+
+.settings-v2-name-form label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--gt);
+  margin-bottom: 6px;
+}
+
+.settings-v2-inline-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-v2-inline-row input {
+  flex: 1 1 220px;
+}
+
+.settings-v2-footer-links {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--goldl);
+}
+
+/* 5-Theme Visual Card Grid inside Settings */
+.settings-v2-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+}
+
+.settings-v2-theme-card {
+  text-align: left;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1.5px solid var(--goldl);
+  background: var(--bg);
+  cursor: pointer;
+  font: inherit;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.settings-v2-theme-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold);
+}
+
+.settings-v2-theme-card.is-selected {
+  border: 2px solid var(--pr);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pr) 20%, transparent);
+}
+
+.settings-v2-theme-preview {
+  height: 76px;
+  border-radius: 10px;
+  border: 1.5px solid;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.settings-v2-theme-sb {
+  display: block;
+  height: 100%;
+}
+
+.settings-v2-theme-body {
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-v2-theme-bar {
+  display: block;
+  height: 12px;
+  width: 65%;
+  border-radius: 99px;
+}
+
+.settings-v2-theme-line {
+  display: block;
+  height: 6px;
+  width: 90%;
+  border-radius: 99px;
+  opacity: 0.65;
+}
+
+.settings-v2-theme-meta strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  color: var(--hd);
+}
+
+.settings-v2-theme-meta small {
+  display: block;
+  font-size: 12px;
+  color: var(--gt);
+  margin-top: 2px;
+}
+
+.settings-v2-family-row,
+.settings-v2-row-between {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-v2-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--pr);
+}
+
+.settings-v2-icon-title h3 {
+  font-size: 16.5px;
+  margin: 0;
+  color: var(--hd);
+}
+
+.settings-v2-icon-title small {
+  display: block;
+  font-size: 13px;
+  color: var(--gt);
+}
+
+.settings-v2-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--gt);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-v2-badge.is-ok {
+  background: color-mix(in srgb, var(--pr) 15%, var(--card));
+  color: var(--pr);
+}
+
+@media (max-width: 720px) {
+  .settings-v2-page {
+    padding: 16px;
+  }
+  .settings-v2-profile-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ==========================================================================
+   Phase 5: Mobile-First Ergonomics & Native Bottom Navigation (<= 768px)
+   (Auth pages /login & /register remain strictly untouched)
+   ========================================================================== */
+
+/* Desktop defaults for new mobile-only helpers */
+.app-shell__bottom-nav,
+.app-shell__drawer-theme,
+.tree-mobile-quick-row,
+.tree-mobile-filter-toggle {
+  display: none;
+}
+
+/* Dark mode native <select> dropdown & badge contrast fix */
+html[data-th="dark"] {
+  color-scheme: dark;
+}
+
+html[data-th="dark"] select,
+html[data-th="dark"] select option,
+html[data-th="dark"] optgroup {
+  background-color: #1c1711 !important;
+  color: #f4ead6 !important;
+}
+
+html[data-th="dark"] .tree-inspector-badge,
+html[data-th="dark"] .person-badge,
+html[data-th="dark"] .tree-badge {
+  background-color: #2a2117 !important;
+  color: #f4ead6 !important;
+  border-color: rgba(225, 179, 69, 0.35) !important;
+}
+
+/* ==========================================================================
+   Clean 5-Theme People Directory (/people) + Story & Memory Upload Polish
+   ========================================================================== */
+html[data-th] .people-page {
+  background: var(--bg) !important;
+  color: var(--ink) !important;
+}
+
+html[data-th] .people-back-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gt) !important;
+  text-decoration: none !important;
+  margin-bottom: 6px;
+}
+
+html[data-th] .people-heading h1 {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  color: var(--hd) !important;
+}
+
+html[data-th] .people-card {
+  background: var(--card) !important;
+  border: 1.5px solid var(--goldl) !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--hd) 6%, transparent);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+html[data-th] .people-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold) !important;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--hd) 11%, transparent);
+}
+
+html[data-th] .people-card a {
+  text-decoration: none !important;
+  color: inherit !important;
+}
+
+html[data-th] .people-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+  color: var(--hd);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+html[data-th] .people-profile-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--goldl);
+  background: var(--bg2);
+  color: var(--pr);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Luxury Photo Dropzone for Memories & Stories */
+.heritage-dropzone {
+  border: 2px dashed var(--gold);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg2) 72%, var(--card));
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.heritage-dropzone:hover {
+  border-color: var(--pr);
+  background: color-mix(in srgb, var(--pr) 6%, var(--card));
+}
+
+.heritage-dropzone strong {
+  font-size: 14.5px;
+  color: var(--hd);
+}
+
+.heritage-dropzone small {
+  font-size: 12px;
+  color: var(--gt);
+}
+
+.heritage-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.heritage-preview-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid var(--goldl);
+  background: var(--bg2);
+}
+
+.heritage-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.heritage-preview-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(20, 14, 10, 0.78);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.golden-node-photo,
+.adv3-av-photo {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-fullscreen-exit-btn {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: 12px;
+  z-index: 1300;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: color-mix(in srgb, var(--sb) 94%, transparent);
+  color: var(--goldl);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.tree-map-layout--fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1200 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: var(--bg) !important;
+  border-radius: 0 !important;
+  overflow: auto !important;
+}
+
+.tree-map-layout--fullscreen .golden-tree-stage,
+.tree-map-layout--fullscreen .hush-tree-stage,
+.tree-map-layout--fullscreen .toono-stage {
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  border: 0 !important;
+}
+
+.tree-controls-secondary {
+  display: contents;
+}
+
+@media (max-width: 768px) {
+  /* Prevent iOS Safari input auto-zoom while preserving readability */
+  html[data-th] .app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html[data-th] .app-shell select,
+  html[data-th] .app-shell textarea,
+  html[data-th] .adv3-shell input:not([type="checkbox"]):not([type="radio"]),
+  html[data-th] .adv3-shell select,
+  html[data-th] .adv3-shell textarea {
+    font-size: 16px;
+  }
+
+  /* 1. Landing Page (/) — Fix clipped topbar & full-width thumb CTAs */
+  .luxury-landing__header {
+    padding: 12px 14px !important;
+    gap: 8px !important;
+    flex-wrap: nowrap;
+  }
+
+  .luxury-landing__wordmark {
+    font-size: 18px !important;
+    letter-spacing: 0.12em !important;
+  }
+
+  .luxury-landing__auth-actions {
+    gap: 8px !important;
+    flex-shrink: 0;
+  }
+
+  .luxury-landing__auth-actions .theme-dots {
+    padding: 3px 5px !important;
+    gap: 4px !important;
+  }
+
+  .luxury-landing__auth-actions .theme-dot {
+    width: 19px !important;
+    height: 19px !important;
+    min-width: 19px !important;
+    min-height: 19px !important;
+  }
+
+  .luxury-landing__signin-pill {
+    padding: 7px 13px !important;
+    font-size: 13px !important;
+    white-space: nowrap !important;
+    min-height: 36px;
+  }
+
+  .luxury-landing__cta-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .luxury-landing__primary-cta,
+  .luxury-landing__secondary-cta {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+  }
+
+  /* 2. AppShell Mobile Header — Zero truncation, crisp 58px bar */
+  html[data-th] .app-shell__header {
+    min-height: 58px;
+    padding: 8px 12px !important;
+    gap: 8px !important;
+  }
+
+  html[data-th] .app-shell__header .theme-dots {
+    display: none !important;
+  }
+
+  html[data-th] .app-shell__brand {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  html[data-th] .app-shell__brand strong {
+    font-size: 14.5px !important;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  html[data-th] .app-shell__brand small {
+    display: none !important;
+  }
+
+  html[data-th] .app-shell__context {
+    display: none !important;
+  }
+
+  html[data-th] .app-shell__account {
+    gap: 6px !important;
+    flex-shrink: 0;
+  }
+
+  html[data-th] .app-shell__account-name {
+    display: none !important;
+  }
+
+  /* Theme picker inside mobile slide-out drawer */
+  .app-shell__drawer-theme {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    margin: 8px 0 4px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--goldl) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--goldl) 26%, transparent);
+  }
+
+  .app-shell__drawer-theme-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--sbt);
+    opacity: 0.9;
+  }
+
+  /* Hide floating Chat pill on mobile since Зурвас is in Bottom Nav */
+  .family-chat-fab {
+    display: none !important;
+  }
+
+  .family-chat-panel {
+    bottom: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 86dvh !important;
+    max-height: 86dvh !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  /* Reserve space at bottom for the sticky Bottom Navigation Bar */
+  html[data-th] .app-shell__content {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  html[data-th] .app-shell__sidebar {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 3. Native-feel Sticky Bottom Navigation Bar */
+  .app-shell__bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 950;
+    background: color-mix(in srgb, var(--card) 96%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1.5px solid var(--goldl);
+    box-shadow: 0 -6px 22px color-mix(in srgb, var(--hd) 10%, transparent);
+    padding: 4px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-shell__bottom-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 50px;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--gt);
+    text-decoration: none;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: color 140ms ease, background-color 140ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-shell__bottom-item.is-active {
+    color: var(--pr);
+    background: color-mix(in srgb, var(--pr) 11%, transparent);
+  }
+
+  /* 4. Family Tree (/tree) — Edge-to-Edge Huge Tree, Compact Header, 3 Clean Modes */
+  html[data-th] .tree-page {
+    padding: 8px 8px 0 !important;
+  }
+
+  html[data-th] .tree-page-header {
+    padding: 8px 10px !important;
+    margin-bottom: 6px !important;
+    gap: 6px !important;
+    border-radius: 14px !important;
+  }
+
+  html[data-th] .tree-page-header > div:first-child {
+    display: none !important;
+  }
+
+  html[data-th] .tree-header-actions {
+    width: 100%;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-th] .tree-header-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-th] .tree-header-actions > button,
+  html[data-th] .tree-header-actions .tree-header-menu > button {
+    flex: 1 0 auto !important;
+    min-height: 36px !important;
+    padding: 0 10px !important;
+    font-size: 12.5px !important;
+    white-space: nowrap !important;
+  }
+
+  html[data-th] .tree-toolbar {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
+    border-radius: 14px !important;
+  }
+
+  html[data-th] .tree-stats {
+    display: none !important;
+  }
+
+  html[data-th] .tree-controls {
+    gap: 6px !important;
+    width: 100%;
+  }
+
+  html[data-th] .tree-segmented {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  html[data-th] .tree-segmented button {
+    white-space: nowrap !important;
+    padding: 0 6px !important;
+    font-size: 12.5px !important;
+    min-height: 38px !important;
+    justify-content: center;
+  }
+
+  .tree-mobile-quick-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .tree-mobile-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid var(--goldl);
+    background: var(--bg2);
+    color: var(--hd);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .tree-mobile-fullscreen-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1.5px solid var(--gold);
+    background: var(--pr);
+    color: var(--pt);
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .tree-controls-secondary.tree-mobile-collapsible {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .tree-mobile-collapsible:not(.is-open) {
+    display: none !important;
+  }
+
+  html[data-th] .tree-map-layout {
+    padding: 0 !important;
+    gap: 10px !important;
+  }
+
+  html[data-th] .golden-tree-stage,
+  html[data-th] .hush-tree-stage,
+  html[data-th] .toono-stage {
+    min-height: 68dvh !important;
+    border-radius: 14px !important;
+  }
+
+  html[data-th] .golden-tree-dock {
+    max-width: calc(100% - 12px) !important;
+    padding: 4px 6px !important;
+    gap: 2px !important;
+    bottom: 8px !important;
+  }
+
+  html[data-th] .golden-dock-btn {
+    padding: 5px 7px !important;
+    font-size: 11.5px !important;
+  }
+
+  /* 5. Settings, Stories, Memories, Archives & Modals */
+  .settings-v2-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+
+  .settings-v2-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-v2-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0 14px;
+    font-size: 13.5px;
+  }
+
+  .settings-v2-theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .settings-v2-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-v2-card {
+    padding: 16px;
+  }
+
+  .settings-v2-profile-card {
+    text-align: center;
+    justify-items: center;
+  }
+
+  .settings-v2-inline-row button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .archive-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+}

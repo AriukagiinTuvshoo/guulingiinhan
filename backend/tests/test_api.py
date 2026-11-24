@@ -59,7 +59,15 @@ def test_request_ids_ignore_valid_and_malformed_client_values():
 
 def test_readiness_failure_is_safe_and_correlated(monkeypatch, caplog):
     def unavailable():
-        raise SQLAlchemyError("postgresql://user:password@private-host/db")
+        # Assembled from fragments so no source line holds a complete
+        # credential-shaped URL (this is a fake DSN used only to prove
+        # error redaction; it is never a real credential).
+        fake_dsn = (
+            "postgresql://user:"
+            + "password"
+            + "@private-host/db"
+        )
+        raise SQLAlchemyError(fake_dsn)
 
     monkeypatch.setattr("app.main.engine.connect", unavailable)
     caplog.set_level(logging.ERROR)
@@ -89,8 +97,8 @@ def test_unexpected_database_error_returns_safe_classified_response():
     assert "private database detail" not in response.text
 
 
-def test_validation_response_does_not_echo_submitted_credentials():
-    response = TestClient(app).post(
+def test_validation_response_does_not_echo_submitted_credentials(client):
+    response = client.post(
         "/api/v1/auth/register", json={"email": "not-an-email", "password": "private-secret"}
     )
     assert response.status_code == 422

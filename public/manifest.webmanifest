@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "ГУУЛИНГИЙНХАН — Ургийн мод",
+  "short_name": "Гуулингийнхан",
+  "description": "Гэр бүлийн ургийн мод, намтар, түүх, дурсамж.",
+  "lang": "mn",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e5",
+  "theme_color": "#103c2e",
+  "icons": [
+    { "src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

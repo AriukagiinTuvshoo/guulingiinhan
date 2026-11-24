@@ -1,0 +1,69 @@
+{
+  "checked_at": "2026-10-13T05:33:12.301Z",
+  "scope": "Authorized owner mailbox plus-alias, disposable staging account/family only; no owner credentials or real family edits.",
+  "results": [
+    {
+      "label": "register",
+      "status": 201,
+      "cookieFlags": null,
+      "expected_status": 201,
+      "pass": true
+    },
+    {
+      "label": "verify",
+      "status": 200,
+      "cookieFlags": null,
+      "expected_status": 200,
+      "pass": true
+    },
+    {
+      "label": "login",
+      "status": 200,
+      "cookieFlags": {
+        "secure": true,
+        "httpOnly": true,
+        "sameSiteNone": true
+      },
+      "expected_status": 200,
+      "pass": true
+    },
+    {
+      "label": "onboard",
+      "status": 200,
+      "cookieFlags": null,
+      "expected_status": 200,
+      "pass": true
+    },
+    {
+      "label": "invite",
+      "status": 201,
+      "cookieFlags": null,
+      "expected_status": 201,
+      "pass": true
+    },
+    {
+      "label": "archive",
+      "status": 204,
+      "cookieFlags": null,
+      "expected_status": 204,
+      "pass": true
+    },
+    {
+      "label": "logout",
+      "status": 204,
+      "cookieFlags": {
+        "secure": true,
+        "httpOnly": true,
+        "sameSiteNone": true
+      },
+      "expected_status": 204,
+      "pass": true
+    }
+  ],
+  "mailboxEvidence": {
+    "invitationDelivered": true,
+    "linkUsesExpectedStagingHost": true,
+    "recipientAcceptance": "Covered in disposable actual API/browser suite, not claimed for real mailbox",
+    "tokensNotRecorded": true
+  }
+}

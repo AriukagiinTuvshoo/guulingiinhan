@@ -1,0 +1,76 @@
+{
+  "scope": "Local synthetic PostgreSQL + in-process HTTP, not staging/production/GPU/network",
+  "dataset": {
+    "people": 800,
+    "parent_child": 799,
+    "marriages": 90,
+    "stories": 30,
+    "memories": 30,
+    "archives": 30
+  },
+  "results": [
+    {
+      "route": "people_directory",
+      "asgi_median_ms": 49.36,
+      "sql_median_ms": 20.34,
+      "query_count": 9,
+      "response_bytes": 14486
+    },
+    {
+      "route": "search_people",
+      "asgi_median_ms": 47.19,
+      "sql_median_ms": 19.55,
+      "query_count": 9,
+      "response_bytes": 5830
+    },
+    {
+      "route": "search_stories",
+      "asgi_median_ms": 38.41,
+      "sql_median_ms": 10.43,
+      "query_count": 10,
+      "response_bytes": 4513
+    },
+    {
+      "route": "search_memories",
+      "asgi_median_ms": 146.56,
+      "sql_median_ms": 78.34,
+      "query_count": 40,
+      "response_bytes": 4633
+    },
+    {
+      "route": "search_archives",
+      "asgi_median_ms": 48.09,
+      "sql_median_ms": 14.19,
+      "query_count": 11,
+      "response_bytes": 4861
+    },
+    {
+      "route": "tree",
+      "asgi_median_ms": 477.74,
+      "sql_median_ms": 119.61,
+      "query_count": 15,
+      "response_bytes": 381904
+    },
+    {
+      "route": "relationship",
+      "asgi_median_ms": 394.25,
+      "sql_median_ms": 104.46,
+      "query_count": 19,
+      "response_bytes": 466
+    },
+    {
+      "route": "profile",
+      "asgi_median_ms": 54.13,
+      "sql_median_ms": 26.92,
+      "query_count": 17,
+      "response_bytes": 989
+    },
+    {
+      "route": "timeline",
+      "asgi_median_ms": 151.26,
+      "sql_median_ms": 67.27,
+      "query_count": 40,
+      "response_bytes": 6437
+    }
+  ]
+}

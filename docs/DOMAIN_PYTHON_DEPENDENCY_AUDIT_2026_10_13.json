@@ -1,0 +1,6 @@
+{
+  "checked_at": "2026-10-13T05:50:53.864543+00:00",
+  "source": "OSV querybatch against exact registry package versions in backend/uv.lock; includes dev and optional resolutions",
+  "packages_checked": 60,
+  "findings": []
+}

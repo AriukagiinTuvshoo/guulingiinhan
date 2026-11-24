@@ -1,6 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import ProtectedPhotoPicker from './protected-photo-picker';
+import HeritageLinkPicker from './heritage-link-picker';
+import { editHeritageText, heritageEditorText } from '../lib/heritage-links';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, Archive, PersonSearchPage } from '../lib/api';
@@ -11,6 +14,7 @@ type SelectedPerson = { id: string; name: string };
 function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
   const router = useRouter();
   const { currentFamily: family, familyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
+  const [canEdit, setCanEdit] = useState(false);
   const [archiveId, setArchiveId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -38,7 +42,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
     archiveAbortRef.current?.abort();
     peopleAbortRef.current?.abort();
     archiveRequestRef.current += 1;
-    setLoading(true); setReady(false); setArchiveId(''); setResults(null); setError('');
+    setLoading(true); setReady(false); setCanEdit(false); setArchiveId(''); setResults(null); setError('');
 
     const requestedArchiveId = mode === 'edit' ? window.location.pathname.split('/').filter(Boolean).at(-2) ?? '' : '';
     async function load() {
@@ -53,11 +57,26 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
         setError('Гэр бүлийн орчинд хандах боломжгүй байна.');
         return;
       }
-      if (family.role !== 'owner' && family.role !== 'editor') {
-        setLoading(false);
-        setError('Энэ архивын үйлдлийг хийх эрхгүй байна.');
-        return;
+      const editableByRole = family.role === 'owner' || family.role === 'editor';
+      let editable = editableByRole;
+      if (!editableByRole) {
+        // Family-scoped admin grants (manage_content) may also edit archives.
+        try {
+          const access = await api<{ owner: boolean; scopes: string[] }>(
+            `/families/${encodeURIComponent(familyId)}/admin-access`,
+          );
+          editable = access.owner || access.scopes.includes('manage_content');
+        } catch {
+          editable = false;
+        }
+        if (requestId !== familyRequestRef.current) return;
+        if (!editable) {
+          setLoading(false);
+          setError('Энэ архивын үйлдлийг хийх эрхгүй байна.');
+          return;
+        }
       }
+      setCanEdit(editable);
       try {
         if (mode === 'edit') {
           if (!requestedArchiveId) { setLoading(false); setError('Архивийн хаяг буруу байна.'); return; }
@@ -212,7 +231,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
     );
   }
 
-  if (family.role !== 'owner' && family.role !== 'editor') {
+  if (!canEdit) {
     return (
       <main className="stories-page">
         <section className="stories-shell stories-state card">
@@ -278,9 +297,9 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
           <label>
             Тайлбар
             <textarea
-              value={description}
+              value={heritageEditorText(description)}
               onChange={(event) => {
-                setDescription(event.target.value);
+                setDescription(editHeritageText(event.target.value, description));
                 markDirty();
               }}
               maxLength={20000}
@@ -288,6 +307,8 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
             />
             <span className="story-field-hint">Хоосон байж болно</span>
           </label>
+          <label>Баримтын төрөл<select value={description.match(/^Төрөл: ([^\r\n]+)(?:\r?\n|$)/)?.[1] || ''} onChange={event => { setDescription((event.target.value ? `Төрөл: ${event.target.value}\n` : '') + description.replace(/^Төрөл: [^\r\n]+(?:\r?\n|$)/, '')); markDirty(); }}><option value="">Төрөл оруулаагүй</option>{['Гэрчилгээ', 'Хуучин зураг', 'Баримт бичиг', 'Захидал', 'Бүртгэл'].map(kind => <option key={kind}>{kind}</option>)}</select><small>Төрлийг материалын тайлбарт хадгална.</small></label>
+          <HeritageLinkPicker familyId={familyId} value={description} onChange={value => { setDescription(value); markDirty(); }} />
 
           <div className="story-form-grid">
             <label>
@@ -333,6 +354,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
             <div aria-hidden="true" />
           </div>
 
+          <ProtectedPhotoPicker familyId={familyId} onSelect={(id, caption) => { setDescription((text) => text + `\n\n[[photo:${id}|${caption.replace(/[\]\n|]/g, ' ').slice(0, 180)}]]\n`); markDirty(); }} />
           <fieldset className="story-people-fieldset">
             <legend>Холбоотой хүмүүс</legend>
             <label>

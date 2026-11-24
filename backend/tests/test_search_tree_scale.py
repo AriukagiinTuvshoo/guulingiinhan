@@ -181,11 +181,81 @@ def test_tree_context_is_bounded_cycle_safe_and_constant_query_count(client, dat
     # One constant-query enrichment fetch supplies authorized lineage metadata.
     assert len(queries) <= 31
     assert client.get(
-        f"/api/v1/families/{family_id}/tree?person_id={persons[60].id}&depth=6"
+        f"/api/v1/families/{family_id}/tree?person_id={persons[60].id}&depth=11"
     ).status_code == 422
     assert client.get(
         f"/api/v1/families/{family_id}/tree?person_id={uuid4()}&depth=2"
     ).status_code == 404
+
+
+def test_tree_deep_nine_generation_traversal_and_node_limit_safety(client, database):
+    register_verified(client, "tree-deep-9gen@example.com")
+    owner_id = UUID(client.get("/api/v1/auth/me").json()["id"])
+    family_id = UUID(client.post("/api/v1/families", json={"name": "Есөн үеийн ургийн мод"}).json()["id"])
+
+    # Create an 11-generation linear chain to verify depth=9, depth=10, depth=11 (422),
+    # node_limit cap, and direction=descendants (must never fetch ancestors).
+    chain = [
+        Person(
+            id=uuid4(),
+            first_name=f"Үе{index + 1:02}",
+            last_name="Алтан",
+            search_first_name=normalize_search_name(f"Үе{index + 1:02}"),
+            search_last_name=normalize_search_name("Алтан"),
+            search_middle_name="",
+            created_by=owner_id,
+        )
+        for index in range(11)
+    ]
+    memberships = [FamilyPerson(family_id=family_id, person_id=p.id, added_by=owner_id) for p in chain]
+    edges = [
+        ParentChildRelationship(parent_id=chain[i].id, child_id=chain[i + 1].id, created_by=owner_id)
+        for i in range(len(chain) - 1)
+    ]
+    with database() as db:
+        db.add_all(chain)
+        db.flush()
+        db.add_all(memberships + edges)
+        db.commit()
+
+    # depth=9 from Gen 1 reaches Gen 10 (10 people total).
+    resp_9 = client.get(f"/api/v1/families/{family_id}/tree?person_id={chain[0].id}&depth=9")
+    assert resp_9.status_code == 200
+    tree_9 = resp_9.json()
+    assert tree_9["meta"]["depth"] == 9
+    assert tree_9["meta"]["truncated"] is False
+    assert len(tree_9["persons"]) == 10
+
+    # depth=10 is accepted and reaches all 11 people.
+    resp_10 = client.get(f"/api/v1/families/{family_id}/tree?person_id={chain[0].id}&depth=10")
+    assert resp_10.status_code == 200
+    assert len(resp_10.json()["persons"]) == 11
+
+    # depth=11 is rejected with 422.
+    assert (
+        client.get(f"/api/v1/families/{family_id}/tree?person_id={chain[0].id}&depth=11").status_code
+        == 422
+    )
+
+    # node_limit continues to cap safely even at max depth=10.
+    resp_capped = client.get(
+        f"/api/v1/families/{family_id}/tree?person_id={chain[0].id}&depth=10&node_limit=6"
+    )
+    assert resp_capped.status_code == 200
+    capped = resp_capped.json()
+    assert capped["meta"]["truncated"] is True
+    assert capped["meta"]["node_limit"] == 6
+    assert len(capped["persons"]) <= 6
+
+    # direction=descendants starting at Gen 5 fetches only Gen 5..8, never Gen 1..4 ancestors.
+    resp_desc = client.get(
+        f"/api/v1/families/{family_id}/tree?person_id={chain[4].id}&depth=3&direction=descendants"
+    )
+    assert resp_desc.status_code == 200
+    desc_ids = {p["id"] for p in resp_desc.json()["persons"]}
+    assert desc_ids == {str(chain[i].id) for i in (4, 5, 6, 7)}
+    for ancestor in chain[:4]:
+        assert str(ancestor.id) not in desc_ids
 
 
 def test_tree_node_limit_caps_large_fanout(client, database):
@@ -225,6 +295,13 @@ def test_tree_node_limit_caps_large_fanout(client, database):
     tree = response.json()
     assert tree["meta"]["node_count"] <= tree["meta"]["node_limit"]
     assert tree["meta"]["truncated"] is True
+    expanded = client.get(f"/api/v1/families/{family_id}/tree?scope=all&node_limit=1000")
+    assert expanded.status_code == 200
+    assert len(expanded.json()["persons"]) == 350
+    assert expanded.json()["meta"]["node_limit"] == 1000
+    assert client.get(f"/api/v1/families/{family_id}/tree?node_limit=1001").status_code == 422
+    client.post("/api/v1/auth/logout")
+    assert client.get(f"/api/v1/families/{family_id}/tree?scope=all&node_limit=1000").status_code == 401
 
 
 def test_tree_includes_authorized_lineage_branch_metadata_and_stays_family_scoped(

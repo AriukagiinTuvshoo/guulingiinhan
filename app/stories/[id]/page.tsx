@@ -5,6 +5,9 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ApiError, api, Story } from '../../../lib/api';
 import { useAppShellContext } from '../../../components/app-shell';
+import { useDialogFocus } from '../../../components/use-dialog-focus';
+import StoryContent from '../../../components/story-content';
+import HeritageLinks from '../../../components/heritage-links';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -98,18 +101,9 @@ function StoryDetailPageContent() {
 
   useEffect(() => () => storyAbortRef.current?.abort(), []);
 
-  useEffect(() => {
-    if (!showDeleteDialog) return;
-    deleteCancelRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) {
-        event.preventDefault();
-        setShowDeleteDialog(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [busy, showDeleteDialog]);
+  useDialogFocus(Boolean(showDeleteDialog), '.story-confirm-dialog', () => {
+    if (!busy) setShowDeleteDialog(false);
+  });
 
   async function remove() {
     if (!story || busy) return;
@@ -175,7 +169,8 @@ function StoryDetailPageContent() {
         </header>
 
         <section className="story-reading" aria-labelledby="story-content-heading"><h2 id="story-content-heading" className="sr-only">Түүхийн агуулга</h2>
-          {story.body.split(/\n\s*\n/).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          <StoryContent body={story.body} familyId={familyId} />
+          <HeritageLinks familyId={familyId} kind="story" id={story.id} />
         </section>
 
         <section className="card story-related" aria-labelledby="story-related-heading">

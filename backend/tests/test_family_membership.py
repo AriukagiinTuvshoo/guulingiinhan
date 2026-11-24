@@ -93,4 +93,5 @@ def test_invitation_acceptance_preserves_role_and_prevents_cross_family_access(c
     duplicate_accept = client.post(
         "/api/v1/invitations/accept", json={"token": raw_token}
     )
-    assert duplicate_accept.status_code == 404
+    assert duplicate_accept.status_code == 200
+    assert duplicate_accept.json() == accepted.json()
