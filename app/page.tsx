@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { ArrowRight, Archive, BookOpen, Camera, GitFork, ShieldCheck } from 'lucide-react';
+import { Archive, ArrowRight, BookOpen, Camera, GitFork, ShieldCheck } from 'lucide-react';
+import { MongolianOrnamentBand } from '../components/mongolian-ornament-band';
+import { ThemePicker } from '../components/theme-picker';
 
 const features = [
   {
@@ -25,21 +27,15 @@ const features = [
 export default function HomePage() {
   return (
     <main className="luxury-landing">
-      {/* Top Floating Pill Navigation (Mockups 5 & 6) */}
+      {/* Top Header — Clean Brand + Sign In (No logged-out app nav clutter) */}
       <header className="luxury-landing__header">
         <Link href="/" className="luxury-landing__brand" aria-label="ГУУЛИНГИЙНХАН нүүр">
           <span className="luxury-landing__wordmark">GUULIN</span>
           <span className="luxury-landing__dot" aria-hidden="true" />
         </Link>
 
-        <nav className="luxury-landing__pill-nav" aria-label="Үндсэн хэсгүүд">
-          <Link href="/tree" className="is-active">Ургийн мод</Link>
-          <Link href="/memories">Дурсамж</Link>
-          <Link href="/stories">Түүх</Link>
-          <Link href="/archives">Архив</Link>
-        </nav>
-
         <div className="luxury-landing__auth-actions">
+          <ThemePicker variant="compact" showLabel={false} />
           <Link href="/login" className="luxury-landing__signin-pill">
             Нэвтрэх
           </Link>
@@ -67,8 +63,8 @@ export default function HomePage() {
                 <ArrowRight size={16} />
               </span>
             </Link>
-            <Link href="/dashboard" className="luxury-landing__secondary-cta">
-              Миний орчин руу орох
+            <Link href="/tree" className="luxury-landing__secondary-cta">
+              Удмын мод руу орох
             </Link>
           </div>
 
@@ -88,70 +84,129 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Right Arched Obsidian & Burnished-Gold Medallion (Mockups 5 & 6) */}
+        {/* Right Natural Cedar & Burnished-Gold Arched Medallion */}
         <div className="luxury-landing__hero-visual">
           <div className="luxury-landing__arch-frame">
             <span className="luxury-landing__coords" aria-hidden="true">
-              47.9184° N · 106.9177° E
+              47.9184° N · 106.9177° E · ХАНГАЙН НУРУУ
             </span>
 
             <svg
               className="luxury-landing__tree-medallion"
-              viewBox="0 0 360 360"
+              viewBox="0 0 360 380"
               role="img"
-              aria-label="Алтан Удмын Модны бэлгэдэл"
+              aria-label="Байгалийн Хуш Удмын Модны бэлгэдэл"
             >
               <defs>
                 <linearGradient id="medallion-gold" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="var(--gold-300)" />
-                  <stop offset="48%" stopColor="var(--gold-500)" />
-                  <stop offset="100%" stopColor="var(--gold-700)" />
+                  <stop offset="0%" stopColor="#f6e4b4" />
+                  <stop offset="48%" stopColor="#d4ad4d" />
+                  <stop offset="100%" stopColor="#9c7322" />
+                </linearGradient>
+                <radialGradient id="canopy-glow" cx="50%" cy="42%" r="48%">
+                  <stop offset="0%" stopColor="#3c8a5e" stopOpacity="0.46" />
+                  <stop offset="65%" stopColor="#1e5438" stopOpacity="0.24" />
+                  <stop offset="100%" stopColor="#122a1e" stopOpacity="0" />
+                </radialGradient>
+                <linearGradient id="steppe-hill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#2f6b45" stopOpacity="0.52" />
+                  <stop offset="100%" stopColor="#142b1e" stopOpacity="0.08" />
                 </linearGradient>
               </defs>
+
+              {/* Soft natural pine-canopy halo */}
+              <circle cx="180" cy="176" r="144" fill="url(#canopy-glow)" />
+
+              {/* Outer & inner fine brass rings */}
               <circle
                 cx="180"
-                cy="180"
-                r="142"
+                cy="184"
+                r="146"
                 fill="none"
                 stroke="url(#medallion-gold)"
-                strokeWidth="4.5"
+                strokeWidth="3.2"
               />
               <circle
                 cx="180"
-                cy="180"
-                r="130"
+                cy="184"
+                r="136"
                 fill="none"
-                stroke="var(--gold-border)"
+                stroke="rgba(235, 213, 154, 0.36)"
                 strokeWidth="1"
+                strokeDasharray="3 5"
               />
-              {/* Stylized Golden Tree of Life inside Medallion */}
+
+              {/* Rolling Mongolian steppe horizon inside medallion */}
               <path
-                d="M180 306 C178 260 176 226 174 190 C150 170 116 160 88 156 C122 152 152 158 174 174 C170 144 156 114 134 90 C160 108 174 132 180 160 C186 132 200 108 226 90 C204 114 190 144 186 174 C208 158 238 152 272 156 C244 160 210 170 186 190 C184 226 184 260 190 306 Z"
+                d="M52 276 Q118 250 180 264 T308 274 A142 142 0 0 1 52 276 Z"
+                fill="url(#steppe-hill)"
+              />
+
+              {/* Organic cedar roots anchored into the earth */}
+              <path
+                d="M174 282 C152 288 128 298 106 310 M186 282 C208 288 232 298 254 310 M180 286 C174 302 162 314 148 322 M180 286 C188 302 198 314 212 322"
+                fill="none"
+                stroke="url(#medallion-gold)"
+                strokeWidth="2.8"
+                strokeLinecap="round"
+                opacity="0.88"
+              />
+
+              {/* Living Cedar Trunk & Organic Spreading Branches */}
+              <path
+                d="M176 286 C175 244 174 214 173 184 C146 168 112 162 84 164 C116 154 148 158 173 170 C168 140 152 114 128 94 C156 108 172 132 178 156 C180 124 180 96 180 74 C180 96 180 124 182 156 C188 132 204 108 232 94 C208 114 192 140 187 170 C212 158 244 154 276 164 C248 162 214 168 187 184 C186 214 186 244 188 286 Z"
                 fill="url(#medallion-gold)"
               />
+
+              {/* Secondary natural boughs */}
               <path
-                d="M174 276 C148 282 126 292 108 302 M186 276 C212 282 234 292 252 302"
+                d="M175 212 C148 202 124 202 104 210 M185 212 C212 202 236 202 256 210 M176 146 C158 134 142 128 122 126 M184 146 C202 134 218 128 238 126"
                 fill="none"
-                stroke="url(#medallion-gold)"
-                strokeWidth="3.5"
+                stroke="#f6e4b4"
+                strokeWidth="2"
                 strokeLinecap="round"
+                opacity="0.82"
               />
-              <circle cx="180" cy="76" r="6" fill="var(--gold-200)" />
-              <circle cx="122" cy="112" r="5" fill="var(--gold-300)" />
-              <circle cx="238" cy="112" r="5" fill="var(--gold-300)" />
-              <circle cx="96" cy="158" r="4.5" fill="var(--gold-400)" />
-              <circle cx="264" cy="158" r="4.5" fill="var(--gold-400)" />
-              <circle cx="146" cy="140" r="4" fill="var(--gold-200)" />
-              <circle cx="214" cy="140" r="4" fill="var(--gold-200)" />
+
+              {/* Generation fruit / starlight buds */}
+              <circle cx="180" cy="68" r="6" fill="#fff5d6" />
+              <circle cx="124" cy="96" r="5" fill="#ebd59a" />
+              <circle cx="236" cy="96" r="5" fill="#ebd59a" />
+              <circle cx="90" cy="162" r="4.5" fill="#d4ad4d" />
+              <circle cx="270" cy="162" r="4.5" fill="#d4ad4d" />
+              <circle cx="106" cy="208" r="4" fill="#ebd59a" />
+              <circle cx="254" cy="208" r="4" fill="#ebd59a" />
+              <circle cx="146" cy="134" r="4" fill="#fff5d6" />
+              <circle cx="214" cy="134" r="4" fill="#fff5d6" />
+
+              {/* Subtle Ulzii diamond knot at the trunk heart */}
+              <g transform="translate(180 232) scale(0.75)">
+                <rect
+                  x="-11"
+                  y="-11"
+                  width="22"
+                  height="22"
+                  transform="rotate(45)"
+                  fill="#173525"
+                  stroke="#ebd59a"
+                  strokeWidth="2"
+                />
+                <circle r="2.6" fill="#ebd59a" />
+              </g>
             </svg>
 
             <div className="luxury-landing__floating-badge">
               <span className="luxury-landing__badge-dot" aria-hidden="true" />
-              <span>Монгол Ургийн Бичиг · Баталгаажсан удам</span>
+              <span>Монгол Ургийн Бичиг · Амьд удам судар</span>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Authentic Mongolian Алхан хээ Brass Divider */}
+      <div className="luxury-landing__ornament-wrap">
+        <MongolianOrnamentBand />
+      </div>
 
       {/* Bottom Editorial Ticker Strip (Mockups 5 & 6) */}
       <div className="luxury-landing__ticker" aria-hidden="true">

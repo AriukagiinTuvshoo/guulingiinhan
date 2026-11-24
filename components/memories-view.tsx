@@ -12,6 +12,7 @@ import { memoryDraftError } from '../lib/memory-draft';
 import { useAppShellContext } from './app-shell';
 import MemoryPhotoInput from './memory-photo-input';
 import HeritageLinkPicker from './heritage-link-picker';
+import { MongolianOrnamentBand } from './mongolian-ornament-band';
 import { editHeritageText, heritageEditorText, stripHeritageLinks } from '../lib/heritage-links';
 
 function friendlyError(cause: unknown, fallback: string) {
@@ -88,6 +89,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
   const router = useRouter();
   const { families, currentFamily: family, familyId, contextError, contextLoading } = useAppShellContext();
   const [memories, setMemories] = useState<MemoryListPage | null>(null);
+  const [memoryViewTab, setMemoryViewTab] = useState<'album' | 'timeline' | 'untagged'>('album');
   const [personQuery, setPersonQuery] = useState('');
   const [personResults, setPersonResults] = useState<PersonSearchPage | null>(null);
   const [personPage, setPersonPage] = useState(1);
@@ -492,11 +494,55 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                 <p className="memories-eyebrow">ОДООГИЙН ОРЧИН · {family?.name ?? 'Гэр бүл'}</p>
                 <h2>Хадгалсан мөчүүд</h2>
               </div>
-              <span>{memories?.total ?? 0} дурсамж</span>
+              <div className="hush-seg" role="group" aria-label="Дурсамж харах горим">
+                <button type="button" className={memoryViewTab === 'album' ? 'is-on' : ''} onClick={() => setMemoryViewTab('album')}>
+                  Цомог ({memories?.items.length ?? 0})
+                </button>
+                <button type="button" className={memoryViewTab === 'timeline' ? 'is-on' : ''} onClick={() => setMemoryViewTab('timeline')}>
+                  Цаг хугацаа
+                </button>
+                <button type="button" className={memoryViewTab === 'untagged' ? 'is-on' : ''} onClick={() => setMemoryViewTab('untagged')}>
+                  Танигдаагүй ({memories?.items.filter((m) => (m.person_ids?.length ?? 0) === 0).length ?? 0})
+                </button>
+              </div>
             </div>
+            <MongolianOrnamentBand />
 
+            {memoryViewTab === 'untagged' && (
+              <div className="hush-path" style={{ marginBottom: 14 }}>
+                <strong>Ахмадуудын тусламжтай таних:</strong> Хүн тэмдэглэгдээгүй хуучин зургуудыг нээж, хэн болохыг нь холбоорой.
+              </div>
+            )}
+
+            {memoryViewTab === 'timeline' ? (
+              <section className="memories-decade-list" aria-label="Арван жилээр ангилсан дурсамжууд">
+                {Object.entries(
+                  (memories?.items ?? []).reduce<Record<string, MemoryListItem[]>>((acc, item) => {
+                    const y = item.memory_date ? Number(item.memory_date.slice(0, 4)) : NaN;
+                    const key = !Number.isNaN(y) ? `${Math.floor(y / 10) * 10}-аад он` : 'Он тодорхойгүй';
+                    acc[key] = acc[key] ? [...acc[key], item] : [item];
+                    return acc;
+                  }, {}),
+                ).map(([decade, items]) => (
+                  <div key={decade} className="memories-decade-row">
+                    <span className="memories-decade-badge">{decade}</span>
+                    <div className="memories-decade-cards">
+                      {items.map((m) => (
+                        <Link key={m.id} href={`/memories/${m.id}?family=${encodeURIComponent(familyId)}`} className="memories-decade-card">
+                          <strong>{m.title}</strong>
+                          <small>{formatMemoryDate(m.memory_date)} · {m.person_ids?.length ?? 0} хүн</small>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ) : (
             <section className="memory-grid" aria-busy={loading} aria-label="Гэр бүлийн дурсамжууд">
-              {memories?.items.map((memory) => (
+              {(memoryViewTab === 'untagged'
+                ? memories?.items.filter((m) => (m.person_ids?.length ?? 0) === 0)
+                : memories?.items
+              )?.map((memory) => (
                 <article className="memory-card" key={memory.id}>
                   {memory.photos?.length ? (
                     <div className={`memory-card-gallery memory-card-gallery--${Math.min(memory.photos.length, 3)}`} aria-label={`${memory.photos.length} зураг`}>
@@ -545,6 +591,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
                 </article>
               ))}
             </section>
+            )}
 
             {memories && memories.total > PAGE_SIZE && (
               <nav className="memory-pagination" aria-label="Дурсамжийн хуудаслалт">

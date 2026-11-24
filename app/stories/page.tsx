@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, StoryListPage } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import { MongolianOrnamentBand } from '../../components/mongolian-ornament-band';
 
 function friendlyError(cause: unknown, fallback: string) {
   if (cause instanceof ApiError) {
@@ -114,6 +115,7 @@ function StoriesPageContent() {
             )}
           </div>
         </header>
+        <MongolianOrnamentBand />
 
         {contextError && <div className="error stories-error" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (

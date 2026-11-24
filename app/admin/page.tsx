@@ -19,6 +19,7 @@ import { ArchivedFamilies } from '../../components/admin-family-archive';
 import AdminFamilyStudio from '../../components/admin-family-studio';
 import AdminOverview from '../../components/admin-overview';
 import AdminShell, { type AdminSection } from '../../components/admin-shell';
+import AdminV3Workspace from '../../components/admin/admin-v3-workspace';
 import { useDialogFocus } from '../../components/use-dialog-focus';
 import { ApiError, api, Family } from '../../lib/api';
 import './admin.css';
@@ -1263,7 +1264,7 @@ export default function AdminPage() {
   }, []);
 
   if (mode === 'family') {
-    return <FamilyAdminConsole />;
+    return <AdminV3Workspace />;
   }
 
   return <GlobalAdminWorkspace onFallbackToFamily={() => setMode('family')} />;

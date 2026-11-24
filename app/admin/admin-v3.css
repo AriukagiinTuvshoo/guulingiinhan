@@ -1,0 +1,503 @@
+/* ==========================================================================
+   GUULINGIINHAN — Admin v3 (0-to-1 Next-Gen Mongolian Heritage Command Center)
+   100% 5-Theme Aware (mn / blue / ger / dark / paper) via mongol-heritage-theme.css
+   ========================================================================== */
+
+.adv3-shell {
+  display: grid;
+  grid-template-columns: 244px 1fr;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-noto-serif), "Noto Serif", Georgia, serif;
+}
+
+.adv3-sidebar {
+  background: var(--sb);
+  color: var(--sbt);
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1.5px solid color-mix(in srgb, var(--gold) 35%, transparent);
+}
+
+.adv3-logo {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--goldl);
+  font-size: 19px;
+  padding: 0 10px 2px;
+}
+
+.adv3-sublogo {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--sbt) 72%, transparent);
+  padding: 0 10px 18px;
+}
+
+.adv3-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--sbt);
+  font: inherit;
+  font-size: 14.5px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.adv3-nav-btn__left {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.adv3-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.adv3-nav-btn.is-active {
+  background: var(--pr);
+  color: var(--pt);
+  font-weight: 700;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--pr) 30%, transparent);
+}
+
+.adv3-nav-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--goldl);
+  color: var(--hd);
+  font-weight: 700;
+}
+
+.adv3-nav-btn.is-active .adv3-nav-badge {
+  background: color-mix(in srgb, var(--pt) 20%, transparent);
+  color: var(--pt);
+}
+
+.adv3-sidebar-footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.adv3-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.adv3-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 26px;
+  background: var(--card);
+  border-bottom: 1.5px solid var(--goldl);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.adv3-family-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--bg2);
+  border: 1px solid var(--goldl);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--hd);
+}
+
+.adv3-family-select {
+  min-height: 36px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: var(--bg);
+  color: var(--hd);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  width: auto;
+}
+
+.adv3-topbar-right {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.adv3-content {
+  padding: 24px 28px 56px;
+  max-width: 1160px;
+  width: 100%;
+}
+
+.adv3-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adv3-head h1 {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 32px;
+  color: var(--hd);
+  margin: 0;
+}
+
+.adv3-sub {
+  font-size: 14px;
+  color: var(--gt);
+  margin: 4px 0 0;
+}
+
+.adv3-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.adv3-kpi {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+
+.adv3-kpi b {
+  display: block;
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-size: 34px;
+  line-height: 1.05;
+  color: var(--pr);
+}
+
+.adv3-kpi span {
+  font-size: 11.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gt);
+  font-weight: 700;
+}
+
+.adv3-two-col {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.adv3-card {
+  background: var(--card);
+  border: 1.5px solid var(--goldl);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--hd) 7%, transparent);
+}
+
+.adv3-card h2,
+.adv3-card h3 {
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  color: var(--hd);
+  margin: 0 0 10px;
+}
+
+.adv3-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.adv3-search {
+  max-width: 300px;
+  min-width: 200px;
+  min-height: 38px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--gold);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.adv3-table-wrap {
+  overflow-x: auto;
+}
+
+.adv3-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.adv3-table th {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--gt);
+  padding: 8px 6px;
+  border-bottom: 2px solid var(--goldl);
+  white-space: nowrap;
+}
+
+.adv3-table td {
+  padding: 10px 6px;
+  border-bottom: 1px solid var(--goldl);
+  vertical-align: middle;
+}
+
+.adv3-table tr.is-orphan {
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+}
+
+.adv3-person-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.adv3-av {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--pr);
+  color: var(--pt);
+  font-family: var(--font-philosopher), "Philosopher", Georgia, serif;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--gold);
+  flex: none;
+  overflow: hidden;
+}
+
+.adv3-av.is-female {
+  background: var(--goldl);
+  color: var(--hd);
+}
+
+.adv3-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.adv3-bar {
+  display: inline-block;
+  width: 78px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg2);
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.adv3-bar i {
+  display: block;
+  height: 100%;
+  background: var(--pr);
+}
+
+.adv3-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: var(--bg2);
+  color: var(--hd);
+  border: 1px solid var(--goldl);
+  white-space: nowrap;
+}
+
+.adv3-tag.is-ok {
+  background: color-mix(in srgb, var(--pr) 15%, var(--card));
+  color: var(--pr);
+  border-color: var(--pr);
+}
+
+.adv3-tag.is-warn {
+  background: color-mix(in srgb, var(--gold) 20%, var(--card));
+  color: var(--gt);
+  border-color: var(--gold);
+}
+
+.adv3-tag.is-danger {
+  background: color-mix(in srgb, var(--red) 14%, var(--card));
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.adv3-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.adv3-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1.5px solid var(--gold);
+  background: transparent;
+  color: var(--hd);
+}
+
+.adv3-btn:hover {
+  border-color: var(--pr);
+}
+
+.adv3-btn.is-primary {
+  background: var(--pr);
+  color: var(--pt);
+  border-color: var(--pr);
+}
+
+.adv3-btn.is-danger {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.adv3-diff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg2);
+  border-left: 4px solid var(--gold);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 14px;
+  font-size: 13.5px;
+}
+
+.adv3-editor-drawer {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--bg);
+  border: 1.5px solid var(--gold);
+}
+
+.adv3-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.adv3-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--gt);
+}
+
+.adv3-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--goldl);
+}
+
+.adv3-list-item:last-child {
+  border-bottom: 0;
+}
+
+.adv3-toast {
+  position: fixed;
+  right: 26px;
+  bottom: 24px;
+  z-index: 60;
+  background: var(--hd);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 13.5px;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+
+.adv3-toast button {
+  border: 0;
+  background: transparent;
+  color: var(--goldl);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+@media (max-width: 960px) {
+  .adv3-shell {
+    grid-template-columns: 1fr;
+  }
+  .adv3-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 10px;
+  }
+  .adv3-logo,
+  .adv3-sublogo,
+  .adv3-sidebar-footer {
+    display: none;
+  }
+  .adv3-two-col {
+    grid-template-columns: 1fr;
+  }
+  .adv3-content {
+    padding: 16px;
+  }
+}

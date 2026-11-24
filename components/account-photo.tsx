@@ -6,8 +6,16 @@ import { API_BASE, api } from '../lib/api';
 import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../lib/image-upload';
 import './account-photo.css';
 
-export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, onChanged }: {
-  endpoint?: string; hasPhoto: boolean; onChanged: () => void;
+export default function AccountPhoto({
+  endpoint = '/auth/me/photo',
+  linkedPersonId = null,
+  hasPhoto,
+  onChanged,
+}: {
+  endpoint?: string;
+  linkedPersonId?: string | null;
+  hasPhoto: boolean;
+  onChanged: () => void;
 }) {
   const [url, setUrl] = useState('');
   const [revision, setRevision] = useState(0);
@@ -56,9 +64,22 @@ export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, on
       const prepared = await prepareImageUpload(file);
       const result = await api<{ cleanup_pending: boolean }>(endpoint, { method: 'POST', body: prepared,
         headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) } });
+      if (linkedPersonId && endpoint === '/auth/me/photo') {
+        const personEndpoint = `/persons/${encodeURIComponent(linkedPersonId)}/photo`;
+        try {
+          await api(personEndpoint, {
+            method: 'POST',
+            body: prepared,
+            headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) },
+          });
+          announcePhotoChange({ endpoint: personEndpoint, hasPhoto: true, url: `${personEndpoint}?v=${Date.now()}` });
+        } catch {
+          // Account photo succeeded; person photo sync is best-effort if permissions differ
+        }
+      }
       form.reset(); setSelected(null); setConfirmedPhoto(true); setRevision((value) => value + 1); onChanged();
-      announcePhotoChange({ endpoint, hasPhoto: true, url: endpoint });
-      setNotice(result.cleanup_pending ? 'Зураг хадгалагдлаа. Өмнөх зургийн цэвэрлэгээ хүлээгдэж байна.' : 'Зураг хадгалагдлаа.');
+      announcePhotoChange({ endpoint, hasPhoto: true, url: `${endpoint}?v=${Date.now()}` });
+      setNotice(result.cleanup_pending ? 'Зураг хадгалагдлаа.' : 'Зураг хадгалагдлаа.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Зургийг хадгалж чадсангүй. Дахин оролдоно уу.'); }
     finally { setBusy(false); }
   }
@@ -82,7 +103,7 @@ export default function AccountPhoto({ endpoint = '/auth/me/photo', hasPhoto, on
       <input ref={input} className="account-photo-editor__file" id={fieldId} name="photo" type="file" accept={IMAGE_ACCEPT} required disabled={busy} onChange={event => { setSelected(event.target.files?.[0] ?? null); setError(''); setNotice(''); }} />
       <button type="button" className="account-photo-editor__pick" disabled={busy} onClick={() => input.current?.click()}><ImagePlus size={18} aria-hidden="true" />{selected ? 'Өөр зураг сонгох' : 'Зураг сонгох'}</button>
       {selected && <p className="account-photo-editor__filename" role="status">{selected.name} · {(selected.size / 1024 / 1024).toFixed(1)} МБ</p>}
-      <p className="settings-help">Өөрийн удмын профайл зурагтай бол дээд аватарт тэр зураг харагдана. Энэ аккаунтын зураг нь профайл зураггүй үед харагдана. JPG, PNG, WebP · 10 МБ хүртэл. HEIC хөрвүүлэлт browser-ийн дэмжлэгээс хамаарна.</p>
+      <p className="settings-help">JPG, PNG, WebP · 10 МБ хүртэл</p>
       <button className="settings-button settings-button--dark" disabled={busy || !selected}>{busy ? 'Хадгалж байна…' : 'Зураг хадгалах'}</button>
     </form>
     {confirmedPhoto && <button className="settings-button settings-button--text" type="button" disabled={busy} onClick={() => void remove()}><Trash2 size={15} aria-hidden="true" />Аккаунтын зураг хасах</button>}

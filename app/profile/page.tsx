@@ -18,6 +18,7 @@ import {
 } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
 import ProfilePhoto from '../../components/profile-photo';
+import MongolianZodiacCard from '../../components/mongolian-zodiac-card';
 import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
 
 type EventItem = {
@@ -551,6 +552,15 @@ function ProfilePageContent() {
               <div><dt>Нууцлал</dt><dd>{person.visibility === 'private' ? 'Хувийн' : person.visibility === 'public' ? 'Нийтийн' : 'Гэр бүлийн'}</dd></div>
             </dl>
           </section>
+
+          <MongolianZodiacCard
+            firstName={person.first_name}
+            lastName={person.last_name}
+            birthDate={person.birth_date}
+            gender={person.gender}
+            isAlive={person.is_alive}
+            childrenCount={person.children.length}
+          />
 
           <section className="card profile-card">
             <div className="profile-card-heading">

@@ -6,6 +6,7 @@ import { ApiError, api, MemoryListItem, MemoryPhotoPage, PersonSearchPage, Story
 import { useAppShellContext } from './app-shell';
 import ProfilePhoto from './profile-photo';
 import HeritageLinkPicker from './heritage-link-picker';
+import OralHistoryRecorder from './oral-history-recorder';
 import { editHeritageText, heritageEditorText } from '../lib/heritage-links';
 import { useParams } from 'next/navigation';
 
@@ -562,6 +563,11 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
               </div>
             )}
           </fieldset>
+
+          <OralHistoryRecorder
+            onInsertPrompt={(q) => insertText(`${body.trim() ? '\n\n' : ''}**${q}**\n`, '', '')}
+            onAttachMediaNote={(line) => insertText(`${body.trim() ? '\n\n' : ''}${line}\n`, '', '')}
+          />
 
           <div className="story-editor-actions">
             <button type="button" onClick={cancel} disabled={saving}>Болих</button>

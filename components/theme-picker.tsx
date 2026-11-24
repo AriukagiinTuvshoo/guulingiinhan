@@ -1,144 +1,158 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Check, Moon, Sun } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
-export type AppTheme = 'light' | 'dark';
+export type AppTheme = 'mn' | 'blue' | 'ger' | 'dark' | 'paper';
 
 export interface ThemeOption {
   id: AppTheme;
   name: string;
   subtitle: string;
-  swatchClass: string;
+  sb: string;
+  bg: string;
+  primary: string;
+  accent: string;
 }
 
 export const THEME_OPTIONS: ThemeOption[] = [
   {
-    id: 'light',
-    name: 'Цайвар',
-    subtitle: 'Илгэн цагаан ба ойн ногоон',
-    swatchClass: 'theme-swatch--light',
+    id: 'mn',
+    name: 'Монгол хээ',
+    subtitle: 'Дулаан муутуу · хуш мод · ногоон ой',
+    sb: '#4A2C19',
+    bg: '#F7F0E3',
+    primary: '#2F6B45',
+    accent: '#B88A2E',
+  },
+  {
+    id: 'blue',
+    name: 'Хөх тэнгэр',
+    subtitle: 'Мөнх хөх тэнгэр · цэвэр цайвар',
+    sb: '#0F2B5B',
+    bg: '#F1F5FA',
+    primary: '#1B4FA0',
+    accent: '#B08A3C',
+  },
+  {
+    id: 'ger',
+    name: 'Гэрийн хээ',
+    subtitle: 'Гэрийн унь · дулаан улбар · ногоон',
+    sb: '#1F5B3F',
+    bg: '#FBF1DC',
+    primary: '#C4501B',
+    accent: '#D9962B',
   },
   {
     id: 'dark',
-    name: 'Бараан',
-    subtitle: 'Шөнийн ой ба эртний алт',
-    swatchClass: 'theme-swatch--dark',
+    name: 'Өлзий алтан',
+    subtitle: 'Шөнийн хар-алтан тансаг горим',
+    sb: '#0C0907',
+    bg: '#1E1813',
+    primary: '#E1B345',
+    accent: '#C99A2E',
+  },
+  {
+    id: 'paper',
+    name: 'Ургийн бичиг',
+    subtitle: 'Эртний муутуу цаас · улаан тамга',
+    sb: '#2A1B10',
+    bg: '#EFE2C4',
+    primary: '#9E2A22',
+    accent: '#8A6A33',
   },
 ];
 
-export function normalizeStoredTheme(raw: string | null): AppTheme {
-  if (raw === 'dark' || raw === 'obsidian' || raw === 'deep-purple' || raw === 'emerald') {
-    return 'dark';
-  }
-  return 'light';
+const LEGACY_MAP: Record<string, AppTheme> = {
+  light: 'mn',
+  mutuu: 'mn',
+  parchment: 'paper',
+  kheer: 'blue',
+  taiga: 'ger',
+  khush: 'dark',
+  obsidian: 'dark',
+  'deep-purple': 'dark',
+  emerald: 'ger',
+};
+
+const THEME_SYNC_EVENT = 'guulin-theme-change';
+
+function normalizeTheme(raw: string | null): AppTheme {
+  if (!raw) return 'mn';
+  if (raw in LEGACY_MAP) return LEGACY_MAP[raw];
+  if (THEME_OPTIONS.some((opt) => opt.id === raw)) return raw as AppTheme;
+  return 'mn';
 }
 
-export function ThemePicker() {
-  const [currentTheme, setCurrentTheme] = useState<AppTheme>('light');
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+function applyThemeToDocument(themeId: AppTheme) {
+  document.documentElement.dataset.th = themeId;
+  document.documentElement.setAttribute('data-theme', themeId === 'dark' ? 'dark' : 'light');
+}
+
+export function ThemePicker({
+  variant = 'topbar',
+  showLabel = true,
+}: {
+  variant?: 'topbar' | 'compact';
+  showLabel?: boolean;
+}) {
+  const [currentTheme, setCurrentTheme] = useState<AppTheme>('mn');
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('guulin-theme');
-      const resolved = normalizeStoredTheme(raw);
+      const saved = localStorage.getItem('gth') ?? localStorage.getItem('guulin-theme');
+      const resolved = normalizeTheme(saved);
       setCurrentTheme(resolved);
-      document.documentElement.setAttribute('data-theme', resolved);
-      if (raw && raw !== resolved) {
-        localStorage.setItem('guulin-theme', resolved);
-      }
+      applyThemeToDocument(resolved);
     } catch {
-      document.documentElement.setAttribute('data-theme', 'light');
+      applyThemeToDocument('mn');
     }
+
+    const onSync = (event: Event) => {
+      const detail = (event as CustomEvent<AppTheme>).detail;
+      if (detail) setCurrentTheme(detail);
+    };
+    window.addEventListener(THEME_SYNC_EVENT, onSync);
+    return () => window.removeEventListener(THEME_SYNC_EVENT, onSync);
   }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsOpen(false);
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen]);
 
   function changeTheme(themeId: AppTheme) {
     setCurrentTheme(themeId);
-    setIsOpen(false);
-    document.documentElement.setAttribute('data-theme', themeId);
+    applyThemeToDocument(themeId);
     try {
-      localStorage.setItem('guulin-theme', themeId);
+      localStorage.setItem('gth', themeId);
+      localStorage.setItem('guulin-theme', themeId === 'dark' ? 'dark' : 'light');
     } catch {
-      // Ignore localStorage errors
+      // ignore storage errors
     }
+    window.dispatchEvent(new CustomEvent<AppTheme>(THEME_SYNC_EVENT, { detail: themeId }));
   }
 
-  const activeOption = THEME_OPTIONS.find((opt) => opt.id === currentTheme) ?? THEME_OPTIONS[0];
-
   return (
-    <div className="app-shell__theme-picker" ref={containerRef}>
-      <button
-        type="button"
-        className="app-shell__theme-button"
-        aria-haspopup="dialog"
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen((prev) => !prev)}
-        title="Дэвсгэр өнгөний сэдэв солих"
-        aria-label="Өнгөний сэдэв сонгох"
-      >
-        {currentTheme === 'dark' ? (
-          <Moon size={15} aria-hidden="true" />
-        ) : (
-          <Sun size={15} aria-hidden="true" />
-        )}
-        <span
-          className={`app-shell__theme-swatch ${activeOption.swatchClass}`}
-          aria-hidden="true"
-        />
-        <span className="app-shell__theme-label">{activeOption.name}</span>
-      </button>
-
-      {isOpen && (
-        <div className="app-shell__theme-menu" role="dialog" aria-label="Өнгөний сонголт">
-          <div className="app-shell__theme-menu-head">
-            <strong>Дэвсгэр өнгөний сэдэв</strong>
-            <small>Цайвар эсвэл бараан горим сонгоно уу</small>
-          </div>
-
-          <div className="app-shell__theme-grid">
-            {THEME_OPTIONS.map((opt) => {
-              const isSelected = opt.id === currentTheme;
-              return (
-                <button
-                  type="button"
-                  key={opt.id}
-                  className={`app-shell__theme-option ${isSelected ? 'is-selected' : ''}`}
-                  onClick={() => changeTheme(opt.id)}
-                >
-                  <span className={`app-shell__theme-preview ${opt.swatchClass}`}>
-                    {isSelected && <Check size={14} />}
-                  </span>
-                  <div className="app-shell__theme-info">
-                    <strong>{opt.name}</strong>
-                    <small>{opt.subtitle}</small>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+    <div
+      className={`theme-dots ${variant === 'compact' ? 'theme-dots--compact' : ''}`}
+      role="group"
+      aria-label="Өнгөний сэдэв сонгох"
+    >
+      {showLabel && variant !== 'compact' && (
+        <span className="theme-dots__label">Өнгө</span>
       )}
+      {THEME_OPTIONS.map((opt) => {
+        const isActive = opt.id === currentTheme;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            className={`theme-dot ${isActive ? 'is-active' : ''}`}
+            aria-label={`${opt.name} — ${opt.subtitle}`}
+            aria-pressed={isActive}
+            title={`${opt.name} (${opt.subtitle})`}
+            style={{
+              background: `linear-gradient(135deg, ${opt.primary} 50%, ${opt.bg} 50%)`,
+            }}
+            onClick={() => changeTheme(opt.id)}
+          />
+        );
+      })}
     </div>
   );
 }

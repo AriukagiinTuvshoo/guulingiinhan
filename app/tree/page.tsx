@@ -38,6 +38,8 @@ import { FamilyBookModal } from '../../components/family-book-modal';
 import { PedigreeWizardModal, RelativeRole } from '../../components/pedigree-wizard-modal';
 import { KinshipCalculatorModal } from '../../components/kinship-calculator-modal';
 import GoldenHeritageTree from '../../components/golden-heritage-tree';
+import HushTreeView from '../../components/hush-tree-view';
+import ToonoTreeView from '../../components/toono-tree-view';
 import { useFocusTrap } from '../../lib/use-focus-trap';
 import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, Link2, Plus, Printer, Users, Wrench } from 'lucide-react';
 
@@ -140,7 +142,7 @@ function TreePageContent() {
   });
 
   // Bloodline Highlight & Interaction States
-  const [viewMode, setViewMode] = useState<'gold' | '2d'>('gold');
+  const [viewMode, setViewMode] = useState<'gold' | 'hush' | 'toono' | '2d'>('gold');
   const [bloodlineMode, setBloodlineMode] = useState<BloodlineMode>('none');
   const [isDraggingActive, setIsDraggingActive] = useState(false);
 
@@ -1185,24 +1187,36 @@ function TreePageContent() {
             </div>
 
             <div className="tree-controls">
-              {viewMode === '2d' && (
-                <div className="tree-segmented" role="group" aria-label="Мод харах горим">
-                  <button
-                    type="button"
-                    aria-pressed={false}
-                    onClick={() => setViewMode('gold')}
-                  >
-                    Алтан Мод
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={true}
-                    onClick={() => setViewMode('2d')}
-                  >
-                    Сонгодог 2D
-                  </button>
-                </div>
-              )}
+              <div className="tree-segmented" role="group" aria-label="Мод харах горим">
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'gold'}
+                  onClick={() => setViewMode('gold')}
+                >
+                  Алтан Мод
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'hush'}
+                  onClick={() => setViewMode('hush')}
+                >
+                  Хуш мод
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={viewMode === 'toono'}
+                  onClick={() => setViewMode('toono')}
+                >
+                  Тооно Нархан
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={viewMode === '2d'}
+                  onClick={() => setViewMode('2d')}
+                >
+                  2D
+                </button>
+              </div>
 
               <label className="tree-bloodline-select" title="Сонгосон хүний удам угсаа, үр садыг онцлон тодруулах">
                 <span>Удам</span>
@@ -1444,7 +1458,31 @@ function TreePageContent() {
               )}
 
               <div className={`tree-map-layout ${viewMode === 'gold' ? 'tree-map-layout--3d' : ''}${!selectedPerson ? ' tree-map-layout--full' : ''}`}>
-              {viewMode === 'gold' && tree ? (
+              {viewMode === 'hush' && tree ? (
+                <HushTreeView
+                  tree={tree}
+                  selectedId={selectedId}
+                  onSelect={(pid) => selectPerson(pid)}
+                  canEdit={canEditFamily}
+                  onQuickAdd={(anchorId, role) => {
+                    setWizardAnchorId(anchorId);
+                    setWizardRole(role);
+                    setWizardMode('create');
+                    setWizardOpen(true);
+                  }}
+                  timeTravelOpen={timeTravelOpen}
+                  timeYear={timeYear}
+                />
+              ) : viewMode === 'toono' && tree ? (
+                <ToonoTreeView
+                  tree={tree}
+                  familyName={family?.name ?? 'Гуулингийнхан'}
+                  selectedId={selectedId}
+                  onSelect={(pid) => selectPerson(pid)}
+                  timeTravelOpen={timeTravelOpen}
+                  timeYear={timeYear}
+                />
+              ) : viewMode === 'gold' && tree ? (
                 <GoldenHeritageTree
                   layout={layout}
                   selectedId={selectedId}

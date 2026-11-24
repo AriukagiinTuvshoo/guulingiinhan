@@ -6,6 +6,7 @@ import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, ArchiveListPage } from '../../lib/api';
 import { useAppShellContext } from '../../components/app-shell';
+import { MongolianOrnamentBand } from '../../components/mongolian-ornament-band';
 
 const PAGE_SIZE = 12;
 
@@ -163,6 +164,42 @@ function ArchivesPageContent() {
             )}
           </div>
         </header>
+        <MongolianOrnamentBand />
+
+        <section className="archive-kpi-strip" aria-label="Архивын хураангуй">
+          <div className="archive-kpi-card">
+            <strong>{archives?.total ?? 0}</strong>
+            <span>Нийт баримт</span>
+          </div>
+          <div className="archive-kpi-card">
+            <strong>{archives?.items.filter((a) => (a.related_people_count ?? 0) > 0).length ?? 0}</strong>
+            <span>Хүн холбогдсон</span>
+          </div>
+          <div className="archive-kpi-card">
+            <strong>{archives?.items.filter((a) => (a.related_people_count ?? 0) === 0).length ?? 0}</strong>
+            <span>Хүн заагаагүй</span>
+          </div>
+          <div className="archive-kpi-card">
+            <strong>{archives?.items.filter((a) => Boolean(a.document_date)).length ?? 0}</strong>
+            <span>Огноо баталгаажсан</span>
+          </div>
+        </section>
+
+        <section className="archive-provenance-banner" aria-label="Эх сурвалжийн ангилал ба экспорт">
+          <div>
+            <span className="oral-history-tag">ЭХ СУРВАЛЖИЙН СТАНДАРТ</span>
+            <p>
+              <b>Анхдагч</b> — эх хувь, тухайн үеийн гэрчилгээ · <b>Хоёрдогч</b> — хуулбар, тэмдэглэл · <b>Аман</b> — ахмад настны ярилцлага.
+            </p>
+          </div>
+          {familyId && (
+            <div className="archive-export-links">
+              <Link href={`/tree?family=${encodeURIComponent(familyId)}`} className="hush-chip-btn">
+                📕 Ургийн ном (PDF) &amp; Тооно плакат →
+              </Link>
+            </div>
+          )}
+        </section>
 
         {contextError && <div className="archive-alert" role="alert"><span>{contextError}</span><button type="button" onClick={() => window.location.reload()}>Дахин ачаалах</button></div>}
         {error && (

@@ -64,7 +64,6 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
-  { label: 'ТОЙМ', keys: ['dashboard'] },
   { label: 'УДАМ', keys: ['tree', 'people', 'relationships', 'search'] },
   { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
   { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities', 'chat'] },
@@ -566,7 +565,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           {mobileOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
 
-        <Link className="app-shell__brand" href={familyHref('/dashboard', currentFamily?.id ?? null)}>
+        <Link className="app-shell__brand" href={familyHref('/tree', currentFamily?.id ?? null)}>
           <span className="app-shell__brand-mark" aria-hidden="true">
             <TreeDeciduous size={21} />
           </span>

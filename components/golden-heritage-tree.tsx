@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { API_BASE, personName, TreePerson } from '../lib/api';
 import { AdvancedTreeLayout } from '../lib/tree-layout';
+import { UlziiKnot } from './mongolian-ornament-band';
 import '../app/golden-tree.css';
 
 interface GoldenHeritageTreeProps {
@@ -192,9 +193,9 @@ export default function GoldenHeritageTree({
             >
               <defs>
                 <linearGradient id="guulin-gold-stroke" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--gold-300)" />
-                  <stop offset="55%" stopColor="var(--gold-500)" />
-                  <stop offset="100%" stopColor="var(--gold-700)" />
+                  <stop offset="0%" stopColor="#EBD59A" />
+                  <stop offset="45%" stopColor="#E1B345" />
+                  <stop offset="100%" stopColor="#B88A2E" />
                 </linearGradient>
               </defs>
 
@@ -216,12 +217,7 @@ export default function GoldenHeritageTree({
                       y2={u.y}
                       className={`golden-marriage-line${u.status === 'divorced' ? ' is-divorced' : ''}`}
                     />
-                    <circle
-                      cx={u.x}
-                      cy={u.y}
-                      r={3.5}
-                      className="golden-union-knot"
-                    />
+                    <UlziiKnot x={u.x} y={u.y} scale={0.55} />
                   </g>
                 );
               })}
@@ -290,7 +286,7 @@ export default function GoldenHeritageTree({
                 <article
                   key={person.id}
                   id={`tree-person-${person.id}`}
-                  className={`golden-node-card${selected ? ' is-selected' : ''}${isDimmed ? ' is-dimmed' : ''}${timeClass}`}
+                  className={`golden-node-card ${person.gender === 'female' ? 'is-female' : 'is-male'}${selected ? ' is-selected' : ''}${isDimmed ? ' is-dimmed' : ''}${timeClass}`}
                   style={{
                     left: node.x,
                     top: node.y,
