@@ -230,18 +230,42 @@ export function buildAdvancedTreeLayout(
   }
 
   // ---------------------------------------------------------------------------
-  // 1. Confirmed lineage root detection (NEVER fabricate "1-р үе" without it)
+  // 1. Confirmed lineage root detection + upward walk to true top-most ancestor
+  //    If a user later adds parents above lineage_root_person_id (e.g. adding
+  //    Ядамсүрэн & Гүнд above Баавай), walk upward so the founding couple sits
+  //    at Generation 1 and all children/descendants flow cleanly downward!
   // ---------------------------------------------------------------------------
   const hasConfirmedRoot = Boolean(
     tree.lineage_root_person_id && personIds.has(tree.lineage_root_person_id),
   );
   const lineageRootId = hasConfirmedRoot ? tree.lineage_root_person_id! : null;
 
+  function walkUpToTopAncestor(startId: string): string {
+    let current = startId;
+    const seen = new Set<string>([current]);
+    while (true) {
+      const parents = (childToParents.get(current) ?? []).filter((pid) => !seen.has(pid));
+      if (!parents.length) break;
+      // Prefer male (paternal) ancestor as focal node of the couple unit, else oldest
+      parents.sort((a, b) => {
+        const pa = personById.get(a);
+        const pb = personById.get(b);
+        const maleA = pa?.gender === 'male' ? 0 : 1;
+        const maleB = pb?.gender === 'male' ? 0 : 1;
+        if (maleA !== maleB) return maleA - maleB;
+        return comparePeople(pa!, pb!);
+      });
+      current = parents[0];
+      seen.add(current);
+    }
+    return current;
+  }
+
   let layoutRootId: string;
   if (lineageRootId) {
-    layoutRootId = lineageRootId;
+    layoutRootId = walkUpToTopAncestor(lineageRootId);
   } else {
-    // Walk up from root_person_id (or pick top-most ancestor with 0 parents) purely for layout geometry.
+    // Pick top-most ancestor with 0 parents who has the most children/descendants
     const candidatesWithNoParents = [...personIds]
       .filter((id) => (childToParents.get(id)?.length ?? 0) === 0)
       .sort((a, b) => {
@@ -250,10 +274,11 @@ export function buildAdvancedTreeLayout(
         if (descA !== descB) return descB - descA;
         return comparePeople(personById.get(a)!, personById.get(b)!);
       });
-    layoutRootId =
+    const seed =
       candidatesWithNoParents[0] ||
       (tree.root_person_id && personIds.has(tree.root_person_id) ? tree.root_person_id : '') ||
       [...personIds].sort((a, b) => comparePeople(personById.get(a)!, personById.get(b)!))[0];
+    layoutRootId = walkUpToTopAncestor(seed);
   }
 
   // ---------------------------------------------------------------------------

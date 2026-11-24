@@ -1379,27 +1379,35 @@ export default function AdminV3Workspace() {
                   {currentFamily?.role === 'owner' && activePeople.length > 0 && (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--goldl)' }}>
                       <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--hd)', marginBottom: 6 }}>
-                        👑 1-р үеийн Үндсэн Эх Хүн (Өвөг дээдэс)
+                        👑 Удмын модны үеийн дараалал
                       </label>
-                      <p className="adv3-sub" style={{ margin: '0 0 8px', fontSize: 12.5 }}>
-                        Хамгийн дээд 1-р үеийн хүнээ сонгосноор үр хүүхэд нь 2, 3, 4… 9-р үе рүү автоматаар зөв дарааллаар байрлана.
-                      </p>
-                      <select
-                        aria-label="1-р үеийн үндсэн эх хүн сонгох"
-                        value={tree?.lineage_root_person_id || ''}
-                        disabled={saving}
-                        onChange={(e) => {
-                          if (e.target.value) void handleSetRootPerson(e.target.value);
-                        }}
-                        style={{ width: '100%', minHeight: 40, padding: '6px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)', fontWeight: 700 }}
-                      >
-                        <option value="">Үндсэн эх хүн сонгох…</option>
-                        {activePeople.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {personName(p)}{p.birth_date ? ` (${p.birth_date.slice(0, 4)})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      {tree?.lineage_root_person_id ? (
+                        <p className="adv3-sub" style={{ margin: 0, fontSize: 12.5 }}>
+                          Мод нь бүртгэлтэй хамгийн дээд өвөг дээдсээс (эцэг, эхийн хосоос) автоматаар 1-р үе болгон эхэлж, үр хүүхдүүд нь 2, 3, 4… 9-р үе рүү зөв дарааллаар салаална. Дээшээ өвөг дээдэс нэмэхэд мод автоматаар дээшилж шинэчлэгдэнэ.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="adv3-sub" style={{ margin: '0 0 8px', fontSize: 12.5 }}>
+                            Хамгийн дээд өвөг дээдсээ анх удаа баталгаажуулж сонгоно уу.
+                          </p>
+                          <select
+                            aria-label="1-р үеийн үндсэн эх хүн сонгох"
+                            value=""
+                            disabled={saving}
+                            onChange={(e) => {
+                              if (e.target.value) void handleSetRootPerson(e.target.value);
+                            }}
+                            style={{ width: '100%', minHeight: 40, padding: '6px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)', fontWeight: 700 }}
+                          >
+                            <option value="">Үндсэн эх хүн сонгох…</option>
+                            {activePeople.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {personName(p)}{p.birth_date ? ` (${p.birth_date.slice(0, 4)})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
