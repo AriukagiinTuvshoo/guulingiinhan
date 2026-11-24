@@ -35,7 +35,7 @@ function visibilityLabel(value: string) {
 
 function ArchivesPageContent() {
   const router = useRouter();
-  const { families, currentFamily, familyId, contextError } = useAppShellContext();
+  const { families, currentFamily, familyId, contextError, contextLoading, user } = useAppShellContext();
   const [archives, setArchives] = useState<ArchiveListPage | null>(null);
   const [query, setQuery] = useState('');
   const [documentDate, setDocumentDate] = useState('');
@@ -100,9 +100,19 @@ function ArchivesPageContent() {
   }, [familyId]);
 
   useEffect(() => {
-    if (!familyId) return;
+    if (contextLoading) return;
+    if (!user) {
+      setLoading(false);
+      if (typeof window !== 'undefined') window.location.replace('/login');
+      else router.replace('/login');
+      return;
+    }
+    if (!familyId) {
+      setLoading(false);
+      return;
+    }
     void loadArchives(familyId, 1);
-  }, [familyId, loadArchives]);
+  }, [contextLoading, user, familyId, loadArchives, router]);
 
   function chooseFamily(next: string) {
     if (!families.some((item) => item.id === next) || next === familyId) return;

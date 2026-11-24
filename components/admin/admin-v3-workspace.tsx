@@ -160,6 +160,7 @@ export default function AdminV3Workspace() {
   const [globalUsers, setGlobalUsers] = useState<GlobalUserRow[]>([]);
   const [globalFamilies, setGlobalFamilies] = useState<GlobalFamilyRow[]>([]);
   const [onboardingRequests, setOnboardingRequests] = useState<GuidedOnboardingRequest[]>([]);
+  const [onboardingApiAvailable, setOnboardingApiAvailable] = useState(true);
   const [grantUserId, setGrantUserId] = useState('');
   const [grantRole, setGrantRole] = useState<'ADMIN' | 'MODERATOR'>('ADMIN');
   const [pendingConnections, setPendingConnections] = useState<PendingRootConnection[]>([]);
@@ -248,7 +249,15 @@ export default function AdminV3Workspace() {
   const refreshGlobalAdminData = useCallback(async (role: string) => {
     const [conns, onboardReqs, adminsList, usersList, famsList] = await Promise.all([
       api<PendingRootConnection[]>('/admin/shared-lineage/connections?status=pending').catch(() => []),
-      api<GuidedOnboardingRequest[]>('/admin/clan/onboarding/requests?status=pending').catch(() => []),
+      api<GuidedOnboardingRequest[]>('/admin/clan/onboarding/requests?status=pending')
+        .then((rows) => {
+          setOnboardingApiAvailable(true);
+          return rows;
+        })
+        .catch((err) => {
+          if (err instanceof ApiError && err.status === 404) setOnboardingApiAvailable(false);
+          return [] as GuidedOnboardingRequest[];
+        }),
       role === 'SUPER_ADMIN' ? api<GlobalAdminAccount[]>('/admin/admins').catch(() => []) : Promise.resolve([]),
       role === 'SUPER_ADMIN' ? api<GlobalUserRow[]>('/admin/users?limit=50').catch(() => []) : Promise.resolve([]),
       role === 'SUPER_ADMIN' ? api<GlobalFamilyRow[]>('/admin/families?limit=50').catch(() => []) : Promise.resolve([]),
@@ -1111,6 +1120,7 @@ export default function AdminV3Workspace() {
               </div>
               <MongolianOrnamentBand />
 
+              {onboardingApiAvailable && (
               <div className="adv3-card" style={{ marginBottom: 16 }}>
                 <h3>🧭 Шинэ гишүүний удмаа баталгаажуулах хүсэлтүүд ({onboardingRequests.length})</h3>
                 <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
@@ -1179,6 +1189,7 @@ export default function AdminV3Workspace() {
                   ))
                 )}
               </div>
+              )}
 
               <div className="adv3-card" style={{ marginBottom: 16 }}>
                 <h3>Хүлээгдэж буй гэр бүл холбох хүсэлтүүд ({pendingConnections.length})</h3>

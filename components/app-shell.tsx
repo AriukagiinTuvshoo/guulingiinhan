@@ -402,8 +402,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
         });
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
+        setUser(null);
+        setFamilies([]);
+        setFamilyId('');
         setContextLoaded(true);
-        router.replace('/login');
+        if (typeof window !== 'undefined') {
+          window.location.replace('/login');
+        } else {
+          router.replace('/login');
+        }
         return;
       }
       if (requestId !== contextRequestRef.current) return;
@@ -514,22 +521,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (logoutBusy) return;
     setLogoutBusy(true);
     setContextError('');
+    // Immediately clear private family state so no private DOM remains visible during logout
+    contextRequestRef.current += 1;
+    setUser(null);
+    setFamilies([]);
+    setFamilyId('');
+    setMobileOpen(false);
+    setAccountOpen(false);
     try {
       await api<void>('/auth/logout', { method: 'POST' });
-      contextRequestRef.current += 1;
-      setUser(null);
-      setFamilies([]);
-      setFamilyId('');
-      setContextLoaded(false);
-      setContextError('');
-      setMobileOpen(false);
-      setAccountOpen(false);
+    } catch {
+      // Even if network fails after cookie clear, force clean reload to /login
+    }
+    if (typeof window !== 'undefined') {
+      window.location.replace('/login');
+    } else {
       router.replace('/login');
-    } catch (cause) {
-      setLogoutBusy(false);
-      setContextError(
-        cause instanceof Error ? cause.message : 'Гарах үед алдаа гарлаа.',
-      );
     }
   }
 
@@ -783,8 +790,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <div className="app-shell__content" aria-busy={contextLoading || familySwitching}>
-          {!families.length && !contextLoading && contextLoaded && user && !isGlobalAdmin && !pathname.startsWith('/settings') && !pathname.startsWith('/account') ? (
+        <div className="app-shell__content" aria-busy={contextLoading || familySwitching || logoutBusy}>
+          {logoutBusy || (contextLoaded && !user) ? (
+            <div style={{ maxWidth: 420, margin: '64px auto', textAlign: 'center', color: 'var(--muted)' }} role="status">
+              {logoutBusy ? 'Системээс гарч байна…' : 'Нэвтрэх хуудас руу шилжиж байна…'}
+            </div>
+          ) : !families.length && !contextLoading && contextLoaded && user && !isGlobalAdmin && !pathname.startsWith('/settings') && !pathname.startsWith('/account') ? (
             <div style={{ maxWidth: 520, margin: '48px auto', padding: '32px 24px', textAlign: 'center', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 20 }}>
               <ShieldCheck size={36} style={{ color: 'var(--gold)', margin: '0 auto 12px' }} />
               <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, marginBottom: 8 }}>Удмаа баталгаажуулна уу</h2>

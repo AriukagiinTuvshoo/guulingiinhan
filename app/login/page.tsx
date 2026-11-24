@@ -11,7 +11,9 @@ import LivingTreeAuthPortal from '../../components/living-tree-auth-portal';
 function authError(cause: unknown) {
   if (cause instanceof ApiError) {
     if (cause.status === 401) return 'Нэвтрэх мэдээлэл буруу байна.';
-    if (cause.status === 403) return 'Энэ нэвтрэх үйлдлийг одоогоор хийх боломжгүй байна.';
+    if (cause.status === 403) {
+      return cause.message || 'Энэ нэвтрэх үйлдлийг одоогоор хийх боломжгүй байна.';
+    }
     if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
     if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
     if (cause.status === 503 || cause.code === 'DATABASE_UNAVAILABLE') {
@@ -30,6 +32,8 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [resendBusy, setResendBusy] = useState(false);
 
   useEffect(() => {
     api<{ enabled: boolean }>('/auth/google/config').then((result) => setGoogleEnabled(result.enabled)).catch(() => setGoogleEnabled(false));
@@ -56,15 +60,43 @@ export default function LoginPage() {
     event.preventDefault();
     setError('');
     setNotice('');
+    setUnverifiedEmail('');
     setBusy(true);
     const values = new FormData(event.currentTarget);
+    const identifier = String(values.get('identifier') || '').trim();
     try {
-      await api<User>('/auth/login', { method: 'POST', body: JSON.stringify({ identifier: values.get('identifier'), password: values.get('password') }) });
+      await api<User>('/auth/login', { method: 'POST', body: JSON.stringify({ identifier, password: values.get('password') }) });
       await moveToApp();
     } catch (cause) {
       setError(authError(cause));
+      if (
+        cause instanceof ApiError &&
+        cause.status === 403 &&
+        identifier.includes('@') &&
+        /имэйл|баталгаажуул|email|verif/i.test(cause.message || '')
+      ) {
+        setUnverifiedEmail(identifier);
+      }
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function resendVerification() {
+    if (!unverifiedEmail || resendBusy) return;
+    setResendBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await api('/auth/email/verification/resend', {
+        method: 'POST',
+        body: JSON.stringify({ email: unverifiedEmail }),
+      });
+      setNotice(`Баталгаажуулах холбоосыг ${unverifiedEmail} хаяг руу дахин илгээлээ. Имэйл (болон Spam хавтас)-аа шалгана уу.`);
+    } catch (cause) {
+      setError(authError(cause));
+    } finally {
+      setResendBusy(false);
     }
   }
 
@@ -82,7 +114,35 @@ export default function LoginPage() {
       </div>
 
       {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
-      {error && <div id="login-error" className="authv2-message authv2-message--error" role="alert">{error}</div>}
+      {error && (
+        <div id="login-error" className="authv2-message authv2-message--error" role="alert">
+          <div>{error}</div>
+          {unverifiedEmail && (
+            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => void resendVerification()}
+                disabled={resendBusy}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  border: '1px solid currentColor',
+                  background: 'transparent',
+                  color: 'inherit',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {resendBusy ? 'Илгээж байна…' : 'Баталгаажуулах имэйл дахин илгээх'}
+              </button>
+              <Link href="/email-verification" style={{ fontSize: 12.5, textDecoration: 'underline', color: 'inherit' }}>
+                Баталгаажуулах хуудас →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       <form className="authv2-form" onSubmit={submitEmail}>
         <label htmlFor="login-email">Имэйл эсвэл утасны дугаар</label>

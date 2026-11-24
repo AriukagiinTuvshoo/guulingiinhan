@@ -94,8 +94,10 @@ export default function OnboardingPage() {
   const [relatives, setRelatives] = useState<RelativeDraft[]>([]);
   const [note, setNote] = useState('');
 
-  // Invite-family fallback consent state
+  // Invite-family & legacy fallback state (when /clan/onboarding/* is not yet deployed on backend)
   const [consent, setConsent] = useState(false);
+  const [legacyFallback, setLegacyFallback] = useState(false);
+  const [legacyFamilyName, setLegacyFamilyName] = useState('');
   const attempt = useRef<string | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -114,18 +116,31 @@ export default function OnboardingPage() {
         return;
       }
 
-      const [st, opts] = await Promise.all([
-        api<OnboardingStatus>('/clan/onboarding/status'),
-        api<OnboardingOptions>('/clan/onboarding/options'),
-      ]);
-      setStatus(st);
-      setOptions(opts);
-      if (st.approved && st.clan_family_id) {
-        router.replace(`/tree?family=${encodeURIComponent(st.clan_family_id)}`);
+      try {
+        const [st, opts] = await Promise.all([
+          api<OnboardingStatus>('/clan/onboarding/status'),
+          api<OnboardingOptions>('/clan/onboarding/options'),
+        ]);
+        setLegacyFallback(false);
+        setStatus(st);
+        setOptions(opts);
+        if (st.approved && st.clan_family_id) {
+          router.replace(`/tree?family=${encodeURIComponent(st.clan_family_id)}`);
+        }
+      } catch (onboardErr) {
+        if (onboardErr instanceof ApiError && onboardErr.status === 404) {
+          // Graceful fallback when backend does not yet expose /clan/onboarding/*
+          const rows = await api<Family[]>('/families').catch(() => []);
+          setFamilies(rows);
+          setLegacyFallback(true);
+          return;
+        }
+        throw onboardErr;
       }
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 401) {
-        router.replace('/login');
+        if (typeof window !== 'undefined') window.location.replace('/login');
+        else router.replace('/login');
         return;
       }
       setError(failure(cause));
@@ -240,6 +255,39 @@ export default function OnboardingPage() {
     }
   }
 
+  // Legacy create-family fallback when /clan/onboarding/* returns 404
+  async function submitLegacyCreate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (busy || !user) return;
+    if (!legacyFamilyName.trim()) {
+      setError('Гэр бүлийн нэрээ оруулна уу.');
+      return;
+    }
+    if (!user.person_id && !firstName.trim()) {
+      setError('Өөрийн нэрээ оруулна уу.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      attempt.current ||= crypto.randomUUID();
+      const result = await api<{ family_id: string; person_id: string }>('/families/onboarding', {
+        method: 'POST',
+        body: JSON.stringify({
+          request_key: attempt.current,
+          family_name: legacyFamilyName.trim(),
+          ...(!user.person_id ? { first_name: firstName.trim(), last_name: lastName.trim(), gender } : {}),
+          reuse_existing_person: Boolean(user.person_id),
+        }),
+      });
+      router.push(`/tree?view=family&family=${encodeURIComponent(result.family_id)}&person=${encodeURIComponent(result.person_id)}`);
+    } catch (cause) {
+      setError(failure(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Legacy invite-family join handler when ?family=<id> is provided
   async function submitInviteJoin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -306,6 +354,93 @@ export default function OnboardingPage() {
               {busy ? 'Хадгалж байна…' : 'Модондоо нэгдэх →'}
             </button>
           </form>
+        </div>
+      </main>
+    );
+  }
+
+  // Graceful fallback form when backend /clan/onboarding/* is not yet live
+  if (legacyFallback) {
+    return (
+      <main style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--ink)', padding: '24px 16px 48px' }}>
+        <div style={{ maxWidth: 580, margin: '0 auto' }}>
+          <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+            <Link href="/families" style={{ color: 'var(--gold)', fontSize: 13 }}>← Миний гэр бүлүүд</Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <ThemePicker variant="compact" showLabel={false} />
+              <button type="button" className="btn btn-secondary" onClick={() => void handleLogout()} style={{ padding: '6px 12px', fontSize: 12 }}>
+                <LogOut size={14} /> Гарах
+              </button>
+            </div>
+          </header>
+
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 20, padding: '26px 22px' }}>
+            <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 24, marginBottom: 8 }}>🌳 Гэр бүлийн модоо эхлүүлэх</h1>
+            <p style={{ color: 'var(--muted)', fontSize: 13.5, marginBottom: 18 }}>
+              Урилгаар нэгдсэн бол доорх урилгын холбоосоор орно уу. Эсвэл өөрийн гэр бүлийн модоо шинээр үүсгэж эхэлнэ үү.
+            </p>
+            {error && (
+              <div role="alert" style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(180,35,24,0.12)', border: '1px solid rgba(180,35,24,0.35)', marginBottom: 14, fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+
+            {families.length > 0 && (
+              <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
+                <strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>Таны одоогийн гэр бүлүүд:</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {families.map((f) => (
+                    <Link key={f.id} href={`/tree?family=${encodeURIComponent(f.id)}`} className="btn btn-secondary" style={{ fontSize: 13 }}>
+                      {f.name} →
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={submitLegacyCreate} style={{ display: 'grid', gap: 14 }}>
+              <label style={{ display: 'grid', gap: 5, fontSize: 13 }}>
+                Гэр бүлийн нэр *
+                <input
+                  value={legacyFamilyName}
+                  onChange={(e) => setLegacyFamilyName(e.target.value)}
+                  required
+                  maxLength={180}
+                  placeholder="Жишээ: Гуулингийнхан — Манай гэр бүл"
+                  className="input"
+                />
+              </label>
+              {!user?.person_id && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <label style={{ display: 'grid', gap: 5, fontSize: 13 }}>
+                      Эцгийн нэр (Овог)
+                      <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Овог" className="input" />
+                    </label>
+                    <label style={{ display: 'grid', gap: 5, fontSize: 13 }}>
+                      Өөрийн нэр *
+                      <input value={firstName} onChange={(e) => setFirstName(e.target.value)} required placeholder="Нэр" className="input" />
+                    </label>
+                  </div>
+                  <label style={{ display: 'grid', gap: 5, fontSize: 13 }}>
+                    Хүйс
+                    <select value={gender} onChange={(e) => setGender(e.target.value as 'male' | 'female' | 'unknown')} className="input">
+                      <option value="unknown">Тодорхойгүй</option>
+                      <option value="male">Эрэгтэй</option>
+                      <option value="female">Эмэгтэй</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              <button type="submit" className="btn btn-primary" disabled={busy}>
+                {busy ? 'Үүсгэж байна…' : 'Гэр бүлийн модоо эхлүүлэх →'}
+              </button>
+            </form>
+
+            <p style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)' }}>
+              Урилгын кодтой бол <Link href="/invite" style={{ color: 'var(--gold)', textDecoration: 'underline' }}>урилгаар нэгдэх →</Link>
+            </p>
+          </div>
         </div>
       </main>
     );
