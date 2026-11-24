@@ -153,9 +153,10 @@
 }
 
 .adv3-content {
-  padding: 24px 28px 56px;
-  max-width: 1160px;
+  padding: 24px 32px 64px;
+  max-width: 1360px;
   width: 100%;
+  margin: 0 auto;
 }
 
 .adv3-head {
@@ -425,18 +426,73 @@
 
 .adv3-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin-top: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 14px;
 }
 
 .adv3-form-grid label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--gt);
+}
+
+.adv3-form-grid input:not([type='checkbox']):not([type='radio']),
+.adv3-form-grid select,
+.adv3-form-grid textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--goldl);
+  background: var(--bg);
+  color: var(--hd);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.adv3-form-grid input:not([type='checkbox']):not([type='radio']):focus,
+.adv3-form-grid select:focus,
+.adv3-form-grid textarea:focus {
+  outline: none;
+  border-color: var(--pr);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pr) 18%, transparent);
+}
+
+.adv3-form-span-full {
+  grid-column: 1 / -1;
+}
+
+/* Ensure green hero banner inside AdminAnnouncements always keeps crisp cream text */
+.adv3-announcements-wrap [class*='studioHero'] h2,
+.adv3-announcements-wrap [class*='studioHero'] h3 {
+  color: #fbf4e2 !important;
+}
+
+.adv3-announcements-wrap [class*='studioHero'] p {
+  color: rgba(251, 244, 226, 0.88) !important;
+}
+
+.adv3-announcements-wrap [class*='studio'] {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+@media (max-width: 900px) {
+  .adv3-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .adv3-form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .adv3-list-item {

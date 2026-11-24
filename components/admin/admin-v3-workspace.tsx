@@ -1958,7 +1958,7 @@ export default function AdminV3Workspace() {
                         maxLength={3}
                       />
                     </label>
-                    <label>
+                    <label className="adv3-form-span-full">
                       Зорилго / Тайлбар
                       <input
                         value={donationForm.purpose}
@@ -1969,19 +1969,15 @@ export default function AdminV3Workspace() {
                     </label>
                   </div>
 
-                  <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button type="submit" className="adv3-btn is-primary" disabled={donationSaving}>
-                      <Check size={14} /> {donationSaving ? 'Хадгалж байна…' : 'Дансны мэдээлэл хадгалах'}
+                  <div style={{ marginTop: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button type="submit" className="adv3-btn is-primary" disabled={donationSaving} style={{ minHeight: 42, padding: '0 20px' }}>
+                      <Check size={15} /> {donationSaving ? 'Хадгалж байна…' : 'Дансны мэдээлэл хадгалах'}
                     </button>
                   </div>
                 </form>
               )}
 
-              <div className="adv3-card" style={{ marginBottom: 18 }}>
-                <h3>📢 Нийтийн мэдэгдлийн төв</h3>
-                <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
-                  Бүх гишүүдийн хонх (Мэдэгдэл) болон Мэдээ хэсэгт харагдах зарлал, уулзалтын мэдээлэл нийтэлнэ.
-                </p>
+              <div className="adv3-announcements-wrap" style={{ marginBottom: 20 }}>
                 <AdminAnnouncements canEdit={adminIdentity.role === 'SUPER_ADMIN'} />
               </div>
 
