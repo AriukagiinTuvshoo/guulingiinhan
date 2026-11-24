@@ -450,6 +450,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
     // An unresolved session/family list cannot establish a denial. Keep the
     // private scope empty until the authenticated context is available.
     if (!shouldRenderShell || contextLoading || !contextLoaded || !user) return;
+    if (families.length === 0 && !isGlobalAdmin && !pathname.startsWith('/settings') && !pathname.startsWith('/account')) {
+      setFamilyId('');
+      setFamilySwitching(false);
+      setContextError('');
+      router.replace('/onboarding');
+      return;
+    }
     const scope = resolveFamilyScope(families, requestedFamilyId, needsExplicitFamily(pathname, searchParams.has('person')));
     if (!scope.id) {
       setFamilyId('');
@@ -777,24 +784,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         <div className="app-shell__content" aria-busy={contextLoading || familySwitching}>
-          {!families.length && !contextLoading ? (
-            <div className="app-shell__no-family" role="status">
-              <Users size={18} aria-hidden="true" />
-              <span>Танд одоогоор харагдах family context алга.</span>
-              <Link href="/families">Гэр бүлүүдийг шалгах →</Link>
+          {!families.length && !contextLoading && contextLoaded && user && !isGlobalAdmin && !pathname.startsWith('/settings') && !pathname.startsWith('/account') ? (
+            <div style={{ maxWidth: 520, margin: '48px auto', padding: '32px 24px', textAlign: 'center', background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 20 }}>
+              <ShieldCheck size={36} style={{ color: 'var(--gold)', margin: '0 auto 12px' }} />
+              <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, marginBottom: 8 }}>Удмаа баталгаажуулна уу</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+                Аюулгүй байдлын үүднээс Гуулингийнхны удмын мод болон гишүүдийн мэдээлэл зөвхөн баталгаажсан гишүүдэд харагдана.
+              </p>
+              <Link href="/onboarding" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                Удмаа баталгаажуулах асуумж бөглөх →
+              </Link>
             </div>
-          ) : null}
-          <div key={requestedFamilyId || familyId || 'no-family-context'}>
-            <FamilyContext.Provider value={{
-              family: currentFamily,
-              user,
-              loading: contextLoading || !contextLoaded || familySwitching,
-              error: contextError,
-              retry: retryContext,
-            }}>
-              {children}
-            </FamilyContext.Provider>
-          </div>
+          ) : (
+            <>
+              {!families.length && !contextLoading ? (
+                <div className="app-shell__no-family" role="status">
+                  <Users size={18} aria-hidden="true" />
+                  <span>Танд одоогоор харагдах гэр бүлийн орчин алга.</span>
+                  <Link href="/onboarding">Удмаа баталгаажуулах →</Link>
+                </div>
+              ) : null}
+              <div key={requestedFamilyId || familyId || 'no-family-context'}>
+                <FamilyContext.Provider value={{
+                  family: currentFamily,
+                  user,
+                  loading: contextLoading || !contextLoaded || familySwitching,
+                  error: contextError,
+                  retry: retryContext,
+                }}>
+                  {children}
+                </FamilyContext.Provider>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

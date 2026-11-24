@@ -1794,8 +1794,14 @@ def update_person(
             UserPersonLink.user_id == user.id, UserPersonLink.person_id == person.id
         )
     )
+    created_by_user = person.created_by == user.id
     people_grant = _safe_has_grant_scope(db, FamilyAdminWorkGrant, member.id, "manage_people")
-    baseline_edit = member.role in {"owner", "editor"} or linked_to_user is not None or people_grant
+    baseline_edit = (
+        member.role in {"owner", "editor"}
+        or linked_to_user is not None
+        or created_by_user
+        or people_grant
+    )
     has_scoped_edit = (
         has_guardian_scope(db, user.id, family_id, person.id, "edit_profile")
         if is_minor_record

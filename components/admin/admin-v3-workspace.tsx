@@ -100,6 +100,40 @@ type PendingDiff = {
   nextPayload: Record<string, unknown>;
 };
 
+type GuidedOnboardingRelative = {
+  relation: string;
+  first_name: string;
+  last_name?: string;
+  gender?: string;
+  birth_date?: string | null;
+  email?: string | null;
+};
+
+type GuidedOnboardingRequest = {
+  id: string;
+  user_id: string;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  first_name: string;
+  last_name: string;
+  gender: string;
+  claimed_generation?: number | null;
+  branch_name?: string | null;
+  anchor_name?: string | null;
+  relatives: GuidedOnboardingRelative[];
+  user_note?: string;
+  created_at: string;
+};
+
+type GlobalFamilyRow = {
+  id: string;
+  name: string;
+  member_count?: number;
+  person_count?: number;
+  archived_at?: string | null;
+  created_at?: string;
+};
+
 const TEMP_ARCHIVE_KEY_PREFIX = 'guulin-temp-archive-v1:';
 
 function completenessScore(p: Person): number {
@@ -124,6 +158,8 @@ export default function AdminV3Workspace() {
   const [adminGateChecked, setAdminGateChecked] = useState(false);
   const [globalAdmins, setGlobalAdmins] = useState<GlobalAdminAccount[]>([]);
   const [globalUsers, setGlobalUsers] = useState<GlobalUserRow[]>([]);
+  const [globalFamilies, setGlobalFamilies] = useState<GlobalFamilyRow[]>([]);
+  const [onboardingRequests, setOnboardingRequests] = useState<GuidedOnboardingRequest[]>([]);
   const [grantUserId, setGrantUserId] = useState('');
   const [grantRole, setGrantRole] = useState<'ADMIN' | 'MODERATOR'>('ADMIN');
   const [pendingConnections, setPendingConnections] = useState<PendingRootConnection[]>([]);
@@ -208,16 +244,20 @@ export default function AdminV3Workspace() {
     };
   }, []);
 
-  // Verify Global Admin identity + load families, pending root connections, and admin accounts
+  // Verify Global Admin identity + load families, pending root connections, onboarding requests, and admin accounts
   const refreshGlobalAdminData = useCallback(async (role: string) => {
-    const [conns, adminsList, usersList] = await Promise.all([
+    const [conns, onboardReqs, adminsList, usersList, famsList] = await Promise.all([
       api<PendingRootConnection[]>('/admin/shared-lineage/connections?status=pending').catch(() => []),
+      api<GuidedOnboardingRequest[]>('/admin/clan/onboarding/requests?status=pending').catch(() => []),
       role === 'SUPER_ADMIN' ? api<GlobalAdminAccount[]>('/admin/admins').catch(() => []) : Promise.resolve([]),
-      role === 'SUPER_ADMIN' ? api<GlobalUserRow[]>('/admin/users?limit=100').catch(() => []) : Promise.resolve([]),
+      role === 'SUPER_ADMIN' ? api<GlobalUserRow[]>('/admin/users?limit=50').catch(() => []) : Promise.resolve([]),
+      role === 'SUPER_ADMIN' ? api<GlobalFamilyRow[]>('/admin/families?limit=50').catch(() => []) : Promise.resolve([]),
     ]);
     setPendingConnections(Array.isArray(conns) ? conns : []);
+    setOnboardingRequests(Array.isArray(onboardReqs) ? onboardReqs : []);
     setGlobalAdmins(Array.isArray(adminsList) ? adminsList : []);
     setGlobalUsers(Array.isArray(usersList) ? usersList : []);
+    setGlobalFamilies(Array.isArray(famsList) ? famsList : []);
   }, []);
 
   useEffect(() => {
@@ -757,6 +797,102 @@ export default function AdminV3Workspace() {
     }
   }
 
+  async function handleApproveOnboarding(reqId: string) {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await api<{ created_accounts?: string[]; created_relatives?: number }>(
+        `/admin/clan/onboarding/requests/${reqId}/approve`,
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      if (familyId) await refreshFamilyData(familyId);
+      const accs = Array.isArray(res.created_accounts) ? res.created_accounts : [];
+      showToast(
+        accs.length > 0
+          ? `Батлагдлаа! Автомат аккаунт үүссэн: ${accs.join(', ')}`
+          : 'Гишүүний хүсэлт батлагдаж, удмын модонд холбогдлоо.',
+      );
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Батлахад алдаа гарлаа.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRejectOnboarding(reqId: string, banUser: boolean) {
+    if (banUser && !window.confirm('Энэ аккаунтыг ХААЖ (Ban) дахин нэвтрэх боломжгүй болгох уу?')) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/clan/onboarding/requests/${reqId}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ban_user: banUser,
+          review_note: banUser ? 'Хуурамч эсвэл гадны аккаунт тул хаагдлаа.' : 'Мэдээллээ нягтлаад дахин илгээнэ үү.',
+        }),
+      });
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast(banUser ? 'Хүсэлт цуцлагдаж, аккаунт ХААГДЛАА (Ban).' : 'Хүсэлтээс татгалзлаа.');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Үйлдэл амжилтгүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleUserBan(userId: string, currentlyActive: boolean) {
+    const nextActive = !currentlyActive;
+    if (!nextActive && !window.confirm('Энэ аккаунтыг хаах (Ban) уу?')) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/users/${userId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_active: nextActive }),
+      });
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast(nextActive ? 'Аккаунтыг сэргээлээ.' : 'Аккаунтыг хаалаа (Ban).');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Төлөв солиход алдаа гарлаа.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteUserAccount(userId: string, label: string) {
+    if (!window.confirm(`"${label}" аккаунтыг бүрмөсөн устгах уу? Устгасны дараа энэ имэйлээр шинээр бүртгүүлэх боломжтой болно.`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/users/${userId}`, { method: 'DELETE' });
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast(`"${label}" аккаунт устгагдлаа.`);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Аккаунт устгахад алдаа гарлаа.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteTestFamily(famId: string, famName: string) {
+    if (!window.confirm(`"${famName}" гэр бүлийн орчинг устгах (архивлах) уу?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/families/${famId}`, { method: 'DELETE' });
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      const list = await api<Family[]>('/families').catch(() => []);
+      setFamilies(list);
+      if (familyId === famId) setFamilyId(list[0]?.id ?? '');
+      showToast(`"${famName}" гэр бүл устгагдлаа.`);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Гэр бүл устгахад алдаа гарлаа.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!adminGateChecked || (loading && !families.length)) {
     return (
       <div className="adv3-content">
@@ -804,7 +940,7 @@ export default function AdminV3Workspace() {
         {(
           [
             ['overview', 'Тойм', LayoutDashboard, 0],
-            ['ancestry', 'Эх мод & Хүсэлтүүд', ShieldCheck, pendingConnections.length],
+            ['ancestry', 'Эх мод & Хүсэлтүүд', ShieldCheck, pendingConnections.length + onboardingRequests.length],
             ['people', 'Хүмүүс & Холбоос', Users, orphanPeople.length],
             ['members', 'Гишүүд & Урилга', Users, members.length],
             ['content', 'Агуулга', FileText, 0],
@@ -974,6 +1110,75 @@ export default function AdminV3Workspace() {
                 </Link>
               </div>
               <MongolianOrnamentBand />
+
+              <div className="adv3-card" style={{ marginBottom: 16 }}>
+                <h3>🧭 Шинэ гишүүний удмаа баталгаажуулах хүсэлтүүд ({onboardingRequests.length})</h3>
+                <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
+                  Шинээр бүртгүүлсэн гишүүний асуумж болон нэмсэн ойрын төрлүүдийг 1 товшилтоор баталж, имэйлтэй төрлүүдэд нь автоматаар аккаунт үүсгэнэ. Гадны хуурамч хүн бол шууд <strong>Хаах (Ban)</strong> дарна.
+                </p>
+                {onboardingRequests.length === 0 ? (
+                  <p className="adv3-sub">Одоогоор хүлээгдэж буй шинэ гишүүний асуумж алга байна.</p>
+                ) : (
+                  onboardingRequests.map((req) => (
+                    <div key={req.id} className="adv3-list-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <strong>
+                            {req.last_name ? `${req.last_name} ` : ''}{req.first_name}
+                          </strong>{' '}
+                          <span className="adv3-tag is-ok">{req.claimed_generation ? `${req.claimed_generation}-р үе` : 'Шинэ гишүүн'}</span>
+                          <div className="adv3-sub" style={{ margin: '4px 0 0' }}>
+                            Аккаунт: <strong>{req.user_email || req.user_display_name}</strong> · Салбар: <strong>{req.branch_name || '—'}</strong> · Тулгуур өвөг: <strong>{req.anchor_name || '—'}</strong>
+                          </div>
+                          {req.user_note && (
+                            <div className="adv3-sub" style={{ margin: '4px 0 0', fontStyle: 'italic' }}>
+                              “{req.user_note}”
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="adv3-btn is-primary"
+                            disabled={saving}
+                            onClick={() => void handleApproveOnboarding(req.id)}
+                          >
+                            <Check size={14} /> Батлах &amp; Холбох
+                          </button>
+                          <button
+                            type="button"
+                            className="adv3-btn"
+                            disabled={saving}
+                            onClick={() => void handleRejectOnboarding(req.id, false)}
+                          >
+                            Татгалзах
+                          </button>
+                          <button
+                            type="button"
+                            className="adv3-btn is-danger"
+                            disabled={saving}
+                            onClick={() => void handleRejectOnboarding(req.id, true)}
+                          >
+                            🚫 Хаах (Ban)
+                          </button>
+                        </div>
+                      </div>
+                      {req.relatives && req.relatives.length > 0 && (
+                        <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--goldl)', fontSize: 12.5 }}>
+                          <strong style={{ display: 'block', marginBottom: 6 }}>Хамт нэмэх ойрын төрлүүд ({req.relatives.length}):</strong>
+                          {req.relatives.map((r, i) => (
+                            <div key={i} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '3px 0' }}>
+                              <span className="adv3-tag">{r.relation === 'parent' ? 'Эцэг/Эх' : r.relation === 'spouse' ? 'Хань' : r.relation === 'child' ? 'Хүүхэд' : 'Ах/эгч/дүү'}</span>
+                              <strong>{r.last_name ? `${r.last_name} ` : ''}{r.first_name}</strong>
+                              {r.email && <span style={{ color: 'var(--pr)' }}>✉️ {r.email} (автомат аккаунт үүснэ)</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
 
               <div className="adv3-card" style={{ marginBottom: 16 }}>
                 <h3>Хүлээгдэж буй гэр бүл холбох хүсэлтүүд ({pendingConnections.length})</h3>
@@ -1581,6 +1786,79 @@ export default function AdminV3Workspace() {
                       <Plus size={14} /> Админ эрх олгох
                     </button>
                   </form>
+                </div>
+              )}
+
+              {adminIdentity.role === 'SUPER_ADMIN' && (
+                <div className="adv3-two-col" style={{ marginBottom: 16 }}>
+                  <div className="adv3-card">
+                    <h3>👤 Бүх бүртгэлтэй аккаунтууд ({globalUsers.length})</h3>
+                    <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 10 }}>
+                      Туршилтын эсвэл гадны аккаунтыг <strong>Хаах (Ban)</strong> эсвэл <strong>бүрмөсөн устгах</strong> боломжтой. Устгасан имэйлээр шинээр бүртгүүлж болно.
+                    </p>
+                    <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      {globalUsers.map((u) => {
+                        const isSuper = globalAdmins.some((a) => a.id === u.id && a.role === 'SUPER_ADMIN');
+                        const isSelf = u.id === adminIdentity.id;
+                        return (
+                          <div className="adv3-list-item" key={u.id} style={{ flexWrap: 'wrap', gap: 8 }}>
+                            <div>
+                              <strong>{u.display_name || u.email || 'Хэрэглэгч'}</strong>{' '}
+                              {!u.is_active && <span className="adv3-tag is-danger">Хаагдсан</span>}
+                              <div className="adv3-sub" style={{ margin: 0 }}>{u.email || 'Имэйлгүй'}</div>
+                            </div>
+                            {!isSuper && !isSelf && (
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  className="adv3-btn"
+                                  disabled={saving}
+                                  onClick={() => void handleToggleUserBan(u.id, Boolean(u.is_active))}
+                                >
+                                  {u.is_active ? '🚫 Хаах' : '✓ Сэргээх'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="adv3-btn is-danger"
+                                  disabled={saving}
+                                  onClick={() => void handleDeleteUserAccount(u.id, u.email || u.display_name || 'Аккаунт')}
+                                >
+                                  <Trash2 size={13} /> Устгах
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="adv3-card">
+                    <h3>🌳 Гэр бүлийн орчинууд ({globalFamilies.filter((f) => !f.archived_at).length})</h3>
+                    <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 10 }}>
+                      Туршилтаар үүсгэсэн илүү гэр бүлийн орчнуудыг (жишээ нь <code>BATAA turshilt 1</code>) эндээс 1 товшилтоор устгана.
+                    </p>
+                    <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                      {globalFamilies.filter((f) => !f.archived_at).map((f) => (
+                        <div className="adv3-list-item" key={f.id} style={{ flexWrap: 'wrap', gap: 8 }}>
+                          <div>
+                            <strong>{f.name}</strong>
+                            <div className="adv3-sub" style={{ margin: 0 }}>
+                              {f.person_count != null ? `${f.person_count} хүн` : ''}{f.member_count != null ? ` · ${f.member_count} аккаунт` : ''}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="adv3-btn is-danger"
+                            disabled={saving}
+                            onClick={() => void handleDeleteTestFamily(f.id, f.name)}
+                          >
+                            <Trash2 size={13} /> Устгах
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -17,6 +17,8 @@ from app.admin import router as admin_router
 from app.admin_workspace import public_router as announcements_router
 from app.admin_workspace import router as admin_workspace_router
 from app.auth import router as auth_router
+from app.clan_onboarding import admin_router as admin_clan_onboarding_router
+from app.clan_onboarding import router as clan_onboarding_router
 from app.community import router as community_router
 from app.config import get_settings
 from app.csrf import (
@@ -245,6 +247,8 @@ app.include_router(tree_join_requests_router, prefix="/api/v1/families")
 app.include_router(public_funds_router, prefix="/api/v1")
 app.include_router(admin_ancestry_requests_router, prefix="/api/v1")
 app.include_router(family_ancestry_requests_router, prefix="/api/v1")
+app.include_router(clan_onboarding_router, prefix="/api/v1")
+app.include_router(admin_clan_onboarding_router, prefix="/api/v1")
 app.include_router(onboarding_router, prefix="/api/v1")
 app.include_router(families_router, prefix="/api/v1")
 app.include_router(family_admin_router, prefix="/api/v1")

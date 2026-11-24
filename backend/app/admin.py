@@ -712,3 +712,72 @@ def revoke_admin_role(
     db.add(AuditLog(id=uuid4(), family_id=None, actor_id=actor.id,
                     action="admin.role_revoked", target_type="user", target_id=user_id))
     db.commit()
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user_account(
+    user_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete or fully detach a user account so its email can be re-registered fresh."""
+    actor = current[0]
+    if user_id == actor.id:
+        raise HTTPException(status_code=403, detail="Өөрийн аккаунтыг устгах боломжгүй.")
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй.")
+    grant = db.get(AdminGrant, user_id)
+    if grant and grant.role == AdminRole.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Super Admin аккаунтыг устгах боломжгүй.")
+
+    from app.models import EmailVerificationToken, TreeJoinRequest, UserSession
+
+    db.execute(delete(UserSession).where(UserSession.user_id == user_id))
+    db.execute(delete(LoginIdentity).where(LoginIdentity.user_id == user_id))
+    db.execute(delete(AdminGrant).where(AdminGrant.user_id == user_id))
+    db.execute(delete(UserPersonLink).where(UserPersonLink.user_id == user_id))
+    db.execute(delete(FamilyMember).where(FamilyMember.user_id == user_id))
+    db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))
+    db.execute(delete(EmailVerificationToken).where(EmailVerificationToken.user_id == user_id))
+    db.execute(delete(TreeJoinRequest).where(TreeJoinRequest.user_id == user_id))
+    db.flush()
+
+    try:
+        with db.begin_nested():
+            db.delete(target)
+            db.flush()
+    except IntegrityError:
+        # User has historical FK references (e.g. created persons/audit logs):
+        # detach identifiers and deactivate so the exact email can re-register fresh.
+        target.email = None
+        target.email_verified_at = None
+        if hasattr(target, "phone"):
+            target.phone = None
+        if hasattr(target, "phone_verified_at"):
+            target.phone_verified_at = None
+        target.is_active = False
+        target.display_name = "Устгасан аккаунт"
+
+    db.add(AuditLog(id=uuid4(), family_id=None, actor_id=actor.id,
+                    action="admin.user_deleted", target_type="user", target_id=user_id))
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/families/{family_id}", status_code=204)
+def archive_test_family(
+    family_id: UUID,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Archive a test/duplicate family workspace so it no longer appears active."""
+    actor = current[0]
+    family = db.get(Family, family_id)
+    if not family:
+        raise HTTPException(status_code=404, detail="Гэр бүл олдсонгүй.")
+    family.archived_at = datetime.now(UTC)
+    db.add(AuditLog(id=uuid4(), family_id=family.id, actor_id=actor.id,
+                    action="admin.family_archived", target_type="family", target_id=family.id))
+    db.commit()
+    return Response(status_code=204)
