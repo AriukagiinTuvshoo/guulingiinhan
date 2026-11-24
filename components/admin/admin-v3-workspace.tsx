@@ -128,8 +128,9 @@ export default function AdminV3Workspace() {
 
   // Orphan / Unconnected Person Linker
   const [linkingPerson, setLinkingPerson] = useState<Person | null>(null);
-  const [linkTargetId, setLinkTargetId] = useState('');
-  const [linkRelation, setLinkRelation] = useState<'child_of' | 'parent_of' | 'spouse_of'>('child_of');
+  const [linkTargetIds, setLinkTargetIds] = useState<string[]>([]);
+  const [linkRelation, setLinkRelation] = useState<'parent_of' | 'child_of' | 'spouse_of'>('parent_of');
+  const [alsoLinkSpouse, setAlsoLinkSpouse] = useState(true);
 
   // Temporary Archive (client-persisted soft hide until restored or trashed)
   const [tempArchivedIds, setTempArchivedIds] = useState<string[]>([]);
@@ -447,36 +448,116 @@ export default function AdminV3Workspace() {
     }
   }
 
+  function toggleLinkTarget(pid: string) {
+    setLinkTargetIds((prev) =>
+      prev.includes(pid) ? prev.filter((id) => id !== pid) : [...prev, pid],
+    );
+  }
+
   async function handleLinkOrphan(event: FormEvent) {
     event.preventDefault();
-    if (!familyId || !linkingPerson || !linkTargetId) return;
+    if (!familyId || !linkingPerson || linkTargetIds.length === 0) return;
     setSaving(true);
     setError('');
     try {
-      if (linkRelation === 'spouse_of') {
-        await api(`/families/${encodeURIComponent(familyId)}/marriages`, {
-          method: 'POST',
-          body: JSON.stringify({
-            person_1_id: linkingPerson.id,
-            person_2_id: linkTargetId,
-            status: 'married',
-          }),
-        });
-      } else {
-        const parent_id = linkRelation === 'parent_of' ? linkingPerson.id : linkTargetId;
-        const child_id = linkRelation === 'parent_of' ? linkTargetId : linkingPerson.id;
-        await api(`/families/${encodeURIComponent(familyId)}/relationships/parent-child`, {
-          method: 'POST',
-          body: JSON.stringify({ parent_id, child_id, relationship_type: 'biological' }),
-        });
+      const spouseIds = (tree?.marriages ?? [])
+        .filter((m) => m.person_1_id === linkingPerson.id || m.person_2_id === linkingPerson.id)
+        .map((m) => (m.person_1_id === linkingPerson.id ? m.person_2_id : m.person_1_id));
+      let createdCount = 0;
+
+      for (const targetId of linkTargetIds) {
+        if (linkRelation === 'spouse_of') {
+          await api(`/families/${encodeURIComponent(familyId)}/marriages`, {
+            method: 'POST',
+            body: JSON.stringify({
+              person_1_id: linkingPerson.id,
+              person_2_id: targetId,
+              status: 'married',
+            }),
+          });
+          createdCount += 1;
+        } else {
+          const parent_id = linkRelation === 'parent_of' ? linkingPerson.id : targetId;
+          const child_id = linkRelation === 'parent_of' ? targetId : linkingPerson.id;
+          await api(`/families/${encodeURIComponent(familyId)}/relationships/parent-child`, {
+            method: 'POST',
+            body: JSON.stringify({ parent_id, child_id, relationship_type: 'biological' }),
+          });
+          createdCount += 1;
+          if (linkRelation === 'parent_of' && alsoLinkSpouse && spouseIds.length > 0) {
+            for (const spId of spouseIds) {
+              if (spId === targetId) continue;
+              try {
+                await api(`/families/${encodeURIComponent(familyId)}/relationships/parent-child`, {
+                  method: 'POST',
+                  body: JSON.stringify({ parent_id: spId, child_id: targetId, relationship_type: 'biological' }),
+                });
+              } catch {
+                // Ignore duplicate edge if already linked to spouse
+              }
+            }
+          }
+        }
       }
+
       const linkedName = personName(linkingPerson);
-      setLinkingPerson(null);
-      setLinkTargetId('');
+      setLinkTargetIds([]);
       await refreshFamilyData(familyId);
-      showToast(`${linkedName} амжилттай модонд холбогдлоо`);
+      showToast(`${linkedName} — ${createdCount} холбоос амжилттай үүслээ`);
     } catch (cause) {
       setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Модонд холбоход алдаа гарлаа.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveParentChild(edgeId: string) {
+    if (!familyId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/relationships/parent-child/${encodeURIComponent(edgeId)}`, {
+        method: 'DELETE',
+      });
+      await refreshFamilyData(familyId);
+      showToast('Эцэг/эх-хүүхдийн холбоог салгалаа');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Холбоог салгаж чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveMarriage(marriageId: string) {
+    if (!familyId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/marriages/${encodeURIComponent(marriageId)}`, {
+        method: 'DELETE',
+      });
+      await refreshFamilyData(familyId);
+      showToast('Гэрлэлтийн холбоог салгалаа');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Гэрлэлтийг салгаж чадсангүй.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSetRootPerson(personId: string) {
+    if (!familyId || !personId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/families/${encodeURIComponent(familyId)}/root`, {
+        method: 'PUT',
+        body: JSON.stringify({ person_id: personId }),
+      });
+      await refreshFamilyData(familyId);
+      showToast('1-р үеийн үндсэн эх хүн шинэчлэгдлээ');
+    } catch (cause) {
+      setError(cause instanceof ApiError ? (cause.validationMessage || cause.message) : 'Үндсэн эх хүнийг тохируулж чадсангүй.');
     } finally {
       setSaving(false);
     }
@@ -899,11 +980,17 @@ export default function AdminV3Workspace() {
                                 <button type="button" className="adv3-btn" onClick={() => openEdit(p)}>
                                   Засах
                                 </button>
-                                {isOrphan && (
-                                  <button type="button" className="adv3-btn is-primary" onClick={() => setLinkingPerson(p)}>
-                                    <Link2 size={13} /> Холбох
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  className={`adv3-btn${isOrphan ? ' is-primary' : ''}`}
+                                  onClick={() => {
+                                    setLinkingPerson(p);
+                                    setLinkTargetIds([]);
+                                    setEditingPerson(null);
+                                  }}
+                                >
+                                  <Link2 size={13} /> {isOrphan ? 'Холбох' : 'Холбоос'}
+                                </button>
                                 <button type="button" className="adv3-btn" onClick={() => tempArchivePerson(p)} title="Түр архивлах">
                                   <Archive size={13} /> Архив
                                 </button>
@@ -969,37 +1056,151 @@ export default function AdminV3Workspace() {
                   </form>
                 )}
 
-                {/* Inline Orphan Linker Panel */}
-                {linkingPerson && (
-                  <form className="adv3-editor-drawer" onSubmit={handleLinkOrphan}>
-                    <h3>🔗 {personName(linkingPerson)}-ийг удмын модонд холбох</h3>
-                    <div className="adv3-form-grid">
-                      <label>
-                        Холбооны төрөл
-                        <select value={linkRelation} onChange={(e) => setLinkRelation(e.target.value as 'child_of' | 'parent_of' | 'spouse_of')}>
-                          <option value="child_of">Хүүхэд нь болгож холбох</option>
-                          <option value="parent_of">Эцэг / Эх нь болгож холбох</option>
-                          <option value="spouse_of">Хань нь болгож холбох</option>
-                        </select>
-                      </label>
-                      <label>
-                        Модны аль хүнтэй холбох вэ?
-                        <select required value={linkTargetId} onChange={(e) => setLinkTargetId(e.target.value)}>
-                          <option value="">Сонгох…</option>
-                          {activePeople
-                            .filter((x) => x.id !== linkingPerson.id)
-                            .map((x) => (
-                              <option key={x.id} value={x.id}>{personName(x)}</option>
-                            ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                      <button type="submit" className="adv3-btn is-primary" disabled={saving || !linkTargetId}>Модонд холбох</button>
-                      <button type="button" className="adv3-btn" onClick={() => setLinkingPerson(null)}>Болих</button>
-                    </div>
-                  </form>
-                )}
+                {/* Universal Multi-Link Relationship Manager Panel (Parents, Spouses, Unlimited Children) */}
+                {linkingPerson && (() => {
+                  const personMap = new Map(people.map((x) => [x.id, x]));
+                  const parentEdges = (tree?.parent_child ?? []).filter((e) => e.child_id === linkingPerson.id);
+                  const childEdges = (tree?.parent_child ?? []).filter((e) => e.parent_id === linkingPerson.id);
+                  const marriageEdges = (tree?.marriages ?? []).filter(
+                    (m) => m.person_1_id === linkingPerson.id || m.person_2_id === linkingPerson.id,
+                  );
+                  const spouseNames = marriageEdges
+                    .map((m) => personMap.get(m.person_1_id === linkingPerson.id ? m.person_2_id : m.person_1_id))
+                    .filter(Boolean)
+                    .map((sp) => personName(sp!));
+
+                  return (
+                    <form className="adv3-editor-drawer" onSubmit={handleLinkOrphan}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <h3 style={{ margin: 0 }}>🔗 {personName(linkingPerson)} — Удмын холбоосууд</h3>
+                        <button type="button" className="adv3-btn" onClick={() => { setLinkingPerson(null); setLinkTargetIds([]); }}>Хаах</button>
+                      </div>
+
+                      {/* Existing Relationships with 1-Click Unlink */}
+                      <div style={{ display: 'grid', gap: 8, marginBottom: 14, padding: 12, borderRadius: 12, background: 'var(--bg2)', border: '1px solid var(--goldl)' }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--gt)' }}>Одоо байгаа холбоосууд:</div>
+                        {parentEdges.length === 0 && marriageEdges.length === 0 && childEdges.length === 0 ? (
+                          <span className="adv3-sub" style={{ margin: 0 }}>Одоогоор ямар ч холбоос үүсээгүй байна.</span>
+                        ) : (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {parentEdges.map((edge) => {
+                              const parent = personMap.get(edge.parent_id);
+                              return (
+                                <span key={edge.id} className="adv3-tag is-ok" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  Эцэг/Эх: {parent ? personName(parent) : 'Хүн'}
+                                  <button type="button" onClick={() => void handleRemoveParentChild(edge.id)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700 }} title="Холбоог салгах">×</button>
+                                </span>
+                              );
+                            })}
+                            {marriageEdges.map((m) => {
+                              const sp = personMap.get(m.person_1_id === linkingPerson.id ? m.person_2_id : m.person_1_id);
+                              return (
+                                <span key={m.id} className="adv3-tag is-warn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  ⚭ Хань: {sp ? personName(sp) : 'Хүн'}
+                                  <button type="button" onClick={() => void handleRemoveMarriage(m.id)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700 }} title="Гэрлэлтийг салгах">×</button>
+                                </span>
+                              );
+                            })}
+                            {childEdges.map((edge) => {
+                              const child = personMap.get(edge.child_id);
+                              return (
+                                <span key={edge.id} className="adv3-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  Хүүхэд: {child ? personName(child) : 'Хүн'}
+                                  <button type="button" onClick={() => void handleRemoveParentChild(edge.id)} style={{ border: 0, background: 'transparent', cursor: 'pointer', color: 'inherit', fontWeight: 700 }} title="Холбоог салгах">×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Multi-Select Add Relationships */}
+                      <div className="adv3-form-grid">
+                        <label style={{ gridColumn: '1 / -1' }}>
+                          Шинэ холбоо нэмэх (Олон хүн зэрэг чагталж болно)
+                          <select
+                            value={linkRelation}
+                            onChange={(e) => {
+                              setLinkRelation(e.target.value as 'parent_of' | 'child_of' | 'spouse_of');
+                              setLinkTargetIds([]);
+                            }}
+                          >
+                            <option value="parent_of">👶 {personName(linkingPerson)}-ийн ХҮҮХДҮҮДИЙГ сонгож холбох (4, 6, 10 хүүхэд ч зэрэг болно)</option>
+                            <option value="child_of">👑 {personName(linkingPerson)}-ийн ЭЦЭГ / ЭХИЙГ сонгож холбох</option>
+                            <option value="spouse_of">⚭ {personName(linkingPerson)}-ийн ХАНИЙГ сонгож холбох</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      {linkRelation === 'parent_of' && spouseNames.length > 0 && (
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 13, fontWeight: 600, color: 'var(--hd)', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={alsoLinkSpouse}
+                            onChange={(e) => setAlsoLinkSpouse(e.target.checked)}
+                            style={{ width: 16, height: 16 }}
+                          />
+                          Хань ({spouseNames.join(', ')})-тай нь мөн адил эцэг/эхээр зэрэг холбох
+                        </label>
+                      )}
+
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+                          gap: 8,
+                          maxHeight: 220,
+                          overflowY: 'auto',
+                          padding: 10,
+                          borderRadius: 12,
+                          border: '1px solid var(--goldl)',
+                          background: 'var(--bg)',
+                        }}
+                      >
+                        {activePeople
+                          .filter((x) => x.id !== linkingPerson.id)
+                          .map((x) => {
+                            const checked = linkTargetIds.includes(x.id);
+                            return (
+                              <label
+                                key={x.id}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '8px 10px',
+                                  borderRadius: 10,
+                                  border: checked ? '1.5px solid var(--pr)' : '1px solid var(--goldl)',
+                                  background: checked ? 'color-mix(in srgb, var(--pr) 10%, var(--card))' : 'var(--card)',
+                                  cursor: 'pointer',
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleLinkTarget(x.id)}
+                                  style={{ width: 16, height: 16 }}
+                                />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {personName(x)}
+                                </span>
+                              </label>
+                            );
+                          })}
+                      </div>
+
+                      <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button type="submit" className="adv3-btn is-primary" disabled={saving || linkTargetIds.length === 0}>
+                          {saving ? 'Холбож байна…' : `Сонгосон ${linkTargetIds.length} хүнийг модонд холбох`}
+                        </button>
+                        <button type="button" className="adv3-btn" onClick={() => { setLinkingPerson(null); setLinkTargetIds([]); }}>Болих</button>
+                      </div>
+                    </form>
+                  );
+                })()}
               </div>
             </>
           )}
@@ -1175,6 +1376,32 @@ export default function AdminV3Workspace() {
                   <p className="adv3-sub" style={{ marginTop: 12 }}>
                     Гэр бүлийн нэр: <strong>{currentFamily?.name}</strong> · Нийт хүн: <strong>{people.length}</strong>
                   </p>
+                  {currentFamily?.role === 'owner' && activePeople.length > 0 && (
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--goldl)' }}>
+                      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--hd)', marginBottom: 6 }}>
+                        👑 1-р үеийн Үндсэн Эх Хүн (Өвөг дээдэс)
+                      </label>
+                      <p className="adv3-sub" style={{ margin: '0 0 8px', fontSize: 12.5 }}>
+                        Хамгийн дээд 1-р үеийн хүнээ сонгосноор үр хүүхэд нь 2, 3, 4… 9-р үе рүү автоматаар зөв дарааллаар байрлана.
+                      </p>
+                      <select
+                        aria-label="1-р үеийн үндсэн эх хүн сонгох"
+                        value={tree?.lineage_root_person_id || ''}
+                        disabled={saving}
+                        onChange={(e) => {
+                          if (e.target.value) void handleSetRootPerson(e.target.value);
+                        }}
+                        style={{ width: '100%', minHeight: 40, padding: '6px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)', fontWeight: 700 }}
+                      >
+                        <option value="">Үндсэн эх хүн сонгох…</option>
+                        {activePeople.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {personName(p)}{p.birth_date ? ` (${p.birth_date.slice(0, 4)})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
