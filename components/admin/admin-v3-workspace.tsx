@@ -20,6 +20,7 @@ import {
 import { ApiError, api, Family, Person, personName, TreeData } from '../../lib/api';
 import { announcePhotoChange, IMAGE_ACCEPT, prepareImageUpload } from '../../lib/image-upload';
 import ProfilePhoto from '../profile-photo';
+import AdminAnnouncements from '../admin-announcements';
 import SharedAncestryReview from '../shared-ancestry-review';
 import SmartDateInput, { normalizeFlexibleDate } from '../smart-date-input';
 import { ThemePicker } from '../theme-picker';
@@ -166,10 +167,31 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   'clan.onboarding.approved': 'Шинэ гишүүний хүсэлт баталсан',
   'clan.onboarding.rejected': 'Шинэ гишүүний хүсэлт татгалзсан',
   'clan.onboarding.banned': 'Хуурамч аккаунт хаасан (Ban)',
+  'clan.relatives.approved': 'Ойрын төрлийн хүсэлт баталсан',
+  'admin.shared_donation_info_saved': 'Хандивын дансны мэдээлэл шинэчилсэн',
+  'admin.user_deleted': 'Аккаунт устгасан',
+  'admin.family_archived': 'Гэр бүлийн орчин устгасан',
+  'admin.user_blocked': 'Аккаунт хаасан (Ban)',
+  'admin.user_activated': 'Аккаунт сэргээсэн',
+};
+
+const AUDIT_TARGET_LABELS: Record<string, string> = {
+  person: 'Хүн',
+  family: 'Гэр бүл',
+  user: 'Аккаунт',
+  tree_join_request: 'Нэгдэх хүсэлт',
+  parent_child_relationship: 'Эцэг/эх-хүүхэд',
+  marriage: 'Гэрлэлт',
+  invitation: 'Урилга',
+  shared_donation_info: 'Хандивын данс',
 };
 
 function auditActionLabel(action: string) {
   return AUDIT_ACTION_LABELS[action] || action;
+}
+
+function auditTargetLabel(targetType: string) {
+  return AUDIT_TARGET_LABELS[targetType] || targetType;
 }
 
 export default function AdminV3Workspace() {
@@ -182,6 +204,19 @@ export default function AdminV3Workspace() {
   const [globalFamilies, setGlobalFamilies] = useState<GlobalFamilyRow[]>([]);
   const [onboardingRequests, setOnboardingRequests] = useState<GuidedOnboardingRequest[]>([]);
   const [onboardingApiAvailable, setOnboardingApiAvailable] = useState(true);
+  const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'banned'>('all');
+  const [donationForm, setDonationForm] = useState({
+    title: '',
+    purpose: '',
+    bank_name: '',
+    account_name: '',
+    account_number: '',
+    currency: 'MNT',
+    qr_image_url: '' as string | null,
+    is_published: false,
+  });
+  const [donationSaving, setDonationSaving] = useState(false);
   const [grantUserId, setGrantUserId] = useState('');
   const [grantRole, setGrantRole] = useState<'ADMIN' | 'MODERATOR'>('ADMIN');
   const [pendingConnections, setPendingConnections] = useState<PendingRootConnection[]>([]);
@@ -266,9 +301,9 @@ export default function AdminV3Workspace() {
     };
   }, []);
 
-  // Verify Global Admin identity + load families, pending root connections, onboarding requests, and admin accounts
+  // Verify Global Admin identity + load families, pending root connections, onboarding requests, donation info, and admin accounts
   const refreshGlobalAdminData = useCallback(async (role: string) => {
-    const [conns, onboardReqs, adminsList, usersList, famsList] = await Promise.all([
+    const [conns, onboardReqs, adminsList, usersList, famsList, donationInfo] = await Promise.all([
       api<PendingRootConnection[]>('/admin/shared-lineage/connections?status=pending').catch(() => []),
       api<GuidedOnboardingRequest[]>('/admin/clan/onboarding/requests?status=pending')
         .then((rows) => {
@@ -282,12 +317,36 @@ export default function AdminV3Workspace() {
       role === 'SUPER_ADMIN' ? api<GlobalAdminAccount[]>('/admin/admins').catch(() => []) : Promise.resolve([]),
       role === 'SUPER_ADMIN' ? api<GlobalUserRow[]>('/admin/users?limit=50').catch(() => []) : Promise.resolve([]),
       role === 'SUPER_ADMIN' ? api<GlobalFamilyRow[]>('/admin/families?limit=50').catch(() => []) : Promise.resolve([]),
+      role === 'SUPER_ADMIN'
+        ? api<{
+            title?: string;
+            purpose?: string;
+            bank_name?: string;
+            account_name?: string;
+            account_number?: string;
+            currency?: string;
+            qr_image_url?: string | null;
+            is_published?: boolean;
+          } | null>('/admin/shared-lineage/donation-info').catch(() => null)
+        : Promise.resolve(null),
     ]);
     setPendingConnections(Array.isArray(conns) ? conns : []);
     setOnboardingRequests(Array.isArray(onboardReqs) ? onboardReqs : []);
     setGlobalAdmins(Array.isArray(adminsList) ? adminsList : []);
     setGlobalUsers(Array.isArray(usersList) ? usersList : []);
     setGlobalFamilies(Array.isArray(famsList) ? famsList : []);
+    if (donationInfo) {
+      setDonationForm({
+        title: donationInfo.title || '',
+        purpose: donationInfo.purpose || '',
+        bank_name: donationInfo.bank_name || '',
+        account_name: donationInfo.account_name || '',
+        account_number: donationInfo.account_number || '',
+        currency: donationInfo.currency || 'MNT',
+        qr_image_url: donationInfo.qr_image_url ?? null,
+        is_published: Boolean(donationInfo.is_published),
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -923,6 +982,70 @@ export default function AdminV3Workspace() {
     }
   }
 
+  async function handleSaveDonationInfo(e: FormEvent) {
+    e.preventDefault();
+    if (donationSaving) return;
+    setDonationSaving(true);
+    setError('');
+    try {
+      const saved = await api<{
+        title: string;
+        purpose: string;
+        bank_name: string;
+        account_name: string;
+        account_number: string;
+        currency: string;
+        qr_image_url: string | null;
+        is_published: boolean;
+      }>('/admin/shared-lineage/donation-info', {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: donationForm.title.trim(),
+          purpose: donationForm.purpose.trim(),
+          bank_name: donationForm.bank_name.trim(),
+          account_name: donationForm.account_name.trim(),
+          account_number: donationForm.account_number.trim(),
+          currency: (donationForm.currency || 'MNT').trim().toUpperCase().slice(0, 3),
+          qr_image_url: donationForm.qr_image_url?.trim() || null,
+          is_published: Boolean(donationForm.is_published),
+        }),
+      });
+      setDonationForm({
+        title: saved.title || '',
+        purpose: saved.purpose || '',
+        bank_name: saved.bank_name || '',
+        account_name: saved.account_name || '',
+        account_number: saved.account_number || '',
+        currency: saved.currency || 'MNT',
+        qr_image_url: saved.qr_image_url ?? null,
+        is_published: Boolean(saved.is_published),
+      });
+      showToast(
+        saved.is_published
+          ? 'Хандивын дансны мэдээлэл хадгалагдаж, дээд буланд нийтлэгдлээ.'
+          : 'Хандивын данс хадгалагдаж, дээд булангаас нуугдлаа.',
+      );
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Дансны мэдээлэл хадгалахад алдаа гарлаа.');
+    } finally {
+      setDonationSaving(false);
+    }
+  }
+
+  async function handleSendPasswordRecovery(userId: string, email: string) {
+    if (!window.confirm(`${email} хаяг руу нууц үг сэргээх холбоос илгээх үү?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(`/admin/users/${userId}/recovery`, { method: 'POST' });
+      showToast(`${email} руу нууц үг сэргээх холбоос илгээлээ.`);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Нууц үг сэргээх холбоос илгээхэд алдаа гарлаа.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!adminGateChecked || (loading && !families.length)) {
     return (
       <div className="adv3-content">
@@ -973,7 +1096,7 @@ export default function AdminV3Workspace() {
             ['ancestry', 'Эх мод & Хүсэлтүүд', ShieldCheck, pendingConnections.length + onboardingRequests.length],
             ['people', 'Хүмүүс & Холбоос', Users, orphanPeople.length],
             ['members', 'Гишүүд & Урилга', Users, members.length],
-            ['content', 'Агуулга', FileText, 0],
+            ['content', 'Данс & Мэдэгдэл', FileText, 0],
             ['settings', 'Эрх & Тохиргоо', Link2, 0],
             ['archive', 'Түр архив & Хогийн сав', Archive, archivedPeople.length + trashItems.length],
           ] as [AdminTab, string, typeof LayoutDashboard, number][]
@@ -1102,7 +1225,7 @@ export default function AdminV3Workspace() {
                       <div className="adv3-sub">Шинэ гэр бүлүүд (жишээ нь Долгор, Баавай, Бадамдорж, Нансалмаагийн салаа) эх модонд холбогдох хүсэлтийг батлах.</div>
                     </div>
                     <button type="button" className="adv3-btn is-primary" onClick={() => setTab('ancestry')}>
-                      Хүсэлт батлах ({pendingConnections.length}) →
+                      Хүсэлт батлах ({pendingConnections.length + onboardingRequests.length}) →
                     </button>
                   </div>
                 </section>
@@ -1118,7 +1241,7 @@ export default function AdminV3Workspace() {
                           <strong>{auditActionLabel(log.action)}</strong>
                           <div className="adv3-sub">{new Date(log.created_at).toLocaleString('mn-MN')}</div>
                         </div>
-                        <span className="adv3-tag">{log.target_type}</span>
+                        <span className="adv3-tag">{auditTargetLabel(log.target_type)}</span>
                       </div>
                     ))
                   )}
@@ -1490,8 +1613,8 @@ export default function AdminV3Workspace() {
                 {/* Universal Multi-Link Relationship Manager Panel (Parents, Spouses, Unlimited Children) */}
                 {linkingPerson && (() => {
                   const personMap = new Map(people.map((x) => [x.id, x]));
-                  const parentEdges = (tree?.parent_child ?? []).filter((e) => e.child_id === linkingPerson.id);
-                  const childEdges = (tree?.parent_child ?? []).filter((e) => e.parent_id === linkingPerson.id);
+                  const parentEdges = (tree?.parent_child_relationships ?? []).filter((e) => e.child_id === linkingPerson.id);
+                  const childEdges = (tree?.parent_child_relationships ?? []).filter((e) => e.parent_id === linkingPerson.id);
                   const marriageEdges = (tree?.marriages ?? []).filter(
                     (m) => m.person_1_id === linkingPerson.id || m.person_2_id === linkingPerson.id,
                   );
@@ -1730,16 +1853,138 @@ export default function AdminV3Workspace() {
             </>
           )}
 
-          {/* TAB 4: CONTENT */}
+          {/* TAB 4: DONATION INFO, ANNOUNCEMENTS & CONTENT */}
           {tab === 'content' && (
             <>
               <div className="adv3-head">
                 <div>
-                  <h1>Агуулга</h1>
-                  <p className="adv3-sub">Түүх, Дурсамж, Архивын хяналт</p>
+                  <h1>Данс &amp; Мэдэгдэл</h1>
+                  <p className="adv3-sub">Дээд хандивын дансны булан, нийтийн мэдэгдэл болон өвийн сангийн хяналт</p>
                 </div>
               </div>
               <MongolianOrnamentBand />
+
+              {adminIdentity.role === 'SUPER_ADMIN' && (
+                <form className="adv3-card" style={{ marginBottom: 18 }} onSubmit={handleSaveDonationInfo}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>💳 Хандивын дансны булан (Дээд ногоон зурвас)</h3>
+                      <p className="adv3-sub" style={{ margin: '4px 0 0' }}>
+                        Бүх нэвтэрсэн гишүүдэд харагдах ургийн сангийн дансны мэдээллийг эндээс засах эсвэл түр нууж болно.
+                      </p>
+                    </div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', padding: '6px 12px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)' }}>
+                      <input
+                        type="checkbox"
+                        checked={donationForm.is_published}
+                        onChange={(e) => setDonationForm({ ...donationForm, is_published: e.target.checked })}
+                        style={{ width: 17, height: 17 }}
+                      />
+                      <span>{donationForm.is_published ? '🟢 Дээд буланд харуулж байна' : '⚪ Нуугдсан (харагдахгүй)'}</span>
+                    </label>
+                  </div>
+
+                  {/* Live Banner Preview */}
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 10,
+                      marginBottom: 14,
+                      background: donationForm.is_published ? '#163d2d' : 'var(--bg)',
+                      color: donationForm.is_published ? '#f5eedc' : 'var(--gt)',
+                      border: '1px solid var(--goldl)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <span>
+                      <strong>{donationForm.title || 'Ургийн сангийн хандив'}</strong>
+                      {donationForm.purpose ? ` · ${donationForm.purpose}` : ''}
+                    </span>
+                    <span>
+                      {donationForm.bank_name ? `${donationForm.bank_name} · ` : ''}
+                      {donationForm.account_name ? `${donationForm.account_name} · ` : ''}
+                      <strong>Данс {donationForm.account_number || '—'}</strong> {donationForm.currency || 'MNT'}
+                    </span>
+                  </div>
+
+                  <div className="adv3-form-grid">
+                    <label>
+                      Гарчиг
+                      <input
+                        value={donationForm.title}
+                        onChange={(e) => setDonationForm({ ...donationForm, title: e.target.value })}
+                        placeholder="Жишээ: Гуулингийнхны өвийн сан"
+                        maxLength={180}
+                      />
+                    </label>
+                    <label>
+                      Банкны нэр
+                      <input
+                        value={donationForm.bank_name}
+                        onChange={(e) => setDonationForm({ ...donationForm, bank_name: e.target.value })}
+                        placeholder="Жишээ: ГОЛОМТ БАНК / ХААН БАНК"
+                        maxLength={120}
+                      />
+                    </label>
+                    <label>
+                      Данс эзэмшигчийн нэр
+                      <input
+                        value={donationForm.account_name}
+                        onChange={(e) => setDonationForm({ ...donationForm, account_name: e.target.value })}
+                        placeholder="Овог Нэр"
+                        maxLength={180}
+                      />
+                    </label>
+                    <label>
+                      Дансны дугаар
+                      <input
+                        value={donationForm.account_number}
+                        onChange={(e) => setDonationForm({ ...donationForm, account_number: e.target.value })}
+                        placeholder="3100..."
+                        maxLength={80}
+                      />
+                    </label>
+                    <label>
+                      Валют (3 үсэг)
+                      <input
+                        value={donationForm.currency}
+                        onChange={(e) => setDonationForm({ ...donationForm, currency: e.target.value.toUpperCase() })}
+                        placeholder="MNT"
+                        maxLength={3}
+                      />
+                    </label>
+                    <label>
+                      Зорилго / Тайлбар
+                      <input
+                        value={donationForm.purpose}
+                        onChange={(e) => setDonationForm({ ...donationForm, purpose: e.target.value })}
+                        placeholder="Ургийн баяр, удмын ном хэвлэх сан..."
+                        maxLength={400}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="submit" className="adv3-btn is-primary" disabled={donationSaving}>
+                      <Check size={14} /> {donationSaving ? 'Хадгалж байна…' : 'Дансны мэдээлэл хадгалах'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              <div className="adv3-card" style={{ marginBottom: 18 }}>
+                <h3>📢 Нийтийн мэдэгдлийн төв</h3>
+                <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
+                  Бүх гишүүдийн хонх (Мэдэгдэл) болон Мэдээ хэсэгт харагдах зарлал, уулзалтын мэдээлэл нийтэлнэ.
+                </p>
+                <AdminAnnouncements canEdit={adminIdentity.role === 'SUPER_ADMIN'} />
+              </div>
+
               <div className="adv3-kpi-grid">
                 <Link href={`/stories?family=${encodeURIComponent(familyId)}`} className="adv3-card" style={{ textDecoration: 'none' }}>
                   <h3>📖 Манай түүх</h3>
@@ -1832,42 +2077,84 @@ export default function AdminV3Workspace() {
                   <div className="adv3-card">
                     <h3>👤 Бүх бүртгэлтэй аккаунтууд ({globalUsers.length})</h3>
                     <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 10 }}>
-                      Туршилтын эсвэл гадны аккаунтыг <strong>Хаах (Ban)</strong> эсвэл <strong>бүрмөсөн устгах</strong> боломжтой. Устгасан имэйлээр шинээр бүртгүүлж болно.
+                      Туршилтын эсвэл гадны аккаунтыг <strong>Хаах (Ban)</strong>, <strong>Нууц үг сэргээх линк илгээх</strong>, эсвэл <strong>бүрмөсөн устгах</strong> боломжтой.
                     </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <input
+                        type="search"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                        placeholder="Нэр эсвэл имэйлээр хайх…"
+                        className="adv3-search"
+                        style={{ flex: '1 1 180px', minHeight: 36 }}
+                      />
+                      <select
+                        aria-label="Төлөвөөр шүүх"
+                        value={userStatusFilter}
+                        onChange={(e) => setUserStatusFilter(e.target.value as 'all' | 'active' | 'banned')}
+                        style={{ minHeight: 36, padding: '4px 10px', borderRadius: 10, border: '1px solid var(--goldl)', background: 'var(--bg)', color: 'var(--hd)', fontSize: 12.5 }}
+                      >
+                        <option value="all">Бүгд</option>
+                        <option value="active">Идэвхтэй</option>
+                        <option value="banned">Хаагдсан</option>
+                      </select>
+                    </div>
                     <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                      {globalUsers.map((u) => {
-                        const isSuper = globalAdmins.some((a) => a.id === u.id && a.role === 'SUPER_ADMIN');
-                        const isSelf = u.id === adminIdentity.id;
-                        return (
-                          <div className="adv3-list-item" key={u.id} style={{ flexWrap: 'wrap', gap: 8 }}>
-                            <div>
-                              <strong>{u.display_name || u.email || 'Хэрэглэгч'}</strong>{' '}
-                              {!u.is_active && <span className="adv3-tag is-danger">Хаагдсан</span>}
-                              <div className="adv3-sub" style={{ margin: 0 }}>{u.email || 'Имэйлгүй'}</div>
-                            </div>
-                            {!isSuper && !isSelf && (
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button
-                                  type="button"
-                                  className="adv3-btn"
-                                  disabled={saving}
-                                  onClick={() => void handleToggleUserBan(u.id, Boolean(u.is_active))}
-                                >
-                                  {u.is_active ? '🚫 Хаах' : '✓ Сэргээх'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="adv3-btn is-danger"
-                                  disabled={saving}
-                                  onClick={() => void handleDeleteUserAccount(u.id, u.email || u.display_name || 'Аккаунт')}
-                                >
-                                  <Trash2 size={13} /> Устгах
-                                </button>
+                      {globalUsers
+                        .filter((u) => {
+                          if (userStatusFilter === 'active' && !u.is_active) return false;
+                          if (userStatusFilter === 'banned' && u.is_active) return false;
+                          const q = userSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return (
+                            (u.display_name || '').toLowerCase().includes(q) ||
+                            (u.email || '').toLowerCase().includes(q)
+                          );
+                        })
+                        .map((u) => {
+                          const isSuper = globalAdmins.some((a) => a.id === u.id && a.role === 'SUPER_ADMIN');
+                          const isSelf = u.id === adminIdentity.id;
+                          return (
+                            <div className="adv3-list-item" key={u.id} style={{ flexWrap: 'wrap', gap: 8 }}>
+                              <div>
+                                <strong>{u.display_name || u.email || 'Хэрэглэгч'}</strong>{' '}
+                                {!u.is_active && <span className="adv3-tag is-danger">Хаагдсан</span>}
+                                <div className="adv3-sub" style={{ margin: 0 }}>{u.email || 'Имэйлгүй'}</div>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                              {!isSuper && !isSelf && (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                  {u.email && (
+                                    <button
+                                      type="button"
+                                      className="adv3-btn"
+                                      disabled={saving}
+                                      title="Нууц үг сэргээх линк илгээх"
+                                      onClick={() => void handleSendPasswordRecovery(u.id, u.email!)}
+                                    >
+                                      🔑 Сэргээх
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="adv3-btn"
+                                    disabled={saving}
+                                    onClick={() => void handleToggleUserBan(u.id, Boolean(u.is_active))}
+                                  >
+                                    {u.is_active ? '🚫 Хаах' : '✓ Сэргээх'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="adv3-btn is-danger"
+                                    disabled={saving}
+                                    onClick={() => void handleDeleteUserAccount(u.id, u.email || u.display_name || 'Аккаунт')}
+                                  >
+                                    <Trash2 size={13} /> Устгах
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                   </div>
 
