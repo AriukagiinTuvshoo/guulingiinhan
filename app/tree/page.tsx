@@ -37,11 +37,13 @@ import { PedigreeCertificateModal } from '../../components/pedigree-certificate-
 import { FamilyBookModal } from '../../components/family-book-modal';
 import { PedigreeWizardModal, RelativeRole } from '../../components/pedigree-wizard-modal';
 import { KinshipCalculatorModal } from '../../components/kinship-calculator-modal';
+import { ClanRelativesRequestModal } from '../../components/clan-relatives-request-modal';
+import { ClanReviewerDrawer } from '../../components/clan-reviewer-drawer';
 import GoldenHeritageTree from '../../components/golden-heritage-tree';
 import HushTreeView from '../../components/hush-tree-view';
 import ToonoTreeView from '../../components/toono-tree-view';
 import { useFocusTrap } from '../../lib/use-focus-trap';
-import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, Link2, Plus, Printer, Users, Wrench } from 'lucide-react';
+import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, Link2, Plus, Printer, ShieldCheck, UserPlus, Users, Wrench } from 'lucide-react';
 
 export type BloodlineMode = 'none' | 'all' | 'paternal' | 'maternal' | 'descendants';
 
@@ -159,6 +161,10 @@ function TreePageContent() {
   const [certificateModalOpen, setCertificateModalOpen] = useState(false);
   const [bookModalOpen, setBookModalOpen] = useState(false);
   const [kinshipModalOpen, setKinshipModalOpen] = useState(false);
+  const [relativesModalOpen, setRelativesModalOpen] = useState(false);
+  const [reviewerDrawerOpen, setReviewerDrawerOpen] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [canReviewClan, setCanReviewClan] = useState(false);
   const [openHeaderMenu, setOpenHeaderMenu] = useState<'print' | 'tools' | null>(null);
   const headerMenusRef = useRef<HTMLDivElement | null>(null);
 
@@ -424,6 +430,40 @@ function TreePageContent() {
 
   const canEditFamily = family?.role === 'owner' || family?.role === 'editor';
   const canPrintFamily = family?.role === 'owner';
+
+  useEffect(() => {
+    if (!family) {
+      setCanReviewClan(false);
+      setPendingReviewCount(0);
+      return;
+    }
+    let active = true;
+    const checkReviewer = async () => {
+      let allowed = family.role === 'owner' || family.role === 'editor';
+      if (!allowed) {
+        try {
+          const st = await api<{ can_review?: boolean; is_admin?: boolean }>('/clan/onboarding/status');
+          allowed = Boolean(st.can_review || st.is_admin);
+        } catch {
+          allowed = false;
+        }
+      }
+      if (!active) return;
+      setCanReviewClan(allowed);
+      if (allowed) {
+        try {
+          const rows = await api<unknown[]>('/admin/clan/onboarding/requests');
+          if (active) setPendingReviewCount(rows.length);
+        } catch {
+          // ignore if unavailable
+        }
+      }
+    };
+    void checkReviewer();
+    return () => {
+      active = false;
+    };
+  }, [family]);
 
   // Keep clicked node at the same screen position after Classic 2D collapse/expand relayout.
   useLayoutEffect(() => {
@@ -1008,6 +1048,30 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions" ref={headerMenusRef}>
+            <button
+              type="button"
+              className="ui-btn"
+              onClick={() => {
+                setOpenHeaderMenu(null);
+                setRelativesModalOpen(true);
+              }}
+            >
+              <UserPlus size={15} aria-hidden="true" /> Төрөл нэмэх хүсэлт
+            </button>
+
+            {canReviewClan && (
+              <button
+                type="button"
+                className="ui-btn"
+                onClick={() => {
+                  setOpenHeaderMenu(null);
+                  setReviewerDrawerOpen(true);
+                }}
+              >
+                <ShieldCheck size={15} aria-hidden="true" /> Хүсэлтүүд ({pendingReviewCount})
+              </button>
+            )}
+
             {canEditFamily && (
               <button
                 type="button"
@@ -1958,6 +2022,24 @@ function TreePageContent() {
         relationships={tree?.parent_child_relationships ?? []}
         marriages={tree?.marriages ?? []}
         initialPersonAId={kinshipInitialPersonId || selectedId || undefined}
+      />
+
+      <ClanRelativesRequestModal
+        isOpen={relativesModalOpen}
+        onClose={() => setRelativesModalOpen(false)}
+        onSubmitted={(msg) => {
+          setNotice(msg);
+        }}
+      />
+
+      <ClanReviewerDrawer
+        isOpen={reviewerDrawerOpen}
+        onClose={() => setReviewerDrawerOpen(false)}
+        onCountChange={(count) => setPendingReviewCount(count)}
+        onApproved={async (msg) => {
+          setNotice(msg);
+          if (familyId) await loadTree(familyId, selectedId || undefined, depth);
+        }}
       />
 
       {/* Divorce Date Picker Modal */}

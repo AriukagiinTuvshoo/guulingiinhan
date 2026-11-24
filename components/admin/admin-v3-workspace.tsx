@@ -111,6 +111,7 @@ type GuidedOnboardingRelative = {
 
 type GuidedOnboardingRequest = {
   id: string;
+  request_kind?: 'onboarding' | 'relatives';
   user_id: string;
   user_email?: string | null;
   user_display_name?: string | null;
@@ -1156,7 +1157,13 @@ export default function AdminV3Workspace() {
                           <strong>
                             {req.last_name ? `${req.last_name} ` : ''}{req.first_name}
                           </strong>{' '}
-                          <span className="adv3-tag is-ok">{req.claimed_generation ? `${req.claimed_generation}-р үе` : 'Шинэ гишүүн'}</span>
+                          <span className="adv3-tag is-ok">
+                            {req.request_kind === 'relatives'
+                              ? 'Төрөл нэмэх хүсэлт'
+                              : req.claimed_generation
+                                ? `${req.claimed_generation}-р үе`
+                                : 'Шинэ гишүүн'}
+                          </span>
                           <div className="adv3-sub" style={{ margin: '4px 0 0' }}>
                             Аккаунт: <strong>{req.user_email || req.user_display_name}</strong> · Салбар: <strong>{req.branch_name || '—'}</strong> · Тулгуур өвөг: <strong>{req.anchor_name || '—'}</strong>
                           </div>

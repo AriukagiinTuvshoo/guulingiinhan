@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle2, Clock, LogOut, Plus, ShieldCheck, Sparkles, Trash2, Users } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Clock, LogOut, Plus, Search, ShieldCheck, Sparkles, Trash2, Users } from 'lucide-react';
 import { ApiError, api, type Family, type User } from '../../lib/api';
 import SmartDateInput from '../../components/smart-date-input';
 import { ThemePicker } from '../../components/theme-picker';
@@ -84,8 +84,11 @@ export default function OnboardingPage() {
   // Guided 4-step quiz state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [branchId, setBranchId] = useState('');
+  const [selectedPath, setSelectedPath] = useState<string[]>([]);
   const [claimedGen, setClaimedGen] = useState<number>(5);
   const [anchorId, setAnchorId] = useState('');
+  const [showFlatList, setShowFlatList] = useState(false);
+  const [nodeSearch, setNodeSearch] = useState('');
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'unknown'>('unknown');
@@ -162,6 +165,52 @@ export default function OnboardingPage() {
 
   const selectedBranch = options?.branches.find((b) => b.id === branchId);
   const selectedAnchor = branchNodes.find((n) => n.id === anchorId);
+  const nodeById = useMemo(() => new Map(branchNodes.map((n) => [n.id, n])), [branchNodes]);
+  const filteredFlatNodes = useMemo(() => {
+    const q = nodeSearch.trim().toLowerCase();
+    if (!q) return branchNodes;
+    return branchNodes.filter((n) => n.name.toLowerCase().includes(q));
+  }, [branchNodes, nodeSearch]);
+
+  function selectBranchForQuiz(nextBranchId: string) {
+    setBranchId(nextBranchId);
+    setSelectedPath([nextBranchId]);
+    setAnchorId(nextBranchId);
+    setShowFlatList(false);
+    setNodeSearch('');
+    setStep(2);
+  }
+
+  function selectGenerationForQuiz(nextGen: number) {
+    setClaimedGen(nextGen);
+    const maxPathLen = Math.max(1, nextGen - 2);
+    setSelectedPath((prev) => {
+      const base = prev.length > 0 ? prev : branchId ? [branchId] : [];
+      const trimmed = base.slice(0, maxPathLen);
+      setAnchorId(trimmed[trimmed.length - 1] || branchId);
+      return trimmed;
+    });
+    setStep(3);
+  }
+
+  function ensureParentDraftIfMissing() {
+    setRelatives((prev) => {
+      if (prev.some((r) => r.relation === 'parent')) return prev;
+      return [
+        {
+          key: crypto.randomUUID(),
+          relation: 'parent',
+          last_name: '',
+          first_name: '',
+          gender: 'unknown',
+          birth_date: '',
+          is_alive: true,
+          email: '',
+        },
+        ...prev,
+      ];
+    });
+  }
 
   function addRelative(defaultRelation: RelativeDraft['relation'] = 'parent') {
     setRelatives((prev) => [
@@ -571,11 +620,7 @@ export default function OnboardingPage() {
                     <button
                       key={b.id}
                       type="button"
-                      onClick={() => {
-                        setBranchId(b.id);
-                        setAnchorId(b.id);
-                        setStep(2);
-                      }}
+                      onClick={() => selectBranchForQuiz(b.id)}
                       style={{
                         padding: '18px 14px',
                         borderRadius: 16,
@@ -617,10 +662,7 @@ export default function OnboardingPage() {
                     <button
                       key={g}
                       type="button"
-                      onClick={() => {
-                        setClaimedGen(g);
-                        setStep(3);
-                      }}
+                      onClick={() => selectGenerationForQuiz(g)}
                       style={{
                         padding: '14px 10px',
                         borderRadius: 14,
@@ -648,37 +690,189 @@ export default function OnboardingPage() {
           {step === 3 && (
             <div style={{ display: 'grid', gap: 18 }}>
               <div>
-                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 20, marginBottom: 6 }}>
-                  3. Хамгийн ойрын бүртгэлтэй өвөг/эцэг эхээ сонгоно уу
-                </h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                  <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 20, margin: 0 }}>
+                    3. Салбараа дагаж хамгийн ойрын өвөг/эцэг эхээ сонгоно уу
+                  </h2>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '6px 10px' }}
+                    onClick={() => setShowFlatList((v) => !v)}
+                  >
+                    <Search size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} />
+                    {showFlatList ? 'Үе шатаар сонгох' : 'Бүх хүнээс хайх'}
+                  </button>
+                </div>
                 <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
-                  <strong>{selectedBranch?.name}</strong>-ийн салбарт одоо бүртгэлтэй байгаа {claimedGen - 1}-р үе хүртэлх хүмүүсээс өөрт хамгийн ойрын хүнээ сонгоно уу.
-                  Хэрэв таны {claimedGen - 1}-р үеийн аав/ээж хараахан бүртгэгдээгүй бол дээд үеийн өвөө/эмээгээ сонгоод, <strong>4-р алхамд аав/ээжийгээ нэмээрэй!</strong>
+                  <strong>{selectedBranch?.name}</strong>-ийн салбараас <strong>{claimedGen - 1}-р үе</strong> хүртэл үе шаттайгаар сонгож бууна уу.
+                  Хэрэв таны дунд үеийн эцэг эх хараахан бүртгэгдээгүй бол хамгийн ойрын бүртгэлтэй хүн дээрээ тогтоод <strong>4-р алхамд аав/ээжээ нэмээрэй</strong>.
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 8 }}>
-                  {branchNodes.map((n) => {
-                    const selected = anchorId === n.id;
+
+                {/* Lineage Breadcrumb */}
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, padding: '10px 12px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)', marginBottom: 14, fontSize: 12.5 }}>
+                  <span style={{ color: 'var(--muted)' }}>{options?.root_label || 'Ядамсүрэн ⚭ Гүнд'}</span>
+                  {(selectedPath.length > 0 ? selectedPath : branchId ? [branchId] : []).map((pid, idx) => {
+                    const pnode = nodeById.get(pid) || (selectedBranch?.id === pid ? { id: selectedBranch.id, name: selectedBranch.name, generation: 2 } : null);
+                    if (!pnode) return null;
+                    const isCurrentAnchor = anchorId === pid;
                     return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => setAnchorId(n.id)}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: 12,
-                          border: selected ? '2px solid var(--gold)' : '1px solid var(--border)',
-                          background: selected ? 'rgba(201,150,43,0.16)' : 'var(--bg)',
-                          color: 'var(--ink)',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700 }}>{n.generation}-Р ҮЕ</div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{n.name}</div>
-                      </button>
+                      <span key={pid} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <ChevronRight size={13} style={{ color: 'var(--muted)' }} />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPath(selectedPath.slice(0, idx + 1));
+                            setAnchorId(pid);
+                          }}
+                          style={{
+                            padding: '3px 9px',
+                            borderRadius: 999,
+                            border: isCurrentAnchor ? '1.5px solid var(--gold)' : '1px solid var(--border)',
+                            background: isCurrentAnchor ? 'rgba(201,150,43,0.18)' : 'var(--card)',
+                            color: 'var(--ink)',
+                            fontWeight: isCurrentAnchor ? 700 : 500,
+                            cursor: 'pointer',
+                            fontSize: 12,
+                          }}
+                        >
+                          {pnode.name} ({pnode.generation}-р үе)
+                        </button>
+                      </span>
                     );
                   })}
                 </div>
+
+                {!showFlatList ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {claimedGen <= 3 ? (
+                      <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(201,150,43,0.10)', border: '1px solid rgba(201,150,43,0.35)', fontSize: 13 }}>
+                        Та <strong>3-р үе</strong> тул <strong>{selectedBranch?.name} (2-р үе)</strong>-ийн хүүхэд болж шууд холбогдоно.
+                      </div>
+                    ) : (
+                      Array.from({ length: Math.max(0, claimedGen - 3) }, (_, i) => i + 3).map((level) => {
+                        const parentIdx = level - 3;
+                        const activePath = selectedPath.length > 0 ? selectedPath : branchId ? [branchId] : [];
+                        if (activePath.length < level - 2) return null;
+                        const parentId = activePath[parentIdx];
+                        if (!parentId) return null;
+                        const parentNode = nodeById.get(parentId) || (selectedBranch?.id === parentId ? { id: selectedBranch.id, name: selectedBranch.name, generation: 2 } : null);
+                        const childrenAtLevel = branchNodes.filter(
+                          (n) => n.generation === level && n.parent_ids.includes(parentId),
+                        );
+                        const selectedChildId = activePath[parentIdx + 1];
+                        return (
+                          <div key={level} style={{ padding: '12px 14px', borderRadius: 14, background: 'var(--bg)', border: '1px solid var(--border)', display: 'grid', gap: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <strong style={{ fontSize: 13 }}>
+                                {level}-р үе · {parentNode?.name}-ийн хүүхдүүд
+                              </strong>
+                              <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                                {childrenAtLevel.length > 0 ? `${childrenAtLevel.length} хүн бүртгэлтэй` : 'Хүүхэд бүртгэгдээгүй'}
+                              </span>
+                            </div>
+
+                            {childrenAtLevel.length > 0 && (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 1fr))', gap: 8 }}>
+                                {childrenAtLevel.map((child) => {
+                                  const picked = selectedChildId === child.id || anchorId === child.id;
+                                  return (
+                                    <button
+                                      key={child.id}
+                                      type="button"
+                                      onClick={() => {
+                                        const nextPath = [...activePath.slice(0, parentIdx + 1), child.id];
+                                        setSelectedPath(nextPath);
+                                        setAnchorId(child.id);
+                                      }}
+                                      style={{
+                                        padding: '10px 12px',
+                                        borderRadius: 12,
+                                        border: picked ? '2px solid var(--gold)' : '1px solid var(--border)',
+                                        background: picked ? 'rgba(201,150,43,0.16)' : 'var(--card)',
+                                        color: 'var(--ink)',
+                                        textAlign: 'left',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700 }}>{child.generation}-Р ҮЕ</div>
+                                      <div style={{ fontWeight: 600, fontSize: 14 }}>{child.name}</div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPath(activePath.slice(0, parentIdx + 1));
+                                setAnchorId(parentId);
+                                ensureParentDraftIfMissing();
+                              }}
+                              style={{
+                                padding: '9px 12px',
+                                borderRadius: 10,
+                                border: anchorId === parentId ? '1.5px solid var(--gold)' : '1px dashed var(--gold)',
+                                background: anchorId === parentId ? 'rgba(201,150,43,0.18)' : 'rgba(201,150,43,0.06)',
+                                color: 'var(--ink)',
+                                fontSize: 12.5,
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                              }}
+                            >
+                              Миний {level}-р үеийн аав/ээж энд алга — <strong>{parentNode?.name}</strong> дээр холбоод 4-р алхамд аав/ээжээ нэмэх
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <input
+                      type="search"
+                      value={nodeSearch}
+                      onChange={(e) => setNodeSearch(e.target.value)}
+                      placeholder="Өвөг эсвэл эцэг эхийн нэрээр хайх…"
+                      className="input"
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 8 }}>
+                      {filteredFlatNodes.map((n) => {
+                        const selected = anchorId === n.id;
+                        return (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => setAnchorId(n.id)}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: 12,
+                              border: selected ? '2px solid var(--gold)' : '1px solid var(--border)',
+                              background: selected ? 'rgba(201,150,43,0.16)' : 'var(--bg)',
+                              color: 'var(--ink)',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700 }}>{n.generation}-Р ҮЕ</div>
+                            <div style={{ fontWeight: 600, fontSize: 14 }}>{n.name}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {selectedAnchor && (
+                  <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: 'rgba(201,150,43,0.10)', border: '1px solid rgba(201,150,43,0.3)', fontSize: 12.5 }}>
+                    Сонгосон тулгуур: <strong>{selectedAnchor.name} ({selectedAnchor.generation}-р үе)</strong>
+                    {selectedAnchor.generation < claimedGen - 1 && (
+                      <span> — 4-р алхамд дунд үеийн ({selectedAnchor.generation + 1}–{claimedGen - 1}-р үе) аав/ээжээ нэмбэл автоматаар дунд нь холбогдоно.</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '4px 0' }} />
@@ -709,9 +903,10 @@ export default function OnboardingPage() {
                     <input value={birthPlace} onChange={(e) => setBirthPlace(e.target.value)} placeholder="Жишээ: Улаанбаатар" className="input" />
                   </label>
                 </div>
-                <div style={{ marginTop: 12 }}>
-                  <SmartDateInput label="Төрсөн огноо (заавал биш)" value={birthDate} onChange={setBirthDate} />
-                </div>
+                <label style={{ display: 'grid', gap: 5, fontSize: 13, marginTop: 12 }}>
+                  Төрсөн огноо (заавал биш)
+                  <SmartDateInput value={birthDate} onChange={setBirthDate} />
+                </label>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
@@ -722,6 +917,9 @@ export default function OnboardingPage() {
                   onClick={() => {
                     if (!anchorId) { setError('Хамгийн ойрын бүртгэлтэй өвөг/эцэг эхээ сонгоно уу.'); return; }
                     if (!firstName.trim()) { setError('Өөрийн нэрээ оруулна уу.'); return; }
+                    if (selectedAnchor && selectedAnchor.generation < claimedGen - 1) {
+                      ensureParentDraftIfMissing();
+                    }
                     setError('');
                     setStep(4);
                   }}
@@ -801,7 +999,10 @@ export default function OnboardingPage() {
                         </label>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10, alignItems: 'end' }}>
-                        <SmartDateInput label="Төрсөн огноо" value={rel.birth_date} onChange={(val: string) => updateRelative(rel.key, { birth_date: val })} />
+                        <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
+                          Төрсөн огноо
+                          <SmartDateInput value={rel.birth_date} onChange={(val: string) => updateRelative(rel.key, { birth_date: val })} />
+                        </label>
                         <label style={{ display: 'grid', gap: 4, fontSize: 12 }}>
                           Имэйл (заавал биш — автоматаар аккаунт нээнэ)
                           <input type="email" value={rel.email} onChange={(e) => updateRelative(rel.key, { email: e.target.value })} placeholder="eej@gmail.com" className="input" />
