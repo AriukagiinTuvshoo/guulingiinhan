@@ -917,8 +917,11 @@ function TreePageContent() {
           <div className="tree-state-mark" aria-hidden="true">🌳</div>
           <p className="tree-eyebrow">ГУУЛИНГИЙНХАН · УДМЫН МОД</p>
           <h1>Гэр бүлийн орчин олдсонгүй.</h1>
-          <p>Таны эрхтэй гэр бүл байхгүй тул удмын модыг нээх боломжгүй байна.</p>
-          <Link className="tree-button tree-button--primary" href="/families">Гэр бүлүүд</Link>
+          <p>Шинэ гэр бүл үүсгээд Гуулингийнхны Эх модонд (Ядамсүрэн ⚭ Гүнд) холбогдох, эсвэл нийтлэг эх модыг шууд үзнэ үү.</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+            <Link className="tree-button tree-button--primary" href="/ancestry">🌳 Гуулингийнхны Эх Мод үзэх</Link>
+            <Link className="tree-button" href="/families">➕ Шинэ гэр бүл үүсгэх / Нэгдэх</Link>
+          </div>
         </section>
       </main>
     );
@@ -1005,6 +1008,13 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions" ref={headerMenusRef}>
+            <Link
+              className="ui-btn"
+              href={familyId ? `/ancestry/connect?family=${encodeURIComponent(familyId)}` : '/ancestry/connect'}
+              title="Энэ гэр бүлээ Гуулингийнхны нэгдсэн Эх модонд (Ядамсүрэн ⚭ Гүнд) холбох"
+            >
+              <Link2 size={15} aria-hidden="true" /> Эх модонд холбох
+            </Link>
             {canEditFamily && (
               <button
                 type="button"

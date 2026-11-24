@@ -808,6 +808,15 @@ export default function AdminV3Workspace() {
                       Урих →
                     </button>
                   </div>
+                  <div className="adv3-list-item">
+                    <div>
+                      <strong>🌳 Нийтлэг Эх Мод &amp; Шинэ гэр бүлийн холболтууд</strong>
+                      <div className="adv3-sub">Шинэ гэр бүлүүд (жишээ нь Долгор, Баавай, Бадамдорж, Нансалмаагийн салаа) эх модонд холбогдох хүсэлтийг батлах.</div>
+                    </div>
+                    <Link href="/admin/ancestry" className="adv3-btn is-primary">
+                      Эх мод удирдах →
+                    </Link>
+                  </div>
                 </section>
 
                 <section className="adv3-card">
