@@ -1175,6 +1175,34 @@ export default function AdminV3Workspace() {
     }
   }
 
+  async function handleBootstrapClanRoot() {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await api<{ clan_family_id: string; created: boolean }>(
+        '/admin/clan/onboarding/bootstrap-root',
+        { method: 'POST' },
+      );
+      const list = await api<Family[]>('/families').catch(() => []);
+      setFamilies(list);
+      const nextFid = list.find((f) => f.id === res.clan_family_id)?.id ?? list[0]?.id ?? '';
+      if (nextFid) {
+        setFamilyId(nextFid);
+        await refreshFamilyData(nextFid);
+      }
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      showToast('ГУУЛИНГИЙНХАН үндсэн удмын мод (Ядамсүрэн ⚭ Гүнд + 4 салбар) амжилттай үүслээ!');
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError
+          ? cause.validationMessage || cause.message
+          : 'Үндсэн удмын мод эхлүүлж чадсангүй.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!adminGateChecked || (loading && !families.length)) {
     return (
       <div className="adv3-content">
@@ -1201,11 +1229,40 @@ export default function AdminV3Workspace() {
     return (
       <div className="adv3-content">
         <div className="hush-empty">
-          <h2>Удирдлагын эрх олдсонгүй</h2>
-          <p>Та Эзэмшигч (Owner) эсвэл Засагч (Editor) эрхтэй гэр бүлтэй байх шаардлагатай.</p>
-          <Link href="/tree" className="adv3-btn is-primary" style={{ marginTop: 12 }}>
-            ← Удмын мод руу буцах
-          </Link>
+          {adminIdentity.role === 'SUPER_ADMIN' ? (
+            <>
+              <h2>Үндсэн удмын мод эхлүүлэх</h2>
+              <p>
+                Энэ орчинд үндсэн <strong>ГУУЛИНГИЙНХАН</strong> гэр бүлийн мод (Ядамсүрэн ⚭ Гүнд болон 4 салбар: Баавай, Бадамдорж, Долгор, Нансалмаа) хараахан үүсээгүй байна.
+              </p>
+              {error && (
+                <div className="adv3-toast" style={{ marginTop: 10 }}>
+                  {error}
+                </div>
+              )}
+              <div style={{ marginTop: 14, display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="adv3-btn is-primary"
+                  disabled={saving}
+                  onClick={() => void handleBootstrapClanRoot()}
+                >
+                  {saving ? 'Үүсгэж байна…' : 'ГУУЛИНГИЙНХАН (4 салбар) үүсгэх'}
+                </button>
+                <Link href="/tree" className="adv3-btn">
+                  ← Удмын мод руу буцах
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2>Удирдлагын эрх олдсонгүй</h2>
+              <p>Та Эзэмшигч (Owner) эсвэл Засагч (Editor) эрхтэй гэр бүлтэй байх шаардлагатай.</p>
+              <Link href="/tree" className="adv3-btn is-primary" style={{ marginTop: 12 }}>
+                ← Удмын мод руу буцах
+              </Link>
+            </>
+          )}
         </div>
       </div>
     );

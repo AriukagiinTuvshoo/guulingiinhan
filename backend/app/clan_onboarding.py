@@ -1443,3 +1443,104 @@ def merge_family_into_clan(
         "created_accounts": created_accounts,
         "total_clan_persons": total_clan_persons,
     }
+
+
+@admin_router.post("/bootstrap-root")
+def bootstrap_clan_root(
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    """Idempotently create the founding ГУУЛИНГИЙНХАН clan tree (Ядамсүрэн ⚭ Гүнд + 4 branches)."""
+    actor = current[0]
+    lock_ancestry_writes(db)
+
+    clan_family, root_pid = _resolve_clan_family_and_root(db)
+    if clan_family is not None and root_pid is not None:
+        existing_member = db.scalar(
+            select(FamilyMember).where(
+                FamilyMember.family_id == clan_family.id,
+                FamilyMember.user_id == actor.id,
+            )
+        )
+        if existing_member is None:
+            db.add(
+                FamilyMember(
+                    id=uuid4(),
+                    family_id=clan_family.id,
+                    user_id=actor.id,
+                    role="owner",
+                )
+            )
+            db.commit()
+        return {
+            "clan_family_id": str(clan_family.id),
+            "root_person_id": str(root_pid),
+            "created": False,
+        }
+
+    fam = Family(
+        id=uuid4(),
+        name="ГУУЛИНГИЙНХАН",
+        description="Гуулингийнхны нэгдсэн удмын мод",
+        created_by=actor.id,
+    )
+    db.add(fam)
+    db.flush()
+    db.add(FamilyMember(id=uuid4(), family_id=fam.id, user_id=actor.id, role="owner"))
+
+    def _make_ancestor(first_name: str, gender: str) -> Person:
+        p = Person(
+            id=uuid4(),
+            first_name=first_name,
+            last_name="",
+            gender=gender,
+            is_alive=False,
+            visibility="family",
+            search_first_name=normalize_search_name(first_name),
+            search_last_name="",
+            created_by=actor.id,
+        )
+        db.add(p)
+        db.flush()
+        db.add(FamilyPerson(id=uuid4(), family_id=fam.id, person_id=p.id, added_by=actor.id))
+        return p
+
+    yadam = _make_ancestor("Ядамсүрэн", "male")
+    gund = _make_ancestor("Гүнд", "female")
+    _ensure_marriage(db, yadam.id, gund.id, actor.id)
+
+    branch_specs = [
+        ("Баавай", "male"),
+        ("Бадамдорж", "male"),
+        ("Долгор", "female"),
+        ("Нансалмаа", "female"),
+    ]
+    for b_name, b_gender in branch_specs:
+        child = _make_ancestor(b_name, b_gender)
+        _ensure_parent_child(db, yadam.id, child.id, actor.id)
+        _ensure_parent_child(db, gund.id, child.id, actor.id)
+
+    fam.root_person_id = yadam.id
+    shared = db.get(SharedAncestry, 1)
+    if shared is None:
+        db.add(SharedAncestry(id=1, root_person_id=yadam.id, created_by=actor.id))
+    else:
+        shared.root_person_id = yadam.id
+
+    db.add(
+        AuditLog(
+            id=uuid4(),
+            family_id=fam.id,
+            actor_id=actor.id,
+            action="clan.root.bootstrapped",
+            target_type="family",
+            target_id=fam.id,
+        )
+    )
+    db.commit()
+    return {
+        "clan_family_id": str(fam.id),
+        "root_person_id": str(yadam.id),
+        "branches": [name for name, _ in branch_specs],
+        "created": True,
+    }

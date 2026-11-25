@@ -440,3 +440,26 @@ def test_merge_family_safety_invariants(client, database, email_provider):
         },
     )
     assert r_2p.status_code == 409
+
+
+def test_bootstrap_clan_root_creates_4_branches_and_is_idempotent(client, database, email_provider):
+    admin_id = _register(client, email_provider, "bootstrap-root@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    _login(client, "bootstrap-root@example.com")
+
+    first = client.post("/api/v1/admin/clan/onboarding/bootstrap-root")
+    assert first.status_code == 200, first.text
+    first_json = first.json()
+    assert first_json["created"] is True
+    assert first_json["branches"] == ["Баавай", "Бадамдорж", "Долгор", "Нансалмаа"]
+
+    opts = client.get("/api/v1/clan/onboarding/options")
+    assert opts.status_code == 200, opts.text
+    branch_names = [b["name"] for b in opts.json()["branches"]]
+    assert set(branch_names) == {"Баавай", "Бадамдорж", "Долгор", "Нансалмаа"}
+
+    second = client.post("/api/v1/admin/clan/onboarding/bootstrap-root")
+    assert second.status_code == 200, second.text
+    assert second.json()["created"] is False
+    assert second.json()["clan_family_id"] == first_json["clan_family_id"]
