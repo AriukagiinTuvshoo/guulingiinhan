@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     google_oidc_state_secret: str | None = None
     email_provider: str = "fake"
     email_from: EmailStr | None = None
+    email_from_name: str = "Гуулингийнхан"
     email_public_base_url: str = "http://localhost:3000"
     email_verification_ttl_seconds: int = 86400
     email_password_reset_ttl_seconds: int = 1800
@@ -73,11 +74,63 @@ class Settings(BaseSettings):
     email_smtp_username: str | None = None
     email_smtp_password: str | None = None
     email_smtp_starttls: bool = True
+    email_api_key: str | None = None
+    email_gmail_client_id: str | None = None
+    email_gmail_client_secret: str | None = None
+    email_gmail_refresh_token: str | None = None
+    email_webhook_url: str | None = None
+    email_webhook_secret: str | None = None
     admin_bootstrap_email: EmailStr | None = None
     admin_bootstrap_admin_email: EmailStr | None = None
     admin_bootstrap_moderator_email: EmailStr | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    def _validate_real_email_settings(self, label: str) -> None:
+        provider = self.email_provider.lower()
+        if provider == "smtp":
+            if not all((
+                self.email_from,
+                self.email_smtp_host,
+                self.email_smtp_username,
+                self.email_smtp_password,
+            )):
+                raise ValueError(
+                    f"{label} email requires sender and authenticated SMTP configuration."
+                )
+            if not self.email_smtp_starttls:
+                raise ValueError(f"{label} SMTP must use STARTTLS.")
+        elif provider in {"brevo", "resend"}:
+            if not self.email_from or not self.email_api_key:
+                raise ValueError(
+                    f"{label} {provider} email requires EMAIL_FROM and EMAIL_API_KEY."
+                )
+        elif provider == "gmail_api":
+            if not all((
+                self.email_from,
+                self.email_gmail_client_id,
+                self.email_gmail_client_secret,
+                self.email_gmail_refresh_token,
+            )):
+                raise ValueError(f"{label} Gmail API email configuration is incomplete.")
+        elif provider == "apps_script":
+            if not self.email_from or not self.email_webhook_url:
+                raise ValueError(
+                    f"{label} Apps Script email requires EMAIL_FROM and EMAIL_WEBHOOK_URL."
+                )
+            if (
+                not _https_url(self.email_webhook_url)
+                or urlsplit(self.email_webhook_url).hostname != "script.google.com"
+            ):
+                raise ValueError(
+                    f"{label} EMAIL_WEBHOOK_URL must be an HTTPS URL on script.google.com."
+                )
+            if not self.email_webhook_secret or len(self.email_webhook_secret) < 32:
+                raise ValueError(
+                    f"{label} EMAIL_WEBHOOK_SECRET must be at least 32 characters."
+                )
+        if not _https_url(self.email_public_base_url.rstrip("/"), origin_only=True):
+            raise ValueError(f"{label} EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
 
     @model_validator(mode="after")
     def validate_production_settings(self):
@@ -85,6 +138,13 @@ class Settings(BaseSettings):
         if app_env not in {"development", "test", "staging", "production"}:
             raise ValueError("APP_ENV must be development, test, staging, or production.")
         self.app_env = app_env
+        self.email_provider = self.email_provider.strip()
+        if self.email_webhook_url is not None:
+            self.email_webhook_url = self.email_webhook_url.strip() or None
+        if self.email_webhook_secret is not None:
+            self.email_webhook_secret = self.email_webhook_secret.strip() or None
+        if self.email_api_key is not None:
+            self.email_api_key = self.email_api_key.strip() or None
         hosted_env = app_env in {"production", "staging"}
         if not 1 <= self.db_pool_size <= 50:
             raise ValueError("DB_POOL_SIZE must be between 1 and 50.")
@@ -108,8 +168,19 @@ class Settings(BaseSettings):
             raise ValueError("SLOW_REQUEST_THRESHOLD_MS must be between 1 and 120000.")
         if not 1 <= self.photo_cleanup_max_attempts <= 20:
             raise ValueError("PHOTO_CLEANUP_MAX_ATTEMPTS must be between 1 and 20.")
-        if self.email_provider.lower() not in {"fake", "smtp", "disabled"}:
-            raise ValueError("EMAIL_PROVIDER must be fake, smtp, or disabled.")
+        allowed_email_providers = {
+            "fake",
+            "smtp",
+            "disabled",
+            "brevo",
+            "resend",
+            "gmail_api",
+            "apps_script",
+        }
+        if self.email_provider.lower() not in allowed_email_providers:
+            raise ValueError(
+                "EMAIL_PROVIDER must be fake, disabled, smtp, brevo, resend, gmail_api, or apps_script."
+            )
         if self.email_verification_ttl_seconds < 300 or self.email_verification_ttl_seconds > 86400:
             raise ValueError("EMAIL_VERIFICATION_TTL_SECONDS must be between 300 and 86400.")
         if self.email_password_reset_ttl_seconds < 300 or self.email_password_reset_ttl_seconds > 86400:
@@ -134,16 +205,12 @@ class Settings(BaseSettings):
                 or not self.twilio_from_number)
             ):
                 raise ValueError("Production requires a configured SMS provider.")
-            if self.email_provider.lower() != "smtp":
-                raise ValueError("Production requires a real EMAIL_PROVIDER; fake is development/test only.")
-            if not all(
-                (self.email_from, self.email_smtp_host, self.email_smtp_username, self.email_smtp_password)
-            ):
-                raise ValueError("Production email requires sender and authenticated SMTP configuration.")
-            if not self.email_smtp_starttls:
-                raise ValueError("Production SMTP must use STARTTLS.")
-            if not _https_url(self.email_public_base_url.rstrip("/"), origin_only=True):
-                raise ValueError("Production EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
+            real_email_providers = {"smtp", "brevo", "resend", "gmail_api", "apps_script"}
+            if self.email_provider.lower() not in real_email_providers:
+                raise ValueError(
+                    "Production requires a real EMAIL_PROVIDER (smtp, brevo, resend, gmail_api, apps_script)."
+                )
+            self._validate_real_email_settings("Production")
         elif app_env == "staging":
             if self.sms_provider.lower() not in {"disabled", "twilio"}:
                 raise ValueError("Staging SMS_PROVIDER must be disabled or twilio.")
@@ -151,19 +218,13 @@ class Settings(BaseSettings):
                 self.twilio_account_sid, self.twilio_auth_token, self.twilio_from_number,
             )):
                 raise ValueError("Staging Twilio configuration is incomplete.")
-            if self.email_provider.lower() not in {"disabled", "smtp"}:
-                raise ValueError("Staging EMAIL_PROVIDER must be disabled or smtp.")
-            if self.email_provider.lower() == "smtp" and not all((
-                self.email_from, self.email_smtp_host,
-                self.email_smtp_username, self.email_smtp_password,
-            )):
-                raise ValueError("Staging SMTP configuration is incomplete.")
-            if self.email_provider.lower() == "smtp" and not self.email_smtp_starttls:
-                raise ValueError("Staging SMTP must use STARTTLS.")
-            if self.email_provider.lower() == "smtp" and not _https_url(
-                self.email_public_base_url.rstrip("/"), origin_only=True,
-            ):
-                raise ValueError("Staging EMAIL_PUBLIC_BASE_URL must be an HTTPS origin.")
+            real_email_providers = {"smtp", "brevo", "resend", "gmail_api", "apps_script"}
+            if self.email_provider.lower() not in ({"disabled"} | real_email_providers):
+                raise ValueError(
+                    "Staging EMAIL_PROVIDER must be disabled or one of smtp, brevo, resend, gmail_api, apps_script."
+                )
+            if self.email_provider.lower() != "disabled":
+                self._validate_real_email_settings("Staging")
         if self.google_oidc_enabled:
             if not all(
                 (

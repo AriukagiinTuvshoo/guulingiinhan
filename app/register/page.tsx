@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
-import { ApiError, api } from '../../lib/api';
+import { API_BASE, ApiError, api } from '../../lib/api';
 import LivingTreeAuthPortal from '../../components/living-tree-auth-portal';
 
 type Mode = 'email' | 'phone';
@@ -36,11 +36,13 @@ export default function RegisterPage() {
   const [busy, setBusy] = useState(false);
   const phoneEnabled = true;
   const [emailEnabled, setEmailEnabled] = useState<boolean | null>(null);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     api<{ enabled: boolean }>('/auth/email/config').then((result) => setEmailEnabled(result.enabled)).catch(() => setEmailEnabled(false));
+    api<{ enabled: boolean }>('/auth/google/config').then((result) => setGoogleEnabled(result.enabled)).catch(() => setGoogleEnabled(false));
   }, []);
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -227,6 +229,19 @@ export default function RegisterPage() {
           <p className="authv2-help">Нэвтэрсний дараа Тохиргооноос утсаа баталгаажуулна. Нэвтрэхэд SMS шаардахгүй.</p>
           <button type="submit" className="authv2-submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
         </form>
+      )}
+
+      {googleEnabled && !registeredEmail && (
+        <div style={{ marginTop: 12 }}>
+          <div className="authv2-divider"><span>эсвэл</span></div>
+          <button
+            type="button"
+            className="authv2-google"
+            onClick={() => window.location.assign(API_BASE + '/auth/google/start')}
+          >
+            Google-ээр үргэлжлүүлэх
+          </button>
+        </div>
       )}
 
       <p className="authv2-switch">Аль хэдийн бүртгэлтэй юу? <Link href="/login">Нэвтрэх</Link></p>

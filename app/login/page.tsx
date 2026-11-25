@@ -89,7 +89,7 @@ export default function LoginPage() {
     setError('');
     setNotice('');
     try {
-      await api('/auth/email/verification/resend', {
+      await api('/auth/email/verification/request', {
         method: 'POST',
         body: JSON.stringify({ email: unverifiedEmail }),
       });

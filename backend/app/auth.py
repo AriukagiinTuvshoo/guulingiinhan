@@ -31,7 +31,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME, issue_csrf_token, valid_csrf_token
 from app.db import get_db
-from app.email import EmailProvider, get_email_provider, send_email_safely
+from app.email import (
+    EmailProvider,
+    get_email_provider,
+    is_email_delivery_configured,
+    send_email_safely,
+)
 from app.identity import email_is_registered, find_email_user, normalize_email, normalize_phone
 from app.models import (
     AuditLog,
@@ -911,9 +916,12 @@ def google_callback(
             except HTTPException:
                 result = "failed"
             else:
+                from app.admin import bootstrap_admin_roles
+
                 response = _google_frontend_redirect("success")
                 set_session_cookie(db, response, user.id)
                 response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
+                bootstrap_admin_roles(db)
                 return response
         # Verified Google email is not proof of ownership of a pre-existing app account.
         if identity is None and email_is_registered(db, email):
@@ -928,6 +936,9 @@ def google_callback(
             db.add(AuditLog(actor_id=user.id, action="google.account_created", target_type="user", target_id=user.id))
             try:
                 db.commit()
+                from app.admin import bootstrap_admin_roles
+
+                bootstrap_admin_roles(db)
                 response = _google_frontend_redirect("success")
                 set_session_cookie(db, response, user.id)
                 response.delete_cookie(GOOGLE_STATE_COOKIE, path="/api/v1/auth/google/callback")
@@ -1087,6 +1098,9 @@ def confirm_email_verification(
     user.email_verified_at = now
     _audit_auth_event(db, user.id, "email_verified", "email_identity", identity.id)
     db.commit()
+    from app.admin import bootstrap_admin_roles
+
+    bootstrap_admin_roles(db)
     return GenericEmailResponse(message="Имэйл хаяг баталгаажлаа. Одоо нэвтэрч болно.")
 
 
@@ -1432,12 +1446,7 @@ def cancel_identity_link_request(
 @router.get("/email/config")
 def email_auth_config():
     """Expose email delivery availability without revealing provider credentials."""
-    settings = get_settings()
-    enabled = settings.email_provider.lower() == "smtp" and all(
-        (settings.email_from, settings.email_smtp_host,
-         settings.email_smtp_username, settings.email_smtp_password)
-    )
-    return {"enabled": bool(enabled)}
+    return {"enabled": is_email_delivery_configured(get_settings())}
 
 
 @router.get("/phone/config")

@@ -16,7 +16,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -169,14 +169,70 @@ class AdminStoryEdit(BaseModel):
     visibility: str | None = Field(default=None, pattern="^(private|family|public)$")
 
 
-def bootstrap_admin_roles() -> None:
+def _bootstrap_admin_roles_in_session(
+    db: Session,
+    roles: list[tuple[AdminRole, object]],
+) -> bool:
+    if db.get(AdminBootstrap, 1) or db.scalar(select(AdminGrant.user_id).limit(1)):
+        return False
+    accounts: list[tuple[AdminRole, User]] = []
+    for role, email in roles:
+        if not email:
+            continue
+        normalized = normalize_email(str(email))
+        user = db.scalar(select(User).where(User.email == normalized))
+        identity = db.scalar(
+            select(LoginIdentity).where(
+                LoginIdentity.user_id == user.id,
+                LoginIdentity.verified_at.is_not(None),
+                LoginIdentity.disabled_at.is_(None),
+                or_(
+                    and_(
+                        LoginIdentity.provider == "email",
+                        LoginIdentity.normalized_identifier == normalized,
+                    ),
+                    and_(
+                        LoginIdentity.provider == "google",
+                        func.lower(LoginIdentity.display_identifier) == normalized,
+                    ),
+                ),
+            )
+        ) if user else None
+        if not user or not user.is_active or not user.email_verified_at or not identity:
+            logger.warning(
+                "Admin bootstrap deferred until the configured account is verified",
+                extra={"event": "admin_bootstrap_deferred",
+                       "error_code": "ADMIN_BOOTSTRAP_ACCOUNT_UNAVAILABLE"},
+            )
+            return False
+        accounts.append((role, user))
+    now = datetime.now(UTC)
+    root_id = accounts[0][1].id
+    db.add(AdminBootstrap(id=1, user_id=root_id, created_at=now))
+    for role, user in accounts:
+        db.add(AdminGrant(user_id=user.id, role=role, granted_by=root_id,
+                          created_at=now, updated_at=now))
+        db.add(AuditLog(
+            id=uuid4(), family_id=None, actor_id=root_id, action="admin.bootstrapped",
+            target_type="user", target_id=user.id, created_at=now,
+        ))
+    try:
+        db.flush()
+        return True
+    except IntegrityError:
+        # A concurrent process completed the one-time bootstrap first.
+        db.rollback()
+        return False
+
+
+def bootstrap_admin_roles(db: Session | None = None) -> None:
     """Grant initial roles once, from verified accounts named by runtime secrets.
 
     The durable marker prevents re-granting after a later revocation or env reuse.
     Nothing happens unless the operator configures ADMIN_BOOTSTRAP_EMAIL.
     """
     settings = get_settings()
-    roles = [
+    roles: list[tuple[AdminRole, object]] = [
         (AdminRole.SUPER_ADMIN, settings.admin_bootstrap_email),
         (AdminRole.ADMIN, settings.admin_bootstrap_admin_email),
         (AdminRole.MODERATOR, settings.admin_bootstrap_moderator_email),
@@ -188,46 +244,14 @@ def bootstrap_admin_roles() -> None:
     supplied = [normalize_email(str(email)) for _, email in roles if email]
     if len(supplied) != len(set(supplied)):
         raise RuntimeError("Admin bootstrap accounts must be distinct")
-    with SessionLocal.begin() as db:
-        if db.get(AdminBootstrap, 1) or db.scalar(select(AdminGrant.user_id).limit(1)):
-            return
-        accounts = []
-        for role, email in roles:
-            if not email:
-                continue
-            normalized = normalize_email(str(email))
-            user = db.scalar(select(User).where(User.email == normalized))
-            identity = db.scalar(
-                select(LoginIdentity).where(
-                    LoginIdentity.user_id == user.id,
-                    LoginIdentity.provider == "email",
-                    LoginIdentity.normalized_identifier == normalized,
-                    LoginIdentity.verified_at.is_not(None),
-                    LoginIdentity.disabled_at.is_(None),
-                )
-            ) if user else None
-            if not user or not user.is_active or not user.email_verified_at or not identity:
-                logger.warning(
-                    "Admin bootstrap deferred until the configured account is verified",
-                    extra={"event": "admin_bootstrap_deferred",
-                           "error_code": "ADMIN_BOOTSTRAP_ACCOUNT_UNAVAILABLE"},
-                )
-                return
-            accounts.append((role, user))
-        now = datetime.now(UTC)
-        root_id = accounts[0][1].id
-        db.add(AdminBootstrap(id=1, user_id=root_id, created_at=now))
-        for role, user in accounts:
-            db.add(AdminGrant(user_id=user.id, role=role, granted_by=root_id,
-                              created_at=now, updated_at=now))
-            db.add(AuditLog(
-                id=uuid4(), family_id=None, actor_id=root_id, action="admin.bootstrapped",
-                target_type="user", target_id=user.id, created_at=now,
-            ))
+    if db is None:
+        with SessionLocal.begin() as session:
+            _bootstrap_admin_roles_in_session(session, roles)
+        return
+    if _bootstrap_admin_roles_in_session(db, roles):
         try:
-            db.flush()
+            db.commit()
         except IntegrityError:
-            # A concurrent process completed the one-time bootstrap first.
             db.rollback()
 
 

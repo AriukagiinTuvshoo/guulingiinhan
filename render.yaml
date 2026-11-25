@@ -48,5 +48,27 @@ services:
         sync: false
       - key: EMAIL_SMTP_PASSWORD
         sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_WEBHOOK_URL
+        sync: false
+      - key: EMAIL_WEBHOOK_SECRET
+        sync: false
+      - key: EMAIL_GMAIL_CLIENT_ID
+        sync: false
+      - key: EMAIL_GMAIL_CLIENT_SECRET
+        sync: false
+      - key: EMAIL_GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_OIDC_ENABLED
+        sync: false
+      - key: GOOGLE_OIDC_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OIDC_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OIDC_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_OIDC_STATE_SECRET
+        sync: false
       - key: ADMIN_BOOTSTRAP_EMAIL
         value: tuvshoo0331@gmail.com
