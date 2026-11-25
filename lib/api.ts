@@ -1,7 +1,23 @@
 const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
 const developmentApiBase = 'http://localhost:8000/api/v1';
 
-export const API_BASE = configuredApiBase || (process.env.NODE_ENV === 'development' ? developmentApiBase : '');
+function resolveApiBase(): string {
+  const base = configuredApiBase || (process.env.NODE_ENV === 'development' ? developmentApiBase : '');
+  if (!base) return '';
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    try {
+      const parsed = new URL(base);
+      if (parsed.protocol === 'https:' && parsed.origin !== window.location.origin) {
+        return '/api/v1';
+      }
+    } catch {
+      // Keep configured base if not parseable.
+    }
+  }
+  return base;
+}
+
+export const API_BASE = resolveApiBase();
 
 export class ApiError extends Error {
   constructor(
@@ -56,58 +72,66 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !isRawBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  if (isUnsafe) headers.set('X-CSRF-Token', await getCsrfToken());
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (isUnsafe) headers.set('X-CSRF-Token', await getCsrfToken());
 
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      credentials: 'include',
-      headers,
-    });
-  } catch {
-    throw new ApiError(0, 'Холболтод асуудал гарлаа. Дахин оролдоно уу.');
-  }
-  if (!response.ok) {
-    let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
-    let code: string | null = null;
-    let validationMessage: string | null = null;
-    let requestId = response.headers.get('X-Request-ID');
+    let response: Response;
     try {
-      const parsed: unknown = await response.json();
-      const payload = parsed && typeof parsed === 'object'
-        ? parsed as Record<string, unknown>
-        : {};
-      code = typeof payload.error_code === 'string' ? payload.error_code : null;
-      requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
-      if (
-        (
-          response.status === 422 ||
-          response.status === 409 ||
-          (response.status === 403 && code !== 'CSRF_TOKEN_INVALID' && code !== 'CSRF_TOKEN_REQUIRED')
-        ) &&
-        typeof payload.detail === 'string' &&
-        payload.detail.length <= 300
-      ) {
-        validationMessage = payload.detail;
-      }
-      message =
-        response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
-        response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
-        response.status === 404 ? 'Мэдээлэл олдсонгүй.' :
-        response.status === 409 ? 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.' :
-        response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
-        response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
-        response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
-        typeof payload.detail === 'string' ? payload.detail : message;
+      response = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        credentials: 'include',
+        headers,
+      });
     } catch {
-      // Keep the friendly fallback message when the server sends no JSON.
+      throw new ApiError(0, 'Холболтод асуудал гарлаа. Дахин оролдоно уу.');
     }
-    if (code === 'CSRF_TOKEN_INVALID' || code === 'CSRF_TOKEN_REQUIRED') csrfToken = null;
-    throw new ApiError(response.status, message, code, requestId, validationMessage);
+    if (!response.ok) {
+      let message = 'Серверийн алдаа гарлаа. Дахин оролдоно уу.';
+      let code: string | null = null;
+      let validationMessage: string | null = null;
+      let requestId = response.headers.get('X-Request-ID');
+      try {
+        const parsed: unknown = await response.json();
+        const payload = parsed && typeof parsed === 'object'
+          ? parsed as Record<string, unknown>
+          : {};
+        code = typeof payload.error_code === 'string' ? payload.error_code : null;
+        requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
+        if (
+          (
+            response.status === 422 ||
+            response.status === 409 ||
+            (response.status === 403 && code !== 'CSRF_TOKEN_INVALID' && code !== 'CSRF_TOKEN_REQUIRED')
+          ) &&
+          typeof payload.detail === 'string' &&
+          payload.detail.length <= 300
+        ) {
+          validationMessage = payload.detail;
+        }
+        message =
+          response.status === 401 ? 'Нэвтрэх шаардлагатай.' :
+          response.status === 403 ? 'Энэ мэдээлэлд хандах эрхгүй.' :
+          response.status === 404 ? 'Мэдээлэл олдсонгүй.' :
+          response.status === 409 ? 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.' :
+          response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
+          response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
+          response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
+          typeof payload.detail === 'string' ? payload.detail : message;
+      } catch {
+        // Keep the friendly fallback message when the server sends no JSON.
+      }
+      if (code === 'CSRF_TOKEN_INVALID' || code === 'CSRF_TOKEN_REQUIRED') {
+        csrfToken = null;
+        if (attempt === 0 && isUnsafe && response.status === 403) {
+          continue;
+        }
+      }
+      throw new ApiError(response.status, message, code, requestId, validationMessage);
+    }
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
   }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  throw new ApiError(403, 'Аюулгүй хүсэлтийн token баталгаажсангүй. Дахин оролдоно уу.');
 }
 
 export type User = { id: string; email: string | null; display_name: string; person_id: string | null; profile_photo_url?: string | null };
