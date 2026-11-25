@@ -13,7 +13,9 @@ class Base(DeclarativeBase):
 def make_engine(url: str | None = None):
     settings = get_settings()
     database_url = url or settings.database_url
-    if database_url.startswith("postgresql://"):
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     if database_url.startswith("sqlite"):
         return create_engine(

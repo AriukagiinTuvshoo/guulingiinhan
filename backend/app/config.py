@@ -115,7 +115,7 @@ class Settings(BaseSettings):
         if self.email_password_reset_ttl_seconds < 300 or self.email_password_reset_ttl_seconds > 86400:
             raise ValueError("EMAIL_PASSWORD_RESET_TTL_SECONDS must be between 300 and 86400.")
         if hosted_env:
-            if not self.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
+            if not self.database_url.startswith(("postgres://", "postgresql://", "postgresql+psycopg://")):
                 raise ValueError("Production requires PostgreSQL in DATABASE_URL.")
             origins = self.cors_origin_list
             if not origins or "*" in origins:
