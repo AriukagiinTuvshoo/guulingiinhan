@@ -21,7 +21,7 @@ services:
       - key: EMAIL_SMTP_STARTTLS
         value: "true"
       - key: EMAIL_PROVIDER
-        value: smtp
+        sync: false
       - key: EMAIL_PUBLIC_BASE_URL
         value: https://guulingiinhan-staging.tuvshoo0331.workers.dev
       - key: SMS_PROVIDER

@@ -40,6 +40,10 @@ class EmailDelivery:
 class EmailDeliveryError(RuntimeError):
     """Provider failure without exposing provider response or credentials."""
 
+    def __init__(self, message: str = "Email delivery failed", *, reason: str | None = None):
+        super().__init__(message)
+        self.reason = reason
+
 
 def _render_email_html(title: str, intro: str, cta_label: str, link: str) -> str:
     safe_title = html.escape(title)
@@ -370,7 +374,14 @@ class AppsScriptEmailProvider(_BaseRealEmailProvider):
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, dict) or payload.get("ok") is not True:
-                raise EmailDeliveryError("Email delivery failed")
+                raw_err = payload.get("error") if isinstance(payload, dict) else None
+                allowed = {"relay_not_configured", "unauthorized", "invalid_payload"}
+                safe_reason = (
+                    raw_err
+                    if isinstance(raw_err, str) and raw_err in allowed
+                    else "apps_script_error"
+                )
+                raise EmailDeliveryError("Email delivery failed", reason=safe_reason)
         except EmailDeliveryError:
             raise
         except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
@@ -491,6 +502,7 @@ def send_email_safely(
                 "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else None,
                 "cause_errno": getattr(exc.__cause__, "errno", None),
                 "status_code": status_code,
+                "reason": exc.reason,
                 "request_id": request_id,
             },
         )
