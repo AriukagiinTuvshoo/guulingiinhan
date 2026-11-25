@@ -12,7 +12,7 @@ function authError(cause: unknown) {
   if (cause instanceof ApiError) {
     if (cause.status === 401) return 'Нэвтрэх мэдээлэл буруу байна.';
     if (cause.status === 403) {
-      return cause.message || 'Энэ нэвтрэх үйлдлийг одоогоор хийх боломжгүй байна.';
+      return cause.validationMessage || cause.message || 'Энэ нэвтрэх үйлдлийг одоогоор хийх боломжгүй байна.';
     }
     if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
     if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
@@ -69,11 +69,12 @@ export default function LoginPage() {
       await moveToApp();
     } catch (cause) {
       setError(authError(cause));
+      const detailText = cause instanceof ApiError ? (cause.validationMessage || cause.message || '') : '';
       if (
         cause instanceof ApiError &&
         cause.status === 403 &&
         identifier.includes('@') &&
-        /имэйл|баталгаажуул|email|verif/i.test(cause.message || '')
+        /имэйл|баталгаажуул|email|verif/i.test(detailText)
       ) {
         setUnverifiedEmail(identifier);
       }

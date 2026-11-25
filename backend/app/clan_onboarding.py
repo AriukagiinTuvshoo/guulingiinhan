@@ -10,34 +10,63 @@ import json
 import secrets
 from collections import deque
 from datetime import UTC, date, datetime
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.admin import AdminRole, require_super_admin
 from app.auth import _password_hash as hash_password
 from app.auth import get_current_user, normalize_email
 from app.db import get_db
 from app.models import (
     AdminGrant,
+    Archive,
+    ArchivePerson,
     AuditLog,
+    Biography,
+    ChatMessage,
+    Donation,
     Family,
+    FamilyClanLink,
+    FamilyEvent,
+    FamilyFund,
     FamilyMember,
     FamilyPerson,
+    FamilyTrashRecord,
+    LifeEvent,
     LoginIdentity,
     Marriage,
+    Memory,
+    MemoryPersonTag,
     ParentChildRelationship,
     Person,
+    PersonLineageAssignment,
+    PersonLinkRequest,
+    Photo,
+    PhotoPersonTag,
+    RootConnection,
     SharedAncestry,
+    SharedAncestryPerson,
+    SharedAncestryRelationship,
+    SharedAncestryRequest,
+    Story,
+    StoryPerson,
     TreeJoinRequest,
     User,
     UserPersonLink,
     UserSession,
 )
 from app.person_search import normalize_search_name
-from app.relationships import canonical_pair
+from app.relationships import (
+    RelationshipError,
+    assert_parent_child_is_acyclic,
+    canonical_pair,
+    lock_ancestry_writes,
+)
 
 PREFIX = "CLAN_ONBOARDING_V1:"
 RELATIVES_PREFIX = "CLAN_RELATIVES_V1:"
@@ -77,6 +106,15 @@ class ClanRelativesSubmitInput(BaseModel):
 class ClanOnboardingRejectInput(BaseModel):
     review_note: str | None = Field(default=None, max_length=500)
     ban_user: bool = False
+
+
+class ClanFamilyMergeInput(BaseModel):
+    source_family_id: UUID
+    target_family_id: UUID | None = None
+    source_person_id: UUID
+    target_person_id: UUID
+    mode: Literal["attach_child", "merge_duplicate", "attach_spouse", "bridge_parent"]
+    bridge_parent: RelativeDraftInput | None = None
 
 
 def _resolve_clan_family_and_root(db: Session) -> tuple[Family | None, UUID | None]:
@@ -377,12 +415,12 @@ def _parse_request_note(note: str | None) -> tuple[str, dict]:
     if note.startswith(RELATIVES_PREFIX):
         try:
             return "relatives", json.loads(note[len(RELATIVES_PREFIX) :])
-        except Exception:
+        except (ValueError, TypeError):
             return "relatives", {}
     if note.startswith(PREFIX):
         try:
             return "onboarding", json.loads(note[len(PREFIX) :])
-        except Exception:
+        except (ValueError, TypeError):
             return "onboarding", {}
     return "onboarding", {}
 
@@ -521,6 +559,7 @@ def list_onboarding_requests(
         request_kind, meta = _parse_request_note(req.note)
         u = db.get(User, req.user_id)
         branch_p = db.get(Person, UUID(meta["branch_person_id"])) if meta.get("branch_person_id") else None
+        anchor_label: str | None
         if request_kind == "relatives":
             self_p = db.get(Person, UUID(meta["self_person_id"])) if meta.get("self_person_id") else (
                 db.get(Person, req.father_person_id) if req.father_person_id else None
@@ -908,3 +947,499 @@ def reject_onboarding_request(
     )
     db.commit()
     return {"status": "rejected", "banned": body.ban_user}
+
+
+def _merge_person_summary(p: Person, linked_person_ids: set[UUID]) -> dict:
+    return {
+        "id": str(p.id),
+        "name": _person_label(p),
+        "birth_year": p.birth_date.year if p.birth_date else None,
+        "has_account": p.id in linked_person_ids,
+    }
+
+
+@admin_router.get("/merge-candidates")
+def get_merge_candidates(
+    _current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    clan_family, _root_id = _resolve_clan_family_and_root(db)
+    if not clan_family:
+        return {"target_family": None, "source_families": []}
+
+    linked_person_ids = set(db.scalars(select(UserPersonLink.person_id)).all())
+
+    def _family_persons(fam_id: UUID) -> list[dict]:
+        rows = db.scalars(
+            select(Person)
+            .join(FamilyPerson, FamilyPerson.person_id == Person.id)
+            .where(FamilyPerson.family_id == fam_id)
+            .order_by(Person.last_name, Person.first_name)
+        ).all()
+        return [_merge_person_summary(p, linked_person_ids) for p in rows]
+
+    other_families = db.scalars(
+        select(Family)
+        .where(Family.archived_at.is_(None), Family.id != clan_family.id)
+        .order_by(Family.created_at, Family.id)
+    ).all()
+
+    sources = []
+    for fam in other_families:
+        persons = _family_persons(fam.id)
+        member_count = len(db.scalars(select(FamilyMember.id).where(FamilyMember.family_id == fam.id)).all())
+        sources.append(
+            {
+                "id": str(fam.id),
+                "name": fam.name,
+                "person_count": len(persons),
+                "member_count": member_count,
+                "persons": persons,
+            }
+        )
+
+    return {
+        "target_family": {
+            "id": str(clan_family.id),
+            "name": clan_family.name,
+            "persons": _family_persons(clan_family.id),
+        },
+        "source_families": sources,
+    }
+
+
+@admin_router.post("/merge-family")
+def merge_family_into_clan(
+    body: ClanFamilyMergeInput,
+    current: tuple[User, AdminRole] = Depends(require_super_admin),
+    db: Session = Depends(get_db),
+):
+    actor = current[0]
+    lock_ancestry_writes(db)
+
+    clan_family, _ = _resolve_clan_family_and_root(db)
+    target_family_id = body.target_family_id or (clan_family.id if clan_family else None)
+    if not target_family_id:
+        raise HTTPException(status_code=404, detail="Үндсэн удмын орчин олдсонгүй.")
+    if body.source_family_id == target_family_id:
+        raise HTTPException(status_code=422, detail="Ижил гэр бүлийг өөртэй нь нэгтгэх боломжгүй.")
+
+    source_family = db.get(Family, body.source_family_id)
+    target_family = db.get(Family, target_family_id)
+    if not source_family or source_family.archived_at is not None:
+        raise HTTPException(status_code=404, detail="Нэгтгэх эх гэр бүл олдсонгүй эсвэл архивлагдсан байна.")
+    if not target_family or target_family.archived_at is not None:
+        raise HTTPException(status_code=404, detail="Үндсэн гэр бүл олдсонгүй эсвэл архивлагдсан байна.")
+
+    source_fp = db.scalar(
+        select(FamilyPerson).where(
+            FamilyPerson.family_id == source_family.id,
+            FamilyPerson.person_id == body.source_person_id,
+        )
+    )
+    target_fp = db.scalar(
+        select(FamilyPerson).where(
+            FamilyPerson.family_id == target_family.id,
+            FamilyPerson.person_id == body.target_person_id,
+        )
+    )
+    if not source_fp:
+        raise HTTPException(status_code=404, detail="Сонгосон эх хүн эх гэр бүлд олдсонгүй.")
+    if not target_fp:
+        raise HTTPException(status_code=404, detail="Сонгосон тулгуур хүн үндсэн удмын гэр бүлд олдсонгүй.")
+
+    if body.mode == "bridge_parent" and body.bridge_parent is None:
+        raise HTTPException(status_code=422, detail="Дунд үеийн эцэг/эхийн мэдээллийг оруулна уу.")
+
+    source_person = db.get(Person, body.source_person_id)
+    target_person = db.get(Person, body.target_person_id)
+    if not source_person or not target_person:
+        raise HTTPException(status_code=404, detail="Холбох хүний бүртгэл олдсонгүй.")
+
+    all_edges = db.execute(
+        select(ParentChildRelationship.parent_id, ParentChildRelationship.child_id)
+    ).all()
+
+    if body.mode == "attach_child":
+        if body.target_person_id == body.source_person_id:
+            raise HTTPException(status_code=422, detail="Хүнийг өөрийнх нь хүүхэд болгох боломжгүй.")
+        try:
+            assert_parent_child_is_acyclic(all_edges, body.target_person_id, body.source_person_id)
+        except RelationshipError as err:
+            raise HTTPException(status_code=422, detail=str(err)) from err
+        existing_parents = {p for p, c in all_edges if c == body.source_person_id}
+        if body.target_person_id not in existing_parents and len(existing_parents) >= 2:
+            raise HTTPException(status_code=409, detail="Энэ хүн аль хэдийн хоёр эцэг/эхтэй байна.")
+
+    source_link: UserPersonLink | None = None
+    target_link: UserPersonLink | None = None
+    if body.mode == "merge_duplicate":
+        shared = db.get(SharedAncestry, 1)
+        if shared and shared.root_person_id == body.source_person_id:
+            raise HTTPException(status_code=409, detail="Үндсэн эх хүнийг устгаж нэгтгэх боломжгүй.")
+        source_link = db.scalar(select(UserPersonLink).where(UserPersonLink.person_id == body.source_person_id))
+        target_link = db.scalar(select(UserPersonLink).where(UserPersonLink.person_id == body.target_person_id))
+        if source_link and target_link and source_link.user_id != target_link.user_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Хоёр хүн хоёулаа тусдаа аккаунттай холбогдсон тул шууд нэгтгэх боломжгүй.",
+            )
+        remapped_edges: list[tuple[UUID, UUID]] = []
+        seen_pairs: set[tuple[UUID, UUID]] = set()
+        for p_id, c_id in all_edges:
+            np = body.target_person_id if p_id == body.source_person_id else p_id
+            nc = body.target_person_id if c_id == body.source_person_id else c_id
+            if np == nc:
+                raise HTTPException(status_code=422, detail="Давхардуулан нэгтгэхэд эцэг-хүүхдийн тойрог үүсэж байна.")
+            if (np, nc) not in seen_pairs:
+                seen_pairs.add((np, nc))
+                remapped_edges.append((np, nc))
+        if sum(1 for _, c in remapped_edges if c == body.target_person_id) > 2:
+            raise HTTPException(status_code=409, detail="Нэгтгэсний дараа энэ хүн хоёроос олон эцэг/эхтэй болох тул боломжгүй.")
+        # Check remapped edges contain no directed cycles
+        for np, nc in remapped_edges:
+            others = [(x, y) for x, y in remapped_edges if not (x == np and y == nc)]
+            try:
+                assert_parent_child_is_acyclic(others, np, nc)
+            except RelationshipError as err:
+                raise HTTPException(status_code=422, detail=str(err)) from err
+
+    # 1. Copy FamilyPerson rows to target_family (excluding duplicate source_person in merge_duplicate)
+    source_person_ids = db.scalars(
+        select(FamilyPerson.person_id).where(FamilyPerson.family_id == source_family.id)
+    ).all()
+    existing_target_person_ids = set(
+        db.scalars(select(FamilyPerson.person_id).where(FamilyPerson.family_id == target_family.id)).all()
+    )
+    moved_persons = 0
+    for pid in source_person_ids:
+        if body.mode == "merge_duplicate" and pid == body.source_person_id:
+            continue
+        if pid not in existing_target_person_ids:
+            db.add(FamilyPerson(id=uuid4(), family_id=target_family.id, person_id=pid, added_by=actor.id))
+            existing_target_person_ids.add(pid)
+            moved_persons += 1
+    db.flush()
+
+    def _remap_pid(pid: UUID) -> UUID:
+        if body.mode == "merge_duplicate" and pid == body.source_person_id:
+            return body.target_person_id
+        return pid
+
+    # 2. Migrate Story + StoryPerson preserving composite FKs
+    story_person_rows = db.scalars(
+        select(StoryPerson).where(StoryPerson.family_id == source_family.id)
+    ).all()
+    story_snapshot = [(sp.story_id, _remap_pid(sp.person_id)) for sp in story_person_rows]
+    if story_person_rows:
+        db.execute(delete(StoryPerson).where(StoryPerson.family_id == source_family.id))
+    db.execute(
+        update(Story).where(Story.family_id == source_family.id).values(family_id=target_family.id)
+    )
+    db.flush()
+    seen_story_links: set[tuple[UUID, UUID]] = set()
+    for story_id, person_id in story_snapshot:
+        if (story_id, person_id) not in seen_story_links:
+            seen_story_links.add((story_id, person_id))
+            db.add(StoryPerson(id=uuid4(), story_id=story_id, family_id=target_family.id, person_id=person_id))
+
+    # 3. Migrate Archive + ArchivePerson preserving composite FKs
+    archive_person_rows = db.scalars(
+        select(ArchivePerson).where(ArchivePerson.family_id == source_family.id)
+    ).all()
+    archive_snapshot = [(ap.archive_id, _remap_pid(ap.person_id)) for ap in archive_person_rows]
+    if archive_person_rows:
+        db.execute(delete(ArchivePerson).where(ArchivePerson.family_id == source_family.id))
+    db.execute(
+        update(Archive).where(Archive.family_id == source_family.id).values(family_id=target_family.id)
+    )
+    db.flush()
+    seen_archive_links: set[tuple[UUID, UUID]] = set()
+    for archive_id, person_id in archive_snapshot:
+        if (archive_id, person_id) not in seen_archive_links:
+            seen_archive_links.add((archive_id, person_id))
+            db.add(ArchivePerson(id=uuid4(), archive_id=archive_id, family_id=target_family.id, person_id=person_id))
+
+    # 4. Migrate Memory, Photo, ChatMessage, FamilyFund, Donation, FamilyEvent
+    for model in (Memory, Photo, ChatMessage, FamilyFund, Donation, FamilyEvent):
+        db.execute(
+            update(model).where(model.family_id == source_family.id).values(family_id=target_family.id)
+        )
+
+    # 5. Migrate FamilyMember rows (preserving existing target roles, adding new members as 'member')
+    source_members = db.scalars(
+        select(FamilyMember).where(FamilyMember.family_id == source_family.id)
+    ).all()
+    existing_target_member_ids = set(
+        db.scalars(select(FamilyMember.user_id).where(FamilyMember.family_id == target_family.id)).all()
+    )
+    moved_members = 0
+    for m in source_members:
+        if m.user_id not in existing_target_member_ids:
+            db.add(FamilyMember(id=uuid4(), family_id=target_family.id, user_id=m.user_id, role="member"))
+            existing_target_member_ids.add(m.user_id)
+            moved_members += 1
+
+    # 6. Apply graph connection according to mode
+    created_accounts: list[str] = []
+    if body.mode == "attach_child":
+        _ensure_parent_child(db, body.target_person_id, body.source_person_id, actor.id)
+    elif body.mode == "attach_spouse":
+        _ensure_marriage(db, body.target_person_id, body.source_person_id, actor.id)
+    elif body.mode == "bridge_parent":
+        bp = body.bridge_parent
+        assert bp is not None
+        fn = bp.first_name.strip()
+        ln = bp.last_name.strip()
+        bridge_person = Person(
+            id=uuid4(),
+            first_name=fn,
+            last_name=ln,
+            gender=bp.gender,
+            birth_date=bp.birth_date,
+            is_alive=bp.is_alive,
+            visibility="family",
+            search_first_name=normalize_search_name(fn),
+            search_last_name=normalize_search_name(ln),
+            created_by=actor.id,
+        )
+        db.add(bridge_person)
+        db.flush()
+        db.add(FamilyPerson(id=uuid4(), family_id=target_family.id, person_id=bridge_person.id, added_by=actor.id))
+        existing_target_person_ids.add(bridge_person.id)
+        if bp.email:
+            created_email = _ensure_relative_account(
+                db,
+                str(bp.email),
+                _person_label(bridge_person),
+                target_family.id,
+                bridge_person.id,
+                actor.id,
+            )
+            if created_email:
+                created_accounts.append(created_email)
+        _ensure_parent_child(db, body.target_person_id, bridge_person.id, actor.id)
+        _ensure_parent_child(db, bridge_person.id, body.source_person_id, actor.id)
+    elif body.mode == "merge_duplicate" and body.source_person_id != body.target_person_id:
+        # Transfer UserPersonLink if source had one and target did not
+        if source_link and not target_link:
+            source_link.person_id = body.target_person_id
+            db.flush()
+
+        # Re-point ParentChildRelationship edges
+        old_pc_rows = db.scalars(
+            select(ParentChildRelationship).where(
+                or_(
+                    ParentChildRelationship.parent_id == body.source_person_id,
+                    ParentChildRelationship.child_id == body.source_person_id,
+                )
+            )
+        ).all()
+        pc_pairs = [
+            (
+                body.target_person_id if row.parent_id == body.source_person_id else row.parent_id,
+                body.target_person_id if row.child_id == body.source_person_id else row.child_id,
+            )
+            for row in old_pc_rows
+        ]
+        if old_pc_rows:
+            db.execute(
+                delete(ParentChildRelationship).where(
+                    or_(
+                        ParentChildRelationship.parent_id == body.source_person_id,
+                        ParentChildRelationship.child_id == body.source_person_id,
+                    )
+                )
+            )
+            db.flush()
+        for np, nc in pc_pairs:
+            _ensure_parent_child(db, np, nc, actor.id)
+
+        # Re-point Marriage rows
+        old_marriages = db.scalars(
+            select(Marriage).where(
+                or_(
+                    Marriage.person_1_id == body.source_person_id,
+                    Marriage.person_2_id == body.source_person_id,
+                )
+            )
+        ).all()
+        spouse_other_ids = [
+            row.person_2_id if row.person_1_id == body.source_person_id else row.person_1_id
+            for row in old_marriages
+            if row.deleted_at is None
+        ]
+        if old_marriages:
+            db.execute(
+                delete(Marriage).where(
+                    or_(
+                        Marriage.person_1_id == body.source_person_id,
+                        Marriage.person_2_id == body.source_person_id,
+                    )
+                )
+            )
+            db.flush()
+        for other_id in spouse_other_ids:
+            if other_id != body.target_person_id:
+                _ensure_marriage(db, body.target_person_id, other_id, actor.id)
+
+        # Re-point LifeEvent, MemoryPersonTag, PhotoPersonTag
+        db.execute(
+            update(LifeEvent)
+            .where(LifeEvent.person_id == body.source_person_id)
+            .values(person_id=body.target_person_id)
+        )
+        existing_mem_ids = set(
+            db.scalars(select(MemoryPersonTag.memory_id).where(MemoryPersonTag.person_id == body.target_person_id)).all()
+        )
+        for tag in db.scalars(select(MemoryPersonTag).where(MemoryPersonTag.person_id == body.source_person_id)).all():
+            if tag.memory_id in existing_mem_ids:
+                db.delete(tag)
+            else:
+                tag.person_id = body.target_person_id
+                existing_mem_ids.add(tag.memory_id)
+
+        existing_photo_ids = set(
+            db.scalars(select(PhotoPersonTag.photo_id).where(PhotoPersonTag.person_id == body.target_person_id)).all()
+        )
+        for ptag in db.scalars(select(PhotoPersonTag).where(PhotoPersonTag.person_id == body.source_person_id)).all():
+            if ptag.photo_id in existing_photo_ids:
+                db.delete(ptag)
+            else:
+                ptag.person_id = body.target_person_id
+                existing_photo_ids.add(ptag.photo_id)
+
+        # Merge missing bio & profile fields onto target_person
+        if not target_person.birth_date and source_person.birth_date:
+            target_person.birth_date = source_person.birth_date
+        if not target_person.birth_place and source_person.birth_place:
+            target_person.birth_place = source_person.birth_place
+        if not target_person.death_date and source_person.death_date:
+            target_person.death_date = source_person.death_date
+        if not target_person.death_place and source_person.death_place:
+            target_person.death_place = source_person.death_place
+        if not target_person.short_description and source_person.short_description:
+            target_person.short_description = source_person.short_description
+        if target_person.gender == "unknown" and source_person.gender in {"male", "female", "other"}:
+            target_person.gender = source_person.gender
+
+        source_bio = db.scalar(select(Biography).where(Biography.person_id == body.source_person_id))
+        target_bio = db.scalar(select(Biography).where(Biography.person_id == body.target_person_id))
+        if source_bio:
+            if not target_bio and source_bio.body:
+                source_bio.person_id = body.target_person_id
+            else:
+                db.delete(source_bio)
+
+        # Clean up ancillary & RESTRICT references before deleting duplicate Person
+        db.execute(
+            update(TreeJoinRequest)
+            .where(TreeJoinRequest.father_person_id == body.source_person_id)
+            .values(father_person_id=None)
+        )
+        db.execute(
+            update(TreeJoinRequest)
+            .where(TreeJoinRequest.mother_person_id == body.source_person_id)
+            .values(mother_person_id=None)
+        )
+        db.execute(
+            update(TreeJoinRequest)
+            .where(TreeJoinRequest.created_person_id == body.source_person_id)
+            .values(created_person_id=body.target_person_id)
+        )
+        db.execute(
+            update(Family)
+            .where(Family.root_person_id == body.source_person_id)
+            .values(root_person_id=None)
+        )
+        db.execute(
+            update(Family)
+            .where(Family.featured_person_id == body.source_person_id)
+            .values(featured_person_id=None)
+        )
+        db.execute(
+            delete(RootConnection).where(
+                or_(
+                    RootConnection.person_id == body.source_person_id,
+                    RootConnection.target_person_id == body.source_person_id,
+                )
+            )
+        )
+        db.execute(
+            delete(SharedAncestryRequest).where(
+                or_(
+                    SharedAncestryRequest.person_id == body.source_person_id,
+                    SharedAncestryRequest.target_person_id == body.source_person_id,
+                )
+            )
+        )
+        db.execute(
+            delete(FamilyClanLink).where(
+                or_(
+                    FamilyClanLink.household_person_id == body.source_person_id,
+                    FamilyClanLink.clan_anchor_person_id == body.source_person_id,
+                )
+            )
+        )
+        db.execute(delete(SharedAncestryPerson).where(SharedAncestryPerson.person_id == body.source_person_id))
+        db.execute(
+            delete(SharedAncestryRelationship).where(
+                or_(
+                    SharedAncestryRelationship.parent_id == body.source_person_id,
+                    SharedAncestryRelationship.child_id == body.source_person_id,
+                )
+            )
+        )
+        db.execute(delete(PersonLineageAssignment).where(PersonLineageAssignment.person_id == body.source_person_id))
+        db.execute(delete(PersonLinkRequest).where(PersonLinkRequest.person_id == body.source_person_id))
+        db.execute(delete(FamilyTrashRecord).where(FamilyTrashRecord.person_id == body.source_person_id))
+        db.execute(delete(FamilyPerson).where(FamilyPerson.person_id == body.source_person_id))
+        db.flush()
+        db.delete(source_person)
+        db.flush()
+
+    # 7. Clean up remaining source_family links & archive source_family
+    db.execute(delete(RootConnection).where(RootConnection.family_id == source_family.id))
+    db.execute(delete(SharedAncestryRequest).where(SharedAncestryRequest.family_id == source_family.id))
+    db.execute(
+        delete(FamilyClanLink).where(
+            or_(
+                FamilyClanLink.household_family_id == source_family.id,
+                FamilyClanLink.clan_family_id == source_family.id,
+            )
+        )
+    )
+    db.execute(
+        update(SharedAncestryPerson)
+        .where(SharedAncestryPerson.family_id == source_family.id)
+        .values(family_id=target_family.id)
+    )
+    db.execute(delete(FamilyPerson).where(FamilyPerson.family_id == source_family.id))
+    source_family.root_person_id = None
+    source_family.featured_person_id = None
+    source_family.archived_at = datetime.now(UTC)
+
+    total_clan_persons = len(
+        db.scalars(select(FamilyPerson.id).where(FamilyPerson.family_id == target_family.id)).all()
+    )
+    db.add(
+        AuditLog(
+            id=uuid4(),
+            family_id=target_family.id,
+            actor_id=actor.id,
+            action="clan.family.merged",
+            target_type="family",
+            target_id=source_family.id,
+        )
+    )
+    db.commit()
+    return {
+        "status": "merged",
+        "mode": body.mode,
+        "target_family_id": str(target_family.id),
+        "source_family_id": str(source_family.id),
+        "moved_persons": moved_persons,
+        "moved_members": moved_members,
+        "created_accounts": created_accounts,
+        "total_clan_persons": total_clan_persons,
+    }

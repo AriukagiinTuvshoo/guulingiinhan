@@ -80,7 +80,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         : {};
       code = typeof payload.error_code === 'string' ? payload.error_code : null;
       requestId = typeof payload.request_id === 'string' ? payload.request_id : requestId;
-      if ((response.status === 422 || response.status === 409) && typeof payload.detail === 'string' && payload.detail.length <= 300) {
+      if (
+        (
+          response.status === 422 ||
+          response.status === 409 ||
+          (response.status === 403 && code !== 'CSRF_TOKEN_INVALID' && code !== 'CSRF_TOKEN_REQUIRED')
+        ) &&
+        typeof payload.detail === 'string' &&
+        payload.detail.length <= 300
+      ) {
         validationMessage = payload.detail;
       }
       message =

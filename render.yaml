@@ -30,6 +30,8 @@ services:
         sync: false
       - key: OTP_HASH_SECRET
         sync: false
+      - key: CSRF_SECRET
+        generateValue: true
       - key: STORAGE_ENDPOINT
         sync: false
       - key: STORAGE_ACCESS_KEY

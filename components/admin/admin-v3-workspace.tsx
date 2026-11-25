@@ -136,6 +136,32 @@ type GlobalFamilyRow = {
   created_at?: string;
 };
 
+type MergeCandidatePerson = {
+  id: string;
+  name: string;
+  birth_year: number | null;
+  has_account: boolean;
+};
+
+type MergeSourceFamily = {
+  id: string;
+  name: string;
+  person_count: number;
+  member_count: number;
+  persons: MergeCandidatePerson[];
+};
+
+type MergeCandidatesData = {
+  target_family: {
+    id: string;
+    name: string;
+    persons: MergeCandidatePerson[];
+  } | null;
+  source_families: MergeSourceFamily[];
+};
+
+type MergeMode = 'attach_child' | 'merge_duplicate' | 'attach_spouse' | 'bridge_parent';
+
 const TEMP_ARCHIVE_KEY_PREFIX = 'guulin-temp-archive-v1:';
 
 function completenessScore(p: Person): number {
@@ -164,10 +190,13 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   'marriage.deleted': 'Гэрлэлтийн холбоос салгасан',
   'member.role_updated': 'Гишүүний эрх шинэчилсэн',
   'invitation.created': 'Шинэ урилга илгээсэн',
+  'clan.onboarding.submitted': 'Шинэ гишүүн элсэлтийн асуумж илгээсэн',
   'clan.onboarding.approved': 'Шинэ гишүүний хүсэлт баталсан',
   'clan.onboarding.rejected': 'Шинэ гишүүний хүсэлт татгалзсан',
   'clan.onboarding.banned': 'Хуурамч аккаунт хаасан (Ban)',
+  'clan.relatives.submitted': 'Ойрын төрөл нэмэх хүсэлт илгээсэн',
   'clan.relatives.approved': 'Ойрын төрлийн хүсэлт баталсан',
+  'clan.family.merged': 'Бүртгэлтэй гэр бүлийг эх модонд нэгтгэсэн',
   'admin.shared_donation_info_saved': 'Хандивын дансны мэдээлэл шинэчилсэн',
   'admin.user_deleted': 'Аккаунт устгасан',
   'admin.family_archived': 'Гэр бүлийн орчин устгасан',
@@ -217,6 +246,16 @@ export default function AdminV3Workspace() {
     is_published: false,
   });
   const [donationSaving, setDonationSaving] = useState(false);
+  const [mergeCandidates, setMergeCandidates] = useState<MergeCandidatesData | null>(null);
+  const [mergeSourceFamilyId, setMergeSourceFamilyId] = useState('');
+  const [mergeSourcePersonId, setMergeSourcePersonId] = useState('');
+  const [mergeTargetPersonId, setMergeTargetPersonId] = useState('');
+  const [mergeMode, setMergeMode] = useState<MergeMode>('attach_child');
+  const [bridgeLastName, setBridgeLastName] = useState('');
+  const [bridgeFirstName, setBridgeFirstName] = useState('');
+  const [bridgeGender, setBridgeGender] = useState<'male' | 'female' | 'unknown'>('male');
+  const [bridgeEmail, setBridgeEmail] = useState('');
+  const [mergeBusy, setMergeBusy] = useState(false);
   const [grantUserId, setGrantUserId] = useState('');
   const [grantRole, setGrantRole] = useState<'ADMIN' | 'MODERATOR'>('ADMIN');
   const [pendingConnections, setPendingConnections] = useState<PendingRootConnection[]>([]);
@@ -303,7 +342,7 @@ export default function AdminV3Workspace() {
 
   // Verify Global Admin identity + load families, pending root connections, onboarding requests, donation info, and admin accounts
   const refreshGlobalAdminData = useCallback(async (role: string) => {
-    const [conns, onboardReqs, adminsList, usersList, famsList, donationInfo] = await Promise.all([
+    const [conns, onboardReqs, adminsList, usersList, famsList, donationInfo, mergeCand] = await Promise.all([
       api<PendingRootConnection[]>('/admin/shared-lineage/connections?status=pending').catch(() => []),
       api<GuidedOnboardingRequest[]>('/admin/clan/onboarding/requests?status=pending')
         .then((rows) => {
@@ -329,12 +368,32 @@ export default function AdminV3Workspace() {
             is_published?: boolean;
           } | null>('/admin/shared-lineage/donation-info').catch(() => null)
         : Promise.resolve(null),
+      role === 'SUPER_ADMIN'
+        ? api<MergeCandidatesData>('/admin/clan/onboarding/merge-candidates').catch(() => null)
+        : Promise.resolve(null),
     ]);
     setPendingConnections(Array.isArray(conns) ? conns : []);
     setOnboardingRequests(Array.isArray(onboardReqs) ? onboardReqs : []);
     setGlobalAdmins(Array.isArray(adminsList) ? adminsList : []);
     setGlobalUsers(Array.isArray(usersList) ? usersList : []);
     setGlobalFamilies(Array.isArray(famsList) ? famsList : []);
+    setMergeCandidates(mergeCand);
+    if (mergeCand) {
+      const firstSrc = mergeCand.source_families[0];
+      setMergeSourceFamilyId((cur) => {
+        const nextId = mergeCand.source_families.some((s) => s.id === cur) ? cur : firstSrc?.id || '';
+        const pickedSrc = mergeCand.source_families.find((s) => s.id === nextId);
+        setMergeSourcePersonId((pCur) =>
+          pickedSrc?.persons.some((p) => p.id === pCur) ? pCur : pickedSrc?.persons[0]?.id || '',
+        );
+        return nextId;
+      });
+      setMergeTargetPersonId((cur) =>
+        mergeCand.target_family?.persons.some((p) => p.id === cur)
+          ? cur
+          : mergeCand.target_family?.persons[0]?.id || '',
+      );
+    }
     if (donationInfo) {
       setDonationForm({
         title: donationInfo.title || '',
@@ -1046,6 +1105,76 @@ export default function AdminV3Workspace() {
     }
   }
 
+  async function handleMergeFamily(e: FormEvent) {
+    e.preventDefault();
+    if (mergeBusy || !mergeCandidates?.target_family || !mergeSourceFamilyId || !mergeSourcePersonId || !mergeTargetPersonId) {
+      return;
+    }
+    if (mergeMode === 'bridge_parent' && !bridgeFirstName.trim()) {
+      setError('Дунд үеийн эцэг/эхийн нэрийг оруулна уу.');
+      return;
+    }
+    const srcFam = mergeCandidates.source_families.find((f) => f.id === mergeSourceFamilyId);
+    const tgtFam = mergeCandidates.target_family;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `"${srcFam?.name || 'Эх гэр бүл'}" (${srcFam?.person_count ?? 0} хүн)-ийг "${tgtFam.name}" үндсэн удмын модонд нэгтгэж, хуучин гэр бүлийн орчинг хаах уу?`,
+      )
+    ) {
+      return;
+    }
+    setMergeBusy(true);
+    setError('');
+    try {
+      const res = await api<{
+        moved_persons: number;
+        moved_members: number;
+        created_accounts: string[];
+        total_clan_persons: number;
+      }>('/admin/clan/onboarding/merge-family', {
+        method: 'POST',
+        body: JSON.stringify({
+          source_family_id: mergeSourceFamilyId,
+          target_family_id: tgtFam.id,
+          source_person_id: mergeSourcePersonId,
+          target_person_id: mergeTargetPersonId,
+          mode: mergeMode,
+          ...(mergeMode === 'bridge_parent'
+            ? {
+                bridge_parent: {
+                  relation: 'parent',
+                  last_name: bridgeLastName.trim(),
+                  first_name: bridgeFirstName.trim(),
+                  gender: bridgeGender,
+                  email: bridgeEmail.trim() || null,
+                },
+              }
+            : {}),
+        }),
+      });
+      setBridgeLastName('');
+      setBridgeFirstName('');
+      setBridgeEmail('');
+      if (adminIdentity) await refreshGlobalAdminData(adminIdentity.role);
+      const list = await api<Family[]>('/families').catch(() => []);
+      setFamilies(list);
+      const nextFid = list.some((f) => f.id === tgtFam.id) ? tgtFam.id : list[0]?.id ?? '';
+      if (nextFid) {
+        setFamilyId(nextFid);
+        await refreshFamilyData(nextFid);
+      }
+      const extraAcc = res.created_accounts?.length ? ` · Шинэ аккаунт: ${res.created_accounts.join(', ')}` : '';
+      showToast(
+        `Амжилттай нэгтгэлээ! +${res.moved_persons} хүн, +${res.moved_members} аккаунт (Нийт мод: ${res.total_clan_persons} хүн)${extraAcc}`,
+      );
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.validationMessage || cause.message : 'Гэр бүл нэгтгэхэд алдаа гарлаа.');
+    } finally {
+      setMergeBusy(false);
+    }
+  }
+
   if (!adminGateChecked || (loading && !families.length)) {
     return (
       <div className="adv3-content">
@@ -1339,6 +1468,132 @@ export default function AdminV3Workspace() {
                   ))
                 )}
               </div>
+              )}
+
+              {adminIdentity.role === 'SUPER_ADMIN' && mergeCandidates?.target_family && (
+                <form className="adv3-card" style={{ marginBottom: 16 }} onSubmit={handleMergeFamily}>
+                  <h3 style={{ marginTop: 0 }}>🔀 Бүртгэлтэй гэр бүлийг үндсэн эх модонд нэгтгэх (Merge Family)</h3>
+                  <p className="adv3-sub" style={{ marginTop: -4, marginBottom: 12 }}>
+                    Тусдаа бүртгэгдсэн гэр бүлийн модыг (<strong>бүх хүн, түүх, зураг, аккаунт гишүүдтэй нь хамт</strong>) үндсэн{' '}
+                    <strong>{mergeCandidates.target_family.name}</strong> удмын мод руу бүрэн шилжүүлж холбоно.
+                  </p>
+                  {mergeCandidates.source_families.length === 0 ? (
+                    <p className="adv3-sub">Нэгтгэх боломжтой өөр идэвхтэй гэр бүл одоогоор алга байна.</p>
+                  ) : (() => {
+                    const selectedSrcFam = mergeCandidates.source_families.find((f) => f.id === mergeSourceFamilyId) || mergeCandidates.source_families[0];
+                    const srcPersons = selectedSrcFam?.persons ?? [];
+                    const tgtPersons = mergeCandidates.target_family.persons;
+                    return (
+                      <>
+                        <div className="adv3-form-grid">
+                          <label>
+                            Нэгтгэх эх гэр бүл
+                            <select
+                              value={selectedSrcFam?.id || ''}
+                              onChange={(e) => {
+                                const nextFamId = e.target.value;
+                                setMergeSourceFamilyId(nextFamId);
+                                const fam = mergeCandidates.source_families.find((f) => f.id === nextFamId);
+                                setMergeSourcePersonId(fam?.persons[0]?.id || '');
+                              }}
+                              disabled={mergeBusy}
+                            >
+                              {mergeCandidates.source_families.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.name} ({f.person_count} хүн · {f.member_count} аккаунт)
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Холбох арга (Горим)
+                            <select
+                              value={mergeMode}
+                              onChange={(e) => setMergeMode(e.target.value as MergeMode)}
+                              disabled={mergeBusy}
+                            >
+                              <option value="attach_child">Хүүхэд болгож доор нь холбох (Эцэг/Эх → Хүүхэд)</option>
+                              <option value="merge_duplicate">Ижил давхардсан хүнийг нэгтгэх (Duplicate Merge)</option>
+                              <option value="attach_spouse">Хань болгож холбох (Гэрлэлт ⚭)</option>
+                              <option value="bridge_parent">Дунд үеийн эцэг/эхээр холбох (Bridge Parent)</option>
+                            </select>
+                          </label>
+                          <label>
+                            Эх гэр бүлээс сонгох хүн
+                            <select
+                              value={mergeSourcePersonId}
+                              onChange={(e) => setMergeSourcePersonId(e.target.value)}
+                              disabled={mergeBusy || srcPersons.length === 0}
+                            >
+                              {srcPersons.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}{p.birth_year ? ` (${p.birth_year})` : ''}{p.has_account ? ' · Аккаунттай' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            {mergeCandidates.target_family.name} дахь тулгуур хүн
+                            <select
+                              value={mergeTargetPersonId}
+                              onChange={(e) => setMergeTargetPersonId(e.target.value)}
+                              disabled={mergeBusy || tgtPersons.length === 0}
+                            >
+                              {tgtPersons.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}{p.birth_year ? ` (${p.birth_year})` : ''}{p.has_account ? ' · Аккаунттай' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        {mergeMode === 'bridge_parent' && (
+                          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: '1px solid var(--goldl)', background: 'var(--bg)' }}>
+                            <strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
+                              Дунд үед шинээр нэмэх эцэг/эхийн мэдээлэл
+                            </strong>
+                            <div className="adv3-form-grid">
+                              <label>
+                                Овог
+                                <input value={bridgeLastName} onChange={(e) => setBridgeLastName(e.target.value)} placeholder="Овог" disabled={mergeBusy} />
+                              </label>
+                              <label>
+                                Нэр *
+                                <input required value={bridgeFirstName} onChange={(e) => setBridgeFirstName(e.target.value)} placeholder="Жишээ: Сүрэн" disabled={mergeBusy} />
+                              </label>
+                              <label>
+                                Хүйс
+                                <select value={bridgeGender} onChange={(e) => setBridgeGender(e.target.value as 'male' | 'female' | 'unknown')} disabled={mergeBusy}>
+                                  <option value="male">Эрэгтэй</option>
+                                  <option value="female">Эмэгтэй</option>
+                                  <option value="unknown">Тодорхойгүй</option>
+                                </select>
+                              </label>
+                              <label>
+                                Имэйл (заавал биш — автомат аккаунт)
+                                <input type="email" value={bridgeEmail} onChange={(e) => setBridgeEmail(e.target.value)} placeholder="suren@example.com" disabled={mergeBusy} />
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            type="submit"
+                            className="adv3-btn is-primary"
+                            disabled={mergeBusy || !mergeSourcePersonId || !mergeTargetPersonId}
+                          >
+                            <Link2 size={14} /> {mergeBusy ? 'Нэгтгэж байна…' : 'Үндсэн модонд нэгтгэх'}
+                          </button>
+                          <span className="adv3-sub" style={{ margin: 0 }}>
+                            Нэгтгэсний дараа эх гэр бүлийн орчин архивлагдаж, бүх хүн нэг модонд харагдана.
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </form>
               )}
 
               <div className="adv3-card" style={{ marginBottom: 16 }}>
@@ -1978,7 +2233,7 @@ export default function AdminV3Workspace() {
               )}
 
               <div className="adv3-announcements-wrap" style={{ marginBottom: 20 }}>
-                <AdminAnnouncements canEdit={adminIdentity.role === 'SUPER_ADMIN'} />
+                <AdminAnnouncements canEdit={adminIdentity.role === 'SUPER_ADMIN' || adminIdentity.role === 'ADMIN'} />
               </div>
 
               <div className="adv3-kpi-grid">

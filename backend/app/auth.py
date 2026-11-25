@@ -67,6 +67,7 @@ logger = logging.getLogger("guulingiinhan.auth")
 def get_csrf_token(request: Request, response: Response) -> dict[str, str]:
     """Issue a signed, non-HttpOnly token for the browser's double-submit header."""
     settings = get_settings()
+    hosted_env = settings.app_env.lower() in {"production", "staging"}
     token = request.cookies.get(CSRF_COOKIE_NAME)
     if token is None or not valid_csrf_token(token, settings):
         token = issue_csrf_token(settings)
@@ -75,8 +76,8 @@ def get_csrf_token(request: Request, response: Response) -> dict[str, str]:
         token,
         max_age=SESSION_SECONDS,
         httponly=False,
-        secure=settings.app_env.lower() == "production",
-        samesite="none" if settings.app_env.lower() == "production" else "lax",
+        secure=hosted_env,
+        samesite="none" if hosted_env else "lax",
         path="/",
     )
     response.headers["Cache-Control"] = "no-store"
