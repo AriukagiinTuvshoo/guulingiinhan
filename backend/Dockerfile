@@ -13,4 +13,4 @@ RUN addgroup --system app && adduser --system --ingroup app app && chown -R app:
 USER app
 # Apply migrations in the controlled staging deployment step before releasing
 # this image. The runtime app role deliberately has no schema DDL privileges.
-CMD ["sh", "-c", "/app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]
+CMD ["sh", "-c", "/app/.venv/bin/alembic upgrade head && /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]
