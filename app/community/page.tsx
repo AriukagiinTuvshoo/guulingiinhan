@@ -46,7 +46,7 @@ export default function CommunityPage() {
 
   return <main className={styles.page}>
     <header className={styles.hero}>
-      <span className={styles.eyebrow}>ГҮҮЛИНГИЙНХАН · НИЙТИЙН САН</span>
+      <span className={styles.eyebrow}>ГУУЛИНГИЙНХАН · НИЙТИЙН САН</span>
       <h1>Бидний хуваалцсан түүх</h1>
       <p>Гэр бүлүүдийн нийтэд зориулж хуваалцсан түүх, дурсамж, архивыг нэг дороос уншаарай.</p>
       {familyId && <div className={styles.actions}>

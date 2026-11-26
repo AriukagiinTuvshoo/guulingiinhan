@@ -215,7 +215,14 @@ export default function GoldenHeritageTree({
               aria-hidden="true"
             >
               <defs>
-                <linearGradient id="guulin-gold-stroke" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient
+                  id="guulin-gold-stroke"
+                  gradientUnits="userSpaceOnUse"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2={Math.max(layout.height, 1)}
+                >
                   <stop offset="0%" stopColor="#EBD59A" />
                   <stop offset="45%" stopColor="#E1B345" />
                   <stop offset="100%" stopColor="#B88A2E" />

@@ -754,7 +754,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <aside
           id="app-shell-navigation"
           className={'app-shell__sidebar ' + (mobileOpen ? 'is-open' : '')}
-          aria-label="Authenticated application navigation"
+          aria-label="Үндсэн цэс"
           role={mobileOpen ? 'dialog' : undefined}
           aria-modal={mobileOpen ? true : undefined}
         >
@@ -827,7 +827,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         <div className="app-shell__content" aria-busy={contextLoading || familySwitching || logoutBusy}>
-          {logoutBusy || (contextLoaded && !user) ? (
+          {logoutBusy || (contextLoaded && !user && !contextError) ? (
             <div style={{ maxWidth: 420, margin: '64px auto', textAlign: 'center', color: 'var(--muted)' }} role="status">
               {logoutBusy ? 'Системээс гарч байна…' : 'Нэвтрэх хуудас руу шилжиж байна…'}
             </div>

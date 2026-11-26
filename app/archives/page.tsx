@@ -145,13 +145,13 @@ function ArchivesPageContent() {
     <main className="archive-page">
       <section className="archive-shell">
         <nav className="archive-breadcrumb" aria-label="Замын мөр">
-          <Link href={family ? `/dashboard?family=${encodeURIComponent(family.id)}` : '/dashboard'}>← Dashboard</Link>
+          <Link href={family ? `/tree?family=${encodeURIComponent(family.id)}` : '/tree'}>← Удмын мод</Link>
           <span>Архив</span>
         </nav>
 
         <header className="archive-hero">
           <div>
-            <p className="archive-eyebrow">ГУУЛИНГИЙНХАН · FAMILY ARCHIVE</p>
+            <p className="archive-eyebrow">ГУУЛИНГИЙНХАН · ГЭР БҮЛИЙН АРХИВ</p>
             <h1>Гэр бүлийн архив</h1>
             <p>Гэр бүлийн түүхийг баталгаажуулах баримт, эх сурвалж, албан ёсны тэмдэглэлүүдийг нэгэн тайван архивт төвлөрүүлнэ.</p>
           </div>

@@ -56,7 +56,7 @@ from app.privacy import user_linked_person_is_minor
 from app.sms import SmsProvider, get_sms_provider
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
-SESSION_SECONDS = 60 * 60 * 24 * 7
+SESSION_SECONDS = 60 * 60 * 24 * 30
 OTP_SECONDS = 5 * 60
 OTP_COOLDOWN_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5

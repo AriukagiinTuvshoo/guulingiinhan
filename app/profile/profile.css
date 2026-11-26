@@ -67,7 +67,7 @@
 .profile-portrait { position: relative; display: grid; justify-items: center; gap: 13px; }
 .profile-photo,
 .profile-photo-object,
-.profile-portrait .profile-photo-fallback { width: clamp(116px, 14vw, 172px); height: clamp(116px, 14vw, 172px); }
+.profile-portrait .profile-photo-fallback { width: clamp(116px, 14vw, 172px); height: clamp(116px, 14vw, 172px); display: grid; place-items: center; line-height: 1; }
 .profile-photo { border: 3px solid #e5cd83; box-shadow: 0 10px 28px rgb(22 55 37 / 20%); }
 .profile-hero .personavatar.large.profile-photo { width: clamp(116px, 14vw, 172px); height: clamp(116px, 14vw, 172px); }
 .profile-photo-object { display: block; border-radius: 50%; object-fit: cover; }
@@ -97,7 +97,7 @@
 .profile-photo-remove { width: 38px; padding: 0; }
 
 .profile-identity .eyebrow,
-.profile-card .eyebrow { margin: 0; color: #8c7139; font-size: 9px; font-weight: 700; letter-spacing: .19em; }
+.profile-card .eyebrow { margin: 0; color: #6b501f; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
 .profile-identity h1 { margin: 9px 0 10px; color: #173b29; font-size: clamp(38px, 5vw, 64px); line-height: 1.03; }
 .profile-life { color: #587367; font-size: 14px; }
 .profile-actions { gap: 9px; margin-top: 23px; }

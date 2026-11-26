@@ -118,7 +118,7 @@ function TreePageContent() {
   const [family, setFamily] = useState<Family | null>(null);
   const [tree, setTree] = useState<TreeData | null>(null);
   const [selectedId, setSelectedId] = useState('');
-  const [depth, setDepth] = useState(3);
+  const [depth, setDepth] = useState(10);
   const [zoom, setZoom] = useState(0.9);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -224,7 +224,7 @@ function TreePageContent() {
     async (
       id: string,
       preferredPersonId?: string,
-      nextDepth = 3,
+      nextDepth = 10,
       options?: { expandAll?: boolean },
     ) => {
       const sequence = ++loadSequence.current;
@@ -1089,27 +1089,7 @@ function TreePageContent() {
               </button>
               {openHeaderMenu === 'tools' && (
                 <div className="tree-header-menu-panel" role="menu" aria-label="Хэрэгсэл цэс">
-                  <div className="tree-header-menu-section">Харагдац ба үе</div>
-                  <div className="tree-header-menu-control">
-                    <label htmlFor="tree-menu-depth">
-                      <Layers size={14} aria-hidden="true" /> Хүрээ
-                    </label>
-                    <select
-                      id="tree-menu-depth"
-                      value={depth}
-                      onChange={(event) => {
-                        const next = Number(event.target.value);
-                        setDepth(next);
-                        void loadTree(familyId, tree?.lineage_root_person_id || selectedId || undefined, next);
-                      }}
-                    >
-                      <option value={3}>3 үе</option>
-                      <option value={5}>5 үе</option>
-                      <option value={7}>7 үе</option>
-                      <option value={9}>9 үе</option>
-                      <option value={10}>10 үе</option>
-                    </select>
-                  </div>
+                  <div className="tree-header-menu-section">Харагдац</div>
                   <div className="tree-header-menu-control">
                     <label htmlFor="tree-menu-bloodline">Удам</label>
                     <select
@@ -1125,17 +1105,6 @@ function TreePageContent() {
                       <option value="descendants">Үр удам</option>
                     </select>
                   </div>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="tree-header-menu-item"
-                    onClick={() => {
-                      setOpenHeaderMenu(null);
-                      handleExpandAllNine();
-                    }}
-                  >
-                    <Layers size={15} aria-hidden="true" /> Бүх 9 үеийг нээх
-                  </button>
                   <button
                     type="button"
                     role="menuitem"

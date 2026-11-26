@@ -299,8 +299,8 @@ function ChatContent() {
       className="chat-shell"
       style={{
         display: 'flex',
-        height: 'calc(100vh - 80px)',
-        maxHeight: '920px',
+        height: 'calc(100dvh - 104px)',
+        maxHeight: '880px',
         background: 'var(--ui-surface)',
         color: 'var(--ui-text)',
         borderRadius: '16px',
@@ -407,7 +407,7 @@ function ChatContent() {
               margin: '16px 6px 8px',
             }}
           >
-            Хувийн зурвас (Direct)
+            Хувийн зурвас
           </div>
 
           {/* 2. Direct Contacts List */}

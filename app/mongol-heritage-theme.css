@@ -3473,5 +3473,25 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
   }
 }
 
+/* 8. Sprint 0 Audit Fixes: Golden tree dock containment + /profile back-link contrast */
+.golden-tree-dock {
+  max-width: calc(100% - 16px) !important;
+  overflow-x: auto !important;
+  scrollbar-width: none;
+}
+
+.golden-tree-dock button {
+  flex-shrink: 0;
+}
+
+.profile-back,
+.profile-breadcrumb a {
+  color: #f8fafc !important;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+
 
 

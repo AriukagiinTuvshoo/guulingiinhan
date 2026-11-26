@@ -97,7 +97,7 @@ function StoriesPageContent() {
         <header className="stories-heading">
           <div>
             <Link href={family ? '/tree?family=' + encodeURIComponent(family.id) : '/tree'}>← Удмын мод руу буцах</Link>
-            <p className="eyebrow">ГУУЛИНГИЙНХАН · FAMILY STORY</p>
+            <p className="eyebrow">ГУУЛИНГИЙНХАН · ГЭР БҮЛИЙН ТҮҮХ</p>
             <h1>Манай түүх</h1>
             <p className="stories-lede">Гэр бүлийн үйл явдал, дурсамжит өгүүлэмж, огноо, газар болон холбоотой хүмүүсийг гэр бүлийн түүхийн санд хадгална.</p>
           </div>

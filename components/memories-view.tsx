@@ -493,7 +493,7 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
           <section className="memory-state">
             <p className="memories-eyebrow">ДУРСАМЖИЙН САН · ХООСОН</p>
             <h2>{Object.values(filters).some(Boolean) ? 'Хайлтад тохирох дурсамж алга.' : 'Одоогоор дурсамж хадгалагдаагүй байна.'}</h2>
-            <p>Эхний дурсамжаа нэмээд гэр бүлийн тань өдөр тутмын мөчүүдийг энэ архивт үлдээгээрэй.</p>
+            <p>Эхний дурсамжаа нэмээд гэр бүлийн тань өдөр тутмын мөчүүдийг энэ дурсамжийн санд үлдээгээрэй.</p>
             <button type="button" className="memories-primary" onClick={() => setShowComposer(true)} aria-controls="memory-composer">Анхны дурсамж нэмэх</button>
           </section>
         ) : (
