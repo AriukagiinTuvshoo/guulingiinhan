@@ -3402,14 +3402,22 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
     display: none !important;
   }
 
-  /* Tree header menu scrolls cleanly above bottom nav */
+  /* Tree header menu floats cleanly above bottom nav without clipping */
+  .tree-page-header,
+  .tree-shell {
+    overflow: visible !important;
+  }
+
   .tree-header-menu-panel {
-    max-height: calc(100dvh - 175px) !important;
-    overflow-y: auto !important;
-    z-index: 95 !important;
-    right: 0 !important;
+    position: fixed !important;
+    top: 132px !important;
+    right: 12px !important;
     left: auto !important;
+    max-height: calc(100dvh - 220px) !important;
+    overflow-y: auto !important;
+    z-index: 100 !important;
     max-width: calc(100vw - 24px) !important;
+    box-shadow: 0 18px 40px rgba(20, 32, 26, 0.24) !important;
   }
 
   /* Keep Алтан Мод / Хуш мод / Тооно Нархан cleanly single-line on 390px */
