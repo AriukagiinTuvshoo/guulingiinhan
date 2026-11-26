@@ -278,12 +278,7 @@ function TreePageContent() {
         setTree(treeData);
         lazyLoadedUnitsRef.current = new Set();
         setLoadingUnitId(null);
-        if (options?.expandAll) {
-          setCollapsedUnitIds(new Set());
-        } else {
-          const initialLayout = buildAdvancedTreeLayout(treeData);
-          setCollapsedUnitIds(new Set(initialLayout.defaultCollapsedIds));
-        }
+        setCollapsedUnitIds(new Set());
         const preferredIsAvailable =
           Boolean(preferredPersonId) &&
           treeData.persons.some((person) => person.id === preferredPersonId);
