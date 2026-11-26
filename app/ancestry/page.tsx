@@ -37,16 +37,27 @@ export default function SharedAncestryPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const loadRequestRef = useRef(0);
   const load = useCallback(async () => {
+    const reqId = ++loadRequestRef.current;
     setBusy(true); setError('');
     try {
       const loaded = await api<SharedTree>('/shared-lineage');
-      setTree(loaded);
+      if (reqId === loadRequestRef.current) setTree(loaded);
     }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модыг ачаалж чадсангүй.'); }
-    finally { setBusy(false); }
+    catch (cause) {
+      if (reqId === loadRequestRef.current) {
+        setError(cause instanceof ApiError ? cause.message : 'Нийтлэг модыг ачаалж чадсангүй.');
+      }
+    }
+    finally {
+      if (reqId === loadRequestRef.current) setBusy(false);
+    }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { loadRequestRef.current += 1; };
+  }, [load]);
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams(window.location.search);

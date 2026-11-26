@@ -281,7 +281,7 @@ function ChatContent() {
 
   if (!familyId) {
     return (
-      <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--ui-text-muted)' }}>
+      <main aria-label="Гэр бүлийн яриа" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--ui-text-muted)' }}>
         <MessagesSquare size={48} style={{ margin: '0 auto 16px', opacity: 0.4 }} />
         <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--ui-text)', margin: '0 0 8px' }}>
           Гэр бүлийн сонголт хийгдээгүй байна
@@ -289,12 +289,13 @@ function ChatContent() {
         <p style={{ fontSize: '14px', margin: 0 }}>
           Зурвас харилцахын тулд дээд хэсгээс гэр бүлээ сонгоно уу.
         </p>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div
+    <main
+      aria-label="Гэр бүлийн яриа"
       style={{
         display: 'flex',
         height: 'calc(100vh - 80px)',
@@ -701,7 +702,7 @@ function ChatContent() {
           }
         }
       `}</style>
-    </div>
+    </main>
   );
 }
 

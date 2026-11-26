@@ -1236,7 +1236,7 @@ export default function AdminV3Workspace() {
                 Энэ орчинд үндсэн <strong>ГУУЛИНГИЙНХАН</strong> гэр бүлийн мод (Ядамсүрэн ⚭ Гүнд болон 4 салбар: Баавай, Бадамдорж, Долгор, Нансалмаа) хараахан үүсээгүй байна.
               </p>
               {error && (
-                <div className="adv3-toast" style={{ marginTop: 10 }}>
+                <div role="alert" style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: 'var(--ui-danger-soft, var(--err-bg))', color: 'var(--ui-danger, var(--err))', fontSize: 13 }}>
                   {error}
                 </div>
               )}

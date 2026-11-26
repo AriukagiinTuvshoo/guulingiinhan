@@ -362,12 +362,14 @@ export default function OnboardingPage() {
     }
   }
 
-  if (loading) {
+  if (loading || (status?.approved && status.clan_family_id)) {
     return (
       <main style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink)', padding: 24 }}>
         <div style={{ textAlign: 'center' }}>
           <Sparkles size={28} style={{ color: 'var(--gold)', margin: '0 auto 10px' }} />
-          <p style={{ color: 'var(--muted)' }}>Таны удмын бүртгэлийг шалгаж байна…</p>
+          <p style={{ color: 'var(--muted)' }}>
+            {status?.approved ? 'Удмын мод руу шилжиж байна…' : 'Таны удмын бүртгэлийг шалгаж байна…'}
+          </p>
         </div>
       </main>
     );
