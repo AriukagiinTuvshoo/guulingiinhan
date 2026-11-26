@@ -110,6 +110,7 @@ export function TreeDrawer({
     targetName: string;
   } | null>(null);
   const [editingRelatives, setEditingRelatives] = useState(false);
+  const [confirmDeletePerson, setConfirmDeletePerson] = useState(false);
 
   // Life event add form
   const [showAddEvent, setShowAddEvent] = useState(false);
@@ -449,6 +450,16 @@ export function TreeDrawer({
         >
           🔗 Профайл →
         </Link>
+        {canEdit && (
+          <button
+            type="button"
+            className="tree-action-pill is-danger-subtle"
+            onClick={() => setConfirmDeletePerson(true)}
+            title="Энэ хүний бүртгэлийг устгах"
+          >
+            Устгах
+          </button>
+        )}
       </div>
 
       {/* Status Notifications */}
@@ -1093,6 +1104,31 @@ export function TreeDrawer({
           }
         }}
         onCancel={() => setPendingUnlink(null)}
+      />
+      <ConfirmDialog
+        isOpen={confirmDeletePerson}
+        title="Хүний бүртгэл устгах"
+        message={`«${person ? personName(person) : ''}»-ийн бүртгэлийг удмын модноос устгахдаа итгэлтэй байна уу? Админы хогийн савнаас дахин сэргээх боломжтой.`}
+        confirmLabel="Устгах"
+        variant="danger"
+        busy={busy}
+        onConfirm={async () => {
+          if (!person) return;
+          setBusy(true);
+          setError('');
+          try {
+            await api(`/families/${familyId}/persons/${person.id}`, { method: 'DELETE' });
+            setConfirmDeletePerson(false);
+            onClose();
+            if (onRefreshTree) await onRefreshTree(`«${personName(person)}» бүртгэлийг устгалаа.`);
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : 'Хүний бүртгэлийг устгаж чадсангүй.');
+            setConfirmDeletePerson(false);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onCancel={() => setConfirmDeletePerson(false)}
       />
     </aside>
   );

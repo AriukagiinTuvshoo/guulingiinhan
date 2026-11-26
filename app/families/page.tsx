@@ -235,9 +235,9 @@ function FamiliesContent() {
       <section className="mvpbox">
         <div className="row space">
           <div>
-            <Link href={selectedFamily ? `/dashboard?family=${encodeURIComponent(selectedFamily.id)}` : '/dashboard'}>← Аппын нүүр</Link>
-            <h1 style={{ marginTop: 22 }}>Миний гэр бүлүүд</h1>
-            <p>Таны membership-тэй бодит гэр бүлүүдийг удмын модны context-тэй нь удирдана.</p>
+            <Link href={selectedFamily ? `/tree?family=${encodeURIComponent(selectedFamily.id)}` : '/tree'}>← Удмын мод</Link>
+            <h1 style={{ marginTop: 18 }}>Миний гэр бүлүүд</h1>
+            <p>Таны харьяалагддаг гэр бүлүүдийг удмын модтой нь хамт удирдана.</p>
           </div>
           <div className="row">
             <Link className="button" href={selectedFamily ? `/settings?family=${encodeURIComponent(selectedFamily.id)}` : '/settings'}>Тохиргоо</Link>
@@ -247,7 +247,7 @@ function FamiliesContent() {
 
         {loading ? <p role="status" aria-live="polite">Гэр бүлүүдийг ачаалж байна…</p> :
         error ? <div className="error" role="alert"><p>{error}</p><button type="button" onClick={() => void loadFamilies()}>Дахин оролдох</button></div> :
-        invalid ? <div className="error" role="alert"><h2>Гэр бүл олдсонгүй</h2><p>Энэ Family ID таны authorized family context-д байхгүй байна.</p><button type="button" onClick={() => router.replace('/families')}>Гэр бүлүүд рүү буцах</button></div> :
+        invalid ? <div className="error" role="alert"><h2>Гэр бүл олдсонгүй</h2><p>Энэ гэр бүл таны хандах эрхтэй жагсаалтад байхгүй байна.</p><button type="button" onClick={() => router.replace('/families')}>Гэр бүлүүд рүү буцах</button></div> :
         families.length === 0 ? <div className="cards" style={{ marginTop: 20 }}>
           <section className="card" aria-labelledby="join-family-title">
             <h2 id="join-family-title">Миний гэр бүлд нэгдэх</h2>

@@ -72,6 +72,8 @@ const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
 
 function isShellRoute(pathname: string) {
   return (
+    pathname === '/families' ||
+    pathname.startsWith('/families/') ||
     pathname === '/search' || pathname === '/relationships' ||
     pathname === '/people' ||
     pathname.startsWith('/people/') ||

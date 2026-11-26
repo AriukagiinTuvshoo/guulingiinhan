@@ -3492,6 +3492,73 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
   align-items: center;
 }
 
+/* 9. Sprint 1 & 2 Polish: 368px desktop drawer, non-wrapping tabs, sticky sidebar footer, unified /families, 44px controls */
+@media (min-width: 1200px) {
+  .tree-map-layout--3d:not(.tree-map-layout--full) {
+    grid-template-columns: minmax(0, 1fr) 368px !important;
+  }
+
+  body:has(.tree-drawer) .family-chat-fab {
+    right: 400px !important;
+  }
+}
+
+.tree-tab-btn {
+  white-space: nowrap !important;
+}
+
+.tree-action-pill {
+  white-space: nowrap !important;
+  min-height: 36px !important;
+}
+
+.tree-action-pill.is-danger-subtle {
+  color: #8b2635 !important;
+  border-color: #e6c4c8 !important;
+  background: #fdf4f5 !important;
+}
+
+.tree-action-pill.is-danger-subtle:hover {
+  background: #fbe3e6 !important;
+  border-color: #d68d96 !important;
+}
+
+.tree-drawer-close {
+  width: 36px !important;
+  height: 36px !important;
+  font-size: 14px !important;
+}
+
+.golden-tree-dock button {
+  min-height: 38px !important;
+  min-width: 38px !important;
+}
+
+.app-shell__sidebar-footer {
+  position: sticky;
+  bottom: 0;
+  background: inherit;
+  padding-top: 10px;
+  z-index: 2;
+}
+
+.memories-page select,
+.people-page select,
+.people-page input[type="text"],
+.people-page input[type="search"],
+.archive-page select,
+.archive-page input[type="text"],
+.archive-page input[type="search"] {
+  min-height: 44px;
+}
+
+.app-shell__content .mvp {
+  min-height: auto;
+  padding: 20px 24px 40px;
+  background: transparent;
+}
+
+
 
 
 
