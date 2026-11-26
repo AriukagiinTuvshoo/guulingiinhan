@@ -104,6 +104,11 @@ export function TreeDrawer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [pendingUnlink, setPendingUnlink] = useState<{
+    kind: 'parent' | 'child';
+    targetId: string;
+    targetName: string;
+  } | null>(null);
 
   // Life event add form
   const [showAddEvent, setShowAddEvent] = useState(false);
@@ -503,7 +508,7 @@ export function TreeDrawer({
                   <div className="tree-relatives-chips">
                     {profile.parents.length ? (
                       profile.parents.map((p) => (
-                        <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <span key={p.id} className="tree-relative-chip-wrap">
                           <button
                             type="button"
                             className="tree-relative-chip"
@@ -515,37 +520,30 @@ export function TreeDrawer({
                           {Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  await api(
-                                    `/families/${familyId}/relationships/parent-child?parent_id=${encodeURIComponent(p.id)}&child_id=${encodeURIComponent(person.id)}`,
-                                    { method: 'DELETE' },
-                                  );
-                                  setProfile((prev) =>
-                                    prev ? { ...prev, parents: prev.parents.filter((x) => x.id !== p.id) } : prev,
-                                  );
-                                  if (onRefreshTree) await onRefreshTree('Эцэг эх-хүүхдийн холбоосыг салгалаа.');
-                                } catch (err) {
-                                  setError(err instanceof ApiError ? err.message : 'Холбоос салгахад алдаа гарлаа.');
-                                }
-                              }}
+                              className="tree-relative-unlink-btn"
+                              onClick={() =>
+                                setPendingUnlink({
+                                  kind: 'parent',
+                                  targetId: p.id,
+                                  targetName: personName(p),
+                                })
+                              }
+                              aria-label={`${personName(p)} эцэг/эхийн холбоосыг салгах`}
                               title={`${personName(p)} эцэг/эхийн холбоосыг салгах`}
-                              style={{
-                                border: 'none',
-                                background: 'var(--ui-danger-bg)',
-                                color: 'var(--ui-danger-text)',
-                                borderRadius: '50%',
-                                width: 20,
-                                height: 20,
-                                fontSize: 11,
-                                cursor: 'pointer',
-                              }}
                             >
                               ✕
                             </button>
                           )}
                         </span>
                       ))
+                    ) : canEdit ? (
+                      <button
+                        type="button"
+                        className="tree-relative-add-link"
+                        onClick={() => onAddRelation('parent')}
+                      >
+                        + Эцэг/эх нэмэх
+                      </button>
                     ) : (
                       <em className="tree-muted">Бүртгэлгүй</em>
                     )}
@@ -568,6 +566,14 @@ export function TreeDrawer({
                           💍 {personName(s)}
                         </button>
                       ))
+                    ) : canEdit ? (
+                      <button
+                        type="button"
+                        className="tree-relative-add-link"
+                        onClick={() => onAddRelation('spouse')}
+                      >
+                        + Хань нэмэх
+                      </button>
                     ) : (
                       <em className="tree-muted">Бүртгэлгүй</em>
                     )}
@@ -580,7 +586,7 @@ export function TreeDrawer({
                   <div className="tree-relatives-chips">
                     {profile.children.length ? (
                       profile.children.map((c) => (
-                        <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <span key={c.id} className="tree-relative-chip-wrap">
                           <button
                             type="button"
                             className="tree-relative-chip"
@@ -592,37 +598,30 @@ export function TreeDrawer({
                           {Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  await api(
-                                    `/families/${familyId}/relationships/parent-child?parent_id=${encodeURIComponent(person.id)}&child_id=${encodeURIComponent(c.id)}`,
-                                    { method: 'DELETE' },
-                                  );
-                                  setProfile((prev) =>
-                                    prev ? { ...prev, children: prev.children.filter((x) => x.id !== c.id) } : prev,
-                                  );
-                                  if (onRefreshTree) await onRefreshTree('Хүүхдийн холбоосыг салгалаа.');
-                                } catch (err) {
-                                  setError(err instanceof ApiError ? err.message : 'Холбоос салгахад алдаа гарлаа.');
-                                }
-                              }}
+                              className="tree-relative-unlink-btn"
+                              onClick={() =>
+                                setPendingUnlink({
+                                  kind: 'child',
+                                  targetId: c.id,
+                                  targetName: personName(c),
+                                })
+                              }
+                              aria-label={`${personName(c)} хүүхдийн холбоосыг салгах`}
                               title={`${personName(c)} хүүхдийн холбоосыг салгах`}
-                              style={{
-                                border: 'none',
-                                background: 'var(--ui-danger-bg)',
-                                color: 'var(--ui-danger-text)',
-                                borderRadius: '50%',
-                                width: 20,
-                                height: 20,
-                                fontSize: 11,
-                                cursor: 'pointer',
-                              }}
                             >
                               ✕
                             </button>
                           )}
                         </span>
                       ))
+                    ) : canEdit ? (
+                      <button
+                        type="button"
+                        className="tree-relative-add-link"
+                        onClick={() => onAddRelation('child')}
+                      >
+                        + Хүүхэд нэмэх
+                      </button>
                     ) : (
                       <em className="tree-muted">Бүртгэлгүй</em>
                     )}
@@ -1032,6 +1031,55 @@ export function TreeDrawer({
         busy={busy}
         onConfirm={() => void confirmDeleteEvent()}
         onCancel={() => setPendingDeleteEventId(null)}
+      />
+      <ConfirmDialog
+        isOpen={pendingUnlink !== null}
+        title="Холбоос салгах"
+        message={
+          pendingUnlink?.kind === 'parent'
+            ? `«${pendingUnlink.targetName}»-г эцэг/эхийн жагсаалтаас хасах уу? Хүний бүртгэл устгахгүй, зөвхөн холбоосыг салгана.`
+            : `«${pendingUnlink?.targetName ?? ''}»-г хүүхдийн жагсаалтаас хасах уу? Хүний бүртгэл устгахгүй, зөвхөн холбоосыг салгана.`
+        }
+        confirmLabel="Холбоос салгах"
+        variant="danger"
+        busy={busy}
+        onConfirm={async () => {
+          if (!pendingUnlink || !person) return;
+          const target = pendingUnlink;
+          setBusy(true);
+          setError('');
+          try {
+            const parentId = target.kind === 'parent' ? target.targetId : person.id;
+            const childId = target.kind === 'parent' ? person.id : target.targetId;
+            await api(
+              `/families/${familyId}/relationships/parent-child?parent_id=${encodeURIComponent(parentId)}&child_id=${encodeURIComponent(childId)}`,
+              { method: 'DELETE' },
+            );
+            setProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    parents: target.kind === 'parent' ? prev.parents.filter((x) => x.id !== target.targetId) : prev.parents,
+                    children: target.kind === 'child' ? prev.children.filter((x) => x.id !== target.targetId) : prev.children,
+                  }
+                : prev,
+            );
+            setPendingUnlink(null);
+            if (onRefreshTree) {
+              await onRefreshTree(
+                target.kind === 'parent'
+                  ? 'Эцэг/эхийн холбоосыг салгалаа.'
+                  : 'Хүүхдийн холбоосыг салгалаа.',
+              );
+            }
+          } catch (err) {
+            setError(err instanceof ApiError ? err.message : 'Холбоос салгахад алдаа гарлаа.');
+            setPendingUnlink(null);
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onCancel={() => setPendingUnlink(null)}
       />
     </aside>
   );

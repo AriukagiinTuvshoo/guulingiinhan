@@ -3069,3 +3069,241 @@ html[data-th='blue'] .app-shell__nav-link.is-active strong,
 html[data-th='blue'] .app-shell__nav-link.is-active small {
   color: #ffffff !important;
 }
+
+/* ==========================================================================
+   UX Audit Accessibility (>= 12px, WCAG 4.5:1), Hierarchy & Layout Polish
+   ========================================================================== */
+
+/* 1. Sidebar & Header legibility (>= 12px minimum, clean 1-line nav) */
+.app-shell__nav-group-label {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+}
+
+.app-shell__nav-link {
+  min-height: 42px !important;
+  padding: 8px 12px !important;
+}
+
+.app-shell__nav-link strong {
+  font-size: 14px !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+}
+
+.app-shell__context-pill strong {
+  font-size: 13px !important;
+}
+
+.app-shell__context-pill small {
+  font-size: 12px !important;
+  opacity: 0.92;
+}
+
+/* 2. Tree Page typography, contrast & minimalist toolbar */
+.tree-eyebrow {
+  font-size: 12px !important;
+  color: #6b4f1d !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.1em !important;
+}
+
+.tree-lede {
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+  color: #3a4f44 !important;
+}
+
+.tree-stats {
+  font-size: 13.5px !important;
+  color: #2b4237 !important;
+}
+
+.tree-segmented button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 7px 14px !important;
+  min-height: 36px !important;
+}
+
+.tree-header-menu-panel {
+  min-width: 268px !important;
+  padding: 8px !important;
+}
+
+.tree-header-menu-section {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b451c;
+  padding: 8px 10px 4px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(139, 108, 49, 0.16);
+}
+
+.tree-header-menu-section:first-child {
+  margin-top: 0;
+  padding-top: 4px;
+  border-top: 0;
+}
+
+.tree-header-menu-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #223b30;
+}
+
+.tree-header-menu-control label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c4539;
+}
+
+.tree-header-menu-control select {
+  min-height: 32px;
+  font-size: 13px;
+  border: 1px solid #c9b99c;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #1f392e;
+  padding: 2px 10px;
+}
+
+/* 3. Golden Tree cards & generation labels (>= 12px & >= 4.5:1 contrast) */
+.golden-generation-label {
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #5c4316 !important;
+}
+
+.golden-node-name {
+  font-size: 14px !important;
+  color: #173026 !important;
+}
+
+.golden-node-years {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #5a4319 !important;
+}
+
+/* 4. Tree Drawer legibility, safe unlink button & empty-state CTA */
+.tree-drawer-gen-pill,
+.tree-drawer-alive-pill,
+.tree-drawer-age-pill {
+  font-size: 12px !important;
+  padding: 3px 10px !important;
+}
+
+.tree-drawer-dates,
+.tree-drawer-lineage {
+  font-size: 13px !important;
+  color: #465d52 !important;
+}
+
+.tree-action-pill {
+  font-size: 12.5px !important;
+  padding: 6px 12px !important;
+  min-height: 34px !important;
+}
+
+.tree-tab-btn {
+  font-size: 12.5px !important;
+  color: #455c51 !important;
+  padding: 9px 6px !important;
+}
+
+.tree-relatives-box h4 {
+  font-size: 12px !important;
+  color: #3d5247 !important;
+}
+
+.tree-relatives-group {
+  font-size: 13.5px !important;
+  align-items: center !important;
+  margin-bottom: 8px !important;
+}
+
+.tree-relatives-label {
+  width: 96px !important;
+  color: #475e53 !important;
+  font-weight: 600 !important;
+}
+
+.tree-relative-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tree-relative-chip {
+  font-size: 13px !important;
+  padding: 4px 10px !important;
+  min-height: 30px !important;
+  color: #1c382c !important;
+}
+
+.tree-relative-unlink-btn {
+  border: 1px solid #d5c7ad;
+  background: #f5efe2;
+  color: #596b62;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tree-relative-unlink-btn:hover,
+.tree-relative-unlink-btn:focus-visible {
+  background: #fde8e8;
+  color: #9b1c1c;
+  border-color: #f3a6a6;
+}
+
+.tree-relative-add-link {
+  border: 1px dashed #8a6d33;
+  background: #fdf9ef;
+  color: #5a4214;
+  border-radius: 14px;
+  padding: 4px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tree-relative-add-link:hover,
+.tree-relative-add-link:focus-visible {
+  background: #f3e8cf;
+  border-color: #5a4214;
+}
+
+.tree-bio-text,
+.tree-bio-empty {
+  font-size: 14px !important;
+  color: #364c41 !important;
+}
+
+/* 5. Floating Family Chat FAB — shift left of TreeDrawer when open on desktop */
+@media (min-width: 1024px) {
+  body:has(.tree-drawer) .family-chat-fab {
+    right: 416px !important;
+  }
+}
+

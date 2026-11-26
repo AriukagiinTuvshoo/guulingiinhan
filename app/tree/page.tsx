@@ -43,7 +43,7 @@ import GoldenHeritageTree from '../../components/golden-heritage-tree';
 import HushTreeView from '../../components/hush-tree-view';
 import ToonoTreeView from '../../components/toono-tree-view';
 import { useFocusTrap } from '../../lib/use-focus-trap';
-import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, Link2, Plus, Printer, ShieldCheck, UserPlus, Users, Wrench } from 'lucide-react';
+import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, GitFork, Layers, Link2, Maximize2, Minimize2, Network, Plus, Printer, ShieldCheck, Sun, UserPlus, Users, Wrench } from 'lucide-react';
 
 export type BloodlineMode = 'none' | 'all' | 'paternal' | 'maternal' | 'descendants';
 
@@ -1048,18 +1048,7 @@ function TreePageContent() {
           </div>
 
           <div className="tree-header-actions" ref={headerMenusRef}>
-            <button
-              type="button"
-              className="ui-btn"
-              onClick={() => {
-                setOpenHeaderMenu(null);
-                setRelativesModalOpen(true);
-              }}
-            >
-              <UserPlus size={15} aria-hidden="true" /> Төрөл нэмэх хүсэлт
-            </button>
-
-            {canReviewClan && (
+            {canReviewClan && pendingReviewCount > 0 && (
               <button
                 type="button"
                 className="ui-btn"
@@ -1088,61 +1077,10 @@ function TreePageContent() {
               </button>
             )}
 
-            {canPrintFamily && (
-              <div className="tree-header-menu">
-                <button
-                  type="button"
-                  className={`ui-btn${openHeaderMenu === 'print' ? ' ui-btn--selected' : ''}`}
-                  aria-haspopup="menu"
-                  aria-expanded={openHeaderMenu === 'print'}
-                  onClick={() => setOpenHeaderMenu((prev) => (prev === 'print' ? null : 'print'))}
-                >
-                  <Printer size={15} aria-hidden="true" /> Хэвлэх <ChevronDown size={14} aria-hidden="true" />
-                </button>
-                {openHeaderMenu === 'print' && (
-                  <div className="tree-header-menu-panel" role="menu" aria-label="Хэвлэх цэс">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="tree-header-menu-item"
-                      onClick={() => {
-                        setOpenHeaderMenu(null);
-                        setExportModalOpen(true);
-                      }}
-                    >
-                      <Printer size={15} aria-hidden="true" /> Хананд хэвлэх (PDF / SVG)
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="tree-header-menu-item"
-                      onClick={() => {
-                        setOpenHeaderMenu(null);
-                        setCertificateModalOpen(true);
-                      }}
-                    >
-                      <FileBadge size={15} aria-hidden="true" /> Ургийн бичиг (PDF)
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="tree-header-menu-item"
-                      onClick={() => {
-                        setOpenHeaderMenu(null);
-                        setBookModalOpen(true);
-                      }}
-                    >
-                      <BookOpen size={15} aria-hidden="true" /> Ургийн ном (PDF)
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
             <div className="tree-header-menu">
               <button
                 type="button"
-                className={`ui-btn${openHeaderMenu === 'tools' || timeTravelOpen ? ' ui-btn--selected' : ''}`}
+                className={`ui-btn${openHeaderMenu === 'tools' || timeTravelOpen || bloodlineMode !== 'none' ? ' ui-btn--selected' : ''}`}
                 aria-haspopup="menu"
                 aria-expanded={openHeaderMenu === 'tools'}
                 onClick={() => setOpenHeaderMenu((prev) => (prev === 'tools' ? null : 'tools'))}
@@ -1151,6 +1089,141 @@ function TreePageContent() {
               </button>
               {openHeaderMenu === 'tools' && (
                 <div className="tree-header-menu-panel" role="menu" aria-label="Хэрэгсэл цэс">
+                  <div className="tree-header-menu-section">Харагдац ба үе</div>
+                  <div className="tree-header-menu-control">
+                    <label htmlFor="tree-menu-depth">
+                      <Layers size={14} aria-hidden="true" /> Хүрээ
+                    </label>
+                    <select
+                      id="tree-menu-depth"
+                      value={depth}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setDepth(next);
+                        void loadTree(familyId, tree?.lineage_root_person_id || selectedId || undefined, next);
+                      }}
+                    >
+                      <option value={3}>3 үе</option>
+                      <option value={5}>5 үе</option>
+                      <option value={7}>7 үе</option>
+                      <option value={9}>9 үе</option>
+                      <option value={10}>10 үе</option>
+                    </select>
+                  </div>
+                  <div className="tree-header-menu-control">
+                    <label htmlFor="tree-menu-bloodline">Удам</label>
+                    <select
+                      id="tree-menu-bloodline"
+                      value={bloodlineMode}
+                      onChange={(event) => setBloodlineMode(event.target.value as BloodlineMode)}
+                      disabled={!selectedId}
+                    >
+                      <option value="none">Энгийн горим</option>
+                      <option value="all">Бүх шугам</option>
+                      <option value="paternal">Эцгийн ураг</option>
+                      <option value="maternal">Эхийн тал</option>
+                      <option value="descendants">Үр удам</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      handleExpandAllNine();
+                    }}
+                  >
+                    <Layers size={15} aria-hidden="true" /> Бүх 9 үеийг нээх
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      handleCollapseAll();
+                    }}
+                  >
+                    <Minimize2 size={15} aria-hidden="true" /> Салбаруудыг хураах
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      setIsFullscreen((prev) => !prev);
+                    }}
+                  >
+                    {isFullscreen ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+                    {isFullscreen ? 'Энгийн дэлгэц рүү буцах' : 'Бүтэн дэлгэцээр харах'}
+                  </button>
+
+                  {canPrintFamily && (
+                    <>
+                      <div className="tree-header-menu-section">Хэвлэх ба экспорт</div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="tree-header-menu-item"
+                        onClick={() => {
+                          setOpenHeaderMenu(null);
+                          setExportModalOpen(true);
+                        }}
+                      >
+                        <Printer size={15} aria-hidden="true" /> Хананд хэвлэх (PDF / SVG)
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="tree-header-menu-item"
+                        onClick={() => {
+                          setOpenHeaderMenu(null);
+                          setCertificateModalOpen(true);
+                        }}
+                      >
+                        <FileBadge size={15} aria-hidden="true" /> Ургийн бичиг (PDF)
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="tree-header-menu-item"
+                        onClick={() => {
+                          setOpenHeaderMenu(null);
+                          setBookModalOpen(true);
+                        }}
+                      >
+                        <BookOpen size={15} aria-hidden="true" /> Ургийн ном (PDF)
+                      </button>
+                    </>
+                  )}
+
+                  <div className="tree-header-menu-section">Удмын үйлдэл</div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tree-header-menu-item"
+                    onClick={() => {
+                      setOpenHeaderMenu(null);
+                      setRelativesModalOpen(true);
+                    }}
+                  >
+                    <UserPlus size={15} aria-hidden="true" /> Төрөл нэмэх хүсэлт
+                  </button>
+                  {canReviewClan && pendingReviewCount === 0 && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="tree-header-menu-item"
+                      onClick={() => {
+                        setOpenHeaderMenu(null);
+                        setReviewerDrawerOpen(true);
+                      }}
+                    >
+                      <ShieldCheck size={15} aria-hidden="true" /> Хүсэлтүүд (0)
+                    </button>
+                  )}
                   {canEditFamily && (tree?.persons.length ?? 0) >= 2 && (
                     <button
                       type="button"
@@ -1257,24 +1330,38 @@ function TreePageContent() {
                   type="button"
                   aria-pressed={viewMode === 'gold'}
                   onClick={() => setViewMode('gold')}
+                  title="Дээрээс доош үеэр нь харуулах сонгодог удмын мод"
                 >
-                  Алтан Мод
+                  <GitFork size={14} aria-hidden="true" /> Алтан Мод
                 </button>
                 <button
                   type="button"
                   aria-pressed={viewMode === 'hush'}
                   onClick={() => setViewMode('hush')}
+                  title="Өргөн дэлгэцийн салаалсан мод"
                 >
-                  Хуш мод
+                  <Network size={14} aria-hidden="true" /> Хуш мод
                 </button>
                 <button
                   type="button"
                   aria-pressed={viewMode === 'toono'}
                   onClick={() => setViewMode('toono')}
+                  title="Төвөөс цацраг хэлбэрийн тойрог мод"
                 >
-                  Тооно Нархан
+                  <Sun size={14} aria-hidden="true" /> Тооно Нархан
                 </button>
               </div>
+
+              {bloodlineMode !== 'none' && selectedPerson && (
+                <button
+                  type="button"
+                  className="tree-bloodline-status"
+                  onClick={() => setBloodlineMode('none')}
+                  title="Удам гэрэлтүүлэлтийг болиулах"
+                >
+                  <strong>{bloodline.activeIds.size}</strong> хүн онцолсон ✕
+                </button>
+              )}
 
               <div className="tree-mobile-quick-row">
                 <button
@@ -1283,7 +1370,7 @@ function TreePageContent() {
                   aria-expanded={mobileToolsOpen}
                   onClick={() => setMobileToolsOpen((prev) => !prev)}
                 >
-                  {mobileToolsOpen ? 'Шүүлтүүр хаах ▲' : 'Хайлт & Шүүлтүүр ▼'}
+                  {mobileToolsOpen ? 'Хайлт хаах ▲' : 'Хайлт & Салбар ▼'}
                 </button>
                 <button
                   type="button"
@@ -1292,65 +1379,6 @@ function TreePageContent() {
                 >
                   {isFullscreen ? '✕ Гарах' : '⛶ Томруулах'}
                 </button>
-              </div>
-
-              <div className={`tree-controls-secondary tree-mobile-collapsible${mobileToolsOpen ? ' is-open' : ''}`}>
-              <label className="tree-bloodline-select" title="Сонгосон хүний удам угсаа, үр садыг онцлон тодруулах">
-                <span>Удам</span>
-                <select
-                  value={bloodlineMode}
-                  onChange={(event) => setBloodlineMode(event.target.value as BloodlineMode)}
-                  disabled={!selectedId}
-                  aria-label="Удам угсаа гэрэлтүүлэх горим"
-                >
-                  <option value="none">Энгийн горим</option>
-                  <option value="all">Бүх шугам (Удам + Үр сад)</option>
-                  <option value="paternal">Эцгийн ураг (Ясан төрөл)</option>
-                  <option value="maternal">Эхийн тал (Цусан төрөл)</option>
-                  <option value="descendants">Үр удам (Хүүхдүүд, ач нар)</option>
-                </select>
-              </label>
-
-              {bloodlineMode !== 'none' && selectedPerson && (
-                <span className="tree-bloodline-status" title="Гэрэлтэж буй хүний тоо">
-                  <strong>{bloodline.activeIds.size}</strong> хүн
-                </span>
-              )}
-
-              <label>
-                <span>Хүрээ</span>
-                <select
-                  value={depth}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setDepth(next);
-                    void loadTree(familyId, tree?.lineage_root_person_id || selectedId || undefined, next);
-                  }}
-                >
-                  <option value={3}>3 үе</option>
-                  <option value={5}>5 үе</option>
-                  <option value={7}>7 үе</option>
-                  <option value={9}>9 үе</option>
-                  <option value={10}>10 үе</option>
-                </select>
-              </label>
-
-              <div className="tree-zoom" aria-label="Модны удирдлага">
-                <button type="button" onClick={handleExpandAllNine}>
-                  Бүх 9 үеийг нээх
-                </button>
-                <button type="button" onClick={handleCollapseAll}>
-                  Хураах
-                </button>
-                <button
-                  type="button"
-                  className={isFullscreen ? 'ui-btn--selected' : undefined}
-                  onClick={() => setIsFullscreen((prev) => !prev)}
-                  title={isFullscreen ? 'Цонхыг хэвийн болгох' : 'Дэлгэц дүүргэх'}
-                >
-                  {isFullscreen ? 'Буцах' : 'Бүтэн дэлгэц'}
-                </button>
-              </div>
               </div>
             </div>
           </div>

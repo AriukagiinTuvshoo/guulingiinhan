@@ -40,22 +40,22 @@ interface GoldenHeritageTreeProps {
 }
 
 function initials(person: Pick<TreePerson, 'first_name' | 'last_name'>) {
-  return (
-    [person.last_name, person.first_name]
-      .filter(Boolean)
-      .map((value) => value.slice(0, 1))
-      .join('')
-      .slice(0, 2)
-      .toUpperCase() || '?'
-  );
+  const parts = [person.last_name, person.first_name].filter(Boolean) as string[];
+  if (parts.length >= 2) {
+    return `${parts[0].slice(0, 1)}${parts[1].slice(0, 1)}`.toUpperCase();
+  }
+  if (parts.length === 1) {
+    return parts[0].trim().slice(0, 2).toUpperCase() || '?';
+  }
+  return '?';
 }
 
 function yearsText(person: TreePerson) {
   const b = person.birth_date?.slice(0, 4);
   const d = !person.is_alive ? person.death_date?.slice(0, 4) : null;
-  if (b && d) return `${b} – ${d}`;
-  if (b) return person.is_alive ? `${b} – одоо` : `${b} – ?`;
-  return person.is_alive ? 'Энх тунх' : 'Дурсгалд';
+  if (b && d) return `${b}–${d}`;
+  if (b) return person.is_alive ? `${b}–одоо` : `🕊 ${b}–…`;
+  return person.is_alive ? '● Амьд' : '🕊 Дурсгал';
 }
 
 export default function GoldenHeritageTree({
@@ -84,6 +84,22 @@ export default function GoldenHeritageTree({
   const dragStart = useRef({ x: 0, y: 0 });
   const panStart = useRef({ x: 0, y: 0 });
   const anchorRef = useRef<{ personId: string; prevX: number; prevY: number } | null>(null);
+  const hasAutoCenteredRef = useRef(false);
+
+  // Center the tree horizontally on initial load instead of hugging top-left.
+  useLayoutEffect(() => {
+    if (hasAutoCenteredRef.current) return;
+    const scroller = scrollRef.current;
+    if (!scroller || layout.width <= 0 || layout.nodes.length === 0) return;
+    hasAutoCenteredRef.current = true;
+    const scaledWidth = layout.width * zoom;
+    if (scaledWidth < scroller.clientWidth) {
+      const centerOffset = Math.round((scroller.clientWidth - scaledWidth) / 2);
+      setPan((prev) => (prev.x === 0 && prev.y === 0 ? { x: centerOffset, y: 12 } : prev));
+    } else {
+      scroller.scrollLeft = Math.max(0, Math.round((scaledWidth - scroller.clientWidth) / 2));
+    }
+  }, [layout.width, layout.nodes.length, zoom]);
 
   // Preserve the clicked node's exact screen position after collapse/expand relayout.
   useLayoutEffect(() => {

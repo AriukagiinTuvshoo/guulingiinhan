@@ -626,9 +626,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </>
           ) : currentFamily ? (
             <span className="app-shell__context-pill">
-              <TreeDeciduous size={14} aria-hidden="true" />
+              <TreeDeciduous size={15} aria-hidden="true" />
               <strong>{currentFamily.name}</strong>
-              <small>{currentFamily.role}</small>
+              <small>
+                {currentFamily.role === 'owner'
+                  ? 'Эзэмшигч'
+                  : currentFamily.role === 'editor'
+                    ? 'Засварлагч'
+                    : currentFamily.role === 'viewer'
+                      ? 'Гишүүн'
+                      : currentFamily.role}
+              </small>
             </span>
           ) : (
             <Link className="app-shell__context-empty" href="/families">
@@ -638,7 +646,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="app-shell__account" ref={accountRef}>
-          <ThemePicker />
           {user && currentFamily && !pathname.startsWith('/chat') && (
             <FamilyChatDrawer familyId={currentFamily.id} currentUserId={user.id} />
           )}
@@ -693,6 +700,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
               >
                 Тохиргоо
               </Link>
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderTop: '1px solid var(--ui-border, var(--border))',
+                  borderBottom: '1px solid var(--ui-border, var(--border))',
+                  margin: '4px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ui-text-muted, var(--muted))' }}>Өнгөний загвар</span>
+                <ThemePicker variant="compact" showLabel={false} />
+              </div>
               <button
                 type="button"
                 role="menuitem"
@@ -759,7 +781,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       <Icon size={18} aria-hidden="true" />
                       <span>
                         <strong>{item.label}</strong>
-                        <small>{item.description}</small>
                       </span>
                     </span>
                   );
@@ -777,13 +798,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     key={item.key}
                     className={'app-shell__nav-link ' + (itemActive ? 'is-active' : '')}
                     href={href}
+                    title={item.description}
                     aria-current={itemActive ? 'page' : undefined}
                     onClick={() => setMobileOpen(false)}
                   >
                     <Icon size={18} aria-hidden="true" />
                     <span>
                       <strong>{item.label}</strong>
-                      <small>{item.description}</small>
                     </span>
                   </Link>
                 );
