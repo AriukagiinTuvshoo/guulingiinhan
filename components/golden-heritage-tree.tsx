@@ -86,20 +86,25 @@ export default function GoldenHeritageTree({
   const anchorRef = useRef<{ personId: string; prevX: number; prevY: number } | null>(null);
   const hasAutoCenteredRef = useRef(false);
 
-  // Center the tree horizontally on initial load instead of hugging top-left.
+  // Fit and center the tree horizontally on initial load so all branches are visible without clipping.
   useLayoutEffect(() => {
     if (hasAutoCenteredRef.current) return;
     const scroller = scrollRef.current;
     if (!scroller || layout.width <= 0 || layout.nodes.length === 0) return;
     hasAutoCenteredRef.current = true;
-    const scaledWidth = layout.width * zoom;
+    const availW = Math.max(320, scroller.clientWidth - 28);
+    const availH = Math.max(260, scroller.clientHeight - 76);
+    const fitZoom = Math.max(0.55, Math.min(0.88, Math.min(availW / layout.width, availH / Math.max(layout.height, 1))));
+    const nextZoom = Number(fitZoom.toFixed(2));
+    setZoom(nextZoom);
+    const scaledWidth = layout.width * nextZoom;
     if (scaledWidth < scroller.clientWidth) {
       const centerOffset = Math.round((scroller.clientWidth - scaledWidth) / 2);
-      setPan((prev) => (prev.x === 0 && prev.y === 0 ? { x: centerOffset, y: 12 } : prev));
+      setPan({ x: centerOffset, y: 8 });
     } else {
       scroller.scrollLeft = Math.max(0, Math.round((scaledWidth - scroller.clientWidth) / 2));
     }
-  }, [layout.width, layout.nodes.length, zoom]);
+  }, [layout.width, layout.height, layout.nodes.length]);
 
   // Preserve the clicked node's exact screen position after collapse/expand relayout.
   useLayoutEffect(() => {

@@ -3361,10 +3361,21 @@ html[data-th='blue'] .app-shell__nav-link.is-active small {
   line-height: 1.5 !important;
 }
 
+.golden-tree-viewport:not(.is-fullscreen),
+html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
+  height: clamp(440px, calc(100vh - 365px), 545px) !important;
+  min-height: 440px !important;
+  max-height: calc(100vh - 365px) !important;
+}
+
 .golden-tree-stage,
 .tree-map-scroll {
-  min-height: 500px !important;
-  max-height: calc(100vh - 255px) !important;
+  min-height: 420px !important;
+  max-height: calc(100vh - 365px) !important;
+}
+
+.tree-drawer {
+  max-height: clamp(440px, calc(100vh - 365px), 545px) !important;
 }
 
 
