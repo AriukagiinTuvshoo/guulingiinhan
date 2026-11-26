@@ -92,9 +92,10 @@ export default function GoldenHeritageTree({
     const scroller = scrollRef.current;
     if (!scroller || layout.width <= 0 || layout.nodes.length === 0) return;
     hasAutoCenteredRef.current = true;
-    const availW = Math.max(320, scroller.clientWidth - 28);
-    const availH = Math.max(260, scroller.clientHeight - 76);
-    const fitZoom = Math.max(0.55, Math.min(0.88, Math.min(availW / layout.width, availH / Math.max(layout.height, 1))));
+    const availW = Math.max(280, scroller.clientWidth - 24);
+    const availH = Math.max(240, scroller.clientHeight - 76);
+    const minZoom = scroller.clientWidth < 520 ? 0.34 : 0.55;
+    const fitZoom = Math.max(minZoom, Math.min(0.88, Math.min(availW / layout.width, availH / Math.max(layout.height, 1))));
     const nextZoom = Number(fitZoom.toFixed(2));
     setZoom(nextZoom);
     const scaledWidth = layout.width * nextZoom;
@@ -102,6 +103,7 @@ export default function GoldenHeritageTree({
       const centerOffset = Math.round((scroller.clientWidth - scaledWidth) / 2);
       setPan({ x: centerOffset, y: 8 });
     } else {
+      setPan({ x: 0, y: 8 });
       scroller.scrollLeft = Math.max(0, Math.round((scaledWidth - scroller.clientWidth) / 2));
     }
   }, [layout.width, layout.height, layout.nodes.length]);

@@ -296,6 +296,7 @@ function ChatContent() {
   return (
     <main
       aria-label="Гэр бүлийн яриа"
+      className="chat-shell"
       style={{
         display: 'flex',
         height: 'calc(100vh - 80px)',
@@ -319,7 +320,7 @@ function ChatContent() {
           flexDirection: 'column',
           flexShrink: 0,
         }}
-        className={mobileShowChat ? 'chat-contacts-mobile-hidden' : ''}
+        className={`chat-sidebar${mobileShowChat ? ' chat-contacts-mobile-hidden' : ''}`}
       >
         {/* Header */}
         <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--ui-border)' }}>
@@ -476,8 +477,10 @@ function ChatContent() {
 
       {/* RIGHT COLUMN: CONVERSATION VIEW & INPUT */}
       <div
+        className={`chat-thread${!mobileShowChat ? ' chat-thread-mobile-hidden' : ''}`}
         style={{
           flex: 1,
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
           background: 'var(--ui-surface)',
@@ -487,7 +490,7 @@ function ChatContent() {
         {/* Active Header */}
         <div
           style={{
-            padding: '14px 20px',
+            padding: '14px 16px',
             borderBottom: '1px solid var(--ui-border)',
             display: 'flex',
             alignItems: 'center',
@@ -495,19 +498,25 @@ function ChatContent() {
             background: 'var(--ui-surface)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             {/* Mobile Back Button */}
             <button
               type="button"
               onClick={() => setMobileShowChat(false)}
               className="chat-mobile-back-btn"
+              aria-label="Сувгийн жагсаалт руу буцах"
               style={{
-                background: 'none',
-                border: 'none',
-                padding: '4px',
+                background: 'var(--ui-surface-subtle)',
+                border: '1px solid var(--ui-border)',
+                borderRadius: '10px',
+                width: '38px',
+                height: '38px',
+                alignItems: 'center',
+                justifyContent: 'center',
                 cursor: 'pointer',
                 display: 'none',
                 color: 'var(--ui-text)',
+                flexShrink: 0,
               }}
               title="Жагсаалт руу буцах"
             >
@@ -691,17 +700,6 @@ function ChatContent() {
           </button>
         </form>
       </div>
-
-      <style jsx global>{`
-        @media (max-width: 768px) {
-          .chat-contacts-mobile-hidden {
-            display: none !important;
-          }
-          .chat-mobile-back-btn {
-            display: inline-flex !important;
-          }
-        }
-      `}</style>
     </main>
   );
 }

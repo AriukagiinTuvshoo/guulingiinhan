@@ -2787,7 +2787,7 @@ html[data-th] .people-profile-cta {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 950;
+    z-index: 45;
     background: var(--card);
     border-top: 1.5px solid var(--goldl);
     box-shadow: 0 -8px 24px color-mix(in srgb, var(--hd) 14%, transparent);
@@ -3377,5 +3377,93 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
 .tree-drawer {
   max-height: clamp(440px, calc(100vh - 365px), 545px) !important;
 }
+
+/* 7. Mobile (<= 768px / <= 1020px) Fixes: z-index, bottom clearance, /chat, /tree */
+@media (max-width: 1020px) {
+  .tree-drawer {
+    max-height: none !important;
+    overflow: visible !important;
+    padding-bottom: 24px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Ensure scrolled content and sidebar drawer clear the fixed bottom nav */
+  .app-shell__content {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .app-shell__sidebar-inner {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Hide redundant floating chat FAB on mobile (Зурвас is in bottom nav) */
+  .family-chat-fab {
+    display: none !important;
+  }
+
+  /* Tree header menu scrolls cleanly above bottom nav */
+  .tree-header-menu-panel {
+    max-height: calc(100dvh - 175px) !important;
+    overflow-y: auto !important;
+    z-index: 95 !important;
+    right: 0 !important;
+    left: auto !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  /* Keep Алтан Мод / Хуш мод / Тооно Нархан cleanly single-line on 390px */
+  .tree-segmented {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .tree-segmented button {
+    justify-content: center !important;
+    padding: 7px 6px !important;
+    font-size: 12px !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    min-width: 0 !important;
+  }
+
+  .golden-tree-viewport:not(.is-fullscreen),
+  html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
+    height: 410px !important;
+    min-height: 360px !important;
+    max-height: 62dvh !important;
+  }
+
+  /* Responsive /chat layout (replaces dead styled-jsx) */
+  .chat-shell {
+    height: calc(100dvh - 152px - env(safe-area-inset-bottom)) !important;
+    min-height: 420px !important;
+    border-radius: 12px !important;
+  }
+
+  .chat-sidebar {
+    width: 100% !important;
+    border-right: 0 !important;
+  }
+
+  .chat-contacts-mobile-hidden {
+    display: none !important;
+  }
+
+  .chat-thread-mobile-hidden {
+    display: none !important;
+  }
+
+  .chat-thread {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .chat-mobile-back-btn {
+    display: inline-flex !important;
+  }
+}
+
 
 
