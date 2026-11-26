@@ -109,6 +109,7 @@ export function TreeDrawer({
     targetId: string;
     targetName: string;
   } | null>(null);
+  const [editingRelatives, setEditingRelatives] = useState(false);
 
   // Life event add form
   const [showAddEvent, setShowAddEvent] = useState(false);
@@ -139,6 +140,7 @@ export function TreeDrawer({
     setBioEditing(false);
     setShowAddEvent(false);
     setExtractedResult(null);
+    setEditingRelatives(false);
 
     async function loadData() {
       try {
@@ -500,7 +502,18 @@ export function TreeDrawer({
             {/* Relatives Quick Navigator */}
             {profile && (
               <div className="tree-relatives-box">
-                <h4>Шууд ураг төрөл (дээр нь дарж модонд шилжинэ):</h4>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <h4 style={{ margin: 0 }}>Шууд ураг төрөл:</h4>
+                  {Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (profile.parents.length > 0 || profile.children.length > 0) && (
+                    <button
+                      type="button"
+                      className="tree-button-tiny"
+                      onClick={() => setEditingRelatives((v) => !v)}
+                    >
+                      {editingRelatives ? 'Дуусгах' : 'Холбоос засах'}
+                    </button>
+                  )}
+                </div>
 
                 {/* Parents */}
                 <div className="tree-relatives-group">
@@ -517,7 +530,7 @@ export function TreeDrawer({
                           >
                             👤 {personName(p)}
                           </button>
-                          {Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (
+                          {editingRelatives && Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (
                             <button
                               type="button"
                               className="tree-relative-unlink-btn"
@@ -595,7 +608,7 @@ export function TreeDrawer({
                           >
                             👶 {personName(c)}
                           </button>
-                          {Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (
+                          {editingRelatives && Boolean(person.can_edit ?? profile?.can_edit ?? profile?.can_edit_profile) && (
                             <button
                               type="button"
                               className="tree-relative-unlink-btn"

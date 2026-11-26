@@ -532,9 +532,9 @@ export default function OnboardingPage() {
     <main style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--ink)', padding: '20px 14px 48px' }}>
       <div style={{ maxWidth: 740, margin: '0 auto' }}>
         {/* Top bar */}
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--gold)' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ui-accent-text, var(--gold))' }}>
               ГУУЛИНГИЙНХАН · НЭГДСЭН УДАМ
             </span>
             <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(22px, 4vw, 30px)', margin: '4px 0 0' }}>
@@ -542,18 +542,25 @@ export default function OnboardingPage() {
             </h1>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <ThemePicker variant="compact" showLabel={false} />
-            <button type="button" className="btn btn-secondary" onClick={() => void handleLogout()} style={{ padding: '7px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-              <LogOut size={14} /> Гарах
+            <button type="button" className="btn btn-secondary" onClick={() => void handleLogout()} style={{ minHeight: 40, padding: '8px 14px', fontSize: 13.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <LogOut size={15} /> Гарах
             </button>
           </div>
         </header>
 
+        {/* Quick invite-code shortcut at top (Nielsen #7 Flexibility) */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, padding: '12px 16px', borderRadius: 14, background: 'var(--card)', border: '1px solid var(--border)', marginBottom: 14, fontSize: 14, color: 'var(--ink)' }}>
+          <span>Танд гэр бүлийн урилгын код байгаа юу?</span>
+          <Link href="/invite" style={{ fontWeight: 700, color: 'var(--ui-primary, var(--gold))', textDecoration: 'underline', minHeight: 36, display: 'inline-flex', alignItems: 'center' }}>
+            Кодоор шууд нэгдэх →
+          </Link>
+        </div>
+
         {/* Security privacy banner */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 16px', borderRadius: 14, background: 'var(--card)', border: '1px solid var(--border)', marginBottom: 18, fontSize: 13, color: 'var(--muted)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '13px 16px', borderRadius: 14, background: 'var(--card)', border: '1px solid var(--border)', marginBottom: 18, fontSize: 14, lineHeight: 1.55, color: 'var(--ink)' }}>
           <ShieldCheck size={18} style={{ color: 'var(--gold)', flexShrink: 0, marginTop: 2 }} />
           <div>
-            <strong style={{ color: 'var(--ink)' }}>Хувийн нууцлалын хамгаалалт:</strong> Удмын мод болон гэр бүлийн мэдээлэл зөвхөн баталгаажсан гишүүдэд харагдана. Доорх 4 богино алхмыг бөглөснөөр админ таныг зөв үед нь холбож баталгаажуулна.
+            <strong>Хувийн нууцлалын хамгаалалт:</strong> Удмын мод зөвхөн баталгаажсан гишүүдэд харагдана. Доорх 4 алхмыг бөглөснөөр админ таныг зөв үед нь холбоно.
           </div>
         </div>
 
@@ -939,24 +946,23 @@ export default function OnboardingPage() {
                 <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 20, marginBottom: 6 }}>
                   4. Дунд үеийн эцэг эх, ойрын төрлүүдээ нэмэх (Заавал биш)
                 </h2>
-                <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-                  Хэрэв таны <strong>аав, ээж</strong> модонд хараахан бүртгэгдээгүй бол энд нэмснээр админ батлахад шууд <strong>{selectedAnchor?.name || selectedBranch?.name} → Аав/Ээж → Та</strong> дарааллаар автоматаар холбогдоно.
-                  Мөн <strong>имэйл хаяг</strong> оруулбал тухайн хүнд автоматаар аккаунт үүсэж, дараа нь «Нууц үгээ мартсан уу?» хэсгээр өөрөө нууц үгээ зохиогоод шууд нэвтрэх боломжтой!
+                <p style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.55, margin: 0 }}>
+                  Нэмсэн хүмүүс тань админ баталсны дараа удмын модонд холбогдоно.
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => addRelative('parent')} style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <Plus size={14} /> Эцэг / Эх нэмэх
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => addRelative('parent')} style={{ minHeight: 44, padding: '10px 16px', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Plus size={16} /> Эцэг / Эх нэмэх
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={() => addRelative('spouse')} style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <Plus size={14} /> Хань нэмэх
+                <button type="button" className="btn btn-secondary" onClick={() => addRelative('spouse')} style={{ minHeight: 44, padding: '10px 16px', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Plus size={16} /> Хань нэмэх
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={() => addRelative('child')} style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <Plus size={14} /> Хүүхэд нэмэх
+                <button type="button" className="btn btn-secondary" onClick={() => addRelative('child')} style={{ minHeight: 44, padding: '10px 16px', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Plus size={16} /> Хүүхэд нэмэх
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={() => addRelative('sibling')} style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <Plus size={14} /> Ах / Эгч / Дүү нэмэх
+                <button type="button" className="btn btn-secondary" onClick={() => addRelative('sibling')} style={{ minHeight: 44, padding: '10px 16px', fontSize: 14, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Plus size={16} /> Ах / Эгч / Дүү нэмэх
                 </button>
               </div>
 
@@ -1034,20 +1040,32 @@ export default function OnboardingPage() {
                 <strong>{firstName || 'Та'} ({claimedGen}-р үе)</strong>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setStep(3)}>← Буцах</button>
-                <button type="submit" className="btn btn-primary" disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <CheckCircle2 size={16} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setStep(3)} style={{ minHeight: 44, padding: '10px 18px', fontSize: 14 }}>
+                  ← Буцах
+                </button>
+                <button
+                  type="submit"
+                  className="ui-btn ui-btn--primary"
+                  disabled={busy}
+                  style={{
+                    minHeight: 46,
+                    padding: '10px 22px',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    borderRadius: 12,
+                  }}
+                >
+                  <CheckCircle2 size={17} />
                   {busy ? 'Илгээж байна…' : 'Баталгаажуулах хүсэлт илгээх'}
                 </button>
               </div>
             </div>
           )}
         </form>
-
-        <p style={{ marginTop: 18, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
-          Танд гэр бүлийн урилгын код байгаа бол <Link href="/invite" style={{ color: 'var(--gold)', textDecoration: 'underline' }}>урилгаар нэгдэх →</Link>
-        </p>
       </div>
     </main>
   );

@@ -3307,3 +3307,64 @@ html[data-th='blue'] .app-shell__nav-link.is-active small {
   }
 }
 
+/* 6. Compact Tree header & single-viewport fit (LUX7POPL #4, #6) */
+.tree-page {
+  padding-top: 8px !important;
+  padding-bottom: 16px !important;
+}
+
+.tree-page-header {
+  padding: 6px 0 10px !important;
+  margin-bottom: 8px !important;
+  gap: 10px !important;
+  align-items: center !important;
+}
+
+.tree-page-header .tree-eyebrow {
+  margin-top: 0 !important;
+}
+
+.tree-page-header h1 {
+  font-size: clamp(22px, 2.2vw, 28px) !important;
+  line-height: 1.18 !important;
+  margin: 2px 0 0 !important;
+}
+
+.tree-page-header .tree-lede {
+  display: none !important;
+}
+
+.tree-workspace-top {
+  padding: 10px 14px !important;
+}
+
+.tree-search-wrap {
+  padding: 8px 14px 10px !important;
+}
+
+.tree-search label,
+.tree-search-label {
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  color: #364c41 !important;
+}
+
+.tree-button-tiny {
+  font-size: 12px !important;
+  padding: 4px 10px !important;
+  color: #244034 !important;
+}
+
+.app-shell__sidebar-footer p,
+.app-shell__sidebar-footer a {
+  font-size: 12px !important;
+  line-height: 1.5 !important;
+}
+
+.golden-tree-stage,
+.tree-map-scroll {
+  min-height: 500px !important;
+  max-height: calc(100vh - 255px) !important;
+}
+
+

@@ -54,8 +54,8 @@ function yearsText(person: TreePerson) {
   const b = person.birth_date?.slice(0, 4);
   const d = !person.is_alive ? person.death_date?.slice(0, 4) : null;
   if (b && d) return `${b}–${d}`;
-  if (b) return person.is_alive ? `${b}–одоо` : `🕊 ${b}–…`;
-  return person.is_alive ? '● Амьд' : '🕊 Дурсгал';
+  if (b) return person.is_alive ? `${b}–одоо` : `${b}–…`;
+  return person.is_alive ? 'Амьд сэрүүн' : 'Нас барсан';
 }
 
 export default function GoldenHeritageTree({

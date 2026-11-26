@@ -1987,14 +1987,9 @@ function TreePageContent() {
 
         {tree?.meta?.truncated && (
           <p className="tree-truncated-note">
-            Энэ мод API-ийн аюулгүй дээд хязгаараас хэтэрсэн тул бүх хүнийг нэг дор харуулахгүй байж болно. Хайлт ашиглан өөр хүнийг төв болгон үргэлжлүүлэн хараарай.
+            Энэ мод нэг дэлгэцийн хязгаараас хэтэрсэн тул бүх хүнийг нэг дор харуулахгүй байж болно. Хайлт ашиглан өөр хүнийг төв болгон үргэлжлүүлэн хараарай.
           </p>
         )}
-
-        <footer className="tree-footer-note">
-          <span>Удмын холбоосыг зөвхөн backend-ээс зөвшөөрөгдсөн Person болон Relationship өгөгдлөөр зурна.</span>
-          <span>Гэрлэлт болон эцэг-эх/хүүхдийн холбоо тусдаа хадгалагдана.</span>
-        </footer>
       </section>
 
       {/* Vector Print & Wall Art Export Modal (always renders FULL tree ignoring filters/collapse) */}
