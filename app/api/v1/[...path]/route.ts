@@ -119,6 +119,28 @@ async function handleProxy(request: Request): Promise<Response> {
     );
   }
 
+  const upstreamContentType = (upstream.headers.get('content-type') || '').toLowerCase();
+  const isRenderColdStart =
+    (upstream.status === 502 || upstream.status === 503 || upstream.status === 504) &&
+    (upstream.headers.get('x-render-routing') === 'no-deploy' ||
+      !upstreamContentType.includes('application/json'));
+  if (isRenderColdStart) {
+    return new Response(
+      JSON.stringify({
+        detail: 'Сервер дөнгөж асаж байна. Түр хүлээнэ үү.',
+        error_code: 'BACKEND_WAKING',
+      }),
+      {
+        status: 503,
+        headers: {
+          'content-type': 'application/json',
+          'retry-after': '5',
+          'cache-control': 'no-store',
+        },
+      },
+    );
+  }
+
   const responseHeaders = new Headers();
   upstream.headers.forEach((value, key) => {
     if (!HOP_BY_HOP_RESPONSE_HEADERS.has(key.toLowerCase())) {

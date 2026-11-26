@@ -16,8 +16,8 @@ function authError(cause: unknown) {
     }
     if (cause.status === 422) return 'Оруулсан мэдээллээ шалгаад дахин оролдоно уу.';
     if (cause.status === 429) return 'Хэт олон оролдлого байна. Түр хүлээгээд дахин оролдоно уу.';
-    if (cause.status === 503 || cause.code === 'DATABASE_UNAVAILABLE') {
-      return 'Нэвтрэх үйлчилгээ түр хугацаанд боломжгүй байна. Дахин оролдоно уу.';
+    if (cause.status === 502 || cause.status === 503 || cause.status === 504 || cause.code === 'BACKEND_WAKING' || cause.code === 'DATABASE_UNAVAILABLE') {
+      return 'Сервер амарсан горимоос дөнгөж асаж байна. 10 секундийн дараа дахин «Нэвтрэх» дарна уу.';
     }
     if (cause.status >= 500) return 'Нэвтрэх серверийн алдаа гарлаа. Дахин оролдоно уу.';
     if (cause.status === 0) return 'Холболтод асуудал гарлаа. Дахин оролдоно уу.';
@@ -64,10 +64,17 @@ export default function LoginPage() {
     setBusy(true);
     const values = new FormData(event.currentTarget);
     const identifier = String(values.get('identifier') || '').trim();
+    const wakeTimer = window.setTimeout(() => {
+      setNotice('Сервер амарсан горимоос асаж байна, түр хүлээнэ үү (30–50 сек)…');
+    }, 4000);
     try {
       await api<User>('/auth/login', { method: 'POST', body: JSON.stringify({ identifier, password: values.get('password') }) });
+      window.clearTimeout(wakeTimer);
+      setNotice('');
       await moveToApp();
     } catch (cause) {
+      window.clearTimeout(wakeTimer);
+      setNotice('');
       setError(authError(cause));
       const detailText = cause instanceof ApiError ? (cause.validationMessage || cause.message || '') : '';
       if (

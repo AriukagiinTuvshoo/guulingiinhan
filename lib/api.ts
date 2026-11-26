@@ -34,25 +34,67 @@ export class ApiError extends Error {
 let csrfToken: string | null = null;
 let csrfTokenRequest: Promise<string> | null = null;
 
+function isTransientGatewayStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+function waitWithSignal(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 async function getCsrfToken(): Promise<string> {
   if (csrfToken) return csrfToken;
   if (csrfTokenRequest) return csrfTokenRequest;
   const pendingRequest = (async (): Promise<string> => {
-    let response: Response;
-    try {
-      response = await fetch(`${API_BASE}/auth/csrf`, { credentials: 'include' });
-    } catch {
-      throw new ApiError(0, 'Аюулгүй хүсэлтийн token авах үед холболт тасарлаа.', 'CSRF_TOKEN_UNAVAILABLE');
+    const maxAttempts = 10;
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE}/auth/csrf`, { credentials: 'include' });
+      } catch {
+        if (attempt + 1 < maxAttempts) {
+          await waitWithSignal(4500);
+          continue;
+        }
+        throw new ApiError(0, 'Аюулгүй хүсэлтийн token авах үед холболт тасарлаа.', 'CSRF_TOKEN_UNAVAILABLE');
+      }
+      if (!response.ok) {
+        lastStatus = response.status;
+        if (isTransientGatewayStatus(response.status) && attempt + 1 < maxAttempts) {
+          await waitWithSignal(5000);
+          continue;
+        }
+        throw new ApiError(
+          response.status,
+          isTransientGatewayStatus(response.status)
+            ? 'Сервер дөнгөж асаж байна. Түр хүлээгээд дахин оролдоно уу.'
+            : 'Аюулгүй хүсэлтийн token авах боломжгүй байна.',
+          isTransientGatewayStatus(response.status) ? 'BACKEND_WAKING' : 'CSRF_TOKEN_UNAVAILABLE',
+        );
+      }
+      const token = response.headers.get('X-CSRF-Token');
+      if (!token) {
+        throw new ApiError(0, 'Аюулгүй хүсэлтийн token буруу байна.', 'CSRF_TOKEN_INVALID');
+      }
+      csrfToken = token;
+      return token;
     }
-    if (!response.ok) {
-      throw new ApiError(response.status, 'Аюулгүй хүсэлтийн token авах боломжгүй байна.', 'CSRF_TOKEN_UNAVAILABLE');
-    }
-    const token = response.headers.get('X-CSRF-Token');
-    if (!token) {
-      throw new ApiError(0, 'Аюулгүй хүсэлтийн token буруу байна.', 'CSRF_TOKEN_INVALID');
-    }
-    csrfToken = token;
-    return token;
+    throw new ApiError(lastStatus || 503, 'Сервер дөнгөж асаж байна. Түр хүлээгээд дахин оролдоно уу.', 'BACKEND_WAKING');
   })();
   const request = pendingRequest.finally(() => {
     csrfTokenRequest = null;
@@ -67,12 +109,20 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const method = (init.method ?? 'GET').toUpperCase();
   const isUnsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+  const canRetryColdStart =
+    method === 'GET' ||
+    method === 'HEAD' ||
+    path === '/auth/login' ||
+    path === '/auth/csrf';
   const isRawBody = init.body instanceof FormData || init.body instanceof Blob;
   const headers = new Headers(init.headers);
   if (init.body && !isRawBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let csrfRetried = false;
+  let coldStartRetries = 0;
+  const maxColdStartRetries = canRetryColdStart ? 8 : 0;
+  while (true) {
     if (isUnsafe) headers.set('X-CSRF-Token', await getCsrfToken());
 
     let response: Response;
@@ -82,7 +132,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         credentials: 'include',
         headers,
       });
-    } catch {
+    } catch (cause) {
+      if (init.signal?.aborted) throw cause;
+      if (coldStartRetries < maxColdStartRetries) {
+        coldStartRetries += 1;
+        await waitWithSignal(4500, init.signal);
+        continue;
+      }
       throw new ApiError(0, 'Холболтод асуудал гарлаа. Дахин оролдоно уу.');
     }
     if (!response.ok) {
@@ -115,14 +171,24 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
           response.status === 409 ? 'Энэ үйлдлийг одоогоор гүйцэтгэх боломжгүй байна.' :
           response.status === 422 ? 'Оруулсан мэдээллээ шалгана уу.' :
           response.status === 429 ? 'Хэт олон оролдлого. Түр хүлээгээд дахин оролдоно уу.' :
+          code === 'BACKEND_WAKING' ? 'Сервер дөнгөж асаж байна. Түр хүлээгээд дахин оролдоно уу.' :
           response.status >= 500 ? 'Серверийн алдаа гарлаа. Дахин оролдоно уу.' :
           typeof payload.detail === 'string' ? payload.detail : message;
       } catch {
         // Keep the friendly fallback message when the server sends no JSON.
       }
+      if (
+        (isTransientGatewayStatus(response.status) || code === 'BACKEND_WAKING' || code === 'UPSTREAM_UNAVAILABLE') &&
+        coldStartRetries < maxColdStartRetries
+      ) {
+        coldStartRetries += 1;
+        await waitWithSignal(5000, init.signal);
+        continue;
+      }
       if (code === 'CSRF_TOKEN_INVALID' || code === 'CSRF_TOKEN_REQUIRED') {
         csrfToken = null;
-        if (attempt === 0 && isUnsafe && response.status === 403) {
+        if (!csrfRetried && isUnsafe && response.status === 403) {
+          csrfRetried = true;
           continue;
         }
       }
@@ -131,7 +197,6 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
-  throw new ApiError(403, 'Аюулгүй хүсэлтийн token баталгаажсангүй. Дахин оролдоно уу.');
 }
 
 export type User = { id: string; email: string | null; display_name: string; person_id: string | null; profile_photo_url?: string | null };
