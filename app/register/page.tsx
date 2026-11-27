@@ -27,6 +27,31 @@ function registerError(cause: unknown) {
   return 'Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.';
 }
 
+const INVITE_STORAGE_KEY = 'guulin_pending_invite';
+
+function readPendingInviteToken(): string {
+  if (typeof window === 'undefined') return '';
+  const fromHash =
+    new URLSearchParams(window.location.hash.slice(1)).get('invite') ||
+    new URLSearchParams(window.location.hash.slice(1)).get('token') ||
+    '';
+  const fromQuery = new URLSearchParams(window.location.search).get('invite') || '';
+  const token = (fromHash || fromQuery).trim();
+  if (token) {
+    try {
+      window.sessionStorage.setItem(INVITE_STORAGE_KEY, token);
+    } catch {
+      // ignore storage errors
+    }
+    return token;
+  }
+  try {
+    return (window.sessionStorage.getItem(INVITE_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('email');
@@ -39,9 +64,22 @@ export default function RegisterPage() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [passwordValue, setPasswordValue] = useState('');
+  const [confirmValue, setConfirmValue] = useState('');
+  const [pendingInvite, setPendingInvite] = useState('');
 
   useEffect(() => {
-    api<{ enabled: boolean }>('/auth/email/config').then((result) => setEmailEnabled(result.enabled)).catch(() => setEmailEnabled(false));
+    const inviteToken = readPendingInviteToken();
+    if (inviteToken) setPendingInvite(inviteToken);
+    api<{ enabled: boolean }>('/auth/email/config')
+      .then((result) => {
+        setEmailEnabled(result.enabled);
+        if (!result.enabled) setMode('phone');
+      })
+      .catch(() => {
+        setEmailEnabled(false);
+        setMode('phone');
+      });
     api<{ enabled: boolean }>('/auth/google/config').then((result) => setGoogleEnabled(result.enabled)).catch(() => setGoogleEnabled(false));
   }, []);
 
@@ -124,18 +162,25 @@ export default function RegisterPage() {
         method: 'POST',
         body: JSON.stringify({ phone, password, display_name: displayName }),
       });
-      // Automatically sign in the newly registered phone user and enter onboarding
+      // Automatically sign in the newly registered phone user and enter invite or onboarding
       try {
         await api('/auth/login', {
           method: 'POST',
           body: JSON.stringify({ identifier: phone, password }),
         });
+        const inviteToken = pendingInvite || readPendingInviteToken();
+        if (inviteToken) {
+          try { window.sessionStorage.removeItem(INVITE_STORAGE_KEY); } catch { /* ignore */ }
+          router.replace(`/invite#token=${encodeURIComponent(inviteToken)}`);
+          return;
+        }
         router.replace('/onboarding');
         return;
       } catch {
         form.reset();
         setNotice('Бүртгэл амжилттай үүслээ. Одоо нэвтрэх хуудас руу шилжиж байна…');
-        router.replace('/login');
+        const inviteToken = pendingInvite || readPendingInviteToken();
+        router.replace(inviteToken ? `/login#invite=${encodeURIComponent(inviteToken)}` : '/login');
       }
     } catch (cause) {
       setError(registerError(cause));
@@ -149,7 +194,35 @@ export default function RegisterPage() {
     setRegisteredEmail('');
     setNotice('');
     setError('');
+    setPasswordValue('');
+    setConfirmValue('');
   }
+
+  const passwordLongEnough = passwordValue.length >= 8;
+  const passwordsMatch = confirmValue.length > 0 && passwordValue === confirmValue;
+  const passwordMismatch = confirmValue.length > 0 && passwordValue !== confirmValue;
+
+  const passwordChecklist = (
+    <div
+      className="authv2-help"
+      aria-live="polite"
+      style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 4 }}
+    >
+      <span style={{ color: passwordLongEnough ? 'var(--accent-ink)' : undefined, fontWeight: passwordLongEnough ? 600 : 400 }}>
+        {passwordLongEnough ? '✓ 8+ тэмдэгт' : '• 8-аас доошгүй тэмдэгт'}
+      </span>
+      {confirmValue.length > 0 && (
+        <span
+          style={{
+            color: passwordsMatch ? 'var(--accent-ink)' : 'var(--danger-ink, var(--danger))',
+            fontWeight: 600,
+          }}
+        >
+          {passwordsMatch ? '✓ Нууц үг таарлаа' : '✕ Нууц үг таарахгүй байна'}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <LivingTreeAuthPortal
@@ -169,6 +242,11 @@ export default function RegisterPage() {
         <button type="button" role="tab" aria-selected={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => chooseMode('phone')} disabled={!phoneEnabled}>Утасны дугаараар{!phoneEnabled && <span className="authv2-tab-status">Түр хаалттай</span>}</button>
       </div>
 
+      {pendingInvite && !notice && (
+        <div className="authv2-message authv2-message--success" role="status">
+          Урилгын холбоос хадгалагдлаа — бүртгэл дуусмагц гэр бүл рүүгээ шууд холбогдоно.
+        </div>
+      )}
       {notice && <div className="authv2-message authv2-message--success" role="status">{notice}</div>}
       {error && <div id="register-error" className="authv2-message authv2-message--error" role="alert">{error}</div>}
 
@@ -177,7 +255,7 @@ export default function RegisterPage() {
       ) : mode === 'email' && !emailEnabled ? (
         <div className="authv2-unavailable" role="status">
           <strong>Имэйл бүртгэл түр хаалттай</strong>
-          <p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна. Тохируулсны дараа эндээс бүртгүүлж болно.</p>
+          <p>Баталгаажуулах имэйл илгээх үйлчилгээ тохируулагдаагүй байна. Та «Утасны дугаараар» табаар шууд бүртгүүлж болно.</p>
         </div>
       ) : registeredEmail && mode === 'email' ? (
         <div className="authv2-complete">
@@ -196,15 +274,37 @@ export default function RegisterPage() {
           <input id="register-email" name="email" type="email" autoComplete="email" maxLength={320} required />
           <label htmlFor="register-password">Нууц үг</label>
           <div className="authv2-password">
-            <input id="register-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required aria-describedby="register-password-help" />
+            <input
+              id="register-password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={128}
+              value={passwordValue}
+              onChange={(e) => setPasswordValue(e.target.value)}
+              required
+              aria-describedby="register-password-help"
+            />
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
-          <span id="register-password-help" className="authv2-help">8-аас доошгүй тэмдэгт.</span>
           <label htmlFor="register-confirm">Нууц үгээ давтах</label>
           <div className="authv2-password">
-            <input id="register-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
+            <input
+              id="register-confirm"
+              name="confirm"
+              type={showConfirm ? 'text' : 'password'}
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={128}
+              value={confirmValue}
+              onChange={(e) => setConfirmValue(e.target.value)}
+              aria-invalid={passwordMismatch}
+              required
+            />
             <button type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
+          <div id="register-password-help">{passwordChecklist}</div>
           <button className="authv2-submit" type="submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
         </form>
       ) : (
@@ -217,16 +317,40 @@ export default function RegisterPage() {
           <input id="register-phone" name="phone" type="tel" autoComplete="tel" maxLength={20} placeholder="99112233" required />
           <label htmlFor="register-phone-password">Нууц үг</label>
           <div className="authv2-password">
-            <input id="register-phone-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required aria-describedby="register-phone-password-help" />
+            <input
+              id="register-phone-password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={128}
+              value={passwordValue}
+              onChange={(e) => setPasswordValue(e.target.value)}
+              required
+              aria-describedby="register-phone-password-help"
+            />
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
-          <span id="register-phone-password-help" className="authv2-help">8-аас доошгүй тэмдэгт.</span>
           <label htmlFor="register-phone-confirm">Нууц үгээ давтах</label>
           <div className="authv2-password">
-            <input id="register-phone-confirm" name="confirm" type={showConfirm ? 'text' : 'password'} autoComplete="new-password" minLength={8} maxLength={128} required />
+            <input
+              id="register-phone-confirm"
+              name="confirm"
+              type={showConfirm ? 'text' : 'password'}
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={128}
+              value={confirmValue}
+              onChange={(e) => setConfirmValue(e.target.value)}
+              aria-invalid={passwordMismatch}
+              required
+            />
             <button type="button" onClick={() => setShowConfirm((value) => !value)} aria-label={showConfirm ? 'Нууц үгийг нуух' : 'Нууц үгийг харуулах'}>{showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           </div>
-          <p className="authv2-help">Нэвтэрсний дараа Тохиргооноос утсаа баталгаажуулна. Нэвтрэхэд SMS шаардахгүй.</p>
+          <div id="register-phone-password-help">{passwordChecklist}</div>
+          <p className="authv2-help">
+            Утасны бүртгэл нь удмын админ таны асуумж болон дугаарыг баталсны дараа удмын модонд бүрэн нэвтрэх эрхтэй болно.
+          </p>
           <button type="submit" className="authv2-submit" disabled={busy}>{busy ? 'Бүртгэж байна…' : 'Бүртгэл үүсгэх'} <ArrowRight size={16} /></button>
         </form>
       )}
@@ -244,7 +368,12 @@ export default function RegisterPage() {
         </div>
       )}
 
-      <p className="authv2-switch">Аль хэдийн бүртгэлтэй юу? <Link href="/login">Нэвтрэх</Link></p>
+      <p className="authv2-switch">
+        Аль хэдийн бүртгэлтэй юу?{' '}
+        <Link href={pendingInvite ? `/login#invite=${encodeURIComponent(pendingInvite)}` : '/login'}>
+          Нэвтрэх
+        </Link>
+      </p>
     </LivingTreeAuthPortal>
   );
 }

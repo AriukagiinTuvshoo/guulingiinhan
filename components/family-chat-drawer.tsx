@@ -260,7 +260,7 @@ export function FamilyChatDrawer({ familyId, currentUserId }: FamilyChatDrawerPr
             width: '390px',
             maxWidth: 'calc(100vw - 32px)',
             height: '560px',
-            maxHeight: 'calc(100vh - 48px)',
+            maxHeight: 'calc(100dvh - 48px)',
             background: 'var(--ui-surface)',
             color: 'var(--ui-text)',
             borderRadius: '20px',

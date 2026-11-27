@@ -130,20 +130,45 @@ def public_feed(
     candidates.sort(key=lambda item: (item.created_at.replace(tzinfo=None), str(item.id)), reverse=True)
     start = (page - 1) * page_size
     items = candidates[start:start + page_size]
-    summaries = interaction_summaries(db, [item.id for item in items if item.kind == "memory"], user)
+    memory_ids = [item.id for item in items if item.kind == "memory"]
+    story_ids = [item.id for item in items if item.kind == "story"]
+    archive_ids = [item.id for item in items if item.kind == "archive"]
+
+    summaries = interaction_summaries(db, memory_ids, user)
+    photos_by_memory: dict[UUID, list[Photo]] = {}
+    if memory_ids:
+        all_mem_photos = db.scalars(
+            select(Photo)
+            .where(Photo.memory_id.in_(memory_ids), Photo.storage_status == "ready")
+            .order_by(Photo.created_at.desc(), Photo.id.desc())
+        ).all()
+        for ph in all_mem_photos:
+            bucket = photos_by_memory.setdefault(ph.memory_id, [])
+            if len(bucket) < 12:
+                bucket.append(ph)
+
+    story_bodies = (
+        dict(db.execute(select(Story.id, Story.body).where(Story.id.in_(story_ids))).all())
+        if story_ids
+        else {}
+    )
+    archive_bodies = (
+        dict(db.execute(select(Archive.id, Archive.description).where(Archive.id.in_(archive_ids))).all())
+        if archive_ids
+        else {}
+    )
+
     for item in items:
         if item.kind == "memory":
             item.liked = summaries[item.id]["liked"]
             item.like_count = summaries[item.id]["like_count"]
             item.comment_count = summaries[item.id]["comment_count"]
-            photos = db.scalars(select(Photo).where(
-                Photo.memory_id == item.id, Photo.storage_status == "ready",
-            ).order_by(Photo.created_at.desc(), Photo.id.desc()).limit(12)).all()
+            photos = photos_by_memory.get(item.id, [])
             approved = next((photo for photo in photos if _public_photo(db, photo.id)), None)
             if approved:
                 item.thumbnail_url = f"/community/photos/{approved.id}/thumbnail"
         elif item.kind in {"story", "archive"}:
-            body = (db.scalar(select(Story.body).where(Story.id == item.id)) if item.kind == "story" else db.scalar(select(Archive.description).where(Archive.id == item.id))) or ""
+            body = (story_bodies.get(item.id) if item.kind == "story" else archive_bodies.get(item.id)) or ""
             for match in _STORY_PHOTO_TOKEN.finditer(body):
                 photo = _public_photo(db, UUID(match.group(1)))
                 if photo is not None and photo.family_id == item.family_id:

@@ -4,7 +4,7 @@
   --profile-gold: #d5b363;
   position: relative;
   isolation: isolate;
-  min-height: calc(100vh - 68px);
+  min-height: calc(100dvh - 68px);
   overflow: hidden;
   padding: clamp(18px, 3vw, 38px) clamp(12px, 2.4vw, 34px) 56px;
   background: #173b28;
@@ -189,7 +189,7 @@
 .profile-page .profile-alert { border-radius: 12px; box-shadow: 0 8px 22px rgb(6 25 16 / 20%); }
 
 @media (max-width: 760px) {
-  .profile-page { min-height: calc(100vh - 60px); padding: 17px 12px 38px; }
+  .profile-page { min-height: calc(100dvh - 60px); padding: 17px 12px 38px; }
   .profile-hero .personavatar.large.profile-photo { width: 108px; height: 108px; }
   .profile-page::before { background-position: 55% center; }
   .profile-hero { grid-template-columns: 1fr; gap: 18px; padding: 24px 18px; border-radius: 5px 22px 5px 22px; }

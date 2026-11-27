@@ -75,7 +75,7 @@ export function ConfirmDialog({
         inset: 0,
         zIndex: 10000,
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
         maxWidth: 'none',
         maxHeight: 'none',
         margin: 0,

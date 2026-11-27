@@ -768,21 +768,46 @@ def list_onboarding_requests(
         stmt = stmt.where(TreeJoinRequest.family_id == scoped_family_id)
     rows = db.scalars(stmt.order_by(TreeJoinRequest.created_at.desc())).all()
 
+    parsed_rows = [(req, *_parse_request_note(req.note)) for req in rows]
+    user_ids = {req.user_id for req, _, _ in parsed_rows}
+    person_ids: set[UUID] = set()
+    for req, request_kind, meta in parsed_rows:
+        if meta.get("branch_person_id"):
+            person_ids.add(UUID(meta["branch_person_id"]))
+        if request_kind == "relatives":
+            if meta.get("self_person_id"):
+                person_ids.add(UUID(meta["self_person_id"]))
+            elif req.father_person_id:
+                person_ids.add(req.father_person_id)
+        else:
+            if meta.get("anchor_person_id"):
+                person_ids.add(UUID(meta["anchor_person_id"]))
+            elif req.father_person_id:
+                person_ids.add(req.father_person_id)
+
+    users_by_id = (
+        {u.id: u for u in db.scalars(select(User).where(User.id.in_(user_ids))).all()}
+        if user_ids
+        else {}
+    )
+    persons_by_id = (
+        {p.id: p for p in db.scalars(select(Person).where(Person.id.in_(person_ids))).all()}
+        if person_ids
+        else {}
+    )
+
     out = []
-    for req in rows:
-        request_kind, meta = _parse_request_note(req.note)
-        u = db.get(User, req.user_id)
-        branch_p = db.get(Person, UUID(meta["branch_person_id"])) if meta.get("branch_person_id") else None
+    for req, request_kind, meta in parsed_rows:
+        u = users_by_id.get(req.user_id)
+        branch_p = persons_by_id.get(UUID(meta["branch_person_id"])) if meta.get("branch_person_id") else None
         anchor_label: str | None
         if request_kind == "relatives":
-            self_p = db.get(Person, UUID(meta["self_person_id"])) if meta.get("self_person_id") else (
-                db.get(Person, req.father_person_id) if req.father_person_id else None
-            )
+            self_pid = UUID(meta["self_person_id"]) if meta.get("self_person_id") else req.father_person_id
+            self_p = persons_by_id.get(self_pid) if self_pid else None
             anchor_label = _person_label(self_p) if self_p else f"{req.last_name} {req.first_name}".strip()
         else:
-            anchor_p = db.get(Person, UUID(meta["anchor_person_id"])) if meta.get("anchor_person_id") else (
-                db.get(Person, req.father_person_id) if req.father_person_id else None
-            )
+            anchor_pid = UUID(meta["anchor_person_id"]) if meta.get("anchor_person_id") else req.father_person_id
+            anchor_p = persons_by_id.get(anchor_pid) if anchor_pid else None
             anchor_label = _person_label(anchor_p) if anchor_p else None
         out.append(
             {

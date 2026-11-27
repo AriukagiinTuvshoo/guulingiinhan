@@ -2177,15 +2177,25 @@ def list_my_person_link_requests(
         .join(Person, Person.id == PersonLinkRequest.person_id)
         .where(PersonLinkRequest.family_id == family_id, PersonLinkRequest.user_id == user.id)
         .order_by(PersonLinkRequest.created_at.desc(), PersonLinkRequest.id).limit(100)).all()
+    person_ids = {person.id for _, person in rows}
+    attached_ids = (
+        set(
+            db.scalars(
+                select(FamilyPerson.person_id).where(
+                    FamilyPerson.family_id == family_id,
+                    FamilyPerson.person_id.in_(person_ids),
+                )
+            ).all()
+        )
+        if person_ids
+        else set()
+    )
     result = []
     for row, person in rows:
         name = "Хүний мэдээлэл хязгаарлагдсан"
-        attached = db.scalar(select(FamilyPerson.id).where(
-            FamilyPerson.family_id == family_id, FamilyPerson.person_id == person.id,
-        ))
         try:
             _assert_person_visible(db, person, user)
-            if attached is not None and not person_is_minor(person):
+            if person.id in attached_ids and not person_is_minor(person):
                 name = f"{person.last_name} {person.first_name}".strip()
         except HTTPException:
             pass

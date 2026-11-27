@@ -261,7 +261,7 @@ html[data-theme="kheer"] {
 .admin-exec {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--adm-bg);
   color: var(--adm-text);
   font-family: var(--font-body);
@@ -270,7 +270,7 @@ html[data-theme="kheer"] {
 .admin-exec__sidebar {
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -579,7 +579,7 @@ html[data-theme="kheer"] {
 
 /* Legacy .admin-console subpages also inherit exact 4-theme executive styling */
 .admin-console {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--adm-bg);
   color: var(--adm-text);
   font-family: var(--font-body);

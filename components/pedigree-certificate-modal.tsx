@@ -549,7 +549,7 @@ export function PedigreeCertificateModal({
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
-            min-height: 100vh !important;
+            min-height: 100dvh !important;
             box-shadow: none !important;
             padding: 40px !important;
           }

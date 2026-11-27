@@ -34,8 +34,21 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [resendBusy, setResendBusy] = useState(false);
+  const [pendingInvite, setPendingInvite] = useState('');
 
   useEffect(() => {
+    const hashInvite = new URLSearchParams(window.location.hash.slice(1)).get('invite') || '';
+    if (hashInvite) {
+      setPendingInvite(hashInvite);
+      try { window.sessionStorage.setItem('guulin_pending_invite', hashInvite); } catch { /* ignore */ }
+    } else {
+      try {
+        const stored = window.sessionStorage.getItem('guulin_pending_invite') || '';
+        if (stored) setPendingInvite(stored);
+      } catch {
+        // ignore
+      }
+    }
     api<{ enabled: boolean }>('/auth/google/config').then((result) => setGoogleEnabled(result.enabled)).catch(() => setGoogleEnabled(false));
     if (new URLSearchParams(window.location.search).get('google') === 'failed') {
       setError('Google-ээр нэвтрэх боломжгүй боллоо. Өмнөх нэвтрэх аргаа ашиглаарай.');
@@ -43,17 +56,36 @@ export default function LoginPage() {
   }, []);
 
   async function moveToApp() {
-    const invite = new URLSearchParams(window.location.hash.slice(1)).get('invite');
+    let invite = new URLSearchParams(window.location.hash.slice(1)).get('invite') || pendingInvite;
+    if (!invite) {
+      try { invite = window.sessionStorage.getItem('guulin_pending_invite') || ''; } catch { /* ignore */ }
+    }
     if (invite) {
-      router.push(`/invite#token=${encodeURIComponent(invite)}`);
+      try { window.sessionStorage.removeItem('guulin_pending_invite'); } catch { /* ignore */ }
+      router.replace(`/invite#token=${encodeURIComponent(invite)}`);
       return;
     }
     try {
       await api('/admin/me');
-      router.push('/admin');
+      router.replace('/admin');
+      return;
     } catch {
-      router.push('/dashboard');
+      // Not a global admin; resolve direct landing route in 1 hop to avoid /dashboard -> /onboarding flash.
     }
+    try {
+      const status = await api<{ approved: boolean; clan_family_id: string | null }>('/clan/onboarding/status');
+      if (status.approved && status.clan_family_id) {
+        router.replace(`/tree?family=${encodeURIComponent(status.clan_family_id)}`);
+        return;
+      }
+      if (!status.approved) {
+        router.replace('/onboarding');
+        return;
+      }
+    } catch {
+      // Fallback if /clan/onboarding/status is unavailable
+    }
+    router.replace('/dashboard');
   }
 
   async function submitEmail(event: FormEvent<HTMLFormElement>) {
@@ -172,7 +204,12 @@ export default function LoginPage() {
         )}
       </form>
 
-      <p className="authv2-switch">Бүртгэлгүй юу? <Link href="/register">Бүртгэл үүсгэх</Link></p>
+      <p className="authv2-switch">
+        Бүртгэлгүй юу?{' '}
+        <Link href={pendingInvite ? `/register#invite=${encodeURIComponent(pendingInvite)}` : '/register'}>
+          Бүртгэл үүсгэх
+        </Link>
+      </p>
     </LivingTreeAuthPortal>
   );
 }

@@ -493,7 +493,7 @@ html[data-th="dark"] .app-shell__account-avatar {
 
 .luxury-landing {
   position: relative;
-  min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(ellipse 85% 52% at 15% 8%, color-mix(in srgb, var(--pr) 12%, transparent), transparent 62%),
     radial-gradient(ellipse 68% 58% at 88% 18%, color-mix(in srgb, var(--gold) 18%, transparent), transparent 65%),
@@ -3363,19 +3363,19 @@ html[data-th='blue'] .app-shell__nav-link.is-active small {
 
 .golden-tree-viewport:not(.is-fullscreen),
 html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
-  height: clamp(440px, calc(100vh - 365px), 545px) !important;
+  height: clamp(440px, calc(100dvh - 365px), 545px) !important;
   min-height: 440px !important;
-  max-height: calc(100vh - 365px) !important;
+  max-height: calc(100dvh - 365px) !important;
 }
 
 .golden-tree-stage,
 .tree-map-scroll {
   min-height: 420px !important;
-  max-height: calc(100vh - 365px) !important;
+  max-height: calc(100dvh - 365px) !important;
 }
 
 .tree-drawer {
-  max-height: clamp(440px, calc(100vh - 365px), 545px) !important;
+  max-height: clamp(440px, calc(100dvh - 365px), 545px) !important;
 }
 
 /* 7. Mobile (<= 768px / <= 1020px) Fixes: z-index, bottom clearance, /chat, /tree */
@@ -3598,13 +3598,13 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
 
 .golden-tree-viewport:not(.is-fullscreen),
 html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
-  height: clamp(460px, calc(100vh - 255px), 660px) !important;
+  height: clamp(460px, calc(100dvh - 255px), 660px) !important;
   min-height: 460px !important;
-  max-height: calc(100vh - 255px) !important;
+  max-height: calc(100dvh - 255px) !important;
 }
 
 .tree-drawer {
-  max-height: clamp(460px, calc(100vh - 255px), 660px) !important;
+  max-height: clamp(460px, calc(100dvh - 255px), 660px) !important;
 }
 
 /* WCAG 2.2 >=44px touch targets on /tree */
@@ -3620,12 +3620,34 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
 
 .golden-unit-toggle {
   position: relative;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  padding: 0 8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .golden-unit-toggle::after {
   content: '';
   position: absolute;
-  inset: -12px;
+  inset: -10px;
+}
+
+@media (max-width: 768px) {
+  .golden-unit-toggle {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    font-size: 13px !important;
+  }
+
+  .tree-mode-switch button,
+  .tree-view-tab,
+  .tree-branch-chip,
+  .golden-tree-dock .golden-dock-btn {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
 }
 
 .app-shell__content {

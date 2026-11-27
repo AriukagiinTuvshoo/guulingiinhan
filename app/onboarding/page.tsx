@@ -68,6 +68,8 @@ const failure = (cause: unknown) =>
     ? cause.validationMessage || cause.message
     : 'Холболт тасарлаа. Дахин оролдоно уу.';
 
+const ONBOARDING_DRAFT_KEY = 'guulin_onboarding_draft_v1';
+
 export default function OnboardingPage() {
   const router = useRouter();
   const params = useSearchParams();
@@ -80,6 +82,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
   // Guided 4-step quiz state
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -96,6 +99,90 @@ export default function OnboardingPage() {
   const [birthPlace, setBirthPlace] = useState('');
   const [relatives, setRelatives] = useState<RelativeDraft[]>([]);
   const [note, setNote] = useState('');
+  const draftHydrated = useRef(false);
+
+  // Restore saved 4-step quiz draft from sessionStorage on mount
+  useEffect(() => {
+    if (draftHydrated.current || typeof window === 'undefined') return;
+    draftHydrated.current = true;
+    try {
+      const raw = window.sessionStorage.getItem(ONBOARDING_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Partial<{
+        step: 1 | 2 | 3 | 4;
+        branchId: string;
+        selectedPath: string[];
+        claimedGen: number;
+        anchorId: string;
+        lastName: string;
+        firstName: string;
+        gender: 'male' | 'female' | 'unknown';
+        birthDate: string;
+        birthPlace: string;
+        relatives: RelativeDraft[];
+        note: string;
+      }>;
+      if (d.branchId) setBranchId(d.branchId);
+      if (Array.isArray(d.selectedPath)) setSelectedPath(d.selectedPath);
+      if (typeof d.claimedGen === 'number' && d.claimedGen >= 2 && d.claimedGen <= 12) setClaimedGen(d.claimedGen);
+      if (d.anchorId) setAnchorId(d.anchorId);
+      if (typeof d.lastName === 'string' && d.lastName) setLastName(d.lastName);
+      if (typeof d.firstName === 'string' && d.firstName) setFirstName(d.firstName);
+      if (d.gender === 'male' || d.gender === 'female' || d.gender === 'unknown') setGender(d.gender);
+      if (typeof d.birthDate === 'string') setBirthDate(d.birthDate);
+      if (typeof d.birthPlace === 'string') setBirthPlace(d.birthPlace);
+      if (Array.isArray(d.relatives)) setRelatives(d.relatives);
+      if (typeof d.note === 'string') setNote(d.note);
+      if (d.step === 1 || d.step === 2 || d.step === 3 || d.step === 4) setStep(d.step);
+      if (d.branchId || (Array.isArray(d.relatives) && d.relatives.length > 0)) {
+        setDraftRestored(true);
+      }
+    } catch {
+      // ignore corrupted draft
+    }
+  }, []);
+
+  // Auto-save 4-step quiz draft to sessionStorage whenever user edits fields
+  useEffect(() => {
+    if (!draftHydrated.current || typeof window === 'undefined') return;
+    if (status?.approved || status?.pending_request) return;
+    try {
+      window.sessionStorage.setItem(
+        ONBOARDING_DRAFT_KEY,
+        JSON.stringify({
+          step,
+          branchId,
+          selectedPath,
+          claimedGen,
+          anchorId,
+          lastName,
+          firstName,
+          gender,
+          birthDate,
+          birthPlace,
+          relatives,
+          note,
+        }),
+      );
+    } catch {
+      // ignore quota/private-mode errors
+    }
+  }, [
+    step,
+    branchId,
+    selectedPath,
+    claimedGen,
+    anchorId,
+    lastName,
+    firstName,
+    gender,
+    birthDate,
+    birthPlace,
+    relatives,
+    note,
+    status?.approved,
+    status?.pending_request,
+  ]);
 
   // Invite-family & legacy fallback state (when /clan/onboarding/* is not yet deployed on backend)
   const [consent, setConsent] = useState(false);
@@ -237,6 +324,7 @@ export default function OnboardingPage() {
   }
 
   async function handleLogout() {
+    try { window.sessionStorage.removeItem(ONBOARDING_DRAFT_KEY); } catch { /* ignore */ }
     try {
       await api<void>('/auth/logout', { method: 'POST' });
     } catch {
@@ -296,6 +384,8 @@ export default function OnboardingPage() {
           note: note.trim() || null,
         }),
       });
+      try { window.sessionStorage.removeItem(ONBOARDING_DRAFT_KEY); } catch { /* ignore */ }
+      setDraftRestored(false);
       await loadAll();
     } catch (cause) {
       setError(failure(cause));
@@ -430,7 +520,54 @@ export default function OnboardingPage() {
             <p style={{ color: 'var(--muted)', fontSize: 13.5, marginBottom: 18 }}>
               Урилгаар нэгдсэн бол доорх урилгын холбоосоор орно уу. Эсвэл өөрийн гэр бүлийн модоо шинээр үүсгэж эхэлнэ үү.
             </p>
-            {error && (
+            {draftRestored && (
+          <div
+            role="status"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              padding: '10px 14px',
+              borderRadius: 12,
+              background: 'var(--surface-alt)',
+              border: '1px solid var(--border-strong)',
+              color: 'var(--ink)',
+              marginBottom: 14,
+              fontSize: 13,
+            }}
+          >
+            <span>Өмнө бөглөж байсан асуумжийн нооргийг автоматаар сэргээлээ.</span>
+            <button
+              type="button"
+              onClick={() => {
+                try { window.sessionStorage.removeItem(ONBOARDING_DRAFT_KEY); } catch { /* ignore */ }
+                setDraftRestored(false);
+                setStep(1);
+                setBranchId('');
+                setSelectedPath([]);
+                setAnchorId('');
+                setRelatives([]);
+                setNote('');
+              }}
+              style={{
+                border: '1px solid var(--border-strong)',
+                background: 'var(--surface)',
+                color: 'var(--ink)',
+                borderRadius: 8,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Шинээр эхлэх
+            </button>
+          </div>
+        )}
+
+        {error && (
               <div role="alert" style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(180,35,24,0.12)', border: '1px solid rgba(180,35,24,0.35)', marginBottom: 14, fontSize: 13 }}>
                 {error}
               </div>
@@ -567,6 +704,53 @@ export default function OnboardingPage() {
         {status?.last_rejected && (
           <div role="alert" style={{ padding: '12px 16px', borderRadius: 12, background: 'rgba(180,35,24,0.12)', border: '1px solid rgba(180,35,24,0.35)', color: 'var(--ink)', marginBottom: 16, fontSize: 13 }}>
             <strong>Өмнөх хүсэлт татгалзагдсан:</strong> {status.last_rejected.review_note || 'Мэдээллээ нягтлаад дахин илгээнэ үү.'}
+          </div>
+        )}
+
+        {draftRestored && (
+          <div
+            role="status"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+              padding: '10px 14px',
+              borderRadius: 12,
+              background: 'var(--surface-alt)',
+              border: '1px solid var(--border-strong)',
+              color: 'var(--ink)',
+              marginBottom: 14,
+              fontSize: 13,
+            }}
+          >
+            <span>Өмнө бөглөж байсан асуумжийн нооргийг автоматаар сэргээлээ.</span>
+            <button
+              type="button"
+              onClick={() => {
+                try { window.sessionStorage.removeItem(ONBOARDING_DRAFT_KEY); } catch { /* ignore */ }
+                setDraftRestored(false);
+                setStep(1);
+                setBranchId('');
+                setSelectedPath([]);
+                setAnchorId('');
+                setRelatives([]);
+                setNote('');
+              }}
+              style={{
+                border: '1px solid var(--border-strong)',
+                background: 'var(--surface)',
+                color: 'var(--ink)',
+                borderRadius: 8,
+                padding: '4px 10px',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Шинээр эхлэх
+            </button>
           </div>
         )}
 

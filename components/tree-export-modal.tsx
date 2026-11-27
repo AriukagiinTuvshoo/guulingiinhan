@@ -345,7 +345,7 @@ export function TreeExportModal({
       }
       svg {
         width: 100vw;
-        height: 100vh;
+        height: 100dvh;
         max-width: 100%;
         max-height: 100%;
         object-fit: contain;
