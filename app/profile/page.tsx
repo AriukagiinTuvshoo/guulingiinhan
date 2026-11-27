@@ -53,7 +53,7 @@ function initials(person: Pick<ProfileRelationPerson, 'first_name' | 'last_name'
 function ProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentFamily, familyId: contextFamilyId, contextLoading, contextLoaded, contextError } = useAppShellContext();
+  const { currentFamily, familyId: contextFamilyId, contextLoading, contextLoaded, contextError, user } = useAppShellContext();
   const family = contextFamilyId;
   const profileRequestRef = useRef(0);
   const memoryRequestRef = useRef(0);
@@ -364,6 +364,18 @@ function ProfilePageContent() {
       if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
       setPerson((current) => current ? { ...current, profile_photo_url: result.profile_photo_url } : current);
       announcePhotoChange({ endpoint: `/families/${family}/persons/${id}/profile-photo`, hasPhoto: true, url: result.profile_photo_url });
+      if (user?.person_id && id === user.person_id) {
+        try {
+          await api('/auth/me/photo', {
+            method: 'POST',
+            body: prepared,
+            headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) },
+          });
+          announcePhotoChange({ endpoint: '/auth/me/photo', hasPhoto: true, url: `/auth/me/photo?v=${Date.now()}` });
+        } catch {
+          // Person photo succeeded; account photo sync is best-effort.
+        }
+      }
       setNotice('Профайл зургийг шинэчиллээ.');
     } catch (cause) {
       if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) {
@@ -387,6 +399,14 @@ function ProfilePageContent() {
       if (requestId !== profileRequestRef.current || mutationId !== mutationRequestRef.current) return;
       setPerson((current) => current ? { ...current, profile_photo_url: null } : current);
       announcePhotoChange({ endpoint: `/families/${family}/persons/${id}/profile-photo`, hasPhoto: false, url: null });
+      if (user?.person_id && id === user.person_id) {
+        try {
+          await api<void>('/auth/me/photo', { method: 'DELETE' });
+          announcePhotoChange({ endpoint: '/auth/me/photo', hasPhoto: false, url: null });
+        } catch {
+          // Best-effort account photo removal sync.
+        }
+      }
       setNotice('Профайл зургийг устгалаа.');
     } catch (cause) {
       if (requestId === profileRequestRef.current && mutationId === mutationRequestRef.current) {

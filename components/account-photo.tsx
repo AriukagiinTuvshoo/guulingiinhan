@@ -66,26 +66,32 @@ export default function AccountPhoto({
       const prepared = await prepareImageUpload(file);
       const result = await api<{ cleanup_pending: boolean }>(endpoint, { method: 'POST', body: prepared,
         headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) } });
-      if (linkedFamilyId && linkedPersonId && endpoint === '/auth/me/photo') {
-        const personEndpoint = `/families/${encodeURIComponent(linkedFamilyId)}/persons/${encodeURIComponent(linkedPersonId)}/profile-photo`;
-        try {
-          const synced = await api<{ profile_photo_url?: string }>(personEndpoint, {
-            method: 'POST',
-            body: prepared,
-            headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) },
-          });
-          announcePhotoChange({
-            endpoint: personEndpoint,
-            hasPhoto: true,
-            url: synced?.profile_photo_url || `${personEndpoint}?v=${Date.now()}`,
-          });
-        } catch {
-          // Account photo succeeded; person photo sync is best-effort if permissions differ
+      let syncNote = '';
+      if (endpoint === '/auth/me/photo') {
+        if (linkedFamilyId && linkedPersonId) {
+          const personEndpoint = `/families/${encodeURIComponent(linkedFamilyId)}/persons/${encodeURIComponent(linkedPersonId)}/profile-photo`;
+          try {
+            const synced = await api<{ profile_photo_url?: string }>(personEndpoint, {
+              method: 'POST',
+              body: prepared,
+              headers: { 'Content-Type': prepared.type, 'X-File-Name': encodeURIComponent(prepared.name) },
+            });
+            announcePhotoChange({
+              endpoint: personEndpoint,
+              hasPhoto: true,
+              url: synced?.profile_photo_url || `${personEndpoint}?v=${Date.now()}`,
+            });
+            syncNote = ' Удмын модны профайл зураг мөн шинэчлэгдлээ.';
+          } catch {
+            syncNote = ' (Анхаар: Удмын модны зурагтай синхрончлох эрх хүрсэнгүй — профайл хуудсаас шалгана уу.)';
+          }
+        } else {
+          syncNote = ' (Таны аккаунт удмын модны бүртгэлтэй холбогдоогүй тул модонд тусдаа харагдахгүй.)';
         }
       }
       form.reset(); setSelected(null); setConfirmedPhoto(true); setRevision((value) => value + 1); onChanged();
       announcePhotoChange({ endpoint, hasPhoto: true, url: `${endpoint}?v=${Date.now()}` });
-      setNotice(result.cleanup_pending ? 'Зураг хадгалагдлаа.' : 'Зураг хадгалагдлаа.');
+      setNotice((result.cleanup_pending ? 'Зураг хадгалагдлаа.' : 'Зураг хадгалагдлаа.') + syncNote);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Зургийг хадгалж чадсангүй. Дахин оролдоно уу.'); }
     finally { setBusy(false); }
   }

@@ -16,6 +16,7 @@ import { useAppShellContext } from '../../components/app-shell';
 import { MongolianOrnamentBand } from '../../components/mongolian-ornament-band';
 import ProfilePhoto from '../../components/profile-photo';
 import PeopleMembersHub from '../../components/people-members-hub';
+import { PHOTO_CHANGED_EVENT } from '../../lib/image-upload';
 
 const PAGE_SIZE = 24;
 const SEARCH_DEBOUNCE_MS = 260;
@@ -199,6 +200,15 @@ function PeoplePageContent() {
       void loadPeople(familyId, query, lineageId, branchId, 1);
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
+  }, [branchId, familyId, lineageId, query, loadPeople]);
+
+  useEffect(() => {
+    if (!familyId) return;
+    const onPhotoChanged = () => {
+      void loadPeople(familyId, query, lineageId, branchId, 1);
+    };
+    window.addEventListener(PHOTO_CHANGED_EVENT, onPhotoChanged);
+    return () => window.removeEventListener(PHOTO_CHANGED_EVENT, onPhotoChanged);
   }, [branchId, familyId, lineageId, query, loadPeople]);
 
   function chooseFamily(nextFamilyId: string) {

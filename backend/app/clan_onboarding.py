@@ -1044,6 +1044,81 @@ def approve_onboarding_request(
             _create_relative_person,
             actor.id,
         )
+    elif request_kind == "correction":
+        existing_link = db.scalar(
+            select(UserPersonLink).where(UserPersonLink.user_id == req.user_id)
+        )
+        raw_self_id = meta.get("self_person_id")
+        self_id = (
+            existing_link.person_id
+            if existing_link
+            else (UUID(raw_self_id) if raw_self_id else None)
+        )
+        self_person = db.get(Person, self_id) if self_id else None
+        if not self_person:
+            raise HTTPException(
+                status_code=404,
+                detail="Засварлах гишүүний одоогийн бүртгэл олдсонгүй.",
+            )
+
+        # Update existing Person record in-place without creating a duplicate Person
+        self_person.first_name = req.first_name
+        self_person.last_name = req.last_name
+        if req.gender:
+            self_person.gender = req.gender
+        if req.birth_date is not None:
+            self_person.birth_date = req.birth_date
+        if req.birth_place is not None:
+            self_person.birth_place = req.birth_place
+        self_person.search_first_name = normalize_search_name(req.first_name)
+        self_person.search_last_name = normalize_search_name(req.last_name)
+
+        anchor_id = (
+            UUID(meta["anchor_person_id"])
+            if meta.get("anchor_person_id")
+            else req.father_person_id
+        )
+        if anchor_id and anchor_id != self_person.id:
+            family_person_ids = set(
+                db.scalars(
+                    select(FamilyPerson.person_id).where(FamilyPerson.family_id == req.family_id)
+                ).all()
+            )
+            old_parent_edges = db.scalars(
+                select(ParentChildRelationship).where(
+                    ParentChildRelationship.child_id == self_person.id,
+                    ParentChildRelationship.parent_id.in_(family_person_ids),
+                )
+            ).all()
+            for edge in old_parent_edges:
+                db.delete(edge)
+            db.flush()
+
+            direct_parent_ids = _attach_parents(
+                db,
+                anchor_id,
+                self_person.id,
+                parent_relatives,
+                _create_relative_person,
+                actor.id,
+            )
+        else:
+            direct_parent_ids = list(
+                db.scalars(
+                    select(ParentChildRelationship.parent_id).where(
+                        ParentChildRelationship.child_id == self_person.id
+                    )
+                ).all()
+            )
+
+        _attach_other_relatives(
+            db,
+            self_person.id,
+            direct_parent_ids,
+            other_relatives,
+            _create_relative_person,
+            actor.id,
+        )
     else:
         anchor_id = UUID(meta["anchor_person_id"]) if meta.get("anchor_person_id") else req.father_person_id
 
@@ -1109,7 +1184,13 @@ def approve_onboarding_request(
             id=uuid4(),
             family_id=req.family_id,
             actor_id=actor.id,
-            action="clan.relatives.approved" if request_kind == "relatives" else "clan.onboarding.approved",
+            action=(
+                "clan.relatives.approved"
+                if request_kind == "relatives"
+                else "clan.correction.approved"
+                if request_kind == "correction"
+                else "clan.onboarding.approved"
+            ),
             target_type="tree_join_request",
             target_id=req.id,
         )

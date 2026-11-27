@@ -42,6 +42,8 @@ import { ClanReviewerDrawer } from '../../components/clan-reviewer-drawer';
 import GoldenHeritageTree from '../../components/golden-heritage-tree';
 import HushTreeView from '../../components/hush-tree-view';
 import ToonoTreeView from '../../components/toono-tree-view';
+import ProfilePhoto from '../../components/profile-photo';
+import { PHOTO_CHANGED_EVENT, type PhotoChange } from '../../lib/image-upload';
 import { useFocusTrap } from '../../lib/use-focus-trap';
 import { BookOpen, ChevronDown, Clock, Compass, FileBadge, GitCompare, GitFork, Layers, Link2, Maximize2, Minimize2, Network, Plus, Printer, ShieldCheck, Sun, UserPlus, Users, Wrench } from 'lucide-react';
 
@@ -167,6 +169,31 @@ function TreePageContent() {
   const [canReviewClan, setCanReviewClan] = useState(false);
   const [openHeaderMenu, setOpenHeaderMenu] = useState<'print' | 'tools' | null>(null);
   const headerMenusRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!familyId) return;
+    const prefix = `/families/${familyId}/persons/`;
+    const suffix = '/profile-photo';
+    const onPhotoChanged = (event: Event) => {
+      const detail = (event as CustomEvent<PhotoChange>).detail;
+      if (!detail?.endpoint || !detail.endpoint.startsWith(prefix) || !detail.endpoint.endsWith(suffix)) return;
+      const changedPersonId = detail.endpoint.slice(prefix.length, -suffix.length);
+      if (!changedPersonId) return;
+      setTree((current) => {
+        if (!current) return current;
+        const idx = current.persons.findIndex((p) => p.id === changedPersonId);
+        if (idx === -1) return current;
+        const nextPersons = [...current.persons];
+        nextPersons[idx] = {
+          ...nextPersons[idx],
+          profile_photo_url: detail.hasPhoto ? (detail.url || `${detail.endpoint}?v=${Date.now()}`) : null,
+        };
+        return { ...current, persons: nextPersons };
+      });
+    };
+    window.addEventListener(PHOTO_CHANGED_EVENT, onPhotoChanged);
+    return () => window.removeEventListener(PHOTO_CHANGED_EVENT, onPhotoChanged);
+  }, [familyId]);
 
   useEffect(() => {
     if (!openHeaderMenu) return;
@@ -1830,22 +1857,13 @@ function TreePageContent() {
                             onClick={() => selectPerson(person.id)}
                           >
                             <div className="tree-person-avatar-wrap">
-                              <span className="tree-person-avatar" aria-hidden="true">
-                                {person.profile_photo_url ? (
-                                  <img
-                                    src={
-                                      person.profile_photo_url.startsWith('/')
-                                        ? `${API_BASE}${person.profile_photo_url}`
-                                        : person.profile_photo_url
-                                    }
-                                    alt=""
-                                    loading="lazy"
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
-                                  />
-                                ) : (
-                                  initials(person)
-                                )}
-                              </span>
+                              <ProfilePhoto
+                                url={person.profile_photo_url}
+                                endpoint={`/families/${familyId}/persons/${person.id}/profile-photo`}
+                                name={personName(person) || 'Хүн'}
+                                fallback={initials(person)}
+                                className="tree-person-avatar"
+                              />
                               {person.is_alive ? (
                                 <span className="tree-alive-beacon" title="Амьд сэрүүн" />
                               ) : (

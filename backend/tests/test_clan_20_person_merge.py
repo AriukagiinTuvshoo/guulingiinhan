@@ -463,3 +463,77 @@ def test_bootstrap_clan_root_creates_4_branches_and_is_idempotent(client, databa
     assert second.status_code == 200, second.text
     assert second.json()["created"] is False
     assert second.json()["clan_family_id"] == first_json["clan_family_id"]
+
+
+def test_correction_approval_updates_existing_person_without_duplicate(client, database, email_provider):
+    admin_id = _register(client, email_provider, "corr-admin@example.com")
+    with database.begin() as db:
+        db.add(AdminGrant(user_id=admin_id, role="SUPER_ADMIN"))
+    _login(client, "corr-admin@example.com")
+
+    boot = client.post("/api/v1/admin/clan/onboarding/bootstrap-root")
+    assert boot.status_code == 200, boot.text
+    clan_id = boot.json()["clan_family_id"]
+
+    opts = client.get("/api/v1/clan/onboarding/options").json()
+    branches = {b["name"]: b["id"] for b in opts["branches"]}
+    baavai_id = next(iter(branches.values()))
+    other_branch_id = next(bid for bid in branches.values() if bid != baavai_id)
+
+    # Register a member and approve their initial onboarding under baavai_id
+    _register(client, email_provider, "corr-member@example.com")
+    _login(client, "corr-member@example.com")
+    sub1 = client.post(
+        "/api/v1/clan/onboarding/requests",
+        json={
+            "branch_person_id": baavai_id,
+            "anchor_person_id": baavai_id,
+            "claimed_generation": 3,
+            "first_name": "Бат",
+            "last_name": "Дорж",
+            "gender": "male",
+        },
+    )
+    assert sub1.status_code in (200, 201), sub1.text
+    req1_id = sub1.json().get("request_id") or sub1.json()["id"]
+
+    _login(client, "corr-admin@example.com")
+    app1 = client.post(f"/api/v1/admin/clan/onboarding/requests/{req1_id}/approve")
+    assert app1.status_code == 200, app1.text
+    initial_person_id = app1.json()["self_person_id"]
+
+    tree_before = client.get(f"/api/v1/families/{clan_id}/tree?depth=10").json()
+    count_before = len(tree_before["persons"])
+
+    # Member submits a correction request to move under other_branch_id
+    _login(client, "corr-member@example.com")
+    corr = client.post(
+        "/api/v1/clan/onboarding/correction-request",
+        json={
+            "branch_person_id": other_branch_id,
+            "anchor_person_id": other_branch_id,
+            "claimed_generation": 3,
+            "reason": "Салбараа андуурч сонгосон тул засуулах хүсэлт",
+        },
+    )
+    assert corr.status_code in (200, 201), corr.text
+    corr_req_id = corr.json().get("request_id") or corr.json()["id"]
+
+    # Admin approves correction -> MUST NOT create a duplicate Person!
+    _login(client, "corr-admin@example.com")
+    app2 = client.post(f"/api/v1/admin/clan/onboarding/requests/{corr_req_id}/approve")
+    assert app2.status_code == 200, app2.text
+    assert app2.json()["self_person_id"] == initial_person_id
+    assert app2.json()["request_kind"] == "correction"
+
+    tree_after = client.get(f"/api/v1/families/{clan_id}/tree?depth=10").json()
+    assert len(tree_after["persons"]) == count_before
+    updated_p = next(p for p in tree_after["persons"] if p["id"] == initial_person_id)
+    assert updated_p["first_name"] == "Бат"
+    parent_ids = [
+        e["parent_id"]
+        for e in tree_after["parent_child_relationships"]
+        if e["child_id"] == initial_person_id
+    ]
+    assert parent_ids == [other_branch_id]
+

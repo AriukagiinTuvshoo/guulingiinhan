@@ -6,36 +6,52 @@ import { PHOTO_CHANGED_EVENT, type PhotoChange } from '../lib/image-upload';
 
 type ProfilePhotoProps = {
   url: string | null | undefined;
+  endpoint?: string;
   name: string;
   fallback: string;
   loadingFallback?: string;
   className: string;
 };
 
-export default function ProfilePhoto({ url, name, fallback, loadingFallback, className }: ProfilePhotoProps) {
+export default function ProfilePhoto({ url, endpoint, name, fallback, loadingFallback, className }: ProfilePhotoProps) {
+  const [overrideUrl, setOverrideUrl] = useState<string | null | undefined>(undefined);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(Boolean(url));
+  const effectiveUrl = overrideUrl !== undefined ? overrideUrl : url;
+  const [loading, setLoading] = useState(Boolean(effectiveUrl));
   const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    setOverrideUrl(undefined);
+  }, [url, endpoint]);
 
   useEffect(() => {
     const changed = (event: Event) => {
       const detail = (event as CustomEvent<PhotoChange>).detail;
-      if (url && detail?.endpoint && url.split('?')[0] === detail.endpoint) setRevision(value => value + 1);
+      if (!detail?.endpoint) return;
+      const base = effectiveUrl ? effectiveUrl.split('?')[0] : null;
+      const matches = (endpoint && endpoint === detail.endpoint) || (base && base === detail.endpoint);
+      if (!matches) return;
+      if (detail.hasPhoto) {
+        setOverrideUrl(detail.url || `${detail.endpoint}?v=${Date.now()}`);
+        setRevision(value => value + 1);
+      } else {
+        setOverrideUrl(null);
+      }
     };
     window.addEventListener(PHOTO_CHANGED_EVENT, changed);
     return () => window.removeEventListener(PHOTO_CHANGED_EVENT, changed);
-  }, [url]);
+  }, [effectiveUrl, endpoint]);
 
   useEffect(() => {
     let active = true;
     let createdUrl: string | null = null;
     const controller = new AbortController();
     setObjectUrl(null);
-    setLoading(Boolean(url));
-    if (!url) return;
+    setLoading(Boolean(effectiveUrl));
+    if (!effectiveUrl) return;
 
-    const isApiPath = url.startsWith('/');
-    const target = isApiPath ? `${API_BASE}${url}` : url;
+    const isApiPath = effectiveUrl.startsWith('/');
+    const target = isApiPath ? `${API_BASE}${effectiveUrl}` : effectiveUrl;
     if (!target) return;
 
     fetch(target, {
@@ -59,7 +75,7 @@ export default function ProfilePhoto({ url, name, fallback, loadingFallback, cla
       controller.abort();
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [url, revision]);
+  }, [effectiveUrl, revision]);
 
   if (objectUrl) return <img className={className} src={objectUrl} alt={`${name}-ийн зураг`} onError={() => setObjectUrl(null)} />;
   return <span className={`${className} profile-photo-fallback`} aria-label={`${name}-ийн зураг`}

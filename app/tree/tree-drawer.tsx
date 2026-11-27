@@ -14,6 +14,7 @@ import {
   TreePerson,
 } from '../../lib/api';
 import { ConfirmDialog } from '../../components/confirm-dialog';
+import ProfilePhoto from '../../components/profile-photo';
 
 type TabType = 'overview' | 'timeline' | 'oral_history' | 'stories';
 
@@ -359,9 +360,13 @@ export function TreeDrawer({
 
       {/* Header Profile Identity */}
       <div className="tree-drawer-hero">
-        <div className="tree-drawer-avatar" aria-hidden="true">
-          {formatInitials(person.first_name, person.last_name)}
-        </div>
+        <ProfilePhoto
+          url={person.profile_photo_url}
+          endpoint={`/families/${familyId}/persons/${person.id}/profile-photo`}
+          name={displayName}
+          fallback={formatInitials(person.first_name, person.last_name)}
+          className="tree-drawer-avatar"
+        />
         <div className="tree-drawer-hero-info">
           <h2>{displayName}</h2>
           <p className="tree-drawer-dates">
