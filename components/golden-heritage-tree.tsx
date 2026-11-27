@@ -430,26 +430,10 @@ export default function GoldenHeritageTree({
             scrollRef.current?.scrollTo({ left: 0, top: 0, behavior: 'smooth' });
           }}
           aria-label="Тэгшлэх"
+          title="Тэгшлэх"
         >
-          <RotateCcw size={13} />
+          <RotateCcw size={14} />
         </button>
-        <span className="golden-dock-divider" aria-hidden="true" />
-        <button type="button" className="golden-dock-btn" onClick={onOpenKinship}>
-          <Compass size={13} /> Ургийн холбоо
-        </button>
-        {canPrint && (
-          <>
-            <button type="button" className="golden-dock-btn" onClick={onOpenCertificate}>
-              <FileBadge size={13} /> Батламж
-            </button>
-            <button type="button" className="golden-dock-btn" onClick={onOpenBook}>
-              <BookOpen size={13} /> Ургийн ном
-            </button>
-            <button type="button" className="golden-dock-btn" onClick={onOpenExport}>
-              <Printer size={13} /> PDF / SVG
-            </button>
-          </>
-        )}
         <button
           type="button"
           className="golden-dock-btn"

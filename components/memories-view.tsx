@@ -88,7 +88,7 @@ function initials(title: string) {
 
 function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
   const router = useRouter();
-  const { families, currentFamily: family, familyId, contextError, contextLoading } = useAppShellContext();
+  const { families, currentFamily: family, familyId, contextError, contextLoading, contextLoaded } = useAppShellContext();
   const [memories, setMemories] = useState<MemoryListPage | null>(null);
   const [memoryViewTab, setMemoryViewTab] = useState<'album' | 'timeline' | 'untagged'>('album');
   const [draftMemoryDate, setDraftMemoryDate] = useState('');
@@ -475,10 +475,10 @@ function MemoriesPageContent({ createMode = false }: { createMode?: boolean }) {
           <button type="submit">Хайх</button>
           <button type="reset" onClick={() => { setFilterPersonName(''); setFilters({ q: '', year: '', memory_date: '', person_id: '', branch_id: '' }); }}>Цэвэрлэх</button>
         </form>}
-        {!createMode && (loading && !memories ? (
+        {!createMode && ((loading || contextLoading || !contextLoaded) && !memories ? (
           <section className="memory-state" aria-live="polite">
             <span className="memory-state-mark" aria-hidden="true" />
-            <p className="memories-eyebrow">MEMORIES</p>
+            <p className="memories-eyebrow">ДУРСАМЖИЙН САН</p>
             <h2>Дурсамжийн хуудсыг нээж байна…</h2>
             <p>Гэр бүлийн тань хадгалсан мөчүүдийг аюулгүйгээр ачаалж байна.</p>
           </section>

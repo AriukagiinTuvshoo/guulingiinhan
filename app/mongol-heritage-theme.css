@@ -3558,6 +3558,81 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
   background: transparent;
 }
 
+/* 10. Sprint 2 & 3 (v3.0 -> 9.0+): Compact /tree top chrome (<25%), >=44px targets, /settings fill */
+.tree-page {
+  padding-top: 4px !important;
+}
+
+.tree-page-header {
+  padding: 4px 0 6px !important;
+  margin-bottom: 4px !important;
+}
+
+.tree-page-header .tree-eyebrow {
+  display: none !important;
+}
+
+.tree-workspace-top {
+  padding: 6px 12px !important;
+  gap: 8px !important;
+}
+
+.tree-search-wrap {
+  padding: 6px 12px 8px !important;
+}
+
+.tree-search-wrap .tree-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tree-search-wrap .tree-search label,
+.tree-search-wrap .tree-search > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.golden-tree-viewport:not(.is-fullscreen),
+html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
+  height: clamp(460px, calc(100vh - 255px), 660px) !important;
+  min-height: 460px !important;
+  max-height: calc(100vh - 255px) !important;
+}
+
+.tree-drawer {
+  max-height: clamp(460px, calc(100vh - 255px), 660px) !important;
+}
+
+/* WCAG 2.2 >=44px touch targets on /tree */
+.tree-header-actions .ui-btn,
+.tree-segmented button,
+.golden-tree-dock .golden-dock-btn {
+  min-height: 44px !important;
+}
+
+.golden-tree-dock .golden-dock-btn {
+  min-width: 44px !important;
+}
+
+.golden-unit-toggle {
+  position: relative;
+}
+
+.golden-unit-toggle::after {
+  content: '';
+  position: absolute;
+  inset: -12px;
+}
+
+.app-shell__content {
+  min-height: calc(100dvh - 68px);
+}
+
+
 
 
 

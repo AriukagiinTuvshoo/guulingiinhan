@@ -303,8 +303,8 @@ function ChatContent() {
       className="chat-shell"
       style={{
         display: 'flex',
-        height: 'calc(100dvh - 104px)',
-        maxHeight: '880px',
+        height: 'calc(100dvh - 88px)',
+        maxHeight: 'calc(100dvh - 88px)',
         background: 'var(--ui-surface)',
         color: 'var(--ui-text)',
         borderRadius: '16px',

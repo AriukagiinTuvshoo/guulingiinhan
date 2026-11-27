@@ -644,7 +644,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="app-shell__account" ref={accountRef}>
-          {user && currentFamily && !pathname.startsWith('/chat') && (
+          {user && currentFamily && !pathname.startsWith('/chat') && !pathname.startsWith('/tree') && (
             <FamilyChatDrawer familyId={currentFamily.id} currentUserId={user.id} />
           )}
           {user && <NotificationBell userId={user.id} closeSignal={accountOpen || mobileOpen} onOpen={() => { setAccountOpen(false); setMobileOpen(false); }} />}

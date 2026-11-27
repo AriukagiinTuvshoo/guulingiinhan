@@ -304,7 +304,9 @@
 
 .sortSelect {
   min-height: 44px;
-  padding: 0 14px;
+  height: 44px;
+  padding: 0 16px;
+  line-height: 42px;
   border-radius: 999px;
   border: 1px solid var(--ui-border, #ebd59a);
   background: var(--ui-surface, #fffbf2);
