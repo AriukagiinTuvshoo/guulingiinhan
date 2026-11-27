@@ -482,7 +482,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
         </nav>
 
         <header className="story-editor-hero">
-          <p className="eyebrow">FAMILY STORY · {mode === 'create' ? 'NEW' : 'EDIT'}</p>
+          <p className="eyebrow">ГЭР БҮЛИЙН ТҮҮХ · {mode === 'create' ? 'ШИНЭ' : 'ЗАСАХ'}</p>
           <h1>{mode === 'create' ? 'Шинэ түүх' : 'Түүхийг засах'}</h1>
           <p>Гэр бүлийн дурсамж, үйл явдал, огноо, газар болон холбоотой хүмүүсийг нэг түүх болгон хадгална.</p>
         </header>

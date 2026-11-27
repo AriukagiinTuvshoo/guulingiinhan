@@ -12,7 +12,7 @@
 .tree-3d-stage canvas { cursor: grab; touch-action: none; }
 .tree-3d-stage canvas:active { cursor: grabbing; }
 .tree-3d-overlay { position: absolute; inset: 0 0 auto; height: clamp(430px, 62vh, 760px); pointer-events: none; }
-.tree-3d-legend { position: absolute; top: 12px; left: 12px; display: grid; gap: 6px; max-width: 230px; padding: 10px 12px; border: 1px solid var(--tree-dock-border); border-radius: 10px; background: var(--tree-dock-bg); color: var(--tree-dock-text); font-size: 11px; backdrop-filter: blur(6px); }
+.tree-3d-legend { position: absolute; top: 12px; left: 12px; display: grid; gap: 6px; max-width: 230px; padding: 10px 12px; border: 1px solid var(--tree-dock-border); border-radius: 10px; background: var(--tree-dock-bg); color: var(--tree-dock-text); font-size: 12px; backdrop-filter: blur(6px); }
 .tree-3d-legend span { display: flex; align-items: center; gap: 7px; }
 .tree-3d-legend i { position: relative; display: inline-block; width: 22px; height: 8px; flex: 0 0 auto; }
 .tree-legend-parent:before, .tree-legend-current:before, .tree-legend-history:before { content: ""; position: absolute; left: 0; right: 0; top: 3px; border-top: 2px solid var(--tree-edge-stroke); }
@@ -20,7 +20,7 @@
 .tree-legend-history:before { border-color: var(--ui-text-muted); border-top-style: dashed; }
 .tree-legend-root:before, .tree-legend-self:before { content: ""; position: absolute; left: 6px; top: 0; width: 8px; height: 8px; border: 1px solid var(--gold-500); background: var(--gold-400); transform: rotate(45deg); }
 .tree-legend-self:before { border-radius: 50%; border-color: var(--brand-primary); background: var(--brand-primary); transform: none; }
-.tree-3d-hint { position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 160px); padding: 8px 10px; border-radius: 8px; background: var(--tree-dock-bg); color: var(--tree-dock-text); font-size: 11px; line-height: 1.5; pointer-events: auto; }
+.tree-3d-hint { position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 160px); padding: 8px 10px; border-radius: 8px; background: var(--tree-dock-bg); color: var(--tree-dock-text); font-size: 12px; line-height: 1.5; pointer-events: auto; }
 .tree-3d-focus { position: absolute; right: 12px; bottom: 12px; min-height: 36px; padding: 0 12px; border: 1px solid var(--ui-primary); border-radius: 20px; background: var(--ui-primary); color: var(--ui-primary-contrast); font-size: 12px; font-weight: 700; pointer-events: auto; }
 .tree-3d-focus:focus-visible { outline: 2px solid var(--gold-500); outline-offset: 2px; }
 .tree-3d-context { margin: 0; padding: 8px 12px; border-top: 1px solid var(--ui-border); color: var(--ui-text); font-size: 12px; }
@@ -31,14 +31,14 @@
 .tree-3d-person-photo img { width: 100%; height: 100%; object-fit: cover; }
 .tree-3d-person-details { display: grid; gap: 4px; min-width: 0; }
 .tree-3d-person-details strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; font-size: 12px; }
-.tree-3d-person-details small { color: var(--ui-text-muted); font-size: 10px; white-space: nowrap; }
-.tree-3d-limit { margin: 0; padding: 8px 11px; border-top: 1px solid var(--ui-warning-border); background: var(--ui-warning-bg); color: var(--ui-warning-text); font-size: 11px; line-height: 1.55; }
+.tree-3d-person-details small { color: var(--ui-text-muted); font-size: 12px; white-space: nowrap; }
+.tree-3d-limit { margin: 0; padding: 8px 11px; border-top: 1px solid var(--ui-warning-border); background: var(--ui-warning-bg); color: var(--ui-warning-text); font-size: 12px; line-height: 1.55; }
 .tree-3d-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--tree-node-text); font: 16px Georgia, serif; }
 .tree-3d-fallback { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 10px; padding: 20px; background: var(--tree-canvas-bg); color: var(--tree-node-text); text-align: center; }
 .tree-3d-fallback strong { font: 22px Georgia, serif; }
 .tree-3d-fallback span { max-width: 360px; color: var(--tree-node-muted); font-size: 12px; line-height: 1.6; }
 .tree-3d-fallback button { min-height: 38px; padding: 0 14px; border: 1px solid var(--ui-primary); border-radius: 20px; background: var(--ui-primary); color: var(--ui-primary-contrast); }
-.tree-spouse-focus { padding: 0; border: 0; background: none; color: var(--ui-text-secondary); font-size: 11px; font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.tree-spouse-focus { padding: 0; border: 0; background: none; color: var(--ui-text-secondary); font-size: 12px; font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .tree-3d-actions { position: absolute; right: 12px; bottom: 12px; z-index: 3; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 0.55rem; pointer-events: auto; }
 .tree-3d-actions .tree-3d-focus { position: relative; inset: auto; min-height: 36px; }
 .tree-3d-generations { position: absolute; left: 50%; bottom: 12px; z-index: 2; transform: translateX(-50%); display: grid; gap: 0.5rem; max-width: min(100%, 58rem); max-height: 106px; overflow: auto; padding: 0.65rem 0.85rem; border: 1px solid var(--tree-dock-border); border-radius: 12px; background: var(--tree-dock-bg); color: var(--tree-dock-text); pointer-events: auto; }
@@ -51,18 +51,18 @@
 .tree-3d-world-card--selected { border-width: 2px; border-color: var(--gold-500); background: var(--tree-node-bg-selected); }
 .tree-3d-world-card img { width: 38px; height: 38px; object-fit: cover; border: 2px solid var(--gold-border); border-radius: 50%; }
 .tree-3d-world-card strong { overflow: hidden; max-width: 100%; text-overflow: ellipsis; font: 700 12px Georgia, serif; }
-.tree-3d-world-card small { color: var(--tree-node-muted); font-size: 10px; }
+.tree-3d-world-card small { color: var(--tree-node-muted); font-size: 12px; }
 .tree-selected-heading > div { min-width: 0; flex: 1 1 auto; }
 .tree-selected-heading h2 { max-width: 100%; overflow-wrap: anywhere; word-break: normal; }
 .tree-selected-heading span { display: block; overflow-wrap: anywhere; }
 @media (max-width: 1020px) { .tree-map-layout--3d { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) {
   .tree-segmented { max-width: 100%; }
-  .tree-segmented button { padding-inline: 7px; font-size: 11px; }
+  .tree-segmented button { padding-inline: 7px; font-size: 12px; }
   .tree-branch-control { max-width: 100%; }
   .tree-branch-control select { max-width: min(220px, 58vw); }
   .tree-3d-stage, .tree-3d-overlay { height: min(58vh, 520px); min-height: 420px; }
-  .tree-3d-legend { top: 8px; left: 8px; gap: 4px; padding: 7px 9px; font-size: 10px; }
+  .tree-3d-legend { top: 8px; left: 8px; gap: 4px; padding: 7px 9px; font-size: 12px; }
   .tree-3d-actions { right: 8px; bottom: 8px; gap: 4px; }
   .tree-3d-generations { bottom: 58px; max-width: calc(100% - 16px); max-height: 90px; padding: 6px 8px; }
 }

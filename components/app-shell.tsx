@@ -38,7 +38,7 @@ import { ThemePicker } from './theme-picker';
 import { FamilyChatDrawer } from './family-chat-drawer';
 
 type NavItem = {
-  key: 'dashboard' | 'ancestry' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'chat' | 'settings' | 'search' | 'relationships';
+  key: 'dashboard' | 'community' | 'news' | 'tree' | 'people' | 'stories' | 'memories' | 'archives' | 'activities' | 'chat' | 'settings' | 'search' | 'relationships';
   label: string;
   description: string;
   icon: LucideIcon;
@@ -48,7 +48,6 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/dashboard', needsFamily: false },
-  { key: 'ancestry', label: 'Нийтлэг удам', description: 'Гуулингийнхны нэг мод', icon: TreeDeciduous, path: '/ancestry', needsFamily: false },
   { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Үндсэн удам · Манай гэр бүл', icon: GitFork, path: '/tree', needsFamily: false },
@@ -79,8 +78,6 @@ function isShellRoute(pathname: string) {
     pathname.startsWith('/people/') ||
     pathname === '/tree' ||
     pathname.startsWith('/tree/') ||
-    pathname === '/ancestry' ||
-    pathname.startsWith('/ancestry/') ||
     pathname === '/community' ||
     pathname.startsWith('/community/') ||
     pathname === '/news' ||
@@ -111,7 +108,6 @@ function activeKey(pathname: string): NavItem['key'] | null {
   if (pathname === '/relationships') return 'relationships';
   if (isDashboardRoute(pathname)) return 'dashboard';
   if (pathname === '/tree' || pathname.startsWith('/tree/')) return 'tree';
-  if (pathname === '/ancestry' || pathname.startsWith('/ancestry/')) return 'ancestry';
   if (pathname === '/community' || pathname.startsWith('/community/')) return 'community';
   if (pathname === '/news') return 'news';
   if (pathname === '/people' || pathname.startsWith('/people/')) return 'people';

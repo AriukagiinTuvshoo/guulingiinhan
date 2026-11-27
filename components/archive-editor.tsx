@@ -254,7 +254,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
         </nav>
 
         <header className="story-editor-hero">
-          <p className="eyebrow">ГУУЛИНГИЙНХАН · FAMILY ARCHIVE · {mode === 'create' ? 'NEW' : 'EDIT'}</p>
+          <p className="eyebrow">ГУУЛИНГИЙНХАН · ГЭР БҮЛИЙН АРХИВ · {mode === 'create' ? 'ШИНЭ' : 'ЗАСАХ'}</p>
           <h1>{mode === 'create' ? 'Шинэ архив' : 'Архивийг засах'}</h1>
           <p>Гэр бүлийн түүхэн баримтын metadata, огноо, газар болон холбоотой хүмүүсийг хадгална.</p>
         </header>

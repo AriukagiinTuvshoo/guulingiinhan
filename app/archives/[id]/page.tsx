@@ -138,7 +138,7 @@ function ArchiveDetailContent() {
       <main className="archive-page">
         <section className="archive-shell archive-detail-state" aria-live="polite">
           <span className="archive-state-mark" aria-hidden="true" />
-          <p className="archive-eyebrow">FAMILY ARCHIVE · LOADING</p>
+          <p className="archive-eyebrow">ГЭР БҮЛИЙН АРХИВ · АЧААЛЖ БАЙНА</p>
           <h1>Баримтыг нээж байна…</h1>
         </section>
       </main>
@@ -185,7 +185,7 @@ function ArchiveDetailContent() {
 
         <header className="archive-detail-header">
           <div className="archive-detail-intro">
-            <p className="archive-eyebrow">FAMILY ARCHIVE · {family?.name ?? 'Гэр бүл'}</p>
+            <p className="archive-eyebrow">ГЭР БҮЛИЙН АРХИВ · {family?.name ?? 'Гэр бүл'}</p>
             <p className="archive-detail-date">{formatDate(archive.document_date)}</p>
             <h1>{archive.title}</h1>
             <div className="archive-detail-meta">
@@ -290,7 +290,7 @@ function ArchiveDetailContent() {
 
 export default function ArchiveDetailPage() {
   return (
-    <Suspense fallback={<main className="archive-page"><section className="archive-shell archive-detail-state" aria-live="polite"><span className="archive-state-mark" aria-hidden="true" /><p className="archive-eyebrow">FAMILY ARCHIVE · LOADING</p><h1>Баримтыг нээж байна…</h1></section></main>}>
+    <Suspense fallback={<main className="archive-page"><section className="archive-shell archive-detail-state" aria-live="polite"><span className="archive-state-mark" aria-hidden="true" /><p className="archive-eyebrow">ГЭР БҮЛИЙН АРХИВ · LOADING</p><h1>Баримтыг нээж байна…</h1></section></main>}>
       <ArchiveDetailContent />
     </Suspense>
   );

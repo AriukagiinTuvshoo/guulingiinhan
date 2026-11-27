@@ -1,8 +1,8 @@
 'use client';
 
 import AccountPhoto from '../../components/account-photo';
+import OnboardingQuizCard from '../../components/onboarding-quiz-card';
 import PhoneVerification from '../../components/phone-verification';
-import RootConnectionCard from '../../components/root-connection-card';
 import { MongolianOrnamentBand } from '../../components/mongolian-ornament-band';
 import { AppTheme, THEME_OPTIONS } from '../../components/theme-picker';
 
@@ -492,7 +492,11 @@ function SettingsContent() {
                         {selectedFamily?.name}
                       </strong>
                       <span className="settings-v2-pill" style={{ marginLeft: 10 }}>
-                        {selectedFamily?.role}
+                        {selectedFamily?.role === 'owner'
+                          ? 'Эзэмшигч'
+                          : selectedFamily?.role === 'editor'
+                            ? 'Засварлагч'
+                            : 'Гишүүн'}
                       </span>
                     </div>
                   )}
@@ -506,7 +510,7 @@ function SettingsContent() {
               )}
             </article>
 
-            {selectedFamily && <RootConnectionCard familyId={selectedFamily.id} />}
+            <OnboardingQuizCard onNotice={setNotice} />
           </section>
         )}
 

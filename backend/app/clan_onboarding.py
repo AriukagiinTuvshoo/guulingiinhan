@@ -70,6 +70,7 @@ from app.relationships import (
 
 PREFIX = "CLAN_ONBOARDING_V1:"
 RELATIVES_PREFIX = "CLAN_RELATIVES_V1:"
+CORRECTION_PREFIX = "CLAN_CORRECTION_V1:"
 
 router = APIRouter(prefix="/clan/onboarding", tags=["clan-onboarding"])
 admin_router = APIRouter(prefix="/admin/clan/onboarding", tags=["admin-clan-onboarding"])
@@ -101,6 +102,13 @@ class ClanOnboardingSubmitInput(BaseModel):
 class ClanRelativesSubmitInput(BaseModel):
     relatives: list[RelativeDraftInput] = Field(min_length=1, max_length=15)
     note: str | None = Field(default=None, max_length=600)
+
+
+class ClanOnboardingCorrectionInput(BaseModel):
+    branch_person_id: UUID
+    claimed_generation: int = Field(ge=2, le=12)
+    anchor_person_id: UUID
+    reason: str | None = Field(default=None, max_length=600)
 
 
 class ClanOnboardingRejectInput(BaseModel):
@@ -412,6 +420,11 @@ def submit_onboarding_request(
 def _parse_request_note(note: str | None) -> tuple[str, dict]:
     if not note:
         return "onboarding", {}
+    if note.startswith(CORRECTION_PREFIX):
+        try:
+            return "correction", json.loads(note[len(CORRECTION_PREFIX) :])
+        except (ValueError, TypeError):
+            return "correction", {}
     if note.startswith(RELATIVES_PREFIX):
         try:
             return "relatives", json.loads(note[len(RELATIVES_PREFIX) :])
@@ -541,6 +554,207 @@ def list_my_requests(
             }
         )
     return out
+
+
+def _serialize_quiz_request(db: Session, req: TreeJoinRequest) -> dict:
+    request_kind, meta = _parse_request_note(req.note)
+    branch_id_raw = meta.get("branch_person_id")
+    anchor_id_raw = meta.get("anchor_person_id") or (str(req.father_person_id) if req.father_person_id else None)
+    branch_name = None
+    anchor_name = None
+    if branch_id_raw:
+        try:
+            bp = db.get(Person, UUID(str(branch_id_raw)))
+            if bp:
+                branch_name = _person_label(bp)
+        except (ValueError, TypeError):
+            pass
+    if anchor_id_raw:
+        try:
+            ap = db.get(Person, UUID(str(anchor_id_raw)))
+            if ap:
+                anchor_name = _person_label(ap)
+        except (ValueError, TypeError):
+            pass
+    return {
+        "id": str(req.id),
+        "request_kind": request_kind,
+        "status": req.status,
+        "claimed_generation": req.claimed_generation,
+        "branch_person_id": str(branch_id_raw) if branch_id_raw else None,
+        "branch_name": branch_name,
+        "anchor_person_id": str(anchor_id_raw) if anchor_id_raw else None,
+        "anchor_name": anchor_name,
+        "first_name": req.first_name,
+        "last_name": req.last_name,
+        "birth_date": req.birth_date.isoformat() if req.birth_date else None,
+        "birth_place": req.birth_place,
+        "user_note": meta.get("user_note") or "",
+        "review_note": req.review_note,
+        "created_at": req.created_at.isoformat(),
+    }
+
+
+@router.get("/my-quiz")
+def get_my_onboarding_quiz(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the user's onboarding questionnaire summary and editability mode."""
+    is_admin = db.get(AdminGrant, user.id) is not None
+    member_family_ids = db.scalars(
+        select(FamilyMember.family_id)
+        .join(Family, Family.id == FamilyMember.family_id)
+        .where(FamilyMember.user_id == user.id, Family.archived_at.is_(None))
+    ).all()
+    approved = bool(is_admin or len(member_family_ids) > 0)
+    clan_family, _ = _resolve_clan_family_and_root(db)
+
+    linked_person_id: str | None = None
+    if clan_family is not None:
+        link = db.scalar(
+            select(UserPersonLink)
+            .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
+            .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == clan_family.id)
+        )
+        if link:
+            linked_person_id = str(link.person_id)
+
+    rows = db.scalars(
+        select(TreeJoinRequest)
+        .where(TreeJoinRequest.user_id == user.id)
+        .order_by(TreeJoinRequest.created_at.desc())
+        .limit(20)
+    ).all()
+
+    pending_req: TreeJoinRequest | None = None
+    latest_quiz: TreeJoinRequest | None = None
+    for row in rows:
+        req_kind, _ = _parse_request_note(row.note)
+        if row.status == "pending" and pending_req is None and req_kind in {"onboarding", "correction"}:
+            pending_req = row
+        if latest_quiz is None and req_kind in {"onboarding", "correction"}:
+            latest_quiz = row
+
+    can_direct_edit = bool(pending_req is not None)
+    return {
+        "approved": approved,
+        "can_direct_edit": can_direct_edit,
+        "linked_person_id": linked_person_id,
+        "pending_request": _serialize_quiz_request(db, pending_req) if pending_req else None,
+        "latest_onboarding": _serialize_quiz_request(db, latest_quiz) if latest_quiz else None,
+    }
+
+
+@router.patch("/requests/{request_id}")
+def update_pending_onboarding_request(
+    request_id: UUID,
+    body: ClanOnboardingCorrectionInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allow a user to directly edit their own pending onboarding or correction request."""
+    req = db.get(TreeJoinRequest, request_id)
+    if req is None or req.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Хүсэлт олдсонгүй.")
+    if req.status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Баталгаажсан эсвэл шийдвэрлэгдсэн асуумжийг шууд засах боломжгүй. Засварлах хүсэлт илгээнэ үү.",
+        )
+
+    req_kind, meta = _parse_request_note(req.note)
+    meta["branch_person_id"] = str(body.branch_person_id)
+    meta["anchor_person_id"] = str(body.anchor_person_id)
+    if body.reason is not None:
+        meta["user_note"] = body.reason.strip()
+
+    prefix = CORRECTION_PREFIX if req_kind == "correction" else PREFIX
+    req.claimed_generation = body.claimed_generation
+    req.father_person_id = body.anchor_person_id
+    req.note = prefix + json.dumps(meta, ensure_ascii=False)
+
+    db.add(
+        AuditLog(
+            id=uuid4(),
+            family_id=req.family_id,
+            actor_id=user.id,
+            action="clan.onboarding.updated",
+            target_type="tree_join_request",
+            target_id=req.id,
+        )
+    )
+    db.commit()
+    return _serialize_quiz_request(db, req)
+
+
+@router.post("/correction-request", status_code=201)
+def submit_onboarding_correction_request(
+    body: ClanOnboardingCorrectionInput,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Submit an admin-reviewed correction request for an already-approved user's generation/branch."""
+    family, _ = _resolve_clan_family_and_root(db)
+    if not family:
+        raise HTTPException(status_code=404, detail="Үндсэн удмын орчин олдсонгүй.")
+
+    existing_pending = db.scalar(
+        select(TreeJoinRequest).where(
+            TreeJoinRequest.user_id == user.id,
+            TreeJoinRequest.status == "pending",
+        )
+    )
+    if existing_pending:
+        raise HTTPException(
+            status_code=409,
+            detail="Танд аль хэдийн хүлээгдэж буй хүсэлт байна. Тэр хүсэлтээ шууд засах боломжтой.",
+        )
+
+    link = db.scalar(
+        select(UserPersonLink)
+        .join(FamilyPerson, FamilyPerson.person_id == UserPersonLink.person_id)
+        .where(UserPersonLink.user_id == user.id, FamilyPerson.family_id == family.id)
+    )
+    self_person = db.get(Person, link.person_id) if link else None
+    parts = (user.display_name or "").strip().split()
+    first_name = self_person.first_name if self_person else (parts[-1] if parts else "Гишүүн")
+    last_name = self_person.last_name if self_person else (" ".join(parts[:-1]) if len(parts) > 1 else "")
+
+    payload_meta = {
+        "branch_person_id": str(body.branch_person_id),
+        "anchor_person_id": str(body.anchor_person_id),
+        "user_note": (body.reason or "").strip(),
+        "self_person_id": str(self_person.id) if self_person else None,
+        "relatives": [],
+    }
+    req = TreeJoinRequest(
+        id=uuid4(),
+        family_id=family.id,
+        user_id=user.id,
+        first_name=first_name,
+        last_name=last_name,
+        gender=self_person.gender if self_person else None,
+        birth_date=self_person.birth_date if self_person else None,
+        birth_place=self_person.birth_place if self_person else None,
+        claimed_generation=body.claimed_generation,
+        father_person_id=body.anchor_person_id,
+        note=CORRECTION_PREFIX + json.dumps(payload_meta, ensure_ascii=False),
+        status="pending",
+    )
+    db.add(req)
+    db.add(
+        AuditLog(
+            id=uuid4(),
+            family_id=family.id,
+            actor_id=user.id,
+            action="clan.onboarding.correction_submitted",
+            target_type="tree_join_request",
+            target_id=req.id,
+        )
+    )
+    db.commit()
+    return _serialize_quiz_request(db, req)
 
 
 @admin_router.get("/requests")

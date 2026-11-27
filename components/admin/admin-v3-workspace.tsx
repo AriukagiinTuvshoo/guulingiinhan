@@ -1444,8 +1444,8 @@ export default function AdminV3Workspace() {
                   <h1>Эх мод &amp; Холбогдох хүсэлтүүд</h1>
                   <p className="adv3-sub">Шинэ гэр бүлүүд (Долгор, Баавай, Бадамдорж, Нансалмаагийн салаа) Гуулингийнхны нэгдсэн Эх модонд холбогдох хүсэлтийг эндээс 1 товшилтоор батална.</p>
                 </div>
-                <Link href="/ancestry" className="adv3-btn">
-                  🌳 Нийтлэг удам үзэх →
+                <Link href="/tree" className="adv3-btn">
+                  🌳 Удмын мод үзэх →
                 </Link>
               </div>
               <MongolianOrnamentBand />

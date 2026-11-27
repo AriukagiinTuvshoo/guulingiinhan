@@ -287,7 +287,7 @@ body {
 }
 
 .theme-dots__label {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--gt);
@@ -582,7 +582,7 @@ html[data-th="dark"] .app-shell__account-avatar {
   border-radius: 999px;
   background: var(--goldl);
   color: var(--hd);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -785,7 +785,7 @@ html[data-th="dark"] .app-shell__account-avatar {
   flex-wrap: wrap;
   justify-content: center;
   gap: 14px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2em;
   color: var(--gt);
@@ -828,7 +828,7 @@ html[data-th="dark"] .app-shell__account-avatar {
 }
 
 .luxury-landing__pillar-eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.12em;
   color: var(--gt);
   font-weight: 700;
@@ -1192,7 +1192,7 @@ html[data-th] .golden-node-card.is-female .golden-node-avatar {
 }
 
 .hush-node__role {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   fill: var(--gt);
   text-anchor: middle;
@@ -1212,7 +1212,7 @@ html[data-th] .golden-node-card.is-female .golden-node-avatar {
 }
 
 .hush-ghost text {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   fill: var(--gt);
   text-anchor: middle;
@@ -1550,7 +1550,7 @@ html[data-th] .golden-node-card.is-female .golden-node-avatar {
 .nine-gen-chip em {
   display: block;
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--gt);
 }
 
@@ -1603,7 +1603,7 @@ html[data-th] .golden-node-card.is-female .golden-node-avatar {
 
 .dash-tree-showcase__eyebrow {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--gt);
   font-weight: 700;
@@ -2112,7 +2112,7 @@ html[data-th] .admin-stat-card b {
 
 .settings-v2-eyebrow {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--gt);
   font-weight: 700;
@@ -2842,7 +2842,7 @@ html[data-th] .people-profile-cta {
     color: var(--gt);
     text-decoration: none;
     font: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     cursor: pointer;
     transition: color 140ms ease, background-color 140ms ease;
@@ -3509,7 +3509,7 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
 
 .tree-action-pill {
   white-space: nowrap !important;
-  min-height: 36px !important;
+  min-height: 44px !important;
 }
 
 .tree-action-pill.is-danger-subtle {
@@ -3524,14 +3524,14 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
 }
 
 .tree-drawer-close {
-  width: 36px !important;
-  height: 36px !important;
-  font-size: 14px !important;
+  width: 44px !important;
+  height: 44px !important;
+  font-size: 15px !important;
 }
 
 .golden-tree-dock button {
-  min-height: 38px !important;
-  min-width: 38px !important;
+  min-height: 44px !important;
+  min-width: 44px !important;
 }
 
 .app-shell__sidebar-footer {

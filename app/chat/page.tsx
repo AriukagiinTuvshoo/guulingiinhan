@@ -31,6 +31,7 @@ function ChatContent() {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [mobileShowChat, setMobileShowChat] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -89,12 +90,15 @@ function ChatContent() {
           : `/families/${familyId}/chat/messages`;
       const data = await api<ChatMessage[]>(url);
       if (seq !== requestSeqRef.current) return;
+      setChatError(null);
       setMessages(data);
       if (isInitial) {
         setTimeout(() => scrollToBottom(false), 50);
       }
     } catch {
-      // Ignored
+      if (seq === requestSeqRef.current) {
+        setChatError('Зурвасуудыг ачаалахад алдаа гарлаа. Сервер түр ачаалалтай эсвэл холболт тасарсан байж болзошгүй.');
+      }
     } finally {
       if (seq === requestSeqRef.current) {
         inFlightRef.current = false;
@@ -565,11 +569,53 @@ function ChatContent() {
             gap: '14px',
           }}
         >
+          {chatError && (
+            <div
+              role="alert"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '12px',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                background: 'rgba(180, 35, 24, 0.08)',
+                border: '1px solid rgba(180, 35, 24, 0.25)',
+                color: '#912018',
+                fontSize: '13px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span>{chatError}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true);
+                  void loadMembers();
+                  void loadMessages(true);
+                }}
+                style={{
+                  minHeight: '36px',
+                  padding: '6px 14px',
+                  borderRadius: '999px',
+                  border: '1px solid rgba(180, 35, 24, 0.35)',
+                  background: '#ffffff',
+                  color: '#912018',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                Дахин оролдох
+              </button>
+            </div>
+          )}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px', color: 'var(--ui-text-muted)', fontSize: '13px' }}>
               Зурвасуудыг ачаалж байна…
             </div>
-          ) : messages.length === 0 ? (
+          ) : messages.length === 0 && !chatError ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ui-text-muted)' }}>
               <MessageCircle size={40} style={{ margin: '0 auto 12px', opacity: 0.35 }} />
               <div style={{ fontSize: '14.5px', fontWeight: 600, color: 'var(--ui-text)', marginBottom: '6px' }}>

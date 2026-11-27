@@ -76,17 +76,17 @@
 .profile-photo-upload,
 .profile-photo-remove {
   display: inline-flex !important;
-  min-height: 38px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 7px;
   margin: 0 !important;
-  padding: 0 13px;
+  padding: 0 14px;
   border: 1px solid #c8b577;
-  border-radius: 20px;
+  border-radius: 22px;
   background: #fffdf6;
   color: #315740 !important;
-  font: 600 11px/1.2 var(--font-body) !important;
+  font: 600 12px/1.2 var(--font-body) !important;
   cursor: pointer;
   transition: transform .18s ease, background .18s ease;
 }
@@ -94,7 +94,7 @@
 .profile-photo-remove:hover { transform: translateY(-1px); background: #f2eddd; }
 .profile-photo-upload input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .profile-photo-upload:focus-within { outline: 2px solid #957636; outline-offset: 3px; }
-.profile-photo-remove { width: 38px; padding: 0; }
+.profile-photo-remove { width: 44px; padding: 0; }
 
 .profile-identity .eyebrow,
 .profile-card .eyebrow { margin: 0; color: #6b501f; font-size: 12px; font-weight: 700; letter-spacing: .12em; }
@@ -140,9 +140,9 @@
 }
 .profile-card-heading { align-items: center; margin-bottom: 19px; }
 .profile-card-heading h2 { margin-top: 6px; color: #214331; font-size: clamp(21px, 2vw, 27px); }
-.profile-card-heading > a { color: #456a50; font-size: 11px; font-weight: 700; text-decoration: none; }
+.profile-card-heading > a { color: #456a50; font-size: 12px; font-weight: 700; text-decoration: none; }
 .profile-facts>div { grid-template-columns: minmax(108px, 31%) minmax(0, 1fr); padding: 12px 0; border-color: #e7e0cf; }
-.profile-facts dt { color: #78867a; font-size: 11px; }
+.profile-facts dt { color: #78867a; font-size: 12px; }
 .profile-facts dd { color: #294637; font-size: 13px; line-height: 1.55; }
 .profile-note,
 .profile-text { color: #66786b; font-size: 12px; line-height: 1.85; }
@@ -155,7 +155,7 @@
 .relationship-item strong { color: #294533; }
 .history-item { padding: 13px 0; border-color: #e7e0cf; }
 .history-item strong { color: #274834; font-size: 14px; }
-.profile-page form label { color: #536d5b; font-size: 11px; font-weight: 600; }
+.profile-page form label { color: #536d5b; font-size: 12px; font-weight: 600; }
 .profile-page input,
 .profile-page select,
 .profile-page textarea {

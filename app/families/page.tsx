@@ -253,7 +253,7 @@ function FamiliesContent() {
             <h2 id="join-family-title">Миний гэр бүлд нэгдэх</h2>
             <p>Гэр бүлийн эзэмшигч таны бүртгэлтэй имэйл рүү урилга илгээнэ. Имэйл дэх холбоосоор орж нэвтрээд урилгаа баталгаажуулснаар тухайн гэр бүлийн гишүүн болно.</p>
             <p>Гишүүн болсныхоо дараа Удмын мод хэсгээс өөрийн бодит хүнийг хайж, “Энэ бол би” хүсэлт илгээнэ. Гэр бүлийн эзэн таны хүсэлтийг шалгаж батална. Нэрээр автоматаар холбохгүй.</p>
-            <Link className="button" href="/ancestry">Нийтлэг их модыг харах →</Link>
+            <Link className="button" href="/invite">Урилгын кодоор нэгдэх →</Link>
           </section>
           <section className="card" aria-labelledby="create-family-title">
             <h2 id="create-family-title">Шинэ гэр бүл үүсгэх</h2>
@@ -280,7 +280,6 @@ function FamiliesContent() {
                 <div className="row">
                   <Link className="button" href={`/tree?family=${encodeURIComponent(selectedFamily.id)}`}>Ургийн мод →</Link>
                   <Link className="button" href={`/people?family=${encodeURIComponent(selectedFamily.id)}`}>Хүмүүс →</Link>
-                  <Link className="button" href={`/families/clan?family=${encodeURIComponent(selectedFamily.id)}`}>Их үе →</Link>
                 </div>
               </div>
 

@@ -152,7 +152,7 @@ function StoryDetailPageContent() {
 
         <header className="story-detail-header">
           <p className="story-detail-year" aria-hidden="true">{story.event_date ? story.event_date.slice(0, 4) : '—'}</p>
-          <p className="eyebrow">FAMILY STORY · {family?.name ?? 'Гэр бүл'}</p>
+          <p className="eyebrow">ГЭР БҮЛИЙН ТҮҮХ · {family?.name ?? 'Гэр бүл'}</p>
           <h1>{story.title}</h1>
           <div className="story-detail-meta">
             <span>{story.event_date ?? 'Огноогүй'}</span>

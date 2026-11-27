@@ -252,7 +252,7 @@ function ArchivesPageContent() {
         {loading && !archives ? (
           <section className="archive-state" aria-live="polite">
             <span className="archive-state-mark" aria-hidden="true" />
-            <p className="archive-eyebrow">FAMILY ARCHIVE</p>
+            <p className="archive-eyebrow">ГЭР БҮЛИЙН АРХИВ</p>
             <h2>Баримтуудыг нээж байна…</h2>
             <p>Таны одоогийн гэр бүлийн орчинд хандах боломжтой материалуудыг ачаалж байна.</p>
           </section>
@@ -265,7 +265,7 @@ function ArchivesPageContent() {
           </section>
         ) : archives && archives.items.length === 0 ? (
           <section className="archive-state">
-            <p className="archive-eyebrow">ARCHIVE · ХООСОН</p>
+            <p className="archive-eyebrow">АРХИВ · ХООСОН</p>
             <h2>Одоогоор архивын материал олдсонгүй.</h2>
             <p>{query || documentDate || year || mediaType !== 'all' ? 'Таны хайлтын нөхцөлд тохирох материал байхгүй байна.' : 'Гэр бүлийн баримт, эх сурвалжаа энд бүртгэж эхлээрэй.'}</p>
             {query || documentDate || year || mediaType !== 'all' ? (
@@ -330,7 +330,7 @@ function ArchivesPageContent() {
 
 export default function ArchivesPage() {
   return (
-    <Suspense fallback={<main className="archive-page"><section className="archive-shell archive-state" aria-live="polite"><p className="archive-eyebrow">FAMILY ARCHIVE</p><h1>Архивийг нээж байна…</h1></section></main>}>
+    <Suspense fallback={<main className="archive-page"><section className="archive-shell archive-state" aria-live="polite"><p className="archive-eyebrow">ГЭР БҮЛИЙН АРХИВ</p><h1>Архивийг нээж байна…</h1></section></main>}>
       <ArchivesPageContent />
     </Suspense>
   );

@@ -952,10 +952,9 @@ function TreePageContent() {
           <div className="tree-state-mark" aria-hidden="true">🌳</div>
           <p className="tree-eyebrow">ГУУЛИНГИЙНХАН · УДМЫН МОД</p>
           <h1>Гэр бүлийн орчин олдсонгүй.</h1>
-          <p>Шинэ гэр бүл үүсгээд Гуулингийнхны Эх модонд (Ядамсүрэн ⚭ Гүнд) холбогдох, эсвэл нийтлэг эх модыг шууд үзнэ үү.</p>
+          <p>Шинэ гэр бүл үүсгэх эсвэл урилгын кодоор гэр бүлийнхээ ургийн модонд нэгдэнэ үү.</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-            <Link className="tree-button tree-button--primary" href="/ancestry">🌳 Гуулингийнхны Эх Мод үзэх</Link>
-            <Link className="tree-button" href="/families">➕ Шинэ гэр бүл үүсгэх / Нэгдэх</Link>
+            <Link className="tree-button tree-button--primary" href="/families">➕ Шинэ гэр бүл үүсгэх / Нэгдэх</Link>
           </div>
         </section>
       </main>
