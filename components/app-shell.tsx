@@ -48,7 +48,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', label: 'Нүүр', description: 'Гэр бүлийн тойм', icon: Home, path: '/dashboard', needsFamily: false },
-  { key: 'community', label: 'Нийтийн түүх', description: 'Бүх гэр бүлийн нийтлэл', icon: Newspaper, path: '/community', needsFamily: false },
+  { key: 'community', label: 'Түүх ба Өв', description: 'Түүх, дурсамж, архив нэг дор', icon: BookOpen, path: '/community', needsFamily: false },
   { key: 'news', label: 'Мэдээ', description: 'Гуулингийнхны мэдэгдэл', icon: Bell, path: '/news', needsFamily: false },
   { key: 'tree', label: 'Удмын мод', description: 'Үндсэн удам · Манай гэр бүл', icon: GitFork, path: '/tree', needsFamily: false },
   { key: 'people', label: 'Гишүүд', description: 'Урилга ба миний бүртгэл', icon: Users, path: '/people', needsFamily: true },
@@ -64,8 +64,7 @@ const NAV_ITEMS: NavItem[] = [
 
 const NAV_GROUPS: { label: string; keys: NavItem['key'][] }[] = [
   { label: 'УДАМ', keys: ['tree', 'people'] },
-  { label: 'ӨВИЙН САН', keys: ['stories', 'memories', 'archives'] },
-  { label: 'ГЭР БҮЛ', keys: ['community', 'news', 'activities', 'chat'] },
+  { label: 'ГЭР БҮЛ & ӨВ', keys: ['community', 'news', 'activities', 'chat'] },
   { label: 'АККАУНТ', keys: ['settings'] },
 ];
 
@@ -876,20 +875,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <span>Мод</span>
         </Link>
         <Link
-          href={familyHref('/stories', currentFamily?.id ?? null)}
-          className={'app-shell__bottom-item' + (active === 'stories' ? ' is-active' : '')}
-          aria-current={active === 'stories' ? 'page' : undefined}
+          href={familyHref('/community', currentFamily?.id ?? null)}
+          className={'app-shell__bottom-item' + (active === 'community' || active === 'stories' || active === 'memories' || active === 'archives' ? ' is-active' : '')}
+          aria-current={active === 'community' ? 'page' : undefined}
         >
           <BookOpen size={20} aria-hidden="true" />
           <span>Түүх</span>
         </Link>
         <Link
-          href={familyHref('/memories', currentFamily?.id ?? null)}
-          className={'app-shell__bottom-item' + (active === 'memories' ? ' is-active' : '')}
-          aria-current={active === 'memories' ? 'page' : undefined}
+          href={familyHref('/news', currentFamily?.id ?? null)}
+          className={'app-shell__bottom-item' + (active === 'news' ? ' is-active' : '')}
+          aria-current={active === 'news' ? 'page' : undefined}
         >
-          <Globe2 size={20} aria-hidden="true" />
-          <span>Дурсамж</span>
+          <Bell size={20} aria-hidden="true" />
+          <span>Мэдээ</span>
         </Link>
         <Link
           href={familyHref('/chat', currentFamily?.id ?? null)}
