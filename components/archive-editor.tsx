@@ -213,7 +213,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
       <main className="stories-page">
         <section className="stories-shell stories-state card" aria-live="polite">
           <span className="people-spinner" aria-hidden="true" />
-          <p>Архивийн editor-ийг ачаалж байна…</p>
+          <p>Баримт бүртгэх хэсгийг ачаалж байна…</p>
         </section>
       </main>
     );
@@ -225,7 +225,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
         <section className="stories-shell stories-state card">
           <h2>{family && mode === 'edit' ? 'Архивийг ачаалж чадсангүй.' : 'Гэр бүлийг ачаалж чадсангүй.'}</h2>
           <p>{error || 'Дахин оролдоно уу.'}</p>
-          <Link className="button" href={'/archives?family=' + encodeURIComponent(familyId)}>← Архив</Link>
+          <Link className="button" href="/community?kind=archive">← Түүх ба Өв</Link>
         </section>
       </main>
     );
@@ -236,9 +236,9 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
       <main className="stories-page">
         <section className="stories-shell stories-state card">
           <h2>Энэ үйлдлийг хийх эрхгүй.</h2>
-          <p>Архив нэмэх, засах эрх owner эсвэл editor гишүүнд байна.</p>
-          <Link className="button" href={'/archives?family=' + encodeURIComponent(familyId)}>
-            ← Архив
+          <p>Баримт нэмэх, засах эрх зөвхөн эзэмшигч эсвэл засварлагч гишүүнд байна.</p>
+          <Link className="button" href="/community?kind=archive">
+            ← Түүх ба Өв
           </Link>
         </section>
       </main>
@@ -249,14 +249,14 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
     <main className="stories-page">
       <section className="stories-shell story-editor-page">
         <nav className="story-breadcrumb" aria-label="Байршил">
-          <Link href={'/archives?family=' + encodeURIComponent(familyId)}>← Архив</Link>
+          <Link href="/community?kind=archive">← Түүх ба Өв</Link>
           <span>{family.name}</span>
         </nav>
 
         <header className="story-editor-hero">
           <p className="eyebrow">ГУУЛИНГИЙНХАН · ГЭР БҮЛИЙН АРХИВ · {mode === 'create' ? 'ШИНЭ' : 'ЗАСАХ'}</p>
-          <h1>{mode === 'create' ? 'Шинэ архив' : 'Архивийг засах'}</h1>
-          <p>Гэр бүлийн түүхэн баримтын metadata, огноо, газар болон холбоотой хүмүүсийг хадгална.</p>
+          <h1>{mode === 'create' ? 'Шинэ баримт' : 'Баримтыг засах'}</h1>
+          <p>Гэр бүлийн түүхэн баримтын мэдээлэл, огноо, газар болон холбоотой хүмүүсийг хадгална.</p>
         </header>
 
         {error && (
@@ -350,8 +350,6 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
                 <option value="public">Нийтийн</option>
               </select>
             </label>
-
-            <div aria-hidden="true" />
           </div>
 
           <ProtectedPhotoPicker familyId={familyId} onSelect={(id, caption) => { setDescription((text) => text + `\n\n[[photo:${id}|${caption.replace(/[\]\n|]/g, ' ').slice(0, 180)}]]\n`); markDirty(); }} />
@@ -428,7 +426,7 @@ function ArchiveEditorContent({ mode }: { mode: 'create' | 'edit' }) {
 
 export default function ArchiveEditor(props: { mode: 'create' | 'edit' }) {
   return (
-    <Suspense fallback={<main className="stories-page"><section className="stories-shell stories-state card" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Архивийн editor-ийг ачаалж байна…</p></section></main>}>
+    <Suspense fallback={<main className="stories-page"><section className="stories-shell stories-state card" aria-live="polite"><span className="people-spinner" aria-hidden="true" /><p>Баримт бүртгэх хэсгийг ачаалж байна…</p></section></main>}>
       <ArchiveEditorContent {...props} />
     </Suspense>
   );

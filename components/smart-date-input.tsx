@@ -173,9 +173,11 @@ export default function SmartDateInput({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(86px, 1.2fr) minmax(80px, 1fr) minmax(72px, 0.9fr)',
+        gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.85fr)',
         gap: 6,
         alignItems: 'center',
+        width: '100%',
+        minWidth: 0,
       }}
     >
       <input

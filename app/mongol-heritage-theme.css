@@ -3632,6 +3632,62 @@ html[data-th] .golden-tree-viewport:not(.is-fullscreen) {
   min-height: calc(100dvh - 68px);
 }
 
+/* 11. Publishing Editors (/stories/new, /archives/new, /memories/new) — zero overlap, >=13px labels, >=44px controls */
+.story-form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  align-items: end !important;
+}
+
+.story-form-grid > * {
+  min-width: 0 !important;
+}
+
+.story-editor-form label,
+.memory-composer-form label {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--ui-text-secondary, #344c40) !important;
+}
+
+.story-editor-form small,
+.story-field-hint,
+.memory-composer-form small,
+.memory-composer-heading span {
+  font-size: 12px !important;
+  color: var(--ui-text-muted, #55695e) !important;
+}
+
+.story-editor-form input,
+.story-editor-form select,
+.memory-composer-form input,
+.memory-composer-form select {
+  min-height: 44px !important;
+  font-size: 14px !important;
+}
+
+.story-writing-toolbar button {
+  min-height: 40px !important;
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+}
+
+.story-editor-actions button,
+.memory-composer-actions button {
+  min-height: 44px !important;
+  padding: 10px 20px !important;
+  font-size: 14px !important;
+}
+
+@media (max-width: 640px) {
+  .story-form-grid,
+  .memory-composer-form {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
 
 
 

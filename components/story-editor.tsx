@@ -446,7 +446,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
   }
 
   if (loading) {
-    return <main className="stories-page"><section className="stories-shell stories-state"><span className="people-spinner" aria-hidden="true" /><p>Editor ачаалж байна…</p></section></main>;
+    return <main className="stories-page"><section className="stories-shell stories-state"><span className="people-spinner" aria-hidden="true" /><p>Түүх бичих хэсгийг ачаалж байна…</p></section></main>;
   }
 
   if (error && !family) {
@@ -454,7 +454,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
       <main className="stories-page">
         <section className="stories-shell">
           <div className="error" role="alert">{error}</div>
-          <Link className="button" href="/stories">← Манай түүх</Link>
+          <Link className="button" href="/community">← Түүх ба Өв</Link>
         </section>
       </main>
     );
@@ -467,7 +467,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
       <main className="stories-page">
         <section className="stories-shell">
           <div className="error" role="alert">Энэ үйлдлийг хийх эрхгүй.</div>
-          <Link className="button" href={'/stories?family=' + encodeURIComponent(familyId)}>← Манай түүх</Link>
+          <Link className="button" href="/community">← Түүх ба Өв</Link>
         </section>
       </main>
     );
@@ -477,7 +477,7 @@ function StoryEditorContent({ mode, familyId: requestedFamilyId = '', storyId: r
     <main className="stories-page">
       <section className="stories-shell story-editor-page">
         <nav className="story-breadcrumb" aria-label="Байршил">
-          <Link href={'/stories?family=' + encodeURIComponent(familyId)}>← Манай түүх</Link>
+          <Link href="/community">← Түүх ба Өв</Link>
           <span>{family.name}</span>
         </nav>
 
